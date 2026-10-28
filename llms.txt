@@ -25,6 +25,7 @@
 - [桌面工作台](docs/17-桌面工作台.md)
 - [内置 Agent](docs/18-内置Agent.md)
 - [赛题覆盖矩阵](docs/19-赛题覆盖矩阵.md)
+- [MSPM0 速查](docs/20-MSPM0速查.md)
 
 ## Optional
 - [协处理板与软核](docs/08-协处理板与软核.md)
