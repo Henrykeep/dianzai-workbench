@@ -163,7 +163,8 @@ function renderParams() {
 function syncParams() {
   (S.schema?.params ?? []).forEach(p => {
     const inp = document.getElementById(`pi-${p.name}`) as HTMLInputElement | null;
-    if (inp && !(p.name in S.edit) && document.activeElement !== inp) inp.value = fmt(S.applied[p.name], p);
+    // 没在改的格子一律跟随板上值（含其他客户端 / Agent 改的），聚焦也跟随
+    if (inp && !(p.name in S.edit)) inp.value = fmt(S.applied[p.name], p);
   });
   markParams();
 }

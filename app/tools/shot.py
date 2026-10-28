@@ -48,13 +48,13 @@ try:
         pg.select_option("#port", "sim:car_2wd")
         pg.click("#connect")
         pg.wait_for_selector(".prow", timeout=15000)
-        # 阶跃测试：左右轮设定 0 → 3 → 1.5 → -2 r/s（car_2wd DATA id=1：两个 f32）
+        # 阶跃测试：car_2wd DATA id=1 是 (v m/s, w rad/s)，不是两轮 r/s；轮径 65 mm → 0.4 m/s ≈ 1.96 r/s（max_rps 5 限幅）
         pg.evaluate("""() => new Promise(r => { const ws = new WebSocket('ws://127.0.0.1:18901');
             const hex = (a,b) => { const d = new DataView(new ArrayBuffer(8)); d.setFloat32(0,a,true); d.setFloat32(4,b,true);
               return [...new Uint8Array(d.buffer)].map(x=>x.toString(16).padStart(2,'0')).join(''); };
-            const seq = [[3,2.5],[1.5,1.5],[-2,-1],[2,2]]; let i = 0, k = 0;
+            const seq = [[0.6,0.5],[0.3,0],[-0.4,-0.3],[0.4,0]]; let i = 0, k = 0;
             ws.onopen = () => { const t = setInterval(() => { ws.send(JSON.stringify({op:'send_data', rid:++k, id:1, hex:hex(...seq[Math.min(Math.floor(i/10),3)])}));
-               if (++i === 45) r(); }, 100); }; })""")  # 之后一直保持最后一档 2 r/s，供阶跃分析
+               if (++i === 45) r(); }, 100); }; })""")  # 之后一直保持最后一档 0.4 m/s，供阶跃分析
         first = pg.locator(".prow input").first
         first.fill("9.5"); pg.locator(".prow input").nth(1).click()
         pg.evaluate("""() => new Promise(r => { const ws = new WebSocket('ws://127.0.0.1:18901');
@@ -83,6 +83,17 @@ try:
         pg.click("#cfg button[value=cancel]")
         pg.click("#view span[data-v=raw]"); pg.click("#raw-fmt span[data-f=hex]"); pg.wait_for_timeout(800)
         pg.screenshot(path=str(OUT / "app-raw.png"))
+        # 发送栏：存两个预设，一个挂触发（spd_a 超过 1.5 r/s 时发一次）
+        pg.evaluate("""() => new Promise(r => { const ws = new WebSocket('ws://127.0.0.1:18901'); let k = 0;
+            const q = [{op:'preset_save', preset:{name:'查询', kind:'text', payload:'?', eol:'\\r\\n'}},
+                       {op:'preset_save', preset:{name:'起跑', kind:'hex', payload:'A5 5A 01'}},
+                       {op:'preset_trigger', name:'起跑', field:'spd_a', op_:'>', value:1.5, cooldown_ms:200},
+                       {op:'preset_list'}];
+            ws.onopen = () => q.forEach(m => ws.send(JSON.stringify({...m, rid: ++k})));
+            ws.onmessage = e => { if (JSON.parse(e.data).rid === q.length) r(); }; })""")
+        pg.click("#raw-fmt span[data-f=txt]"); pg.fill("#snd-in", "kp=0.08"); pg.click("#snd-go"); pg.wait_for_timeout(600)
+        pg.evaluate("() => document.querySelector('#snd-presets') && 0")
+        pg.screenshot(path=str(OUT / "app-send.png"))
         pg.click("#view span[data-v=fft]"); pg.select_option("#fft-ch", "spd_a"); pg.wait_for_timeout(1500)
         pg.screenshot(path=str(OUT / "app-fft.png"))
         pg.click("#view span[data-v=plot]")

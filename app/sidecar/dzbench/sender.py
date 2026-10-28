@@ -158,5 +158,6 @@ class Sender:
                     self.send(name)
                 except LinkError as e:
                     self._prev_emit(e.as_dict())
+                self._prev_emit({"type": "sender", "presets": self.list(), "fired": name})
             elif not hit:
                 tg["armed"] = True

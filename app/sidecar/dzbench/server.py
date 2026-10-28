@@ -129,20 +129,28 @@ class Server:
         if op == "preset_list":
             return self.sender.list()
         if op == "preset_save":
-            return self.sender.save_preset(m["preset"])
+            r = self.sender.save_preset(m["preset"])
+            self.emit({"type": "sender", "presets": r})
+            return r
         if op == "preset_delete":
-            return self.sender.delete_preset(m["name"])
+            r = self.sender.delete_preset(m["name"])
+            self.emit({"type": "sender", "presets": r})
+            return r
         if op == "preset_send":
             return self.sender.send(m["name"])
         if op == "preset_timer":
             if m.get("on", True):
-                return self.sender.start_timer(m["name"], int(m["period_ms"]), int(m.get("count", 0)))
-            self.sender.stop_timer(m["name"])
+                self.sender.start_timer(m["name"], int(m["period_ms"]), int(m.get("count", 0)))
+            else:
+                self.sender.stop_timer(m["name"])
+            self.emit({"type": "sender", "presets": self.sender.list()})
             return self.sender.list()
         if op == "preset_trigger":
             if m.get("on", True):
-                return self.sender.add_trigger(m["name"], m["field"], m["op_"], m["value"], int(m.get("cooldown_ms", 200)))
-            self.sender.remove_trigger(m["name"])
+                self.sender.add_trigger(m["name"], m["field"], m["op_"], m["value"], int(m.get("cooldown_ms", 200)))
+            else:
+                self.sender.remove_trigger(m["name"])
+            self.emit({"type": "sender", "presets": self.sender.list()})
             return self.sender.list()
         if op == "raw_monitor":
             self.session.raw_on = bool(m.get("on", True))

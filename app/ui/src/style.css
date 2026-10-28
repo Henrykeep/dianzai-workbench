@@ -156,3 +156,8 @@ select:disabled{opacity:.6}
 .fftcv{flex:1;width:100%;min-height:0}
 .fftwarn{margin:8px 10px 0;padding:6px 10px;border-radius:var(--r);background:var(--warn-bg);color:var(--warn);font-size:12px}
 .rp{display:flex;align-items:center;gap:8px} .rp input[type=range]{width:220px;accent-color:var(--acc)} .rp select{height:22px;font-size:10px}
+#snd select.in { flex: 0 0 auto; width: auto; }
+#snd input.in#snd-in { flex: 1 1 auto; min-width: 8em; }
+#snd input#snd-ms { flex: 0 0 5em; }
+#snd-presets { flex-wrap: wrap; gap: 4px; min-height: 0; }
+#snd-presets .btn.on { color: var(--accent, #e8590c); }

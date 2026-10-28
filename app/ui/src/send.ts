@@ -26,9 +26,20 @@ export function initSend(rpc: (op: string, a?: Record<string, unknown>) => Promi
       const t = document.createElement("button"); t.className = "btn ghost sm" + (p.timer ? " on" : ""); t.textContent = p.timer ? "■" : "⟳";
       t.title = p.timer ? "停止定时" : `每 ${ms.value} ms 发一次`;
       t.onclick = () => rpc("preset_timer", { name: p.name, on: !p.timer, period_ms: +ms.value }).then(() => rpc("preset_list").then(render)).catch(err);
+      const g = document.createElement("button"); g.className = "btn ghost sm" + (p.trigger ? " on" : "");
+      g.textContent = p.trigger ? `⚡${p.trigger.field}${p.trigger.op}${p.trigger.value}·${p.trigger.fired}` : "⚡";
+      g.title = p.trigger ? "取消触发" : "遥测满足条件时发一次（如 lock >= 1）";
+      g.onclick = () => {
+        if (p.trigger) { rpc("preset_trigger", { name: p.name, on: false }).then(render).catch(err); return; }
+        const r = prompt("触发条件：字段 比较符 值（> < >= <= ==）", "lock >= 1"); if (!r) return;
+        const mm = r.trim().match(/^(\w+)\s*(>=|<=|==|>|<)\s*(-?[\d.eE+-]+)$/);
+        if (!mm) { err({ code: "bad_trigger", message: "格式：字段 比较符 值，例如 lock >= 1" }); return; }
+        rpc("preset_trigger", { name: p.name, field: mm[1], op_: mm[2], value: +mm[3], cooldown_ms: 200 })
+          .then(() => rpc("preset_list").then(render)).catch(err);
+      };
       const x = document.createElement("button"); x.className = "btn ghost sm"; x.textContent = "×"; x.title = "删除";
       x.onclick = () => rpc("preset_delete", { name: p.name }).then(render).catch(err);
-      box.append(b, t, x);
+      box.append(b, t, g, x);
     }
   }
   rpc("preset_list").then(render).catch(() => {});
