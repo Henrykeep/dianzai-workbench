@@ -37,7 +37,7 @@
     </aside>
     <section class="panel plot">
       <div class="ph"><h3>实时曲线</h3><span class="lbl" id="plot-sub"></span><div class="sp"></div>
-        <div class="seg" id="view" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备"><span data-v="plot" class="on">曲线</span><span data-v="raw">原始</span></div>
+        <div class="seg" id="view" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备"><span data-v="plot" class="on">曲线</span><span data-v="raw">原始</span><span data-v="fft" title="频谱：按固件遥测周期做 FFT（去直流 + Hann 窗），找振荡频率">频谱</span></div>
         <div class="seg" id="win"><span data-w="2">2s</span><span data-w="5" class="on">5s</span><span data-w="10">10s</span><span data-w="30">30s</span></div>
         <div class="seg" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
       </div>
@@ -48,6 +48,14 @@
             <label class="lbl"><input type="checkbox" id="raw-ts" checked> 时间戳</label>
             <div class="sp"></div><span class="lbl" id="raw-stat"></span><button class="btn ghost sm" id="raw-clr">清空</button></div>
           <div id="raw-list" class="rawlist"></div>
+        </div>
+        <div id="fft" class="raw" hidden>
+          <div class="rawbar"><select id="fft-ch" class="in"></select>
+            <div class="seg" id="fft-win"><span data-s="5">5s</span><span data-s="10" class="on">10s</span><span data-s="30">30s</span></div>
+            <label class="lbl"><input type="checkbox" id="fft-log"> 对数</label>
+            <div class="sp"></div><span class="lbl" id="fft-info"></span></div>
+          <div id="fft-warn" class="fftwarn" hidden></div>
+          <canvas id="fft-cv" class="fftcv"></canvas>
         </div></div>
     </section>
     <aside class="side">
@@ -92,6 +100,9 @@
     <span id="st-log">未记录</span>
     <span id="st-hint" class="warn-t"></span>
     <span class="sp"></span>
+    <span id="rp" class="rp" hidden><button class="btn ghost sm" id="rp-play">⏸</button>
+      <input type="range" id="rp-pos" min="0" max="1000" value="0"><span id="rp-t">0.0 / 0.0 s</span>
+      <select id="rp-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></span>
     <select id="logs" title="回放以前记录的 .dzlog"></select>
     <button class="btn ghost sm" id="replay">回放</button>
     <button class="btn ghost sm" id="export" title="把这份记录导出成 CSV（UTF-8 BOM，Excel 直接打开）">导出 CSV</button>

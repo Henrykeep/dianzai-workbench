@@ -20,6 +20,7 @@ from .agent_api import TOOLS, AgentTools
 from .downsample import minmax
 from .logfile import read_log
 from .ports import list_ports
+from .spectrum import spectrum
 from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
 
@@ -109,6 +110,17 @@ class Server:
             return await run(None, self.agent.decide, int(m["id"]), bool(m["accept"]))
         if op == "agent_tool":
             return await run(None, self.agent.call, m["tool"], m.get("args", {}))
+        if op == "replay_ctl":
+            r = self.session.replay_ctl(m.get("seek"), m.get("speed"), m.get("pause"))
+            if m.get("seek") is not None:
+                await self._broadcast({"type": "seeked", **r})
+            return r
+        if op == "fft":
+            name = m["field"]
+            t, y = self.session.window_field(name, float(m.get("seconds", 30)))
+            sch = self.session.schema
+            per = (sch.d["telemetry"].get("period_ms") or 0) / 1000 if sch else 0
+            return await run(None, lambda: spectrum(t, y, per or None) | {"field": name})
         if op == "raw_monitor":
             self.session.raw_on = bool(m.get("on", True))
             return {"on": self.session.raw_on}

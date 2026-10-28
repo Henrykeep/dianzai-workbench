@@ -4,7 +4,7 @@ import { Msg } from "./ws";
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const MAX_LINES = 3000;
 
-export function initRaw(rpc: (op: string, a?: Record<string, unknown>) => Promise<any>, onView: (raw: boolean) => void) {
+export function initRaw(rpc: (op: string, a?: Record<string, unknown>) => Promise<any>, onView: (view: string) => void) {
   let fmt: "txt" | "hex" = "txt", on = false, rx = 0, tx = 0, lines = 0;
   const list = $("raw-list");
   const dec = new TextDecoder("utf-8", { fatal: false });
@@ -13,7 +13,7 @@ export function initRaw(rpc: (op: string, a?: Record<string, unknown>) => Promis
   const seg = (id: string, attr: string, f: (v: string) => void) => $(id).querySelectorAll<HTMLElement>("span").forEach(x => x.onclick = () => {
     $(id).querySelectorAll("span").forEach(y => y.classList.toggle("on", y === x)); f(x.dataset[attr]!);
   });
-  seg("view", "v", v => { on = v === "raw"; $("raw").hidden = !on; rpc("raw_monitor", { on }).catch(() => {}); onView(on); });
+  seg("view", "v", v => { on = v === "raw"; $("raw").hidden = !on; rpc("raw_monitor", { on }).catch(() => {}); onView(v); });
   seg("raw-fmt", "f", v => { fmt = v as "txt" | "hex"; });
   $("raw-clr").onclick = () => { list.innerHTML = ""; lines = 0; partial = ""; };
 

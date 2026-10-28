@@ -244,6 +244,28 @@ class Session:
                 n += len(c[2])
         return out
 
+    def replay_ctl(self, seek: float | None = None, speed: float | None = None, pause: bool | None = None) -> dict:
+        tr = self.tr
+        if not isinstance(tr, ReplayTransport):
+            raise LinkError("not_replay", "当前不是回放", "底栏选一份记录点“回放”")
+        if seek is not None:
+            tr.seek(seek)
+            with self.lock:                       # 时间轴跳了：清掉旧样本，曲线从新位置画
+                self.samples.clear()
+                self._new.clear()
+                self.parser = Parser()
+        if speed is not None:
+            tr.set_speed(speed)
+        if pause is not None:
+            tr.pause(pause)
+        return {"pos": tr.position(), "len": tr.duration, "speed": tr.speed, "paused": tr.paused}
+
+    def window_field(self, name: str, seconds: float) -> tuple[list[float], list[float]]:
+        if not self.schema or name not in [f["name"] for f in self.schema.fields]:
+            raise LinkError("bad_field", f"没有通道 {name}", "从下拉框选一个遥测通道")
+        w = [s for s in self.window(seconds) if name in s[1]]
+        return [s[0] for s in w], [float(s[1][name]) for s in w]
+
     def take_new(self) -> list:
         with self.lock:
             out, self._new = self._new, []
@@ -365,6 +387,9 @@ class Session:
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "reconnects": self.reconnects, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}
+            if isinstance(self.tr, ReplayTransport):
+                st.update(replay_pos=round(self.tr.position(), 2), replay_len=round(self.tr.duration, 2),
+                          replay_speed=self.tr.speed, replay_paused=self.tr.paused)
         if self.reconnecting:
             st["hint"] = "连接断开，正在自动重连…（线插回去即可；急停此时送不到板子）"
         elif connected and not alive and now - self.t_connect > HB_TIMEOUT_S:

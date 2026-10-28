@@ -83,6 +83,8 @@ try:
         pg.click("#cfg button[value=cancel]")
         pg.click("#view span[data-v=raw]"); pg.click("#raw-fmt span[data-f=hex]"); pg.wait_for_timeout(800)
         pg.screenshot(path=str(OUT / "app-raw.png"))
+        pg.click("#view span[data-v=fft]"); pg.select_option("#fft-ch", "spd_a"); pg.wait_for_timeout(1500)
+        pg.screenshot(path=str(OUT / "app-fft.png"))
         pg.click("#view span[data-v=plot]")
         pg.click("#estop")
         pg.wait_for_timeout(1500)
@@ -91,6 +93,14 @@ try:
         pg.select_option("#port", "/dev/ttyS0") if pg.locator("#port option[value='/dev/ttyS0']").count() else None
         pg.click("#connect"); pg.wait_for_timeout(3500)
         pg.screenshot(path=str(OUT / "app-error.png"))
+        # 回放 + 时间轴拖动
+        pg.locator(".toast").evaluate_all("ts => ts.forEach(t => t.remove())")
+        pg.click("#replay"); pg.wait_for_timeout(1500)
+        pg.evaluate("""() => new Promise(r => { const ws = new WebSocket('ws://127.0.0.1:18901');
+            ws.onopen = () => ws.send(JSON.stringify({op:'replay_ctl', rid:1, seek:4.0, speed:0.5}));
+            ws.onmessage = e => { if (JSON.parse(e.data).rid === 1) { ws.close(); r(); } }; })""")
+        pg.wait_for_timeout(2500)
+        pg.screenshot(path=str(OUT / "app-replay.png"))
         b.close()
 finally:
     srv.terminate(); llm.shutdown()

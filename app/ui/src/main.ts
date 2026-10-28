@@ -8,6 +8,7 @@ import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
 import { AGENT_IDLE, initAgent } from "./agent";
 import { initRaw } from "./raw";
+import { initFFT } from "./fft";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[] };
 type Param = { name: string; type: string; min: number; max: number; unit?: string; desc?: string; default: number };
@@ -108,7 +109,7 @@ function applySchema(s: Schema | null) {
   plot.setChannels(S.plotted.map(f => f.name), S.plotted.map(f => f.unit ?? ""), S.visible);
   $("chan-n").textContent = `${S.plotted.length} 路 · ${s.period_ms ?? "?"} ms`;
   $("plot-sub").textContent = `schema ${s.hash}`;
-  renderChans(); renderParams(); loadSnaps();
+  renderChans(); renderParams(); loadSnaps(); fft.setFields(S.plotted.map(f => f.name));
 }
 function renderChans() {
   $("chans").innerHTML = S.enums.map(f => `<div class="ch en"><span class="k">${esc(f.name)}</span><b id="ev-${f.name}" class="mono">—</b></div>`).join("")
@@ -250,6 +251,13 @@ function renderStatus(st: Msg) {
   $("rec").hidden = !st.log;
   $("st-log").textContent = st.replay ? `回放 ${(st.replay_progress * 100).toFixed(0)}%` : st.log ? `记录到 ${st.log}` : "未记录";
   $("st-hint").textContent = st.hint ?? "";
+  $("rp").hidden = !st.replay;
+  if (st.replay) {
+    if (!rpDrag) rpPos.value = String(Math.round(st.replay_progress * 1000));
+    $("rp-t").textContent = `${st.replay_pos.toFixed(1)} / ${st.replay_len.toFixed(1)} s`;
+    $("rp-play").textContent = st.replay_paused ? "▶" : "⏸";
+    if (document.activeElement !== $("rp-speed")) $<HTMLSelectElement>("rp-speed").value = String(st.replay_speed);
+  }
   $("connect").innerHTML = st.connected ? "断开 <kbd>⌃O</kbd>" : "连接 <kbd>⌃O</kbd>";
   $("connect").classList.toggle("pri", !st.connected);
   $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = !!st.connected;
@@ -265,7 +273,15 @@ function applyNone() {
 }
 
 const agent = initAgent(call);
-const raw = initRaw((op, a) => link.rpc(op, a ?? {}), () => {});
+const fft = initFFT((op, a) => link.rpc(op, a ?? {}));
+const raw = initRaw((op, a) => link.rpc(op, a ?? {}), v => fft.setView(v === "fft"));
+// 回放时间轴：拖动 = 跳转（旧样本清掉，曲线从新位置画）
+let rpDrag = false;
+const rpPos = $<HTMLInputElement>("rp-pos");
+rpPos.oninput = () => { rpDrag = true; };
+rpPos.onchange = async () => { rpDrag = false; await call("replay_ctl", { seek: +rpPos.value / 1000 * (S.status.replay_len || 0) }); };
+$("rp-play").onclick = () => call("replay_ctl", { pause: !S.status.replay_paused });
+$("rp-speed").onchange = () => call("replay_ctl", { speed: +$<HTMLSelectElement>("rp-speed").value });
 $("export").onclick = async () => {
   const p = $<HTMLSelectElement>("logs").value;
   if (!p) return toast("还没有记录可导出：连上板子会自动记录", "info");
@@ -286,6 +302,7 @@ link.on(m => {
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
+    case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "estop": toast(m.message, m.sent ? "info" : "crit", m.sent ? 2500 : 15000); break;
   }
