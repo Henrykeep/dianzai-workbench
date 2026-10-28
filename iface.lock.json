@@ -993,7 +993,7 @@
    "host_sim.h: void host_sim_set_reset_cause(pal_reset_cause_t c);"
   ],
   "hash": "0a570e43b3b1de17",
-  "version": "2.0.0"
+  "version": "2.1.0"
  },
  "ports/mspm0-driverlib": {
   "decls": [
@@ -1328,6 +1328,6 @@
    "stm32f4xx_hal_conf.h: void assert_failed(uint8_t* file, uint32_t line);"
   ],
   "hash": "b0214c49a56898f4",
-  "version": "1.1.0"
+  "version": "1.2.0"
  }
 }
