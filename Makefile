@@ -247,6 +247,7 @@ check:
 	$(PY) tools/test_ioc_import.py
 	$(PY) tools/keil_inject.py --selftest
 	$(PY) tools/test_keil_inject.py
+	$(PY) tools/test_mspm0_board.py
 	$(PY) tools/syscfg_import.py --selftest
 	$(PY) tools/gen_link.py --selftest
 	$(PY) tools/syscfg_import.py boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg --check boards/mspm0g3507-tianmengxing/board.yaml

@@ -236,7 +236,69 @@ def stm32f4_check(board: dict, rep: Report) -> None:
                 rep.err(f"[复用错误] {where}: {r['instance']}_IN{ch} 对应 {exp}，不是 {r['pin']}")
 
 
-FAMILY_CHECKS = {"stm32f4": stm32f4_check}
+def mspm0_check(board: dict, rep: Report) -> None:
+    """MSPM0G350x：复用表从 SDK 头自动生成；QEI 仅 TIMG8；坑脚警告；UART0(PA10/11) 与 I2C1 冲突；PWM 分频可行性。"""
+    from families import mspm0 as M
+    io = M.load_iomux()
+    if not io:
+        rep.warn("[知识库] 未找到 mspm0-sdk 头文件（tools/fetch_third_party.sh mspm0），跳过复用检查")
+        return
+    tims, res = M.timers(io), board.get("resources") or {}
+    used: dict[str, str] = {}
+
+    def pin(p, where, need=None):
+        if not isinstance(p, str) or p == "TODO":
+            return
+        if p not in io:
+            rep.err(f"[引脚] {where}: {p} 在 {board['mcu'].get('part')} 上不存在"); return
+        if p in used:
+            rep.err(f"[引脚冲突] {p} 同时被 {used[p]} 和 {where} 使用")
+        used[p] = where
+        if p in M.TRAP_PINS:
+            rep.warn(f"[坑脚] {where}: {p} {M.TRAP_PINS[p]}")
+        if need and not any(f.startswith(need) for f in io[p]):
+            rep.err(f"[复用] {where}: {p} 没有 {need}* 功能（SDK IOMUX 表）")
+
+    def tim(t, where):
+        if t not in tims:
+            rep.err(f"[定时器] {where}: {t} 不存在，可选 {sorted(tims)}"); return False
+        return True
+
+    for g in res.get("gpio") or []:
+        pin(g.get("pin"), f"gpio.{g.get('name')}")
+    pwm_t = set()
+    for p in res.get("pwm") or []:
+        w = f"pwm.{p.get('name')}"
+        if tim(p.get("timer"), w):
+            pwm_t.add(p["timer"])
+            pin(p.get("pin"), w, f"{p['timer']}_CCP{p.get('channel', 0)}")
+            f, clk = p.get("freq_hz"), (board.get("clock") or {}).get("sysclk_hz")
+            if f and clk and clk / f / 256 > (1 << M.TIMER_BITS.get(p["timer"], 16)):
+                rep.err(f"[PWM] {w}: {f} Hz 在 {clk} Hz 下分频 256 仍超出计数位宽")
+    for e in res.get("encoder") or []:
+        w = f"encoder.{e.get('name')}"
+        if e.get("mode") == "gpio_isr":
+            pin(e.get("pin_a"), w); pin(e.get("pin_b"), w); continue
+        t = e.get("timer")
+        if t not in M.QEI_TIMERS:
+            rep.err(f"[QEI] {w}: {t} 不带 QEI，MSPM0G350x 只有 TIMG8；其它通道用 mode: gpio_isr")
+            continue
+        if t in pwm_t:
+            rep.err(f"[QEI] {w}: TIMG8 已被 PWM 占用")
+        pin(e.get("pin_a"), w, "TIMG8_CCP0"); pin(e.get("pin_b"), w, "TIMG8_CCP1")
+    uarts = set()
+    for u in res.get("uart") or []:
+        w, i = f"uart.{u.get('name')}", u.get("instance")
+        uarts.add(i)
+        pin(u.get("tx"), w, f"{i}_TX"); pin(u.get("rx"), w, f"{i}_RX")
+    for i2 in res.get("i2c") or []:
+        w, i = f"i2c.{i2.get('name')}", i2.get("instance")
+        pin(i2.get("scl"), w, f"{i}_SCL"); pin(i2.get("sda"), w, f"{i}_SDA")
+    for t in res.get("timer") or []:
+        tim(t.get("instance"), f"timer.{t.get('name')}")
+
+
+FAMILY_CHECKS = {"stm32f4": stm32f4_check, "mspm0": mspm0_check}
 
 
 def cubemx_check(board: dict, rep: Report) -> None:

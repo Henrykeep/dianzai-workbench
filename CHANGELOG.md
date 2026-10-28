@@ -5,6 +5,10 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+
+### MSPM0 校验
+- board.yaml 校验 mspm0 系列：复用表从 SDK `mspm0g350x.h` 自动生成；QEI 只许 TIMG8、TIMG8 不能同时做 PWM；PA0/1、PA2–6、PA19/20、PA21/23 坑脚警告；引脚冲突（如 UART0 PA10/11 与 I2C1）；PWM 分频可行性 [编译]
+- check_deps D1：DL_xxx() 必须在 SDK 头文件存在；TIMA 实例不得用 DL_TimerG_*（含别名宏）[编译]
 ### 新增
 - Agent 风险分级（auto / log / human / forbid，未登记工具默认禁止，审计日志）与“需要你确认”动作卡 [仿真]；调参护栏（双向+绝对单步限制、0 起步小值、每轮一项、变差方向禁止、程序判定达标/回滚/停止、实机 8 轮、电量/温度门限、实机回滚要人点）、紧凑上下文、严格回复解析、无 LLM 规则模式、固定种子基准 [仿真]。思路参考 llm-pid-tuner（MIT）、embeddedskills（MIT）
 - 工具链：pyOCD 烧录（前置条件、默认 dry-run、烧前备份、烧后心跳哈希校验、回滚）、Keil `UV4 -b` 日志解析、分层配置 `dzbench.json` + `~/.dzbench/machine.json`、按内核 HardFault 解码（M0+ 无 CFSR）、ELF 符号 + 按变量名轮询曲线 [仿真]（假探针/日志样本单测）；真实探针、Keil、真实故障 [未测]

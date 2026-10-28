@@ -21,6 +21,8 @@
       Callback 1 里的 dz_cubemx_tim_callback(htim)），业务逻辑一律写进子系统。
   C2  SysConfig 生成的 ti_msp_dl_config.{c,h} 视为厂商生成代码：允许 DriverLib，禁止 HAL/LL。
   P2  厂商 API 不得串用：HAL_/LL_ 只能在 ports/stm32*，DL_ 只能在 ports/mspm0*。
+  D1  MSPM0：DL_xxx() 必须在 SDK driverlib 头文件里真实存在（符号表自动从头文件生成，不手抄黑名单）；
+      TIMA 实例（TIMA0/1 或其别名宏）不得传给 DL_TimerG_*()，应用 DL_TimerA_*()。SDK 未下载时跳过。
   V1  每个模块目录的 VERSION 必须与头文件里的 XXX_VERSION 宏一致。
 """
 import argparse, os, re, sys
@@ -185,12 +187,39 @@ class Checker:
                 ctx = " ".join(lines[max(0, ln - 2):ln])
                 if "DZ-REG-OK:" not in ctx or re.search(r'DZ-REG-OK:\s*($|\*/)', ctx):
                     self.err("P1", path, ln, f"直接访问寄存器 `{m.group(0)}`；必须用 HAL，确需寄存器时在该行或上一行注明 `DZ-REG-OK: 原因`")
+        if port.startswith("mspm0"):
+            self.check_driverlib(path, src)
         for m in VENDOR_CALL_RE.finditer(src):
             api = m.group(1)
             if api.startswith("DL_") and not port.startswith("mspm0"):
                 self.err("P2", path, lineno(src, m.start()), f"DriverLib 调用 {api}() 只能在 ports/mspm0*")
             if api.startswith(("HAL_", "LL_")) and not port.startswith("stm32"):
                 self.err("P2", path, lineno(src, m.start()), f"STM32 HAL/LL 调用 {api}() 只能在 ports/stm32*")
+
+    _dl_syms = None
+
+    @classmethod
+    def dl_symbols(cls):
+        if cls._dl_syms is None:
+            d = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "third_party", "mspm0-sdk", "source", "ti", "driverlib")
+            syms = set()
+            for dp, _, fs in os.walk(d):
+                for f in fs:
+                    if f.endswith(".h"):
+                        syms |= set(re.findall(r'\b(DL_\w+)\s*\(', open(os.path.join(dp, f), encoding="utf-8", errors="replace").read()))
+                        syms |= set(re.findall(r'#define\s+(DL_\w+)', open(os.path.join(dp, f), encoding="utf-8", errors="replace").read()))
+            cls._dl_syms = syms
+        return cls._dl_syms
+
+    def check_driverlib(self, path, src):
+        syms = self.dl_symbols()
+        tima = set(re.findall(r'#define\s+(\w+)\s+\(?(?:TIMA[01])\)?\s*$', src, re.M)) | {"TIMA0", "TIMA1"}
+        for m in re.finditer(r'\b(DL_\w+)\s*\(\s*(\w*)', src):
+            api, arg = m.group(1), m.group(2)
+            if syms and api not in syms:
+                self.err("D1", path, lineno(src, m.start()), f"{api}() 在 mspm0-sdk driverlib 头文件里不存在（常见：DL_GPIO_setDirection/DL_TimerG_setPeriod/DL_WDT_*）")
+            if api.startswith("DL_TimerG_") and arg in tima:
+                self.err("D1", path, lineno(src, m.start()), f"{arg} 是 TIMA 实例，应调用 DL_TimerA_{api[10:]}()")
 
     # ---------------------------------------------------------------- S1/S2
     def check_project(self, proj_dir):
@@ -283,6 +312,8 @@ def selftest(root):
     ok = True
     cases = sorted(d for d in os.listdir(fx) if d.startswith("deps_"))
     for c in cases:
+        if c.startswith("deps_D1") and not Checker.dl_symbols():
+            print(f"- {c}: 跳过（无 mspm0-sdk）"); continue
         expect = open(os.path.join(fx, c, "EXPECT")).read().split()
         errs = Checker(os.path.join(fx, c)).run()
         got = sorted({re.search(r'\[(\w+)\]', e).group(1) for e in errs})
