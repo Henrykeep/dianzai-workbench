@@ -164,3 +164,21 @@ def test_service_gate_human_card_and_sim_step_test(sim, tmp_path, home):
     assert (home / "agent_audit.jsonl").read_text(encoding="utf-8").count("run_step_test") == 1
     ctx = svc.tune_context()
     assert ctx["history"] and len(ctx["samples_t_y_sp"]) <= 20 and "每轮只改一个参数" in ctx["rules"]
+
+
+def test_service_four_segment_and_staged_rule_round(sim, tmp_path, home):
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
+        "high": [0.4, 0], "delta": [0.1, 0], "segments": 4, "hold_s": 0.8, "y": "spd_a", "sp": "sp_a"}}), encoding="utf-8")
+    ev = []
+    svc = AgentService(sim, AgentTools(sim, ev.append), ev.append, root=tmp_path)
+    out = svc.run_step_test()
+    v = out["verdict"]
+    assert [s["dir"] for s in v["segments"]] == ["down", "up", "up", "down"]
+    assert sum(1 for s in v["segments"] if s.get("ok")) >= 3, v["segments"]
+    assert v["steady"]["reason"] in ("steady", "still_drifting", "oscillating", "warming_up")
+    assert v["asymmetry"] is not None
+    r = svc.rule_round()                                   # 分阶段：第一步一定动 Kp
+    assert r.get("status") == "pending_user_confirmation", r          # 只出提议卡，人确认才写

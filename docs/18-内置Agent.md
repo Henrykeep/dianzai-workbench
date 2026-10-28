@@ -89,7 +89,24 @@
 - **回滚到最好**：仿真自动；**实机要人点**（docs/QUESTIONS.md 第 19 条）。
 - **上下文压缩** `tune_context`：指标 + ≤20 个关键样本（极值、设定跳变点、分桶极值）+ best / last_rejected / 最近 5 轮历史表 + 护栏规则原文。
 - **严格解析** `parse_reply`：只认 JSON 对象，action ∈ PROPOSE/OBSERVE/DONE，拒绝 bool/NaN/溢出，不从散文里猜参数。
-- **无 LLM 模式** `tune_rule_round`：规则给一项建议，同样经护栏和人工确认。
+- **无 LLM 模式** `tune_rule_round`：默认**分阶段 P→I→D**（`tune.rule_mode=staged`，每阶段沿一个方向 ×1.3，变差就进下一阶段）；`hints` 为旧的规则提示。同样经护栏和人工确认。
+
+## 实验与打分（agent/experiment.py，思路参考 PID_Helper，GPL-3.0，只借思路、代码自写）
+- **相对基线打分**：第一轮有效实测为基线，每项指标 (x+floor)/(基线+floor) 按权重平均，1.0=和基线一样。权重模板 `tune.weights`：balanced / conservative（怕超调振荡，钢珠/平衡）/ actuator（护电机，重罚振荡）。
+- **四段正负阶跃**：`step_test.segments=4, delta=[..]`，SP→SP−Δ→SP→SP+Δ→SP，每段出指标，`asymmetry` 提示摩擦/重力不对称（优先前馈/静摩擦补偿）。护栏按最差一段判。
+- **稳态原因码** `verdict.steady.reason`：steady / warming_up / still_drifting / oscillating / too_little_motion / too_few_samples。drifting/warming_up 时给 `advice: OBSERVE`，不要据此改参数。
+- **门禁**：开环实验需 `step_test.plant_stable=true`（实机还要 `open_loop_max`）；群体搜索（PSO 等）实机 forbid、仿真 log。
+- **"慢"不等于"不稳定"**：没进 2% 带但几乎无超调不再按不稳定罚分（否则迟缓对象加 Kp 每步都被回滚）。
+
+基准（`python -m dzbench.agent.bench`，固定种子 1/7/42，均 0 越界）：
+
+| 用例 | rules 达标 | staged 达标 |
+|---|---|---|
+| car_default | 3/3，2 轮 | 3/3，2 轮 |
+| sluggish | 3/3，4 轮 | 3/3，5 轮 |
+| aggressive | 0/3 | 实机档 0/3；仿真档 3/3（约 8 轮） |
+
+aggressive 在实机档 8 轮内仍调不好（单步 ×0.7 下限太保守），属已知限制。
 - **基准** `python -m dzbench.agent.bench`：固定种子，baseline / rules /（可注入）llm，三种起点（car 默认、过激、迟钝），统计达标轮数、最终归一化 IAE、越界次数（必须 0），进 `make test`。
   当前结果：car 默认 2 轮达标；迟钝起点规则 4 轮达标；**过激起点（kp 0.6 ki 15）规则 8 轮内未达标**——规则只会小步降 kp，被“变差方向禁止”卡住，留作后续改进（LLM 路径或更好的规则）。
 

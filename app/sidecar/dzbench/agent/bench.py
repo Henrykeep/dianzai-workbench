@@ -46,6 +46,10 @@ def run(policy: str, seed: int = 7, llm=None, sim: bool = False, start: dict | N
     bounds = {"kp": (0.0, 2.0), "ki": (0.0, 20.0)}
     g = TuneGuard(bounds, sim=sim)
     violations, done_at, last = 0, None, None
+    staged = None
+    if policy == "staged":
+        from .experiment import StagedSearch
+        staged = StagedSearch()
     for rnd_ in range(g.profile.max_rounds):
         t, y, sp = plant_step(gains["kp"], gains["ki"], seed + rnd_)
         m = step_metrics(t, y, sp)
@@ -63,6 +67,8 @@ def run(policy: str, seed: int = 7, llm=None, sim: bool = False, start: dict | N
         prop = None
         if policy == "rules":
             prop = rule_pick(m, gains, g)
+        elif policy == "staged":
+            prop = staged.propose(m, gains, g)
         elif policy == "llm":
             try:
                 r = parse_reply(llm(m, gains, g))
@@ -85,7 +91,7 @@ def run(policy: str, seed: int = 7, llm=None, sim: bool = False, start: dict | N
 CASES = {"car_default": {"kp": 0.08, "ki": 1.5}, "aggressive": {"kp": 0.6, "ki": 15.0}, "sluggish": {"kp": 0.03, "ki": 0.3}}
 
 
-def table(seeds=(1, 7, 42), policies=("baseline", "rules"), llm=None) -> list[dict]:
+def table(seeds=(1, 7, 42), policies=("baseline", "rules", "staged"), llm=None) -> list[dict]:
     return [run(p, s, llm=llm, sim=sim, start=st) | {"case": c, "sim": sim}
             for c, st in CASES.items() for p in policies + (("llm",) if llm else ()) for s in seeds for sim in (False, True)]
 

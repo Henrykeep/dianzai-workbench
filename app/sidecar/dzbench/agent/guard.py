@@ -43,7 +43,11 @@ class GuardError(Exception):
 
 
 def stable(m: StepMetrics) -> bool:
-    return m.ok and m.settling_s is not None and m.oscillations <= 2 and m.overshoot_pct <= 40
+    """"不稳定" = 振荡/大超调。慢但没进 2% 带（settling=None 且几乎无超调）只是"还没调好"，不罚：
+    否则对迟缓对象加 Kp 的每一步都会被当成"不稳定"回滚，永远调不动（基准 sluggish 用例暴露）。"""
+    if not m.ok or m.oscillations > 2 or m.overshoot_pct > 40:
+        return False
+    return m.settling_s is not None or m.overshoot_pct < 5
 
 
 def good_enough(m: StepMetrics, good=GOOD) -> bool:
@@ -81,11 +85,19 @@ class TuneGuard:
     proposed_this_round: str | None = None
     stopped: str = ""
     max_rounds: int | None = None     # 覆盖档位默认；实机上限 10（service 里 min(配置, 10)）
+    weights: str | dict | None = "balanced"   # 相对基线打分的权重模板（experiment.WEIGHTS）；None = 旧的绝对分
+    baseline: dict | None = None      # 第一轮有效实测；之后每轮分数 = 相对它的归一化比值（1.0 = 和基线一样）
 
     @property
     def profile(self) -> Profile:
         p = SIM if self.sim else HW
         return p if self.max_rounds is None else Profile(**{**p.__dict__, "max_rounds": self.max_rounds})
+
+    def score(self, m: StepMetrics) -> float:
+        if self.weights is None or self.baseline is None:
+            return score(m)
+        from .experiment import rel_score
+        return rel_score(m, StepMetrics(**self.baseline), self.weights)
 
     def best(self) -> Round | None:
         st = [r for r in self.rounds if r.label != "unstable"]
@@ -95,7 +107,9 @@ class TuneGuard:
     def record(self, m: StepMetrics, gains: dict, sample: dict | None = None) -> dict:
         """记录一轮实测，返回程序判定：continue / done / rollback / stop。"""
         prev = self.rounds[-1] if self.rounds else None
-        r = Round(len(self.rounds) + 1, dict(gains), m.as_dict(), score(m))
+        if self.weights is not None and self.baseline is None and m.ok:
+            self.baseline = m.as_dict()
+        r = Round(len(self.rounds) + 1, dict(gains), m.as_dict(), self.score(m))
         if prev:
             diff = [(k, 1 if gains[k] > prev.gains.get(k, 0) else -1) for k in gains if gains[k] != prev.gains.get(k)]
             r.changed = diff[0] if len(diff) == 1 else None

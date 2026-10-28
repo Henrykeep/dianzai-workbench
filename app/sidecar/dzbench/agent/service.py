@@ -19,7 +19,8 @@ from . import risk, yamlpar
 from .guard import GuardError, TuneGuard, key_samples
 from .gateway import Gateway, GatewayError
 from .loop import AgentLoop
-from .tuning import step_metrics, tuning_hints
+from .experiment import StagedSearch, asymmetry, four_segment_metrics, four_segment_plan, steady_state
+from .tuning import StepMetrics, step_metrics, tuning_hints
 
 
 def guess_pairs(fields: list[str]) -> list[tuple[str, str]]:
@@ -53,6 +54,7 @@ class AgentService:
         self.cfg = cfg_mod.load(self.gw.root)
         self.flasher = Flasher(session, self.cfg)
         self.guard: TuneGuard | None = None
+        self.staged = StagedSearch()
         self.actions: dict[int, dict] = {}
         self._aid = itertools.count(1)
         self.syms: dict | None = None
@@ -124,7 +126,9 @@ class AgentService:
             b = {p["name"]: (p["min"], p["max"]) for p in (self.s.schema.params if self.s.schema else [])}
             t = self.cfg["tune"]
             self.guard = TuneGuard(b, self.sim, limits={"vbat_min": t["vbat_min"], "temp_max": t["temp_max"]},
-                                   max_rounds=t["max_rounds_sim"] if self.sim else min(int(t["max_rounds_hw"]), 10))
+                                   max_rounds=t["max_rounds_sim"] if self.sim else min(int(t["max_rounds_hw"]), 10),
+                                   weights=t.get("weights", "balanced"))
+            self.staged = StagedSearch(order=tuple(self._gains()) or ("kp", "ki", "kd"))
         return self.guard
 
     def reset_guard(self) -> dict:
@@ -166,16 +170,43 @@ class AgentService:
             raise LinkError("no_step_test", "没配置阶跃实验", '在 dzbench.json 写 step_test，如 {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}')
         lo, hi, hold = st["low"], st["high"], float(st.get("hold_s", 1.5))
         pre = float(st.get("pre_s", 0.6))
-        t_end = time.monotonic() + pre + hold
-        while time.monotonic() < t_end:
-            vals = lo if time.monotonic() < t_end - hold else hi
-            self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *vals))
-            time.sleep(0.1)
-        w = self.s.window(hold + pre * 0.5)
-        t = [a for a, _ in w]
-        m = step_metrics(t, [float(v[st["y"]]) for _, v in w], [float(v[st["sp"]]) for _, v in w])
-        g = self._guard()
+        segs = None
+        if int(st.get("segments", 1)) == 4:          # 四段正负阶跃：SP → SP−Δ → SP → SP+Δ → SP（SP = high）
+            d = st.get("delta") or [x * 0.25 for x in hi]
+            plan = four_segment_plan(1.0, 1.0, hold)
+            vecs = [[h + (v - 1.0) * dd for h, dd in zip(hi, d)] for _, v in plan]
+            w0 = self.s.window(0.05)
+            tb = w0[-1][0] if w0 else 0.0               # 板子时钟（t_ms）对齐：发第一段时最新样本的时间
+            t0 = time.monotonic()
+            for k, vals in enumerate(vecs):
+                while time.monotonic() < t0 + (k + 1) * hold:
+                    self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *vals))
+                    time.sleep(0.1)
+            w = [x for x in self.s.window(5 * hold + 1.0) if x[0] >= tb]
+            t = [a for a, _ in w]
+            ys, sps = [float(v[st["y"]]) for _, v in w], [float(v[st["sp"]]) for _, v in w]
+            segs = four_segment_metrics([x - tb for x in t], ys, sps, plan)
+            ok = [StepMetrics(**{k: v for k, v in sg.items() if k not in ("seg", "dir")}) for sg in segs if sg.get("ok")]
+            g = self._guard()
+            m = max(ok, key=g.score) if ok else StepMetrics(False, "四段实验没有有效段")   # 护栏按最差一段判
+        else:
+            t_end = time.monotonic() + pre + hold
+            while time.monotonic() < t_end:
+                vals = lo if time.monotonic() < t_end - hold else hi
+                self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *vals))
+                time.sleep(0.1)
+            w = self.s.window(hold + pre * 0.5)
+            t = [a for a, _ in w]
+            ys = [float(v[st["y"]]) for _, v in w]
+            m = step_metrics(t, ys, [float(v[st["sp"]]) for _, v in w])
+            g = self._guard()
+        ss = steady_state(t, ys, window_s=min(0.3, hold / 3))
         verdict = g.record(m, self._gains(), w[-1][1] if w else {})
+        verdict["steady"] = ss
+        if not ss["steady"] and ss["reason"] in ("still_drifting", "warming_up"):
+            verdict["advice"] = "OBSERVE：实验结束时还没稳（%s），先加长 step_test.hold_s 再判断，不要据此改参数" % ss["text"]
+        if segs is not None:
+            verdict["segments"], verdict["asymmetry"] = segs, asymmetry(segs)
         if verdict["action"] == "rollback" and verdict.get("auto"):
             verdict["rolled_back"] = self.rollback_best(_auto=True)
         self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
@@ -191,8 +222,14 @@ class AgentService:
         return {"round": b.n, "gains": b.gains, "applied": list(applied), "auto": _auto}
 
     def rule_round(self) -> dict:
-        """无 LLM 模式：规则给出一个增益的建议，同样经过护栏与人工确认。"""
+        """无 LLM 模式：默认分阶段 P→I→D（tune.rule_mode=staged），否则用规则提示；同样经过护栏与人工确认。"""
         g = self._guard()
+        if self.cfg["tune"].get("rule_mode", "staged") == "staged" and g.rounds:
+            p = self.staged.propose(StepMetrics(**g.rounds[-1].metrics), self._gains(), g)
+            if not p:
+                return {"action": "OBSERVE", "reason": "分阶段搜索 P→I→D 已走完，没有可用的单项建议"}
+            ph = "PID"[min(self.staged.stage, 2)]
+            return self.agent_propose_param(p[0], p[1], f"分阶段搜索（{ph} 阶段）：{p[0]} → {p[1]:.4g}")
         a = self.step_analysis()
         for h in a["hints"]:
             for k, v in (h.get("changes") or {}).items():
