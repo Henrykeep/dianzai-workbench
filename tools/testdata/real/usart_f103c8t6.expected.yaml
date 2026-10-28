@@ -1,0 +1,106 @@
+resources:
+  gpio:
+  - name: KEY1
+    pin: PA4
+    dir: in
+    pull: up
+  - name: KEY2
+    pin: PA5
+    dir: in
+    pull: up
+  - name: PA8
+    pin: PA8
+    dir: out
+  - name: R4
+    pin: PA11
+    dir: in
+  - name: R2
+    pin: PA15
+    dir: in
+  - name: PB1
+    pin: PB1
+    dir: out
+  - name: R1
+    pin: PB3
+    dir: in
+  - name: L1
+    pin: PB4
+    dir: in
+  - name: L2
+    pin: PB5
+    dir: in
+  - name: L3
+    pin: PB8
+    dir: in
+  - name: L4
+    pin: PB9
+    dir: in
+  - name: BIN2
+    pin: PB10
+    dir: out
+  - name: BIN1
+    pin: PB11
+    dir: out
+  - name: OLED_SCL
+    pin: PB12
+    dir: out
+  - name: OLED_SDA
+    pin: PB13
+    dir: out
+  - name: AIN1
+    pin: PB14
+    dir: out
+  - name: AIN2
+    pin: PB15
+    dir: out
+  - name: R3
+    pin: PC14
+    dir: in
+  pwm:
+  - name: TIM2_CH1
+    timer: TIM2
+    channel: 1
+    pin: PA0
+    freq_hz: 100
+  - name: TIM2_CH2
+    timer: TIM2
+    channel: 2
+    pin: PA1
+    freq_hz: 100
+  encoder:
+  - name: TIM3
+    timer: TIM3
+    pin_a: PA6
+    pin_b: PA7
+  - name: TIM4
+    timer: TIM4
+    pin_a: PB6
+    pin_b: PB7
+  uart:
+  - name: USART1
+    instance: USART1
+    tx: PA9
+    rx: PA10
+    baud: 115200
+    dma: true
+  - name: USART2
+    instance: USART2
+    tx: PA2
+    rx: PA3
+    baud: 115200
+    dma: true
+meta:
+  part: STM32F103C8T6
+  family: stm32f1
+  package: LQFP48
+  flash_kb: 64
+  hal_timebase: SysTick
+  cubemx: 6.15.0
+  fw: STM32Cube FW_F1 V1.8.7
+  hse_hz: 8000000
+  hse_source: cubemx_default
+  sysclk_hz: 72000000
+errors:
+- D2
+warnings: 10
+infos: []

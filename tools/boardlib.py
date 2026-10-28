@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import re
 import pathlib
 from dataclasses import dataclass, field
 
@@ -29,11 +30,36 @@ class Report:
         self.warnings.append(msg)
 
 
-def load_board(path: pathlib.Path) -> dict:
+# STM32 型号第 11 位（STM32F407V[E]T6）是 Flash 容量代码，各系列通用（ST 命名规则）
+STM32_FLASH_CODE = {"4": 16, "6": 32, "8": 64, "B": 128, "Z": 192, "C": 256, "D": 384, "E": 512, "F": 768,
+                    "G": 1024, "H": 1536, "I": 2048}
+
+
+def stm32_flash_kb(part: str | None) -> int | None:
+    """STM32F407VET6 / STM32F407VETx -> 512；STM32F103C8T6 -> 64；不是 STM32 或认不出 -> None。"""
+    m = re.fullmatch(r"STM32[A-Z]\d{3}[A-Z]([0-9A-Z])[A-Z0-9]{0,2}x?", part or "")
+    return STM32_FLASH_CODE.get(m[1]) if m else None
+
+
+def load_board(path: pathlib.Path, variant: str | None = None) -> dict:
+    """读 board.yaml；有 mcu.variants 时按 variant（缺省 mcu.default_variant）把型号/Flash/RAM 覆盖进 mcu。
+
+    同一块 PCB 的不同芯片容量（天空星 VET6/VGT6、C8T6/CBT6）引脚完全相同，只有 Flash/RAM 和链接脚本不同，
+    所以做成同一个板卡插件的变体，而不是复制一份 board.yaml。"""
     with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict):
         raise ValueError(f"{path}: 顶层必须是映射（key: value）")
+    mcu = data.get("mcu") or {}
+    vs = mcu.get("variants")
+    if vs:
+        v = variant or mcu.get("default_variant")
+        if v not in vs:
+            raise ValueError(f"{path}: 变体 {v!r} 不存在，可选 {sorted(vs)}")
+        mcu.update({k: x for k, x in vs[v].items() if k != "note"})
+        mcu["selected_variant"] = v
+    elif variant:
+        raise ValueError(f"{path}: 该板卡没有 mcu.variants，不能指定 VARIANT={variant}")
     return data
 
 
@@ -266,6 +292,10 @@ def check_board(board: dict) -> Report:
         coprocessor_check(board, rep)
         return rep
     generic_check(board, rep)
+    mcu = board["mcu"]
+    fk = stm32_flash_kb(mcu.get("part"))
+    if fk and isinstance(mcu.get("flash_kb"), int) and mcu["flash_kb"] > fk:
+        rep.err(f"[mcu] flash_kb={mcu['flash_kb']} 大于型号 {mcu['part']} 的实际 Flash {fk}KB：链接脚本会越界")
     fam = board["mcu"]["family"]
     if fam in FAMILY_CHECKS:
         FAMILY_CHECKS[fam](board, rep)

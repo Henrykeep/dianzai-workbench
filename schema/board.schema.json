@@ -377,6 +377,38 @@
         },
         "ram_kb": {
           "$ref": "#/$defs/todo_or_int"
+        },
+        "variants": {
+          "type": "object",
+          "description": "同一 PCB 的芯片容量变体（如 VET6/VGT6），引脚相同；用 make VARIANT=<名> 选择",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "part"
+            ],
+            "properties": {
+              "part": {
+                "type": "string"
+              },
+              "flash_kb": {
+                "type": "integer"
+              },
+              "ram_kb": {
+                "type": "integer"
+              },
+              "note": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "default_variant": {
+          "type": "string"
+        },
+        "selected_variant": {
+          "type": "string",
+          "description": "由工具填入，不要手写"
         }
       }
     },
@@ -386,7 +418,15 @@
       "properties": {
         "hse_hz": {
           "description": "外部晶振频率；未核实时写 TODO（此时生成器拒绝生成固件）",
-          "anyOf": [{"type": "integer", "minimum": 0}, {"const": "TODO"}]
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "const": "TODO"
+            }
+          ]
         },
         "lse_hz": {
           "type": "integer",

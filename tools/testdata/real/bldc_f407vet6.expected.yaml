@@ -1,0 +1,114 @@
+resources:
+  gpio:
+  - name: AIN2
+    pin: PB12
+    dir: out
+  - name: AIN1
+    pin: PB13
+    dir: out
+  - name: BIN1
+    pin: PB14
+    dir: out
+  - name: BIN2
+    pin: PB15
+    dir: out
+  - name: KEY1
+    pin: PD12
+    dir: in
+    pull: up
+  - name: KEY2
+    pin: PD13
+    dir: in
+    pull: up
+  - name: KEY3
+    pin: PD14
+    dir: in
+    pull: up
+  - name: KEY4
+    pin: PD15
+    dir: in
+    pull: up
+  - name: SENSOR1
+    pin: PE8
+    dir: in
+  - name: SENSOR2
+    pin: PE9
+    dir: in
+  - name: SENSOR3
+    pin: PE10
+    dir: in
+  - name: SENSOR4
+    pin: PE11
+    dir: in
+  - name: SENSOR5
+    pin: PE12
+    dir: in
+  - name: SENSOR6
+    pin: PE13
+    dir: in
+  - name: SENSOR7
+    pin: PE14
+    dir: in
+  - name: SENSOR8
+    pin: PE15
+    dir: in
+  pwm:
+  - name: PWMB
+    timer: TIM2
+    channel: 1
+    pin: PA0
+    freq_hz: 500
+  - name: PWMA
+    timer: TIM2
+    channel: 2
+    pin: PA1
+    freq_hz: 500
+  encoder:
+  - name: TIM3
+    timer: TIM3
+    pin_a: PA6
+    pin_b: PA7
+  - name: TIM4
+    timer: TIM4
+    pin_a: PB6
+    pin_b: PB7
+  uart:
+  - name: UART4
+    instance: UART4
+    tx: PC10
+    rx: PC11
+    baud: 921600
+    dma: false
+  - name: USART2
+    instance: USART2
+    tx: PA2
+    rx: PA3
+    baud: 115200
+    dma: false
+  timer:
+  - name: TIM5
+    instance: TIM5
+    irq_priority: 5
+    note: 按 .ioc 计算更新频率 500 Hz
+meta:
+  part: STM32F407VET6
+  family: stm32f4
+  package: LQFP100
+  flash_kb: 512
+  rtos: freertos
+  hal_timebase: TIM1
+  cubemx: 6.16.0
+  fw: STM32Cube FW_F4 V1.28.3
+  hse_hz: 8000000
+  hse_source: ioc
+  sysclk_hz: 168000000
+  unsupported:
+    I2C1:
+    - I2C1_SCL=PB8
+    - I2C1_SDA=PB9
+errors:
+- D2
+- T1
+warnings: 6
+infos:
+- I2C1 已配置（I2C1_SCL=PB8, I2C1_SDA=PB9），board.yaml 的 resources 暂无该类型，未导入

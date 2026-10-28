@@ -2,7 +2,8 @@
 #
 #   make                      # = make BOARD=host-sim APP=motor_speed_demo，在电脑上编译
 #   make run                  # 编译并运行仿真（仅 host-sim）
-#   make BOARD=stm32f407-skystar APP=motor_speed_demo   # 交叉编译到天空星
+#   make BOARD=stm32f407-skystar APP=motor_speed_demo   # 交叉编译到天空星（默认 VET6）
+#   make BOARD=stm32f407-skystar VARIANT=VGT6           # 同一块板的 1MB 高配版
 #   make test                 # 主机单元测试 + 仿真闭环测试
 #   make check                # 板卡校验 + 依赖规则 + 接口哈希
 #   make selftest BOARD=...   # 编译移植层自检固件（boards/<板>/selftest）
@@ -11,6 +12,7 @@
 
 BOARD ?= host-sim
 APP   ?= motor_speed_demo
+VARIANT ?=
 PY    ?= python3
 
 # V=1 显示完整编译命令
@@ -19,8 +21,9 @@ Q := $(if $(filter 1,$(V)),,@)
 ROOT      := $(CURDIR)
 BOARD_YML := boards/$(BOARD)/board.yaml
 APP_DIR   ?= $(firstword $(wildcard apps/$(APP) examples/$(APP)))
-OUT       := build/$(BOARD)/$(APP)
-GEN       := build/$(BOARD)/gen
+BDIR      := build/$(BOARD)$(if $(VARIANT),-$(VARIANT))
+OUT       := $(BDIR)/$(APP)
+GEN       := $(BDIR)/gen
 
 ifeq ($(APP_DIR),)
 $(error 找不到应用 $(APP)（apps/ 或 examples/ 下）)
@@ -31,7 +34,7 @@ endif
 
 # 由 board.yaml 生成 board_gen.{h,c,mk}；board.yaml 或 app.yaml 变了自动重新生成
 $(GEN)/board_gen.mk: $(BOARD_YML) $(wildcard $(APP_DIR)/app.yaml) tools/gen_board.py tools/boardlib.py $(wildcard tools/families/*.py)
-	$(PY) tools/gen_board.py $(BOARD_YML) -o $(GEN) $(if $(wildcard $(APP_DIR)/app.yaml),--app $(APP_DIR)/app.yaml)
+	$(PY) tools/gen_board.py $(BOARD_YML) -o $(GEN) $(if $(VARIANT),--variant $(VARIANT)) $(if $(wildcard $(APP_DIR)/app.yaml),--app $(APP_DIR)/app.yaml)
 $(GEN)/board_gen.h $(GEN)/board_gen.c: $(GEN)/board_gen.mk
 -include $(GEN)/board_gen.mk
 
@@ -174,6 +177,7 @@ check:
 	$(PY) tools/iface_hash.py --check
 	$(PY) tools/iface_hash.py --selftest
 	$(PY) tools/ioc_import.py --selftest
+	$(PY) tools/test_ioc_import.py
 	$(PY) tools/syscfg_import.py --selftest
 	$(PY) tools/audit_port.py --selftest
 	$(MAKE) ioc-check

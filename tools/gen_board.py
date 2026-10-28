@@ -212,11 +212,21 @@ def _cube_handle(inst: str) -> str:
     return f"{pre}{m[2]}"
 
 
+# STM32F1 的 HAL 器件宏按 Flash 容量分档（stm32f1xx.h）：x6=16/32K，xB=64/128K，xE=256~512K，xG=768K/1M
+F1_DENSITY = {"4": "6", "6": "6", "8": "B", "B": "B", "C": "E", "D": "E", "E": "E", "F": "G", "G": "G"}
+
+
 def cube_define(part: str) -> str:
-    """STM32F407VETx / STM32F407IGH6 -> STM32F407xx；STM32G431CBU6 -> STM32G431xx（CubeMX/HAL 的器件宏）。"""
-    m = re.fullmatch(r"(STM32[A-Z]\d{3})[A-Z0-9]{2,4}x?", part)
+    """STM32F407VETx -> STM32F407xx；STM32F103C8T6 -> STM32F103xB；STM32G431CBU6 -> STM32G431xx（CubeMX/HAL 的器件宏）。"""
+    m = re.fullmatch(r"(STM32[A-Z]\d{3})[A-Z]([0-9A-Z])[A-Z0-9]{0,2}x?", part)
     if not m:
         raise SystemExit(f"✗ mcu.part={part!r} 无法推出 HAL 器件宏；请先填写真实型号（看芯片丝印）")
+    if m[1] in ("STM32F105", "STM32F107"):
+        return m[1] + "xC"
+    if m[1].startswith("STM32F10"):
+        if m[2] not in F1_DENSITY:
+            raise SystemExit(f"✗ {part}: 认不出 F1 的 Flash 容量代码 {m[2]}")
+        return m[1] + "x" + F1_DENSITY[m[2]]
     return m[1] + "xx"
 
 
@@ -292,11 +302,12 @@ def main() -> int:
     ap.add_argument("board", type=pathlib.Path)
     ap.add_argument("-o", "--out", type=pathlib.Path, required=True)
     ap.add_argument("--app", type=pathlib.Path)
+    ap.add_argument("--variant", help="选择 mcu.variants 里的芯片变体（如 VGT6），缺省用 default_variant")
     a = ap.parse_args()
 
     raw = a.board.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
-    board = boardlib.load_board(a.board)
+    board = boardlib.load_board(a.board, a.variant)
     rep = boardlib.check_board(board)
     if a.app and not rep.errors:
         boardlib.check_requires(board, yaml.safe_load(a.app.read_text(encoding="utf-8")), rep)

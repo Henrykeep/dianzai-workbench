@@ -9,10 +9,14 @@ port: stm32f4-hal
 
 mcu:
   family: stm32f4
-  part: TODO            # 青春版为 STM32F407VET6（512KB Flash），高配版为 STM32F407VGT6（1MB Flash），请看芯片丝印
+  part: STM32F407VETx   # 由 variants 覆盖；用户确认常用 VET6
   core: cortex-m4f
   fpu: true
-  flash_kb: 512         # 取两版中较小值，保证链接脚本对两版都安全
+  flash_kb: 512
+  default_variant: VET6 # make VARIANT=VGT6 切换；两版 PCB/引脚完全相同，只有 Flash 和链接脚本大小不同
+  variants:
+    VET6: {part: STM32F407VETx, flash_kb: 512, note: 青春版（用户最常用）}
+    VGT6: {part: STM32F407VGTx, flash_kb: 1024, note: 高配版}
   ram_kb: 192           # 官方参数写 SRAM 192K（含 64K CCM）；链接脚本只用 128K 主 SRAM
 
 clock:
@@ -34,7 +38,6 @@ sources:
     url: https://wiki.lckfb.com/zh-hans/fdb/micropython/gpio-basic/led-control.html
 
 todo:
-  - 芯片具体型号（VET6 还是 VGT6）
   - 用户按键所接引脚（文档文字未写明引脚号，需看原理图图片或丝印）
   - 调试口"串口1"实际是哪两个引脚（推测为 USART1 默认的 PA9/PA10，未在文字资料中核实）
   - 电机驱动、编码器、电池分压的实际接线（下面是建议接线）
