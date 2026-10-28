@@ -1,0 +1,16 @@
+{
+  // 【未验证】未在 VS Code 中实测。构建全部走仓库 Makefile（与 make check 同一条路径）。
+  "version": "2.0.0",
+  "inputs": [
+    { "id": "board", "type": "pickString", "description": "BOARD",
+      "options": ["stm32f407-skystar", "stm32f407-skystar-cubemx", "stm32f407-bldc-freertos-cubemx",
+                  "stm32f103c8t6-car-cubemx", "mspm0g3507-tianmengxing", "host-sim"], "default": "stm32f407-skystar" },
+    { "id": "app", "type": "promptString", "description": "APP", "default": "car_2wd" }
+  ],
+  "tasks": [
+    { "label": "dz: build", "type": "shell", "command": "make BOARD=${input:board} APP=${input:app}",
+      "group": { "kind": "build", "isDefault": true }, "problemMatcher": ["$gcc"] },
+    { "label": "dz: check", "type": "shell", "command": "make check", "problemMatcher": [] },
+    { "label": "dz: test",  "type": "shell", "command": "make test",  "problemMatcher": ["$gcc"] }
+  ]
+}

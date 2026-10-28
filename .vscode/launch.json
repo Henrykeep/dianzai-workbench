@@ -1,0 +1,39 @@
+{
+  // 【未验证】Cortex-Debug（marus25.cortex-debug）配置，未连板实测。
+  // 先用 tasks.json 的 "dz: build" 编出 elf；SVD 放到 third_party/svd/（见 docs/16-VSCode工作流.md，不入库）。
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "F407 skystar · OpenOCD + ST-Link",
+      "type": "cortex-debug", "request": "launch", "servertype": "openocd",
+      "executable": "${workspaceFolder}/build/stm32f407-skystar/car_2wd/car_2wd.elf",
+      "configFiles": ["interface/stlink.cfg", "target/stm32f4x.cfg"],
+      "svdFile": "${workspaceFolder}/third_party/svd/STM32F407.svd",
+      "runToEntryPoint": "main", "preLaunchTask": "dz: build"
+    },
+    {
+      "name": "F407 bldc · pyOCD",
+      "type": "cortex-debug", "request": "launch", "servertype": "pyocd",
+      "executable": "${workspaceFolder}/build/stm32f407-bldc-freertos-cubemx/2026H_ball/2026H_ball.elf",
+      "targetId": "stm32f407vgtx",
+      "svdFile": "${workspaceFolder}/third_party/svd/STM32F407.svd",
+      "runToEntryPoint": "main"
+    },
+    {
+      "name": "F103C8 · OpenOCD + ST-Link",
+      "type": "cortex-debug", "request": "launch", "servertype": "openocd",
+      "executable": "${workspaceFolder}/build/stm32f103c8t6-car-cubemx/car_2wd/car_2wd.elf",
+      "configFiles": ["interface/stlink.cfg", "target/stm32f1x.cfg"],
+      "svdFile": "${workspaceFolder}/third_party/svd/STM32F103.svd",
+      "runToEntryPoint": "main"
+    },
+    {
+      "name": "MSPM0G3507 天猛星 · pyOCD（需 MSPM0 pack）",
+      "type": "cortex-debug", "request": "launch", "servertype": "pyocd",
+      "executable": "${workspaceFolder}/build/mspm0g3507-tianmengxing/car_2wd/car_2wd.elf",
+      "targetId": "mspm0g3507",
+      "svdFile": "${workspaceFolder}/third_party/svd/MSPM0G350X.svd",
+      "runToEntryPoint": "main"
+    }
+  ]
+}
