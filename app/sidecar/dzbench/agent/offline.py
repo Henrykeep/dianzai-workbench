@@ -112,7 +112,8 @@ class OfflineAssistant:
             return None
         for h in a["hints"]:
             for k, v in (h.get("changes") or {}).items():
-                return {"name": k, "value": v, "reason": "离线规则：" + h["text"]}
+                self.prop = {"name": k, "value": v, "reason": "离线规则：" + h["text"]}
+                return self.prop
         return None
 
     def _edit(self, user: str, done: dict):
@@ -132,8 +133,8 @@ class OfflineAssistant:
                 score = sum(bool(re.search(rf"\bname:\s*{re.escape(b)}\b", txt)) for b in board)
                 if best is None or score > best[0]:
                     best = (score, txt, hit)
-        if not best:
-            return None
+        if not best or (board and best[0] < len(board) / 2):
+            return None            # 找不到，或找到的文件不是当前板子跑的工程（参数表对不上）：不乱改
         # read_file 结果里没有路径：按读取顺序对回 list_files
         files = [f for r in done.get("list_files", []) if r.get("ok") for f in r["result"]][:12]
         idx = [c["result"] if c.get("ok") else None for c in done.get("read_file", [])].index(best[1])
@@ -154,7 +155,8 @@ class OfflineAssistant:
             pe = self.ok(done, "propose_edit")
             if pe:
                 return head + f"【源码】已读当前文件，只改了一行，diff 在右侧卡片：确认后会跑 make check，通过才 git 提交，随时可回滚。"
-            return head + "没能定位要改的那一行" + (f"（{e}）" if e else "") + "。请写成“把 app.yaml 里 kp 默认值改成 0.1”这种格式。"
+            return head + "没能定位要改的那一行" + (f"（{e}）" if e else "") + "：要么格式认不出（请写成“把 app.yaml 里 kp 默认值改成 0.1”），" \
+                          "要么当前板子跑的工程里没有这个参数（例如 2026H 的球环比例增益叫 pos_k）。"
         if it == "why":
             t = self.ok(done, "read_telemetry") or {}
             if not t.get("n"):
@@ -204,7 +206,7 @@ class OfflineAssistant:
                  f"上升 {m.get('rise_s') or 0:.3f} s，振荡 {m.get('oscillations')} 次。")
             p = self.ok(done, "propose_param_change")
             if p:
-                s += f"\n建议这一轮只改一个：{p.get('name')} → {p.get('value', 0):.4g}（右侧卡片点“采纳”才下发，护栏会限幅）。改完再给一个阶跃，看超调/稳态有没有变好。"
+                s += f"\n建议这一轮只改一个：{self.prop['name']} → {p.get('value', self.prop['value']):.4g}（右侧卡片点“采纳”才下发，护栏会限幅）。改完再给一个阶跃，看超调/稳态有没有变好。"
             else:
                 s += ("\n护栏没同意这次改动：" + e + "。先保持，再观察一轮。") if e else \
                      ("\n规则：" + " ".join(h["text"] for h in a["hints"]) if a["hints"] else "\n规则没有要改的参数。") + "这轮不改参数，在实车工况下再给一个阶跃看看。"

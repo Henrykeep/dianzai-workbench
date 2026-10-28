@@ -62,24 +62,27 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
         for case in cases or load():
             ev: list[dict] = []
             svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=root, llm=llm)
-            st = svc.cfg.get("step_test") or {}
+            st = svc.step_cfg() or {}
             stop = threading.Event()
 
             def drive():      # 0 → high 的阶跃，之后保持 high
                 k = 0
                 while not stop.is_set():
-                    v = st["low"] if k < 8 else st["high"]
+                    v = st["low"] if k < 8 else st["high"]   # 前 0.8 s 低位，之后高位
                     s.send_data(int(st["id"]), struct.pack(st["fmt"], *v))
                     k += 1
                     stop.wait(0.1)
             th = threading.Thread(target=drive, daemon=True)
             if st:
+                svc.step_start(st)
                 th.start()
-                time.sleep(2.5)
+                time.sleep(float(st.get("pre_s", 0.6)) + 0.8 + min(float(st.get("hold_s", 1.5)), 3.0))
             if (v := (case.get("context") or {}).get("verdict")):
                 svc.last_verdict = v
             try:
-                text = svc.ask(case["user"])
+                names = {p["name"] for p in (s.schema.params if s.schema else [])}
+                q = next((v for k, v in (case.get("user_if_param") or {}).items() if k in names), case["user"])
+                text = svc.ask(q)
             except Exception as e:  # noqa: BLE001 —— 记成失败，不中断整套
                 text = f"<异常 {e}>"
             stop.set()

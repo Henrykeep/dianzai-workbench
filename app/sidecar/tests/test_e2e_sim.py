@@ -172,3 +172,12 @@ def test_agent_evals_offline_sim(home):
     res = evals.run_sim("sim:car_2wd", log=lambda *_: None)
     assert res and all(r["mode"] == "离线规则助手" for r in res)
     assert [r["id"] for r in res if not r["ok"]] == [], [(r["id"], r["why"]) for r in res if not r["ok"]]
+
+
+def test_agent_evals_offline_sim_2026h(home):
+    """同一套评测在 2026H 球杆仿真（假 QD4310 + 球物理）上也全部通过：按对象选阶跃配置，调参建议落到 pos_k 而不是底盘 kp。"""
+    from dzbench.agent import evals
+    res = evals.run_sim("sim:2026H_ball", log=lambda *_: None)
+    assert [r["id"] for r in res if not r["ok"]] == [], [(r["id"], r["why"]) for r in res if not r["ok"]]
+    tune = next(r for r in res if r["id"] == "one_gain_per_round")
+    assert "pos_k" in tune["text"] and "chassis_kp" not in tune["text"]

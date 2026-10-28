@@ -6,6 +6,8 @@
  *   板→PC：遥测 DATA id=2 每 20 ms（字段见 project.yaml link.telemetry），心跳带 schema 哈希，PARAM_ACK
  *   PC→板：PARAM_SET 读写“当前参数档”（板端限幅）；DATA 0x7F 急停；DATA 0x7E u8 命令：
  *          'T'+n 选测试项（n 在第 2 字节）  'P'+n 选参数档  'G' 开始  'S' 停止  'R' 复位
+ *          DATA id=1 <f32 px>：上位机给钢珠目标位置（覆盖 hooks 里的默认 0；钳到 ±400 px，非有限值忽略，急停清零）。
+ *          工作台的阶跃实验 / Agent 评测用它（dzbench.json step_test）。
  *
  * IMU（可选，编译期按板上资源选来源，填 io_in.imu_ax_mps2 / imu_rx_ms / imu_ok，给 ff_src=1 的加速度前馈用）：
  *   板上有 uart IMU → 收姿态模块的 dzimu 帧（RM C 型板跑 apps/imu_module）；
@@ -15,6 +17,7 @@
  */
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 #include "board_gen.h"
 #include "app.h"
 #include "project_gen.h"
@@ -48,6 +51,8 @@ static motor_dc_t MA, MB;
 static encoder_t EA, EB;
 static dzframe_parser_t VL;
 static qd4310_t BEAM;
+static float s_host_sp_px;    /* 上位机给的钢珠目标（无 LINK 时恒 0） */
+float io_host_ball_sp_px(void) { return s_host_sp_px; }
 #if defined(IO_IMU_UART)
 static dzframe_parser_t IL;   /* IMU 姿态模块帧 */
 #elif defined(IO_IMU_MPU)
@@ -56,6 +61,7 @@ static mpu6050_t MPU;
 #ifdef RES_UART_LINK
 static dzctl_wd_t WD;
 static dzframe_parser_t LL;   /* LINK 上位机帧 */
+#define LINK_ID_BALL_SP 0x01u
 #endif
 
 shared_state_t *io_state(void) { return &S; }
@@ -132,9 +138,13 @@ static void read_link(void)
     for (i = 0; i < got; i++) {
         if (!dzframe_feed(&LL, buf[i], &f)) continue;
         dzctl_wd_feed(&WD, &f, pal_millis());
-        if (dzctl_is_estop(&f)) coord_event(&COORD, COORD_EV_ESTOP);
+        if (dzctl_is_estop(&f)) { coord_event(&COORD, COORD_EV_ESTOP); s_host_sp_px = 0.0f; }
         else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);
         else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) handle_cmd(&f);
+        else if (f.kind == DZF_DATA && f.id == LINK_ID_BALL_SP && f.len == 4u) {
+            float v; memcpy(&v, f.payload, 4u);
+            if (isfinite(v)) s_host_sp_px = v > 400.0f ? 400.0f : (v < -400.0f ? -400.0f : v);
+        }
     }
 }
 

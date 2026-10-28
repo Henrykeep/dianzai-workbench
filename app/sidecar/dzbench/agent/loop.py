@@ -55,6 +55,19 @@ TOOLS = [
 assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
 
 
+TOOL_MAX = 16_000   # 回给模型的单条工具结果上限（字符）
+
+
+def tool_content(res: dict) -> str:
+    """工具结果转 JSON；超长时只截断文本本身，保证仍是合法 JSON（以前直接切字符串，16 KB 的 project.yaml 就读不出来）。"""
+    out = json.dumps(res, ensure_ascii=False, default=str)
+    if len(out) <= TOOL_MAX:
+        return out
+    if isinstance(res.get("result"), str):
+        return json.dumps({**res, "result": res["result"][:TOOL_MAX - 200], "truncated": True}, ensure_ascii=False)
+    return json.dumps({"ok": res.get("ok", False), "error": "工具结果太长被截断", "truncated": True}, ensure_ascii=False)
+
+
 class AgentLoop:
     def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8,
                  project_rules: str = "", gate: Callable | None = None):
@@ -90,5 +103,5 @@ class AgentLoop:
                     res = {"ok": False, "error": getattr(e, "message", str(e))}
                 self.emit({"type": "agent_tool", "name": name, "args": args, "ok": res["ok"]})
                 self.messages.append({"role": "tool", "tool_call_id": c.get("id", name),
-                                      "content": json.dumps(res, ensure_ascii=False, default=str)[:8000]})
+                                      "content": tool_content(res)})
         return "（步数用完，先停在这里。看看上面的提议卡片。）"

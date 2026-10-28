@@ -61,7 +61,12 @@
 
 运行 `python -m dzbench.agent.evals [sim:car_2wd]`，在 app/sidecar 目录下执行。
 
-- 连接仿真板后，每个用例先在后台持续发送一次 0 → step_test.high 的阶跃（防止断线停车），再用 AgentService 真跑一轮对话。
+- 连接仿真板后，每个用例先在后台持续发送一次 low → high 的阶跃（防止断线停车），再用 AgentService 真跑一轮对话。
+- **按对象选阶跃配置**：`dzbench.json` 的 `step_tests` 是 {名字: 配置}，取第一个 `y`、`sp` 两个字段都出现在遥测里的那条（旧的单条 `step_test` 仍兼容）。配置可带：
+  - `start`：开跑前下发的命令（只允许 T/P/G/S；'R' 同时清急停，绝不放进来，只在 `state_field == done_state` 且未急停时才补发）；
+  - `gains`：{kp: 参数名, ki: 参数名}，例如 2026H 是 pos_k / ball_ki，避免离线助手把球环的问题建议到底盘 chassis_kp 上。
+- 用例可带 `user_if_param`：板上有某参数时换一种问法（2026H 没有 kp，改问 pos_k）。
+- `make test` 里 car_2wd、2026H_ball 两块仿真板都跑整套评测，均 8/8。2026H 的球物理是简化模型（τ=30 ms 一阶舵机 + 5/7·g·sinθ），**不代表实机参数**。
 - 最后由 `grade()` 按调用序列和回答打分。用例里的 `context.verdict` 会注入为“上一轮实验结果”，tune_context 里的字段是 `last_verdict`。
 - 离线助手 8/8 通过，`test_e2e_sim.py::test_agent_evals_offline_sim` 守着这个结果。
 - 真实大模型还没跑过这套评测（**[未测]**）。填了 Key 后可以用同一个命令跑。

@@ -1,8 +1,72 @@
 {
   "_doc": "工作台工程配置（进 git，团队共享；不要放密钥）。本机差异放 ~/.dzbench/machine.json。见 docs/17。",
-  "flash": {"tool": "pyocd", "target": "mspm0g3507", "dry_run": true},
-  "build": {"elf": "build/car_2wd_mspm0g3507/car_2wd.elf"},
-  "tune": {"vbat_min": null, "temp_max": null, "max_rounds_hw": 8},
-  "step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0], "high": [0.4, 0], "pre_s": 0.6, "hold_s": 1.5,
-                "y": "spd_a", "sp": "sp_a", "_doc": "car_2wd：DATA id=1 = (v m/s, w rad/s)；0 → 0.4 m/s ≈ 1.96 r/s"}
+  "flash": {
+    "tool": "pyocd",
+    "target": "mspm0g3507",
+    "dry_run": true
+  },
+  "build": {
+    "elf": "build/car_2wd_mspm0g3507/car_2wd.elf"
+  },
+  "tune": {
+    "vbat_min": null,
+    "temp_max": null,
+    "max_rounds_hw": 8
+  },
+  "step_tests": {
+    "_doc": "按对象选：遥测里同时有 y 和 sp 两个通道的那一项生效（agent/service.py step_cfg）",
+    "car_2wd": {
+      "kind": "data",
+      "id": 1,
+      "fmt": "<ff",
+      "low": [
+        0,
+        0
+      ],
+      "high": [
+        0.4,
+        0
+      ],
+      "pre_s": 0.6,
+      "hold_s": 1.5,
+      "y": "spd_a",
+      "sp": "sp_a",
+      "_doc": "car_2wd：DATA id=1 = (v m/s, w rad/s)；0 → 0.4 m/s ≈ 1.96 r/s",
+      "gains": {
+        "kp": "kp",
+        "ki": "ki"
+      }
+    },
+    "2026H_ball": {
+      "kind": "data",
+      "id": 1,
+      "fmt": "<f",
+      "low": [
+        0
+      ],
+      "high": [
+        60
+      ],
+      "pre_s": 1.0,
+      "hold_s": 4.0,
+      "y": "cam_x_px",
+      "sp": "ball_sp_px",
+      "start": [
+        [
+          "T",
+          1
+        ],
+        [
+          "G"
+        ]
+      ],
+      "_doc": "2026H：DATA id=1 = 钢珠目标 px（f32）；start = 'T'1 选测试 1、'G' 开始；上一轮到了 DONE（state=2）才复位（'R' 也是解除急停，急停时不做实验）。0 → 60 px。仿真钢珠物理是近似模型",
+      "state_field": "state",
+      "done_state": 2,
+      "gains": {
+        "kp": "pos_k",
+        "ki": "ball_ki"
+      }
+    }
+  }
 }

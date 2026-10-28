@@ -146,15 +146,20 @@ class AgentService:
         r = self.tools.propose_param_change(name, v, reason + ("（护栏：" + "；".join(notes) + "）" if notes else ""), "agent")
         return r | {"value": v, "guard": notes}
 
-    def _gains(self) -> dict:
+    def _gain_names(self) -> dict:
+        """{kp/ki/kd: 板上参数名}：step_test.gains 写明的优先（如 2026H 球环 kp=pos_k），否则按名字猜。"""
         names = [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
-        ks = [k for k in (guess_gain(names, x) for x in ("kp", "ki", "kd")) if k]
+        cfg = (self.step_cfg() or {}).get("gains") or {}
+        return {x: n for x in ("kp", "ki", "kd") if (n := cfg.get(x) if cfg.get(x) in names else (None if cfg else guess_gain(names, x)))}
+
+    def _gains(self) -> dict:
+        ks = list(self._gain_names().values())
         return {k: self.s.params.get(k, 0.0) for k in ks}
 
     def tune_context(self) -> dict:
         """给 LLM 的紧凑上下文：指标 + 约 20 个关键样本 + 带标签的历史表 + 护栏规则（思路参考 llm-pid-tuner，MIT）。"""
         g = self._guard()
-        st = self.cfg.get("step_test") or {}
+        st = self.step_cfg() or {}
         w = self.s.window(float(st.get("hold_s", 3)) + 1)
         out = {"rules": g.prompt_rules(), "history": g.history_table(), "gains": self._gains(), "stopped": g.stopped,
                "reply_format": '{"action":"PROPOSE|OBSERVE|DONE","param":"kp","value":0.1,"reason":"..."}'}
@@ -167,11 +172,44 @@ class AgentService:
             out["metrics"] = step_metrics(t, y, sp).as_dict()
         return out
 
+    def step_cfg(self) -> dict | None:
+        """按对象选阶跃实验配置：dzbench.json 的 step_test（单个或列表）+ step_tests（按工程名的字典），
+        取第一个 y/sp 两个通道都在当前遥测里的；还没识别出 schema 时取第一个。"""
+        st = self.cfg.get("step_test")
+        cands = (st if isinstance(st, list) else [st] if st else []) + list((self.cfg.get("step_tests") or {}).values())
+        fields = {f["name"] for f in self.s.schema.fields} if self.s.schema else set()
+        for c in cands:
+            if isinstance(c, dict) and (not fields or (c.get("y") in fields and c.get("sp") in fields)):
+                return c
+        return None
+
+    START_CMDS = ("T", "P", "G", "S")     # 'R' 不在里面：它同时是“解除急停”，Agent/自动实验永远不发
+
+    def step_start(self, st: dict) -> None:
+        """实验前的准备命令（如 2026H：'T'1 选测试 → 'G' 开始）。运行中再发会被板子状态机忽略。
+        上一轮已到 DONE（限时到了）时需要复位，但复位帧也是解除急停，所以只有在“没急停锁存 + 遥测 state 正是 DONE”
+        时才发 'R'；急停状态下直接拒绝做实验。"""
+        if not st.get("start"):
+            return
+        if self.s.tx_locked:
+            raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停 R”")
+        w = self.s.window(0.3)
+        sf, done = st.get("state_field", "state"), st.get("done_state")
+        if done is not None and w and w[-1][1].get(sf) == done:
+            self.s.cmd("R")
+            time.sleep(0.1)
+        for c in st["start"]:
+            if c[0] not in self.START_CMDS:
+                raise LinkError("bad_start", f"step_test.start 里不允许命令 {c[0]!r}", f"只能用 {'/'.join(self.START_CMDS)}")
+            self.s.cmd(c[0], c[1] if len(c) > 1 else None)
+            time.sleep(0.05)
+
     def run_step_test(self) -> dict:
         """按 dzbench.json 的 step_test 通过链路做一次标准阶跃实验，交给护栏判定。实机是 human 级。"""
-        st = self.cfg.get("step_test")
+        st = self.step_cfg()
         if not st:
-            raise LinkError("no_step_test", "没配置阶跃实验", '在 dzbench.json 写 step_test，如 {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}')
+            raise LinkError("no_step_test", "没配置（或没有匹配当前遥测的）阶跃实验", '在 dzbench.json 写 step_test，如 {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}')
+        self.step_start(st)
         lo, hi, hold = st["low"], st["high"], float(st.get("hold_s", 1.5))
         pre = float(st.get("pre_s", 0.6))
         segs = None
@@ -309,6 +347,8 @@ class AgentService:
         if not w:
             raise LinkError("no_data", "还没有遥测数据", "先连接板子（或仿真板）并给一个阶跃")
         fields = list(w[0][1])
+        if not (y and sp) and (st := self.step_cfg()) and st.get("y") in fields and st.get("sp") in fields:
+            y, sp = st["y"], st["sp"]          # 工程配置里写明了哪路是反馈/设定，优先于按名字猜
         if not (y and sp):
             pairs = guess_pairs(fields)
             if not pairs:
@@ -317,8 +357,8 @@ class AgentService:
         for f in (y, sp):
             if f not in fields:
                 raise LinkError("bad_field", f"没有通道 {f}")
-        names = [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
-        kp, ki, kd = kp or guess_gain(names, "kp"), ki or guess_gain(names, "ki"), kd or guess_gain(names, "kd")
+        gn = self._gain_names()
+        kp, ki, kd = kp or gn.get("kp"), ki or gn.get("ki"), kd or gn.get("kd")
         m = step_metrics([t for t, _ in w], [float(v[y]) for _, v in w], [float(v[sp]) for _, v in w])
         gains = {k: self.s.params[k] for k in (kp, ki, kd) if k and k in self.s.params}
         hints = tuning_hints(m, gains, kp or "kp", ki, kd)
