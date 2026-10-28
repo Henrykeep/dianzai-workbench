@@ -4,7 +4,7 @@ name: app-windows
 on:
   workflow_dispatch:
   push:
-    tags: ["app-v*"]
+    tags: ["app-v*", "v*"]
 jobs:
   sidecar-test:
     runs-on: ubuntu-latest

@@ -271,6 +271,7 @@ check:
 	$(PY) tools/audit_port.py --selftest
 	$(PY) tools/check_ai_docs.py --selftest
 	$(PY) tools/check_ai_docs.py --check
+	$(PY) tools/check_version.py
 	$(MAKE) ioc-check
 	$(MAKE) -C examples/2026H_ball/tests
 	cd host/python && $(PY) -m dzlink.test_dzlink
