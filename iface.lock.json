@@ -764,6 +764,34 @@
   "hash": "167ee87528b00f89",
   "version": "1.1.0"
  },
+ "firmware/framework/rtosmon": {
+  "decls": [
+   "rtosmon.h: #define RTOSMON_NA 0xFFFFu",
+   "rtosmon.h: #define RTOSMON_NAME_LEN 16u",
+   "rtosmon.h: typedef struct { uint32_t last_idle, last_total;",
+   "rtosmon.h: uint16_t cpu_pm;",
+   "rtosmon.h: uint16_t stk_min_w;",
+   "rtosmon.h: uint16_t scan_min_w;",
+   "rtosmon.h: char worst[RTOSMON_NAME_LEN];",
+   "rtosmon.h: char scan_worst[RTOSMON_NAME_LEN];",
+   "rtosmon.h: uint8_t n_tasks, scan_n;",
+   "rtosmon.h: bool have_cpu;",
+   "rtosmon.h: uint32_t samples;",
+   "rtosmon.h: } rtosmon_t;",
+   "rtosmon.h: extern rtosmon_t g_rtosmon;",
+   "rtosmon.h: void rtosmon_init(rtosmon_t *m);",
+   "rtosmon.h: void rtosmon_feed_cpu(rtosmon_t *m, uint32_t idle, uint32_t total);",
+   "rtosmon.h: void rtosmon_begin_stack(rtosmon_t *m);",
+   "rtosmon.h: void rtosmon_feed_stack(rtosmon_t *m, const char *name, uint32_t free_words);",
+   "rtosmon.h: void rtosmon_end_stack(rtosmon_t *m);",
+   "rtosmon.h: uint16_t rtosmon_cpu_permille(const rtosmon_t *m);",
+   "rtosmon.h: uint16_t rtosmon_stack_min_words(const rtosmon_t *m);",
+   "rtosmon.h: bool rtosmon_stack_low(const rtosmon_t *m, uint16_t thresh_words);",
+   "rtosmon.h: dz_err_t rtosmon_selftest(void);"
+  ],
+  "hash": "6f16f0f689cc6402",
+  "version": "1.0.0"
+ },
  "firmware/framework/spsc": {
   "decls": [
    "spsc.h: typedef struct { uint8_t *buf;",
@@ -1065,6 +1093,17 @@
    "dz_cubemx.h: void dz_cubemx_loop(void);",
    "dz_cubemx.h: void dz_cm_gpio_exti(uint16_t GPIO_Pin);",
    "dz_cubemx.h: void dz_cubemx_tim_callback(TIM_HandleTypeDef *htim);",
+   "dz_freertos.h: typedef struct { const char *name;",
+   "dz_freertos.h: uint32_t period_ms;",
+   "dz_freertos.h: void (*step)(void *ctx, uint32_t now_ms);",
+   "dz_freertos.h: void *ctx;",
+   "dz_freertos.h: volatile uint32_t runs, overruns;",
+   "dz_freertos.h: volatile uint32_t max_exec_us;",
+   "dz_freertos.h: } dz_rtos_task_t;",
+   "dz_freertos.h: void dz_rtos_periodic(dz_rtos_task_t *t);",
+   "dz_freertos.h: void dz_rtos_monitor_poll(void);",
+   "dz_freertos.h: void configureTimerForRunTimeStats(void);",
+   "dz_freertos.h: unsigned long getRunTimeCounterValue(void);",
    "port_cubemx.h: typedef struct { GPIO_TypeDef *port;",
    "port_cubemx.h: uint16_t pin;",
    "port_cubemx.h: uint8_t active_low;",
@@ -1117,8 +1156,8 @@
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "3b81ac5412d20fda",
-  "version": "1.3.0"
+  "hash": "580ea3a8bdf4fb64",
+  "version": "1.4.0"
  },
  "ports/stm32f4-hal": {
   "decls": [

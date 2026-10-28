@@ -2,6 +2,8 @@
 #include "tt.h"
 #include "subsys.h"
 #include "coord.h"
+#include "rtosmon.h"
+#include <string.h>
 
 typedef struct { int a_steps, b_steps, a_out; subsys_mode_t last_mode; int mode_calls; } st_t;
 typedef struct { int gain; } prm_t;
@@ -99,4 +101,25 @@ TEST(coord_state_machine)
 
 TEST(coord_selftest_passes) { CHECK(coord_selftest() == DZ_OK); }
 
-void suite_framework(void) { RUN(coord_selftest_passes); RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }
+TEST(rtosmon_cpu_and_stack)
+{
+    CHECK(rtosmon_selftest() == DZ_OK);
+    rtosmon_t m; rtosmon_init(&m);
+    rtosmon_feed_cpu(&m, 100u, 100u);
+    CHECK(rtosmon_cpu_permille(&m) == RTOSMON_NA);               /* 第一次只记基准 */
+    rtosmon_feed_cpu(&m, 100u, 100u);
+    CHECK(rtosmon_cpu_permille(&m) == RTOSMON_NA);               /* 时间没走：不更新 */
+    rtosmon_feed_cpu(&m, 1100u, 1100u);  CHECK(m.cpu_pm == 0u);    /* 全在空闲 */
+    rtosmon_feed_cpu(&m, 1100u, 2100u);  CHECK(m.cpu_pm == 1000u); /* 满载 */
+    rtosmon_feed_cpu(&m, 2200u, 3100u);  CHECK(m.cpu_pm == 0u);    /* idle 增量略大于 total（读的先后）：钳到 0 */
+    rtosmon_begin_stack(&m);
+    rtosmon_feed_stack(&m, "a_very_long_task_name_xx", 70000u);
+    CHECK(rtosmon_stack_min_words(&m) == RTOSMON_NA);            /* 没 end：不外泄半轮 */
+    rtosmon_feed_stack(&m, "b", 40u);
+    rtosmon_end_stack(&m);
+    CHECK(m.stk_min_w == 40u && strcmp(m.worst, "b") == 0 && m.n_tasks == 2u && !rtosmon_stack_low(&m, 32u));
+    rtosmon_begin_stack(&m); rtosmon_end_stack(&m);
+    CHECK(m.stk_min_w == 40u);                                    /* 空扫描不覆盖 */
+}
+
+void suite_framework(void) { RUN(rtosmon_cpu_and_stack); RUN(coord_selftest_passes); RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }

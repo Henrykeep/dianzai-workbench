@@ -142,7 +142,7 @@ endif
 LDSCRIPT = $(firstword $(wildcard $(CUBE_DIR)/*_FLASH.ld))
 LDFLAGS  = $(MCU) -T$(LDSCRIPT) -Wl,--defsym=__flash_kb=$(BOARD_FLASH_KB) -Wl,--gc-sections \
            -Wl,-Map=$(OUT)/$(APP).map -Wl,--print-memory-usage -Wl,--no-warn-rwx-segments --specs=nano.specs --specs=nosys.specs -lm
-PORT_SRC = $(PORT_DIR)/pal_cubemx.c
+PORT_SRC = $(PORT_DIR)/pal_cubemx.c $(if $(filter freertos,$(BOARD_RTOS)),$(PORT_DIR)/dz_freertos.c)
 TARGET   = $(OUT)/$(APP).elf
 endif
 

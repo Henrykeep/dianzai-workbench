@@ -28,6 +28,7 @@
 #include "encoder.h"
 #include "dzframe.h"
 #include "dzctl.h"
+#include "rtosmon.h"
 #ifdef RES_UART_LINK
 #include "link_gen.h"
 #endif
@@ -166,6 +167,7 @@ static void write_link(uint32_t now)
         t.vis_lat_ms = (int16_t)(S.vision_out.lat_jit_ms > 32767 ? 32767 : S.vision_out.lat_jit_ms);
         t.ff_deg = S.beam_out.ff_deg;
         t.imu_ax_mps2 = S.io_in.imu_ax_mps2; t.imu_ok = S.io_in.imu_ok ? 1u : 0u;
+        t.cpu_pm = rtosmon_cpu_permille(&g_rtosmon); t.stk_min_w = rtosmon_stack_min_words(&g_rtosmon);   /* 裸机 = 0xFFFF */
         if (link_telem_pack(&f, &t)) link_send(&f);
     }
     if (now - last_hb >= 500u) {

@@ -125,7 +125,13 @@ void dz_cubemx_start(void)
     }
 }
 
+#ifdef DZ_CM_RTOS_FREERTOS
+#include "dz_freertos.h"
+/* FreeRTOS：默认任务每圈顺带采样栈高水位 + CPU 负载（内部 500 ms 限速），main.c 不用多加一行 */
+void dz_cubemx_loop(void) { app_loop(); dz_rtos_monitor_poll(); }
+#else
 void dz_cubemx_loop(void) { app_loop(); }
+#endif
 
 /* ---------- 系统 ---------- */
 dz_err_t pal_init(void) { return s_started ? DZ_OK : DZ_ESTATE; }   /* 初始化由 CubeMX 的 MX_xxx_Init 完成 */
