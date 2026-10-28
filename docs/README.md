@@ -2,6 +2,7 @@
 
 | 文档 | 内容 |
 |---|---|
+| 00-快速上手.md | **第一次用先看**：装 exe、CubeMX、Keil 加模块、ST-Link/DAPLink 烧录、连接、Agent 调参、急停（带截图） |
 | 01-接口规范.md | PAL 接口、逻辑 ID、错误码、ISR 规则 |
 | 02-分层与依赖.md | 分层图、check_deps 规则 |
 | 03-模块三件套与版本.md | README/VERSION/selftest、语义化版本、iface_hash |

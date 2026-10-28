@@ -2,6 +2,8 @@
 
 可移植、可复用的电赛嵌入式工作台：**换板只改 `BOARD=`，换题只写 `project.yaml` + 子系统**。
 
+> **第一次用？** 看 [docs/00-快速上手.md](docs/00-快速上手.md)：装 exe → CubeMX → Keil 加模块 → 烧录 → 连接 → Agent 调参 → 急停。
+
 ```
 make test                                   # 主机单测 + 仿真闭环
 make check                                  # 板卡校验、依赖规则、接口版本、ioc/syscfg/audit 自检
