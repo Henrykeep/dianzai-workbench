@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>电赛工作台</title>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="zh">电赛工作台</span><span class="serif">bench</span></div>
+    <div class="conn">
+      <select id="port" title="端口：插上板子会自动出现并选中；sim: 开头是无需硬件的仿真板"></select>
+      <select id="baud" title="波特率：自动 = 依次试常用值，收到合法帧即停">
+        <option value="auto">自动</option><option>115200</option><option>230400</option><option>460800</option>
+        <option>921600</option><option>1000000</option><option>57600</option><option>9600</option>
+      </select>
+      <button id="connect" class="btn pri">连接 <kbd>⌃O</kbd></button>
+    </div>
+    <div class="ro"><span class="lbl"><span id="led" class="led"></span>链路</span><span class="v" id="ro-link">未连接</span></div>
+    <div class="ro"><span class="lbl">数据格式</span><span class="v" id="ro-schema">—</span></div>
+    <div class="ro"><span class="lbl">接收</span><span class="v" id="ro-rx">—</span></div>
+    <div class="sp"></div>
+    <span id="rec" class="rec" hidden>● REC</span>
+    <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停 E-STOP<kbd>Space / Esc</kbd></button>
+  </header>
+  <div id="banner" class="banner" hidden></div>
+  <main class="main">
+    <aside class="panel chans">
+      <div class="ph"><h3>通道</h3><div class="sp"></div><span class="lbl" id="chan-n"></span></div>
+      <div id="chans"></div>
+      <div class="cmds">
+        <span class="lbl">板端命令</span>
+        <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存">解除急停 R</button></div>
+        <div class="row"><input id="cmd-c" class="in" maxlength="1" placeholder="字符"><input id="cmd-n" class="in" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
+      </div>
+    </aside>
+    <section class="panel plot">
+      <div class="ph"><h3>实时曲线</h3><span class="lbl" id="plot-sub"></span><div class="sp"></div>
+        <div class="seg" id="win"><span data-w="2">2s</span><span data-w="5" class="on">5s</span><span data-w="10">10s</span><span data-w="30">30s</span></div>
+        <div class="seg" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
+      </div>
+      <div class="plotbox" id="pb"><div id="empty" class="empty"></div></div>
+    </section>
+    <aside class="side">
+      <section class="panel params">
+        <div class="ph"><h3>参数</h3><span class="lbl" id="pend"></span><div class="sp"></div>
+          <button class="btn ghost" id="p-read" title="从板子重新读取全部参数">读取</button></div>
+        <div id="plist" class="plist"></div>
+        <div class="actions">
+          <button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button>
+          <button class="btn ghost" id="p-revert" disabled>撤销</button>
+          <div class="sp"></div>
+          <button class="btn ghost" id="p-def" title="把全部参数恢复成固件编译时的默认值">恢复默认</button>
+        </div>
+        <div class="snaps">
+          <div class="row"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div>
+          <div id="snaps"></div>
+        </div>
+      </section>
+      <section class="panel agent">
+        <div class="ph"><h3>Agent <span class="serif">suggests</span></h3><div class="sp"></div><span class="lbl">只提议 · 人确认</span></div>
+        <div id="props" class="feed"><div class="hint">内置 Agent 尚未接入。接口已留好：读遥测、列参数、提议修改；任何提议都要在这里点“采纳”才会下发。</div></div>
+      </section>
+    </aside>
+  </main>
+  <footer class="status">
+    <span id="st-log">未记录</span>
+    <span id="st-hint" class="warn-t"></span>
+    <span class="sp"></span>
+    <select id="logs" title="回放以前记录的 .dzlog"></select>
+    <button class="btn ghost sm" id="replay">回放</button>
+    <span id="st-ws">侧车 —</span>
+  </footer>
+  <div id="toasts" class="toasts"></div>
+</div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

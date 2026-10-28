@@ -70,6 +70,8 @@ class Session:
         if not port.startswith((SIM_PREFIX, "replay:")) and not baud:
             baud, note = probe_baud(port)
             if not baud:
+                if note.startswith("打不开"):
+                    raise LinkError("open_failed", note)
                 raise LinkError("no_frames", note, "也可以在波特率下拉框手动选一个再连")
         try:
             tr = ReplayTransport(port[7:]) if port.startswith("replay:") else open_transport(port, baud or 0)
@@ -188,6 +190,12 @@ class Session:
             return {"type": "estop", "sent": False, "message": "回放中：急停没有发给任何板子"}
         return {"type": "estop", "sent": ok,
                 "message": "急停已发送（3 帧）" if ok else "未连接：急停没有送达！直接断电/拔电池"}
+
+    def send_data(self, id_: int, payload: bytes) -> bool:
+        """发任意 DATA 帧（应用自定义命令，如 car_2wd 的 id=1 轮速设定）。0x7E/0x7F 走专用接口。"""
+        if id_ in (ID_CMD, ID_ESTOP) or not 0 <= id_ <= 0xFF or len(payload) > 64:
+            raise LinkError("bad_frame", f"DATA id={id_} 长度={len(payload)} 不允许", "急停/命令请用专用按钮；payload ≤ 64 字节")
+        return self._send(DATA, id_, payload)
 
     def cmd(self, c: str, n: int | None = None) -> bool:
         return self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))

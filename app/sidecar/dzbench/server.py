@@ -75,6 +75,8 @@ class Server:
             return r
         if op == "cmd":
             return s.cmd(m["c"], m.get("n"))
+        if op == "send_data":
+            return s.send_data(int(m["id"]), bytes.fromhex(m.get("hex", "")))
         if op == "param_set":
             return await run(None, s.set_param, m["name"], float(m["value"]))
         if op == "param_read_all":
