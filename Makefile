@@ -157,7 +157,12 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check
+.PHONY: all run test check selftest clean fetch ioc-check compat gen
+# 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
+COMPAT_SRC := $(wildcard firmware/*/*/*.c)
+compat:
+	@for f in $(COMPAT_SRC); do gcc -std=c99 -pedantic-errors -Wall -Wextra -Werror -Wno-unused-parameter \
+	  $(addprefix -I,$(FW_INC)) -fsyntax-only $$f || exit 1; done; echo "✓ compat: $(words $(COMPAT_SRC)) 个模块源文件按 C99 -pedantic-errors 通过"
 all: $(TARGET)
 
 $(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h)
@@ -195,6 +200,10 @@ ioc-check:
 	  ioc=$$d/$$(sed -nE 's/^  file: (.*)/\1/p' $$b | head -1); \
 	  $(PY) tools/ioc_import.py $$ioc --check $$b --project $$(dirname $$ioc) || exit 1; done
 
+# 只生成 board_gen.{h,c,mk}（给 Keil / CCS 工程用）
+gen: $(GEN)/board_gen.mk
+	@echo "✓ $(GEN)/board_gen.{h,c}"
+
 selftest:
 	$(MAKE) APP=port_selftest BOARD=$(BOARD)
 
@@ -210,6 +219,8 @@ check:
 	$(PY) tools/iface_hash.py --selftest
 	$(PY) tools/ioc_import.py --selftest
 	$(PY) tools/test_ioc_import.py
+	$(PY) tools/keil_inject.py --selftest
+	$(PY) tools/test_keil_inject.py
 	$(PY) tools/syscfg_import.py --selftest
 	$(PY) tools/audit_port.py --selftest
 	$(MAKE) ioc-check
