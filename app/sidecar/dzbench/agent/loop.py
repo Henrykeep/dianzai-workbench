@@ -46,6 +46,8 @@ TOOLS = [
     {"name": "rollback_best", "description": "回滚到历史最好的一组增益（实机需用户点击）", "input_schema": {"type": "object", "properties": {}}},
     {"name": "flash", "description": "烧录最近一次编译的镜像（前置条件检查；默认 dry_run；需用户点击）",
      "input_schema": {"type": "object", "properties": {"dry_run": {"type": "boolean"}}}},
+    {"name": "build", "description": "用 Keil UV4 -b 编译工程（需配置 build.keil_uv4 + keil_project），返回错误/警告/大小；成功后才允许烧录",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "build_log", "description": "解析 Keil 编译日志为错误/警告列表和程序大小", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}}},
     {"name": "decode_hardfault", "description": "解码 HardFault 栈帧（按内核：M0+ 无 CFSR）",
      "input_schema": {"type": "object", "required": ["frame"], "properties": {"frame": {"type": "array", "items": {"type": "integer"}},

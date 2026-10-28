@@ -16,7 +16,8 @@ from . import snapshots
 DEFAULTS: dict = {
     "flash": {"tool": "pyocd", "target": None, "probe": None, "dry_run": True, "keep_previous": True,
               "heartbeat_timeout_s": 3.0},
-    "build": {"keil_uv4": None, "keil_project": None, "keil_target": None, "elf": None},
+    "build": {"keil_uv4": None, "keil_project": None, "keil_target": None, "elf": None,
+              "image": None, "link_schema": None},   # image：要烧的文件（缺省 = elf）；link_schema：烧后核对心跳哈希
     "tune": {"vbat_min": None, "temp_max": None, "max_rounds_hw": 8, "max_rounds_sim": 20,
              "rule_mode": "staged", "weights": "balanced"},   # 无 LLM：staged（P→I→D）或 hints；打分权重 balanced/conservative/actuator
     "step_test": None,      # segments: 4 + delta:[..] = 四段正负阶跃；plant_stable: 开环实验门禁（默认 false）

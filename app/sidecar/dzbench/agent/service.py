@@ -11,7 +11,7 @@ import time
 from .. import config as cfg_mod
 from .. import elfsym, hardfault, keil
 from ..agent_api import AgentTools
-from ..flash import FlashError, Flasher
+from ..flash import FlashError, Flasher, schema_hash_of
 from ..session import LinkError, Session
 from ..transport import ROOT
 from . import llm as llm_mod
@@ -70,6 +70,7 @@ class AgentService:
             "run_step_test": self.run_step_test,
             "rollback_best": self.rollback_best,
             "flash": lambda dry_run=True: self.flasher.flash(dry_run),
+            "build": self.build,
             "build_log": self.build_log,
             "decode_hardfault": self.decode_hardfault,
             "read_symbol": self.read_symbol,
@@ -282,6 +283,30 @@ class AgentService:
         return {"action": "OBSERVE", "reason": "规则没有可用的单项建议"}
 
     # -------------------------------------------------------------- 编译 / 故障 / 变量
+    def _note_build(self, res: dict, log_mtime: float | None = None) -> dict:
+        """编译结果交给烧录器（烧录前置条件 build_ok 只认这里登记的镜像）。
+        读的是旧日志（镜像比日志新/旧超过 120 s）就不登记：日志和镜像对不上。"""
+        b = self.cfg["build"]
+        img = b.get("image") or b.get("elf")
+        if not img:
+            res["flash_ready"] = "没配置 build.image / build.elf，编译结果不会用于烧录"
+            return res
+        p = self.gw.root / img
+        if log_mtime is not None and (not p.exists() or abs(p.stat().st_mtime - log_mtime) > 120):
+            res["flash_ready"] = "日志和镜像时间对不上（旧日志？），没登记为可烧录；重新编译一次"
+            return res
+        sch = schema_hash_of(self.gw.root / b["link_schema"]) if b.get("link_schema") else None
+        self.flasher.note_build(bool(res.get("ok")), str(p), sch)
+        res["flash_ready"] = bool(res.get("ok")) and p.exists()
+        return res
+
+    def build(self) -> dict:
+        b = self.cfg["build"]
+        if not (b.get("keil_uv4") and b.get("keil_project")):
+            raise LinkError("no_build", "没配置 Keil 编译", "dzbench.json 写 build.keil_uv4（UV4.exe 路径）和 build.keil_project（.uvprojx）")
+        res = keil.build(b["keil_uv4"], str(self.gw.root / b["keil_project"]), b.get("keil_target"))
+        return self._note_build(res)
+
     def build_log(self, path: str | None = None) -> dict:
         b = self.cfg["build"]
         p = pathlib.Path(path) if path else None
@@ -289,7 +314,7 @@ class AgentService:
             p = (self.gw.root / b["keil_project"]).with_suffix(".dzbench_build.log")
         if not p or not p.exists():
             raise LinkError("no_log", "没有 Keil 编译日志", "先在 Keil 编一次，或配置 build.keil_uv4 + keil_project")
-        return keil.parse_log(p.read_text(encoding="utf-8", errors="replace"))
+        return self._note_build(keil.parse_log(p.read_text(encoding="utf-8", errors="replace")), p.stat().st_mtime)
 
     def _symbols(self) -> dict:
         if self.syms is None:

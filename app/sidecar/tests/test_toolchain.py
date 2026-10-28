@@ -203,3 +203,30 @@ def test_service_elf_watch(elf, tmp_path, home):
     with pytest.raises(elfsym.ElfError):
         svc.watch_start([{"name": "nope"}], 5, probe=probe)
     assert svc.watch is None
+
+
+def test_service_build_log_feeds_flasher(tmp_path, home):
+    """v0.7.0 审计发现：编译结果从没交给烧录器，build_ok 前置条件永远不满足。现在 build / build_log 都会登记。"""
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "Objects").mkdir()
+    img = tmp_path / "Objects" / "car.axf"; img.write_bytes(b"\x01" * 64)
+    (tmp_path / "link_schema.json").write_text(json.dumps({"hash": "12345678"}), encoding="utf-8")
+    proj = tmp_path / "car.uvprojx"; proj.write_text("", encoding="utf-8")
+    (tmp_path / "dzbench.json").write_text(json.dumps({"build": {"keil_project": "car.uvprojx", "image": "Objects/car.axf",
+        "link_schema": "link_schema.json"}, "flash": {"target": "stm32f407vg"}}), encoding="utf-8")
+    log = proj.with_suffix(".dzbench_build.log")
+    log.write_text('Program Size: Code=100 RO-data=0 RW-data=0 ZI-data=0\n"car.axf" - 0 Error(s), 0 Warning(s).', encoding="utf-8")
+    ev = []
+    s = Session(emit=ev.append)
+    svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path)
+    r = svc.build_log()
+    assert r["ok"] and r["flash_ready"] is True
+    assert svc.flasher.last_build["schema_hash"] == 0x12345678
+    assert next(p for p in svc.flasher.preconditions() if p["name"] == "build_ok")["ok"]
+    os.utime(log, (time.time() + 600, time.time() + 600))       # 日志和镜像差 10 分钟：不登记
+    svc.flasher.last_build = None
+    assert svc.build_log()["flash_ready"] != True and svc.flasher.last_build is None
+    with pytest.raises(Exception):
+        svc.build()                                               # 没配 keil_uv4：明确报错

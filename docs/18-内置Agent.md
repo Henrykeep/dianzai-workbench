@@ -138,6 +138,7 @@ aggressive 在实机档 8 轮内仍调不好（单步 ×0.7 下限太保守）�
 ## 烧录 / 编译 / 调试（全部 ⚠ 未上真机，假探针单测）
 
 - `flash.py`：pyOCD 优先。前置条件：最近一次编译成功且镜像 sha256 未变、急停已锁存、配置了 target；探针 DP IDCODE 必须与目标内核一致；**默认 dry_run**；烧前备份同大小区域到 `~/.dzbench/flash_backup/`；烧后等心跳且 schema 哈希等于本次编译的 link_schema；不符可一键回滚到备份。
+- 编译结果怎么变成“可烧”：Agent 的 `build` 工具（配了 `build.keil_uv4 + keil_project`）或 `build_log`（你自己在 Keil 里编完）把结果登记给烧录器，镜像取 `build.image`（缺省 `build.elf`），烧后核对的哈希取 `build.link_schema`。日志和镜像修改时间差超过 120 s 视为旧日志，不登记。（v0.7.0 审计前这一步漏接了，烧录前置条件永远不满足。）
 - `keil.py`：`UV4 -b proj -t target -j0 -o log` 无界面编译，解析 ARMCC/ARMCLANG 诊断、Error/Warning 汇总、Program Size（flash = Code+RO+RW，ram = RW+ZI）；退出码 ≥2 判失败。
 - `hardfault.py`：栈帧 + EXC_RETURN + （v7-M 才有的）CFSR/HFSR/MMFAR/BFAR；**M0/M0+ 没有这些寄存器**，只靠 PC/LR 和对齐提示；有 ELF 时把 PC/LR 翻成 `函数+偏移`。
 - `elfsym.py`：纯 Python 读 ELF32 符号表；`SymbolWatch` 按变量名经探针轮询画曲线（虚拟 schema `ELF`，仅串口未绑定固件 schema 时可用）。
