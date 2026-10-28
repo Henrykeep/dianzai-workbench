@@ -13,6 +13,7 @@
 | 09-机械结构.md | SolidWorks/STEP/STL/3MF、拓竹打印参数、约束清单、估算工具、结构版本 |
 | 10-SysConfig工作流.md | TI MSPM0 + SysConfig |
 | 11-中断与实时.md | ISR 准则 |
+| 12-参考工程与参数来源.md | P1/P2 角色、收编原则、counts_per_rev 与“转 10 圈”标定 |
 | 硬件路线图.md | 各板卡/协处理器状态 |
 | 参考来源.md | 借鉴的开源项目与资料汇总 |
 

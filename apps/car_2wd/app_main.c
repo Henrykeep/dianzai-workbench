@@ -22,7 +22,9 @@
 
 /* ---- 机械参数：换电机/轮子改这里 ---- */
 #define CTRL_PERIOD_US   1000u
-#define COUNTS_PER_REV   1560.0f   /* TODO(用户)：编码器线数 × 4 × 减速比，按实际电机填写（未实测） */
+#define COUNTS_PER_REV   1560.0f   /* 【未验证】轮子转一圈的累计计数（PAL 的硬件正交/软件解码均为 4 倍频）。
+                                        * 两车同款电机，旧代码约 3.7 倍的 ticks/m 差异疑为倍频/单位换算错误；
+                                        * 按 docs/12-参考工程与参数来源.md 的“转 10 圈”标定后填写。 */
 #define ID_CMD   1u
 #define ID_TELEM 2u
 
