@@ -6,6 +6,27 @@
 
 ## [未发布]
 
+## [0.7.0] - 2026-10-29 电池急停仿真跑通 + 全仓质量审计 + FreeRTOS 监测
+
+### 修复（审计发现）
+- **烧录链路接通**：编译结果以前从没交给烧录器（`note_build` 只有测试调用），真用时烧录前置条件 `build_ok` 永远不满足。Agent 新增 `build` 工具（Keil `UV4 -b`），`build_log` 也会登记；镜像取 `build.image`（缺省 `build.elf`），核对哈希取 `build.link_schema`；日志与镜像时间差 >120 s 不登记 [仿真]。真机烧录 [未测]。
+- **电池 CRIT 急停在仿真里跑通**：host-sim 的 ADC 换算以前写死 1/1，board.yaml 的分压不生效；现在由 gen_board 生成 `g_host_adc_info[]`。test_car 新增用例：8.2 V → 6.0 V 锁急停，电压回升也不解除 [仿真]。
+- car_2wd 急停时照常更新编码器，遥测转速不再冻结在急停前的值 [仿真]。
+- 天空星 VBAT `scale_num: 1` 时电池保护实际不生效：未改（要看你的分压），写进 QUESTIONS 45 / MORNING。
+
+### FreeRTOS
+- rtosmon 1.0.0（firmware/framework）：CPU 负载千分比 + 全部任务最小栈余量与任务名，纯逻辑，含 32 位回绕 [仿真]。
+- stm32-cubemx 1.4.0：`dz_freertos.{h,c}` 周期任务 `dz_rtos_periodic`（vTaskDelayUntil、超时计数与重新对齐、最长耗时）、`dz_rtos_monitor_poll`（uxTaskGetSystemState，`dz_cubemx_loop` 自动调用，main.c 不加行）、CubeMX 运行时统计两个函数用 DWT 实现；任务模板 `freertos_task_template.c` [编译]。上板 [未测]。
+- 2026H_ball 遥测加 `cpu_pm`、`stk_min_w`（裸机 = 0xFFFF）[编译]。docs/11 加 FreeRTOS 一节。
+
+### 重构 / 清理
+- gen_board：四个端口的 ADC 初值格式串合成 `_adc_info()`，生成结果逐字节一致。
+- 删 `host/python/dzlink/workbench.py`（全是 NotImplementedError、无人调用）。
+- 文档路径漂移 3 处修正。审计全文见 docs/23-质量审计.md。
+
+### 文档
+- docs/MORNING.md：给你的一页清单（要带什么、要量什么、要拍板什么）。QUESTIONS 45–49。
+
 ## [0.6.0] - 2026-10-29 PAL 边沿中断/MSPM0 ADC + 协处理器发送库 + 快速上手
 
 ### PAL / 移植层
