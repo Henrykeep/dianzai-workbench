@@ -134,6 +134,8 @@ def stm32f4_check(board: dict, rep: Report) -> None:
 
     clk = board.get("clock", {}) or {}
     hse = clk.get("hse_hz", 0)
+    if hse == "TODO":
+        hse = 0   # 已作为 TODO 记录；gen_board.py 生成固件时会拒绝
     if hse and (hse % 1_000_000 or not 2 <= hse // 1_000_000 <= 26):
         rep.err(f"[时钟] hse_hz={hse}：移植层要求 HSE 为 2~26 MHz 的整 MHz")
     if clk.get("sysclk_hz", 168_000_000) != 168_000_000:

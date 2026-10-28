@@ -126,7 +126,7 @@ endif
 	./$(TARGET) $(ARGS)
 
 selftest:
-	$(MAKE) APP=port_selftest_$(BOARD_FAMILY) BOARD=$(BOARD)
+	$(MAKE) APP=port_selftest BOARD=$(BOARD)
 
 test:
 	$(MAKE) -C tests/host

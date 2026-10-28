@@ -170,6 +170,8 @@ def gen_stm32f4(board: dict, src: str, sha: str) -> tuple[str, dict]:
     c.append("")
 
     clk = board.get("clock", {}) or {}
+    if clk.get("hse_hz") == "TODO":
+        raise SystemExit("✗ clock.hse_hz 为 TODO：晶振频率未核实，拒绝生成时钟配置（错的 HSE 会让所有波特率/PWM 频率都错）")
     part = board["mcu"]["part"]
     mk = {
         "BOARD_PORT": board["port"],

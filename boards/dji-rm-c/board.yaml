@@ -1,0 +1,58 @@
+# 大疆 RoboMaster 开发板 C 型（插件位，未上板测试）
+# 与 stm32f407-skystar 共用 F4 系列移植层：移植层按“芯片系列”共享，板卡差异只写在本文件。
+# 规则：引脚取自 DJI 官方用户手册附录“网络名-IO 对照表”的写 verified: true；推断的写 verified: false；查不到写 TODO。
+schema_version: 1
+name: dji-rm-c
+vendor: DJI RoboMaster
+description: RoboMaster 开发板 C 型，STM32F407IGH6，板载 BMI088 六轴 IMU、IST8310 磁力计、2 路 CAN、DBUS
+port: stm32f4-hal          # 与天空星 F407 同一移植层（CubeMX 流程则为 stm32-cubemx，同样与天空星共用）
+
+mcu:
+  family: stm32f4
+  part: STM32F407IGH6      # 官方手册
+  core: cortex-m4f
+  fpu: true
+  flash_kb: 1024           # F407IG = 1MB Flash（芯片型号后缀 G）
+  ram_kb: 192
+
+clock:
+  hse_hz: TODO             # 官方手册摘录未写外部晶振频率；常见说法为 12MHz，但未核实，请看原理图或官方 CubeMX 例程 .ioc
+  sysclk_hz: 168000000
+
+toolchain:
+  compiler: arm-none-eabi-gcc
+  flasher: openocd
+  openocd_interface: TODO  # 板载 SWD 口，下载器类型按你实际的填
+  openocd_target: target/stm32f4x.cfg
+
+sources:
+  - what: 芯片型号、RGB LED（PH10 蓝/PH11 绿/PH12 红，高电平亮）、IO 对照表（KEY/UART/CAN/PWM/IMU/ADC_BAT）
+    url: https://rm-static.djicdn.com/tem/35228/RoboMaster%20Development%20Board%20Type%20C%20User%20Manual.pdf
+  - what: 中文用户手册（外壳丝印 UART1 = STM32 USART6，丝印 UART2 = STM32 USART1）
+    url: https://rm-static.djicdn.com/tem/35228/RoboMaster%20%20%E5%BC%80%E5%8F%91%E6%9D%BF%20C%20%E5%9E%8B%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C.pdf
+  - what: 官方 CubeMX 例程（可从其 .ioc 用 tools/ioc_import.py 生成/核对本文件）
+    url: https://github.com/RoboMaster/Development-Board-C-Examples
+
+todo:
+  - HSE 晶振频率（未在手册文字中核实）
+  - KEY 有效电平与上下拉（手册只给出 PA0）
+  - ADC_BAT(PF10) 的 ADC 实例/通道（按数据手册推断为 ADC3_IN8，未核实）与分压比
+  - 本 schema 第 0 阶段尚无 can/spi/i2c 资源类型：CAN1(PD0 RX/PD1 TX)、CAN2(PB5 RX/PB6 TX)、
+    BMI088 SPI1(PB3 CLK/PA7 MOSI/PB4 MISO, CS_Accel PA4, CS_Gyro PB0, INT PC4/PC5)、IMU 加热 TIM10_CH1(PF6)、
+    IST8310 I2C3(PA8/PC9)、DBUS USART3_RX(PC11) 均已在官方手册中列出，留待后续阶段加入 schema 与 PAL
+  - 未上板测试
+
+resources:
+  gpio:
+    - {name: LED, pin: PH11, dir: out, active_low: false, init: false, verified: true, note: RGB 绿灯，高电平亮（框架默认 LED 用绿灯）}
+    - {name: LED_R, pin: PH12, dir: out, active_low: false, init: false, verified: true}
+    - {name: LED_B, pin: PH10, dir: out, active_low: false, init: false, verified: true}
+    - {name: KEY, pin: PA0, dir: in, pull: none, active_low: false, verified: false, note: 引脚官方核实；有效电平/上下拉未核实}
+  pwm:
+    - {name: PWM1, timer: TIM1, channel: 1, pin: PE9, freq_hz: 50, verified: true, note: 7 路 PWM 口之一，频率按用途改}
+    - {name: PWM2, timer: TIM1, channel: 2, pin: PE11, freq_hz: 50, verified: true}
+  uart:
+    - {name: LINK, instance: USART6, tx: PG14, rx: PG9, baud: 460800, dma: true, verified: true, note: 外壳丝印 UART1（3-pin）}
+    - {name: UART2, instance: USART1, tx: PA9, rx: PB7, baud: 115200, verified: true, note: 外壳丝印 UART2（4-pin）}
+  timer:
+    - {name: CTRL, instance: TIM6, irq_priority: 1, note: 控制环节拍（内部定时器，无引脚）}

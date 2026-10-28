@@ -57,7 +57,7 @@ UARTS = {
     "USART3": (7, "APB1", ["PB10", "PC10", "PD8"], ["PB11", "PC11", "PD9"], "USART3_IRQ"),
     "UART4":  (8, "APB1", ["PA0", "PC10"], ["PA1", "PC11"], "UART4_IRQ"),
     "UART5":  (8, "APB1", ["PC12"],        ["PD2"],         "UART5_IRQ"),
-    "USART6": (8, "APB2", ["PC6"],         ["PC7"],         "USART6_IRQ"),
+    "USART6": (8, "APB2", ["PC6", "PG14"], ["PC7", "PG9"],         "USART6_IRQ"),
 }
 
 # 串口 DMA：(DMA 控制器, 数据流, 通道)；每项第一个为默认选择，后面是备选
