@@ -34,9 +34,9 @@ static coord_t COORD;
 static motor_dc_t MA, MB;
 static encoder_t EA, EB;
 static dzframe_parser_t VL;
-static dzctl_wd_t WD;
 static qd4310_t BEAM;
 #ifdef RES_UART_LINK
+static dzctl_wd_t WD;
 static dzframe_parser_t LL;   /* LINK 上位机帧 */
 #endif
 
@@ -124,6 +124,9 @@ static void write_link(uint32_t now)
         t.angle_deg = S.beam_out.angle_deg; t.beam_fb_deg = S.io_in.beam_fb_deg;
         t.wheel_a_mps = S.io_in.wheel_a_mps; t.wheel_b_mps = S.io_in.wheel_b_mps;
         t.bb_state = S.beam_out.state; t.beam_online = S.io_in.beam_online ? 1u : 0u;
+        t.vis_state = S.vision_out.state; t.vis_age_ms = S.vision_out.age_ms; t.vis_drops = S.vision_out.drops;
+        t.vis_lat_ms = (int16_t)(S.vision_out.lat_jit_ms > 32767 ? 32767 : S.vision_out.lat_jit_ms);
+        t.ff_deg = S.beam_out.ff_deg;
         if (link_telem_pack(&f, &t)) link_send(&f);
     }
     if (now - last_hb >= 500u) {
@@ -148,6 +151,7 @@ static void read_inputs(uint32_t now)
         for (i = 0; i < got; i++)
             if (dzframe_feed(&VL, buf[i], &f) && cp_vision_cpu_ball_decode(&f, &b)) {
                 S.io_in.cam_x_px = b.x_px; S.io_in.cam_flags = b.flags;
+                S.io_in.cam_fseq = f.seq; S.io_in.cam_ms = b.cam_ms;
                 S.io_in.cam_seq++; S.io_in.cam_rx_ms = now;
             }
     }

@@ -80,15 +80,37 @@ TEST(ball_feedforward_and_profile_switch)
     shared_state_t a = {0}, b = {0};
     const params_t *pf = &g_project_params[PROFILE_FAST];
     SUBSYS_BALL.init(&a, pf);
-    a.vision_out = (st_vision_out_t){ true, 0.0f, 0 };
+    a.vision_out = (st_vision_out_t){ .new_sample = true, .x_px = 0.0f, .t_ms = 0 };
     a.chassis_out.accel_mps2 = 1.0f;
     SUBSYS_BALL.step(&a, pf, 0);
     SUBSYS_BALL.init(&b, pf);
-    b.vision_out = (st_vision_out_t){ true, 0.0f, 0 };
+    b.vision_out = (st_vision_out_t){ .new_sample = true, .x_px = 0.0f, .t_ms = 0 };
     SUBSYS_BALL.step(&b, pf, 0);
     CHECK(a.beam_out.angle_deg > b.beam_out.angle_deg);     /* 加速前倾 */
     CHECK(a.beam_out.angle_deg <= pf->angle_max_deg);
 }
+
+TEST(accel_ff_src_deadzone_failsafe)
+{
+    shared_state_t st = {0};
+    params_t p = g_project_params[PROFILE_FAST];
+    SUBSYS_BALL.init(&st, &p);
+    st.vision_out = (st_vision_out_t){ .new_sample = true, .x_px = 0.0f, .t_ms = 0 };
+    p.ff_src = 1;                                           /* IMU */
+    st.io_in.imu_ax_mps2 = 1.0f; st.io_in.imu_ok = false;
+    SUBSYS_BALL.step(&st, &p, 0);   CHECK(st.beam_out.ff_deg == 0.0f);       /* 无效 → 0 */
+    st.io_in.imu_ok = true; st.io_in.imu_rx_ms = 0;
+    SUBSYS_BALL.step(&st, &p, 10);  CHECK(st.beam_out.ff_deg > 0.0f);        /* 有效 */
+    SUBSYS_BALL.step(&st, &p, 200); CHECK(st.beam_out.ff_deg == 0.0f);       /* 过期 → 0 */
+    st.io_in.imu_rx_ms = 200; st.io_in.imu_ax_mps2 = 30.0f;
+    SUBSYS_BALL.step(&st, &p, 210); CHECK(st.beam_out.ff_deg == 0.0f);       /* 异常大 → 0 */
+    st.io_in.imu_ax_mps2 = 0.1f;
+    SUBSYS_BALL.step(&st, &p, 220); CHECK(st.beam_out.ff_deg == 0.0f);       /* 死区 */
+    st.io_in.imu_ax_mps2 = 0.16f;
+    SUBSYS_BALL.step(&st, &p, 230); CHECK(st.beam_out.ff_deg > 0.0f && st.beam_out.ff_deg < 0.1f);    /* 死区边沿连续：0.01 m/s² → 约 0.08° */
+}
+
+TEST(vision_subsys_selftest) { CHECK(SUBSYS_VISION.selftest() == DZ_OK); }
 
 TEST(generated_tables_consistent)
 {
@@ -104,7 +126,7 @@ TEST(generated_tables_consistent)
 int main(void)
 {
     RUN(vision_channel_codec_and_python_interop); RUN(vision_subsys); RUN(ball_subsys_closed_loop_toy);
-    RUN(ball_feedforward_and_profile_switch); RUN(generated_tables_consistent);
+    RUN(ball_feedforward_and_profile_switch); RUN(accel_ff_src_deadzone_failsafe); RUN(vision_subsys_selftest); RUN(generated_tables_consistent);
     printf("\n通过 %d，失败 %d\n", tt_pass, tt_fail);
     return tt_fail ? 1 : 0;
 }

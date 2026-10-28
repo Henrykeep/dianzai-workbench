@@ -175,13 +175,20 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
 	@for f in $(COMPAT_SRC); do gcc -std=c99 -pedantic-errors -Wall -Wextra -Werror -Wno-unused-parameter \
 	  $(addprefix -I,$(FW_INC)) -fsyntax-only $$f || exit 1; done; echo "✓ compat: $(words $(COMPAT_SRC)) 个模块源文件按 C99 -pedantic-errors 通过"
 all: $(TARGET)
+
+# 交叉编译矩阵：每个 板×应用 组合都编一遍（需要 arm-none-eabi-gcc 和 third_party/）。CI firmware-cross 跑它。
+CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm32f103c8t6-car-cubemx:car_2wd \
+         stm32f407-bldc-freertos-cubemx:2026H_ball mspm0g3507-tianmengxing:car_2wd mspm0g3507-launchpad:car_2wd \
+         host-sim:car_2wd host-sim:2026H_ball
+cross:
+	@for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done
 
 # VS Code / clangd：写 build/compile_commands.json（当前 BOARD+APP 的真实编译参数；切换板子后重跑）
 compdb: $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
@@ -260,6 +267,7 @@ check:
 	$(PY) tools/syscfg_import.py boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg --check boards/mspm0g3507-tianmengxing/board.yaml
 	$(PY) tools/syscfg_import.py boards/mspm0g3507-launchpad/ccs/launchpad.syscfg --check boards/mspm0g3507-launchpad/board.yaml
 	$(PY) tools/gen_ccs_projectspec.py --board mspm0g3507-tianmengxing --app car_2wd --check
+	$(PY) tools/gen_ccs_projectspec.py --board mspm0g3507-launchpad --app car_2wd --check
 	$(PY) tools/audit_port.py --selftest
 	$(PY) tools/check_ai_docs.py --selftest
 	$(PY) tools/check_ai_docs.py --check

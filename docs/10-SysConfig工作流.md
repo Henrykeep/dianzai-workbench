@@ -21,7 +21,7 @@
 - 【未验证】上板行为；`boards/mspm0g3507-tianmengxing/syscfg/ti_msp_dl_config.{c,h}` 是按 TI 命名手写的合成样例，引脚未对照天猛星原理图。
 
 ## SysConfig CLI（2026-10 起入 CI）
-- `tools/syscfg_gen.sh`：调用 `sysconfig_cli.sh --product <SDK>/.metadata/product.json --device MSPM0G350X --package "LQFP-64(PM)"` 重新生成，与入库文件 diff；`--write` 覆盖。CI：`.github/workflows/mspm0-syscfg.yml`（缓存安装包，生成 → 比对 → 交叉编译）。
+- `tools/syscfg_gen.sh`：调用 `sysconfig_cli.sh --product <SDK>/.metadata/product.json --device MSPM0G350X --package "LQFP-64(PM)"` 重新生成，与入库文件 diff；`--write` 覆盖。CI：`.github/workflows/firmware.yml` 的 syscfg 任务（缓存安装包，生成 → 比对 → 交叉编译）。
 - 版本锁：SysConfig **1.28.0.4712** + MSPM0 SDK **2.11.00.07**。升级任一个都要 `--write` 后审 diff 再提交。
 - 【已实测】首次用真 CLI 跑出了两个合成样例的错误，已改：
   1. 每个 GPIO 组的引脚 `$name` 不能都叫 `PIN`（SysConfig 报 Duplicate name）。约定改为 **引脚名 = 逻辑名**，宏为 `GPIO_<名>_<名>_PIN`，gen_board 已跟随。

@@ -1,10 +1,10 @@
 # MSPM0：用真实 TI SysConfig CLI 从 .syscfg 重新生成 ti_msp_dl_config，与入库版本比对，再交叉编译 car_2wd。
 # 版本锁：SysConfig 1.28.0.4712（TI 官方 Linux 安装包）+ MSPM0 SDK 2.11.00.07（GitHub TexasInstruments/mspm0-sdk）。
-name: mspm0-syscfg
+name: firmware
 on:
   workflow_dispatch:
   push:
-    paths: ["boards/mspm0*/**", "ports/mspm0-driverlib/**", "tools/syscfg_gen.sh", "tools/gen_board.py", ".github/workflows/mspm0-syscfg.yml"]
+    paths: ["boards/**", "ports/**", "firmware/**", "apps/**", "examples/**", "Makefile", "tools/syscfg_gen.sh", "tools/gen_board.py", ".github/workflows/mspm0-syscfg.yml"]
 jobs:
   syscfg:
     runs-on: ubuntu-latest
@@ -31,3 +31,14 @@ jobs:
         run: tools/syscfg_gen.sh mspm0g3507-tianmengxing && tools/syscfg_gen.sh mspm0g3507-launchpad
       - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
       - run: make BOARD=mspm0g3507-tianmengxing APP=car_2wd && make BOARD=mspm0g3507-launchpad APP=car_2wd
+  cross:
+    # 全部 板×应用 交叉编译（make cross）。2026-10 发现 2026H 在 F407 上因未用变量 -Werror 编不过而 make check 没报，故加此项。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: pip install pyyaml jsonschema
+      - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
+      - run: tools/fetch_third_party.sh
+      - run: make cross

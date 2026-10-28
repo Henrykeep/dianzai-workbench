@@ -6,12 +6,27 @@
 
 ## [未发布]
 
+### 视觉链路与钢珠环 A/B 选项
+- 新模块 `firmware/algo/vision` 1.0.0：
+  - `vis_link` 有 VALID/HELD/LOST 三态，给出数据时效 age_ms、按 8 位 seq 统计的丢帧数、相对延迟抖动；
+  - `vis_calib` 做 2..9 点分段线性标定，左右斜率独立，表外外推并提示。
+- 新模块 `firmware/algo/abobs` 1.0.0：通用 α-β 观测器，带野值门限，外推超时后速度清零。
+- `ball_beam` 1.1.0 增加 A/B 选项（全 0 时就是原行为）：估计器 α-β 或差分+低通；串级或单环；静摩擦补偿；静平衡前馈表。
+- 2026H：
+  - vision 子系统改用 vis_link/vis_calib（参数 vis_*、cal_*）；
+  - io 层记录 dzframe seq 和相机时间戳；
+  - 加速度前馈可选编码器或 IMU，带死区和失效保护：无效、过期或异常大的读数都让前馈归 0；
+  - 遥测增加 vis_state/vis_age_ms/vis_drops/vis_lat_ms/ff_deg。
+- **IMU 没有驱动**，io 层不会填 imu_* 字段，所以 ff_src=1 时前馈恒为 0（这正是失效保护该有的行为）。实板**未测**。
+### 修复
+- 2026H 在 F407 目标板上编译失败：看门狗变量在没有 LINK 串口的板上未被使用，触发 -Werror。原因是 make check 不做交叉编译。新增 `make cross`（全部 板×应用 组合），并加入 CI `firmware` 工作流。
+
 ### 板卡与 VS Code
 - 新板 `mspm0g3507-launchpad`（TI LP-MSPM0G3507）：LED/KEY/UART 引脚已对照 SDK 官方 LP 例程；syscfg 由 CLI 生成；car_2wd 编译通过；**未上板**。
 - `make compdb` 生成 compile_commands.json；新增 `.vscode/c_cpp_properties.json`，含 GCC、CCS(Debug/) 和 STM32 三套配置；docs/16 补充 ArmClang 与 GCC 的取舍、SDK 版本锁、XDS110/DAPLink。**未在 VS Code 里实测**。
 
 ### MSPM0 SysConfig CLI
-- 【已实测】`tools/syscfg_gen.sh` 用 SysConfig CLI 1.28.0 + SDK 2.11 重新生成天猛星 `ti_msp_dl_config`，入库文件换成真实生成物；car_2wd 用它交叉编译通过。CI `mspm0-syscfg` 负责比对和编译（CI 尚未跑过）。
+- 【已实测】`tools/syscfg_gen.sh` 用 SysConfig CLI 1.28.0 + SDK 2.11 重新生成天猛星 `ti_msp_dl_config`，入库文件换成真实生成物；car_2wd 用它交叉编译通过。CI `firmware` 工作流负责比对和编译（首次运行已通过）。
 - 真 CLI 发现的问题：GPIO 引脚 `$name` 不能都叫 `PIN`，改为逻辑名（宏改为 `GPIO_<名>_<名>_PIN`）；定时器没有 `CLK_FREQ`，board.yaml 的 timer 加 `clk_hz`（schema 已更新）。
 - STM32F4 PAL 也改用 `dz_wrap.h`。
 
