@@ -28,6 +28,6 @@ jobs:
           chmod +x $f && ./$f --mode unattended --prefix /home/runner/ti/sysconfig_1.28.0
       - run: tools/fetch_third_party.sh mspm0
       - name: .syscfg -> ti_msp_dl_config 一致性
-        run: tools/syscfg_gen.sh
+        run: tools/syscfg_gen.sh mspm0g3507-tianmengxing && tools/syscfg_gen.sh mspm0g3507-launchpad
       - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi
-      - run: make BOARD=mspm0g3507-tianmengxing APP=car_2wd
+      - run: make BOARD=mspm0g3507-tianmengxing APP=car_2wd && make BOARD=mspm0g3507-launchpad APP=car_2wd

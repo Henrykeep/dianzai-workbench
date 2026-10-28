@@ -27,3 +27,8 @@
   1. 每个 GPIO 组的引脚 `$name` 不能都叫 `PIN`（SysConfig 报 Duplicate name）。约定改为 **引脚名 = 逻辑名**，宏为 `GPIO_<名>_<名>_PIN`，gen_board 已跟随。
   2. `Basic_Periodic` 定时器不导出 `*_INST_CLK_FREQ`（只有 `LOAD_VALUE`）。在 board.yaml 的 timer 条目写 `clk_hz`（分频后计数时钟），gen_board 在头里补定义。
 - 本地：从 https://www.ti.com/tool/SYSCONFIG 装 Linux/Windows 版；Windows 下脚本需 Git Bash，`SYSCFG_CLI=/c/ti/sysconfig_1.28.0/sysconfig_cli.bat` 【未验证】。
+
+## 参考板 LP-MSPM0G3507（`boards/mspm0g3507-launchpad`）
+- 电机、编码器、PWM、UART 引脚和天猛星一样（换板只换引脚），另外加了 LED=PA0（LED1）、KEY=PB21（S2）。这些引脚【已核对】过 SDK 2.11 LP 官方例程的 .syscfg。
+- 背板 UART0（PA10/PA11）通过板载 XDS110 转成虚拟串口，上位机直接接 USB 就行。
+- 【未验证】没有上板。
