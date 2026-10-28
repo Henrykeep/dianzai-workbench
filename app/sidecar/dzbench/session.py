@@ -150,7 +150,8 @@ class Session:
         else:
             self.emit(LinkError("schema_missing", f"板子的数据格式（哈希 {h:08X}）在本机找不到对应的 link_schema.json",
                                 "在仓库根目录对这块板和应用跑一次 make（例如 make BOARD=xxx APP=car_2wd），"
-                                "它会生成 build/.../linkgen/link_schema.json；或者固件比工程旧/新，重新烧录").as_dict())
+                                "它会生成 build/.../linkgen/link_schema.json（打包版把它拷到 ~/.dzbench/schemas/ 或设 DZBENCH_SCHEMA_DIRS）；"
+                                "若固件与工程版本不一致，重新编译烧录").as_dict())
 
     def take_new(self) -> list:
         with self.lock:

@@ -18,6 +18,8 @@
 | 14-Keil工作流.md | AC6/AC5 要求、keil_inject.py 注入模块 |
 | 15-CCS工作流.md | 天猛星导入 CCS（projectspec + .syscfg，tiarmclang） |
 | 16-VSCode工作流.md | tasks/launch（Cortex-Debug，OpenOCD/pyOCD）、EIDE 可选 |
+| 17-桌面工作台.md | dzbench：曲线/参数/急停/回放，侧车 WebSocket 协议，Agent 接缝 |
+| QUESTIONS.md | 待你确认的问题 |
 | 硬件路线图.md | 各板卡/协处理器状态 |
 | 参考来源.md | 借鉴的开源项目与资料汇总 |
 

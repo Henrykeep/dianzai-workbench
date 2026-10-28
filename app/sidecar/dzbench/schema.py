@@ -46,7 +46,9 @@ class Schema:
 
 def search_dirs() -> list[pathlib.Path]:
     extra = os.environ.get("DZBENCH_SCHEMA_DIRS", "")
-    return [pathlib.Path(p) for p in extra.split(os.pathsep) if p] + [ROOT / "build"]
+    # 环境变量 → 仓库 build/（开发/源码运行）→ ~/.dzbench/schemas（打包版：把 link_schema.json 拷进去）
+    from .snapshots import base_dir
+    return [pathlib.Path(p) for p in extra.split(os.pathsep) if p] + [ROOT / "build", base_dir() / "schemas"]
 
 
 def find_by_hash(h: int) -> Schema | None:
