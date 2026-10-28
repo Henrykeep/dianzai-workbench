@@ -11,6 +11,9 @@
 #include "hcsr04.h"
 #include "line_sensor.h"
 #include "stepper.h"
+#include "st77xx.h"
+#include "bt_serial.h"
+#include "motor_2pwm.h"
 
 static void fresh(void) { host_sim_reset(); pal_init(); }
 
@@ -301,8 +304,182 @@ TEST(stepper_ramp)
     CHECK(stepper_init(&s, &c) == DZ_EINVAL);
 }
 
+/* ---- 假 ST77xx：按 D/C 电平解码命令，模拟 CASET/RASET/RAMWR 写 GRAM ---- */
+typedef struct {
+    uint8_t cmd, madctl, colmod; unsigned np; uint8_t p[4];
+    uint16_t x0, x1, y0, y1, cx, cy; bool hi_pending; uint8_t hi;
+    bool dispon, invon, slpout; unsigned swreset, ramwr_px;
+    uint16_t gram[320][240];
+} fake_tft_t;
+static fake_tft_t g_tft;
+static dz_err_t fake_tft_spi(void *ctx, const uint8_t *tx, uint8_t *rx, uint16_t n)
+{
+    fake_tft_t *f = ctx; (void)rx;
+    bool data = host_sim_gpio_level(RES_GPIO_TFT_DC);
+    for (uint16_t i = 0; i < n; i++) {
+        uint8_t v = tx[i];
+        if (!data) {
+            f->cmd = v; f->np = 0; f->hi_pending = false;
+            if (v == ST77XX_SWRESET) f->swreset++;
+            if (v == ST77XX_SLPOUT) f->slpout = true;
+            if (v == ST77XX_DISPON) f->dispon = true;
+            if (v == ST77XX_INVON) f->invon = true;
+            if (v == ST77XX_RAMWR) { f->cx = f->x0; f->cy = f->y0; }
+            continue;
+        }
+        switch (f->cmd) {
+        case ST77XX_MADCTL: f->madctl = v; break;
+        case ST77XX_COLMOD: f->colmod = v; break;
+        case ST77XX_CASET: case ST77XX_RASET:
+            if (f->np < 4) f->p[f->np++] = v;
+            if (f->np == 4) {
+                uint16_t a = (uint16_t)(f->p[0] << 8 | f->p[1]), b = (uint16_t)(f->p[2] << 8 | f->p[3]);
+                if (f->cmd == ST77XX_CASET) { f->x0 = a; f->x1 = b; } else { f->y0 = a; f->y1 = b; }
+            }
+            break;
+        case ST77XX_RAMWR:
+            if (!f->hi_pending) { f->hi = v; f->hi_pending = true; break; }
+            f->hi_pending = false;
+            if (f->cy < 320 && f->cx < 240) f->gram[f->cy][f->cx] = (uint16_t)(f->hi << 8 | v);
+            f->ramwr_px++;
+            if (++f->cx > f->x1) { f->cx = f->x0; f->cy++; }
+            break;
+        default: break;
+        }
+    }
+    return DZ_OK;
+}
+
+TEST(st77xx_fake)
+{
+    fresh();
+    CHECK(st77xx_selftest() == DZ_OK);
+    memset(&g_tft, 0, sizeof g_tft);
+    host_sim_spi_attach(RES_SPI_TFT, fake_tft_spi, &g_tft);
+    st77xx_t d; st77xx_cfg_t c = st77xx_cfg_st7735_128x160(RES_SPI_TFT, RES_GPIO_TFT_DC, RES_GPIO_TFT_RST, PAL_ID_NONE);
+    CHECK(st77xx_init(&d, &c) == DZ_OK);
+    CHECK(g_tft.swreset == 1 && g_tft.slpout && g_tft.dispon && !g_tft.invon);
+    CHECK(g_tft.colmod == 0x05 && g_tft.madctl == 0x00);
+    CHECK(st77xx_width(&d) == 128 && st77xx_height(&d) == 160);
+    CHECK(st77xx_fill(&d, ST77XX_BLUE) == DZ_OK);
+    CHECK(g_tft.ramwr_px == 128u * 160u);
+    CHECK(g_tft.gram[1][2] == ST77XX_BLUE && g_tft.gram[160][129] == ST77XX_BLUE);   /* 偏移 2/1 */
+    CHECK(g_tft.gram[0][0] == 0);
+    CHECK(st77xx_fill_rect(&d, -5, -5, 10, 10, ST77XX_RED) == DZ_OK);            /* 裁剪 */
+    CHECK(g_tft.gram[1 + 4][2 + 4] == ST77XX_RED && g_tft.gram[1 + 5][2 + 5] == ST77XX_BLUE);
+    CHECK(st77xx_pixel(&d, 127, 159, ST77XX_GREEN) == DZ_OK && g_tft.gram[160][129] == ST77XX_GREEN);
+    CHECK(st77xx_pixel(&d, 128, 0, ST77XX_GREEN) == DZ_OK);                       /* 越界不写 */
+    CHECK(st77xx_text(&d, 16, 16, "A", ssd1306_font8x8, ST77XX_WHITE, ST77XX_BLACK, 2) == 1);
+    /* 'A' 的某列应有亮点，16×16 区域内既有白也有黑 */
+    unsigned white = 0, black = 0;
+    for (int y = 0; y < 16; y++) for (int x = 0; x < 16; x++) {
+        uint16_t v = g_tft.gram[1 + 16 + y][2 + 16 + x];
+        white += v == ST77XX_WHITE; black += v == ST77XX_BLACK;
+    }
+    CHECK(white > 20 && black > 20 && white + black == 256);
+    CHECK(st77xx_text(&d, 121, 0, "XY", ssd1306_font8x8, 1, 0, 1) == 0);       /* 整字越界被裁 */
+    CHECK(st77xx_text(&d, 0, 0, "X", 0, 1, 0, 1) < 0);
+    CHECK(st77xx_set_rotation(&d, 1) == DZ_OK);
+    CHECK(g_tft.madctl == 0x60 && st77xx_width(&d) == 160 && st77xx_height(&d) == 128);
+    CHECK(st77xx_backlight(&d, true) == DZ_ENOTSUP);
+    c = st77xx_cfg_st7789_240x240(RES_SPI_TFT, RES_GPIO_TFT_DC, PAL_ID_NONE, PAL_ID_NONE);
+    c.bgr = true; c.rotation = 2;
+    CHECK(st77xx_init(&d, &c) == DZ_OK && g_tft.invon && g_tft.madctl == 0xC8);
+    c.width = 400; CHECK(st77xx_init(&d, &c) == DZ_EINVAL);
+}
+
+/* ---- 假 HC-05：从 UART TX 取命令，按 AT 规则回 OK/ERROR ---- */
+static void fake_bt_step(bool fail_uart)
+{
+    uint8_t buf[128]; uint16_t n = host_sim_uart_take_tx(RES_UART_BT, buf, sizeof buf - 1);
+    if (!n) return;
+    buf[n] = 0;
+    const char *ok = "OK\r\n", *err = "ERROR:(1D)\r\n";
+    const char *r = (fail_uart && strncmp((char *)buf, "AT+UART", 7) == 0) ? err : ok;
+    if (strncmp((char *)buf, "AT", 2) != 0) return;   /* 透传数据不应答 */
+    host_sim_uart_inject_rx(RES_UART_BT, (const uint8_t *)r, (uint16_t)strlen(r));
+}
+
+TEST(bt_serial_fake)
+{
+    fresh();
+    CHECK(bt_serial_selftest() == DZ_OK);
+    bt_t b; bt_cfg_t c = { RES_UART_BT, RES_GPIO_BT_STATE, RES_GPIO_BT_EN, BT_HC05, 1000 };
+    CHECK(bt_init(&b, &c) == DZ_OK);
+    char line[80];
+    /* 透传：一次注入两行 + 半行 */
+    const char *in = "KP 1.5\r\nGO\nHAL";
+    host_sim_uart_inject_rx(RES_UART_BT, (const uint8_t *)in, (uint16_t)strlen(in));
+    CHECK(bt_poll(&b, 0, line, sizeof line) && strcmp(line, "KP 1.5") == 0);
+    CHECK(bt_poll(&b, 0, line, sizeof line) && strcmp(line, "GO") == 0);
+    CHECK(!bt_poll(&b, 0, line, sizeof line));
+    host_sim_uart_inject_rx(RES_UART_BT, (const uint8_t *)"F\n", 2);
+    CHECK(bt_poll(&b, 0, line, sizeof line) && strcmp(line, "HALF") == 0);
+    /* 超长行丢弃 */
+    char big[100]; memset(big, 'x', 90); big[90] = '\n';
+    host_sim_uart_inject_rx(RES_UART_BT, (const uint8_t *)big, 91);
+    CHECK(!bt_poll(&b, 0, line, sizeof line) && b.dropped == 1);
+    CHECK(bt_send_line(&b, "hello") == DZ_OK);
+    uint8_t tx[16]; uint16_t n = host_sim_uart_take_tx(RES_UART_BT, tx, sizeof tx);
+    CHECK(n == 7 && memcmp(tx, "hello\r\n", 7) == 0);
+    /* AT 配置成功 */
+    CHECK(bt_set_en(&b, true) == DZ_OK && host_sim_gpio_level(RES_GPIO_BT_EN));
+    CHECK(bt_config_start(&b, "DZ-CAR", 115200, 0) == DZ_OK);
+    for (uint32_t t = 0; t < 100 && bt_at_state(&b) == BT_AT_BUSY; t += 10) { fake_bt_step(false); (void)bt_poll(&b, t, line, sizeof line); }
+    CHECK(bt_at_state(&b) == BT_AT_DONE);
+    CHECK(strcmp(b.cmds[1], "AT+NAME=DZ-CAR") == 0 && strcmp(b.cmds[2], "AT+UART=115200,0,0") == 0);
+    /* 第 3 条报错 */
+    CHECK(bt_config_start(&b, "DZ-CAR", 115200, 0) == DZ_OK);
+    for (uint32_t t = 0; t < 100 && bt_at_state(&b) == BT_AT_BUSY; t += 10) { fake_bt_step(true); (void)bt_poll(&b, t, line, sizeof line); }
+    CHECK(bt_at_state(&b) == BT_AT_FAIL && strncmp(bt_at_current(&b), "AT+UART", 7) == 0);
+    /* 模块没回应 → 超时 */
+    CHECK(bt_config_start(&b, 0, 0, 5000) == DZ_OK);
+    (void)host_sim_uart_take_tx(RES_UART_BT, tx, sizeof tx);
+    (void)bt_poll(&b, 5900, line, sizeof line); CHECK(bt_at_state(&b) == BT_AT_BUSY);
+    (void)bt_poll(&b, 6100, line, sizeof line); CHECK(bt_at_state(&b) == BT_AT_FAIL);
+    /* JDY-31 命令格式 */
+    c.module = BT_JDY31; c.state = PAL_ID_NONE; c.en = PAL_ID_NONE;
+    CHECK(bt_init(&b, &c) == DZ_OK);
+    CHECK(bt_config_start(&b, "JDY", 9600, 0) == DZ_OK);
+    CHECK(strcmp(b.cmds[1], "AT+NAMEJDY") == 0 && strcmp(b.cmds[2], "AT+BAUD4") == 0);
+    bool known = true; CHECK(!bt_connected(&b, &known) && !known);
+    CHECK(bt_config_start(&b, "bad name", 0, 0) == DZ_EBUSY);
+    CHECK(bt_init(&b, &c) == DZ_OK);
+    CHECK(bt_config_start(&b, "bad name", 0, 0) == DZ_EINVAL);
+    CHECK(bt_config_start(&b, 0, 12345, 0) == DZ_EINVAL);
+    CHECK(bt_set_en(&b, true) == DZ_ENOTSUP);
+    c.module = BT_HC05; c.state = RES_GPIO_BT_STATE; CHECK(bt_init(&b, &c) == DZ_OK);
+    host_sim_gpio_set_input(RES_GPIO_BT_STATE, true);
+    CHECK(bt_connected(&b, &known) && known);
+}
+
+TEST(motor_2pwm_drv8833)
+{
+    fresh();
+    CHECK(motor_2pwm_selftest() == DZ_OK);
+    motor_2pwm_t m; motor_2pwm_cfg_t c = motor_2pwm_cfg_default(RES_PWM_MOTOR_C_IN1, RES_PWM_MOTOR_C_IN2);
+    CHECK(motor_2pwm_init(&m, &c) == DZ_OK);
+    CHECK(host_sim_pwm_duty(RES_PWM_MOTOR_C_IN1) == 0 && host_sim_pwm_duty(RES_PWM_MOTOR_C_IN2) == 0);
+    CHECK(motor_2pwm_set(&m, 0.25f) == DZ_OK);       /* 慢衰减：IN1=1，IN2=1−d */
+    CHECK(host_sim_pwm_duty(RES_PWM_MOTOR_C_IN1) == PAL_DUTY_MAX && host_sim_pwm_duty(RES_PWM_MOTOR_C_IN2) == 7500);
+    CHECK(motor_2pwm_set(&m, -2.0f) == DZ_OK);       /* 限幅到 −1 */
+    CHECK(host_sim_pwm_duty(RES_PWM_MOTOR_C_IN1) == 0 && host_sim_pwm_duty(RES_PWM_MOTOR_C_IN2) == PAL_DUTY_MAX);
+    CHECK(motor_2pwm_stop(&m, true) == DZ_OK);
+    CHECK(host_sim_pwm_duty(RES_PWM_MOTOR_C_IN1) == PAL_DUTY_MAX && host_sim_pwm_duty(RES_PWM_MOTOR_C_IN2) == PAL_DUTY_MAX);
+    c.decay = MOTOR_2PWM_FAST_DECAY; c.invert = true; c.deadband = 0.1f; c.max_duty = 0.9f;
+    CHECK(motor_2pwm_init(&m, &c) == DZ_OK);
+    CHECK(motor_2pwm_set(&m, 0.5f) == DZ_OK);        /* 反向 + 死区：0.1+0.5·0.8=0.5 → IN2 */
+    CHECK(host_sim_pwm_duty(RES_PWM_MOTOR_C_IN1) == 0 && host_sim_pwm_duty(RES_PWM_MOTOR_C_IN2) == 5000);
+    CHECK(motor_2pwm_set(&m, 0.0f / 0.0f) == DZ_OK && host_sim_pwm_duty(RES_PWM_MOTOR_C_IN2) == 0);
+    c = motor_2pwm_cfg_default(RES_PWM_MOTOR_C_IN1, RES_PWM_SERVO_X);     /* 20 kHz vs 50 Hz */
+    CHECK(motor_2pwm_init(&m, &c) == DZ_EINVAL);
+    c = motor_2pwm_cfg_default(RES_PWM_MOTOR_C_IN1, RES_PWM_MOTOR_C_IN1); CHECK(motor_2pwm_init(&m, &c) == DZ_EINVAL);
+    motor_2pwm_t z = {0}; CHECK(motor_2pwm_set(&z, 0.1f) == DZ_ESTATE);
+}
+
 void suite_modlib(void)
 {
     RUN(servo_pwm); RUN(buzzer_patterns); RUN(battery_lowvolt);
     RUN(ssd1306_pal_transports); RUN(hcsr04_fake); RUN(line_sensor_fake); RUN(stepper_ramp);
+    RUN(st77xx_fake); RUN(bt_serial_fake); RUN(motor_2pwm_drv8833);
 }

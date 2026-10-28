@@ -9,7 +9,7 @@
  *      正转 IN1=1,IN2=0；反转 IN1=0,IN2=1；刹车 IN1=IN2=1；滑行 IN1=IN2=0
  *  - MOTOR_DC_PWM_DIR：一路 PWM + 一路方向脚（很多集成驱动板）
  *      in2 填 PAL_ID_NONE；此模式没有独立刹车，stop(BRAKE) 等同占空比 0
- *  （双 PWM 接法如 DRV8833/L298N 的 IN1/IN2 都接 PWM，留作后续版本，见 README）
+ *  （双 PWM 接法如 DRV8833/L298N 的 IN1/IN2 都接 PWM：用 motor_2pwm 模块）
  *
  * 安全行为：
  *  - 换向时先把 PWM 置 0，再改方向脚，再给新占空比，避免换向瞬间大电流
