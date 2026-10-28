@@ -1,0 +1,35 @@
+# dianzai-workbench（电赛工作台）
+
+> 全国大学生电子设计竞赛用的嵌入式工作台：STM32（CubeMX+HAL）与 TI MSPM0（SysConfig+DriverLib）多板卡，换板只改引脚；PC 仿真板；dzframe/1 串口协议；桌面工作台 dzbench（曲线、参数、急停、回放、内置 Agent）。
+
+改代码前先读 [AGENTS.md](AGENTS.md)。芯片事实以数据手册 / SDK 头文件为准。
+
+## 规范
+- [接口规范](docs/01-接口规范.md)
+- [分层与依赖](docs/02-分层与依赖.md)
+- [模块三件套与版本](docs/03-模块三件套与版本.md)
+- [入库检查清单](docs/04-入库检查清单.md)
+- [中断与实时](docs/11-中断与实时.md)
+- [版本管理](docs/13-版本管理.md)
+
+## 工作流
+- [CubeMX 工作流](docs/05-CubeMX工作流.md)
+- [新增板卡](docs/06-新增板卡.md)
+- [应用框架](docs/07-应用框架.md)
+- [SysConfig 工作流](docs/10-SysConfig工作流.md)
+- [Keil 工作流](docs/14-Keil工作流.md)
+- [CCS 工作流](docs/15-CCS工作流.md)
+- [VS Code 工作流](docs/16-VSCode工作流.md)
+
+## 工作台
+- [桌面工作台](docs/17-桌面工作台.md)
+- [内置 Agent](docs/18-内置Agent.md)
+
+## Optional
+- [协处理板与软核](docs/08-协处理板与软核.md)
+- [机械结构](docs/09-机械结构.md)
+- [参考工程与参数来源](docs/12-参考工程与参数来源.md)
+- [硬件路线图](docs/硬件路线图.md)
+- [参考来源](docs/参考来源.md)
+- [待确认问题](docs/QUESTIONS.md)
+- [更新日志](CHANGELOG.md)

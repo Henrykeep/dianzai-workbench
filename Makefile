@@ -252,6 +252,8 @@ check:
 	$(PY) tools/syscfg_import.py boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg --check boards/mspm0g3507-tianmengxing/board.yaml
 	$(PY) tools/gen_ccs_projectspec.py --board mspm0g3507-tianmengxing --app car_2wd --check
 	$(PY) tools/audit_port.py --selftest
+	$(PY) tools/check_ai_docs.py --selftest
+	$(PY) tools/check_ai_docs.py --check
 	$(MAKE) ioc-check
 	$(MAKE) -C examples/2026H_ball/tests
 	cd host/python && $(PY) -m dzlink.test_dzlink

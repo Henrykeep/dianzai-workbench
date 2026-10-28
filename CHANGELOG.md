@@ -6,6 +6,9 @@
 
 ## [未发布]
 ### 新增
+- 工作台：原始监视器（文本/HEX、收发区分、时间戳，非工作台固件设备也能看）、.dzlog→CSV（UTF-8 BOM）、串口自动重连（指数退避；主动断开不重连；重连后重读参数；重连中急停如实报“未送达”）[仿真]（假串口测试）；真实 USB 拔插 [未测]。思路参考 SerialWeb，代码自写
+- 根目录 `AGENTS.md` + `llms.txt`，`tools/check_ai_docs.py` 进 `make check` 校验与 docs 索引同步；内置 Agent 把 AGENTS.md 放进系统提示 [仿真]
+- Windows 安装包 CI 打通：`app-v0.3.0-rc4` 产出 NSIS 安装包 [编译]（安装与运行 [未测]）
 - 内置 Agent（docs/18）：分层写权限网关（secret/frozen/config/app/docs；diff 确认 → 门禁 make check/test → git 提交，失败自动还原，带尾注才可回滚）、急停不可调用、可插拔 OpenAI 兼容大模型（DeepSeek/通义千问/Ollama 等，Key 只存本机）、离线阶跃分析与整定建议、参数写回 yaml [仿真]（假 LLM + 临时 git 仓库测试，playwright 截图）；真实大模型服务商 [未测]；安装版工程仓库设置 [未测]
 - 桌面工作台 `app/`（docs/17）：Python 侧车 dzbench（串口/仿真/回放、自动波特率、按心跳哈希自动识别 schema、参数限幅+ACK 重发、急停 3 连发、原始 .dzlog、快照、Agent 只提议接缝）[仿真]；Vite+TS+uPlot 界面 [仿真]（playwright 截图）；真实串口 [未测]；Tauri 外壳与 Windows CI [未测]
 - `firmware/proto/dzctl` 0.1.0：参数表读写（限幅、拒 NaN）、急停锁存、命令、心跳带 schema 哈希 [仿真]

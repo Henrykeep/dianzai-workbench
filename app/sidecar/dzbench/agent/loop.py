@@ -36,9 +36,11 @@ assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
 
 
 class AgentLoop:
-    def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8):
+    def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8,
+                 project_rules: str = ""):
         self.llm, self.handlers, self.emit, self.max_steps = llm, handlers, emit, max_steps
-        self.messages: list[dict] = [{"role": "system", "content": SYSTEM}]
+        sys_ = SYSTEM + (f"\n\n以下是本工程仓库的 AGENTS.md（项目规则，必须遵守）：\n{project_rules[:6000]}" if project_rules else "")
+        self.messages: list[dict] = [{"role": "system", "content": sys_}]
 
     def reset(self) -> None:
         self.messages = self.messages[:1]

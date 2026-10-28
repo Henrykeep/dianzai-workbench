@@ -250,3 +250,9 @@ def test_yaml_rewrite_keeps_numerically_equal():
     src = "  - { name: a, type: float, default: 5.0, min: 0 }\n  - { name: b, type: float, default: 1.5, min: 0 }\n"
     out, _ = yamlpar.rewrite(src, {"a": 5.0, "b": struct.unpack("<f", struct.pack("<f", 1.95))[0]})
     assert "default: 5.0," in out and "default: 1.95," in out
+
+
+def test_agents_md_goes_into_system_prompt(repo):
+    (repo / "AGENTS.md").write_text("规则：不写寄存器\n")
+    svc = AgentService(Session(), AgentTools(Session(), lambda e: None), lambda e: None, root=repo, llm=FakeLLM([]), runner=Runner())
+    assert "不写寄存器" in svc.loop.messages[0]["content"]

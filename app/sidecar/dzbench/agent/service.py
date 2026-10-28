@@ -42,6 +42,7 @@ class AgentService:
         self.s, self.tools, self.emit = session, tools, emit
         self.gw = Gateway(root, emit, **({"runner": runner} if runner else {}))
         self._llm = llm
+        rules = self.gw.root / "AGENTS.md"
         self.loop = AgentLoop(None, {
             "read_telemetry": tools.read_telemetry,
             "list_params": tools.list_params,
@@ -50,7 +51,7 @@ class AgentService:
             "list_files": lambda glob="**/*": self.gw.list_files(glob),
             "read_file": lambda path: self.gw.read_file(path),
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
-        }, emit)
+        }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "")
 
     # -------------------------------------------------------------- 离线调参
     def step_analysis(self, y: str | None = None, sp: str | None = None, seconds: float = 5.0,
