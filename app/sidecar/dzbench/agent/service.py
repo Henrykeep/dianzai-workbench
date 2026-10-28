@@ -1,6 +1,8 @@
 """把 tuning / gateway / llm / loop 组装到一个会话上，供 server 调用（也方便测试时注入假 LLM）。"""
 from __future__ import annotations
 
+import os
+
 import re
 
 from ..agent_api import AgentTools
@@ -34,7 +36,9 @@ def guess_gain(params: list[str], kind: str) -> str | None:
 
 
 class AgentService:
-    def __init__(self, session: Session, tools: AgentTools, emit, root=ROOT, llm=None, runner=None):
+    def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):
+        # 工程仓库：DZBENCH_REPO > 配置 repo > 本仓库（开发模式）。安装版必须在 ⚙ 里指定（未在 Windows 实测）
+        root = root or os.environ.get("DZBENCH_REPO") or llm_mod.load_config().get("repo") or ROOT
         self.s, self.tools, self.emit = session, tools, emit
         self.gw = Gateway(root, emit, **({"runner": runner} if runner else {}))
         self._llm = llm
@@ -75,6 +79,15 @@ class AgentService:
         return [self.tools.propose_param_change(k, v, reason, "规则") for k, v in changes.items()]
 
     # -------------------------------------------------------------- 写回 yaml
+    def configure(self, update: dict) -> dict:
+        if update.get("repo"):
+            import pathlib
+            r = pathlib.Path(update["repo"]).expanduser()
+            if not (r / ".git").exists():
+                raise LinkError("bad_repo", f"{r} 不是 git 仓库", "选你的电赛工程根目录（里面有 Makefile 和 .git）")
+            self.gw = Gateway(r, self.emit, **({"runner": self.gw.runner} if hasattr(self.gw, "runner") else {}))
+        return llm_mod.save_config(update) | {"repo": str(self.gw.root)}
+
     def yaml_target(self) -> str:
         names = {p["name"] for p in self.s.schema.params} if self.s.schema else set()
         if not names:

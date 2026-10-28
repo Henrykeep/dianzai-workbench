@@ -115,7 +115,7 @@ class Server:
         if op == "agent_reset":
             return self.svc.loop.reset()
         if op == "agent_config":
-            return agent_llm.save_config(m["set"]) if m.get("set") else agent_llm.public_config()
+            return self.svc.configure(m["set"]) if m.get("set") else agent_llm.public_config() | {"repo": str(self.svc.gw.root)}
         if op == "yaml_writeback":
             return await run(None, lambda: self.svc.yaml_writeback(m.get("path"), m.get("values")))
         if op == "change_decide":

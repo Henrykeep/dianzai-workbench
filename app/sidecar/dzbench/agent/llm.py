@@ -50,12 +50,12 @@ def save_config(update: dict) -> dict:
     if "provider" in update and update["provider"] != cfg.get("provider"):
         base = PROVIDERS.get(update["provider"], PROVIDERS["custom"])
         cfg.update(base_url=base["base_url"], model=base["model"])
-    for k in ("provider", "base_url", "model", "api_key"):
+    for k in ("provider", "base_url", "model", "api_key", "repo"):
         if k in update and (k != "api_key" or update[k]):     # 空 key 不覆盖已存的
             cfg[k] = update[k]
     p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({k: v for k, v in cfg.items() if k in ("provider", "base_url", "model", "api_key")}, ensure_ascii=False, indent=1), encoding="utf-8")
+    p.write_text(json.dumps({k: v for k, v in cfg.items() if k in ("provider", "base_url", "model", "api_key", "repo")}, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         os.chmod(p, 0o600)
     except OSError:
@@ -67,7 +67,7 @@ def public_config(cfg: dict | None = None) -> dict:
     cfg = cfg or load_config()
     k = cfg.get("api_key", "")
     return {"provider": cfg["provider"], "base_url": cfg["base_url"], "model": cfg["model"],
-            "has_key": bool(k), "key_hint": ("…" + k[-4:]) if len(k) > 8 else "", "providers": PROVIDERS}
+            "repo": cfg.get("repo", ""), "has_key": bool(k), "key_hint": ("…" + k[-4:]) if len(k) > 8 else "", "providers": PROVIDERS}
 
 
 class OpenAICompat:

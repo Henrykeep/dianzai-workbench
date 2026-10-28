@@ -6,6 +6,7 @@ import "./tokens.css";
 import "./style.css";
 import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
+import { AGENT_IDLE, initAgent } from "./agent";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[] };
 type Param = { name: string; type: string; min: number; max: number; unit?: string; desc?: string; default: number };
@@ -219,7 +220,7 @@ $("replay").onclick = async () => { const p = $<HTMLSelectElement>("logs").value
 
 // ---------------------------------------------------------------- 提议卡片（Agent 接缝）
 function renderProposal(m: Msg) {
-  $("props").querySelector(".hint")?.remove();
+  $("props").querySelector(":scope > .hint")?.remove();
   const p = S.schema?.params.find(x => x.name === m.name);
   const d = document.createElement("div");
   d.className = "card";
@@ -259,10 +260,13 @@ function applyNone() {
   S.schema = null; S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
   plot.setChannels([], [], []); $("chans").innerHTML = ""; $("chan-n").textContent = ""; $("plot-sub").textContent = "";
   $("snaps").innerHTML = ""; renderParams();
-  $("props").innerHTML = `<div class="hint">内置 Agent 尚未接入。接口已留好：读遥测、列参数、提议修改；任何提议都要在这里点“采纳”才会下发。</div>`;
+  $("props").innerHTML = AGENT_IDLE;
 }
 
+const agent = initAgent(call);
+$("props").innerHTML = AGENT_IDLE;
 link.on(m => {
+  agent.onMsg(m);
   switch (m.type) {
     case "telem": {
       plot.push(m.t, m.y);

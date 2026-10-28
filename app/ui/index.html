@@ -59,9 +59,25 @@
         </div>
       </section>
       <section class="panel agent">
-        <div class="ph"><h3>Agent <span class="serif">suggests</span></h3><div class="sp"></div><span class="lbl">只提议 · 人确认</span></div>
-        <div id="props" class="feed"><div class="hint">内置 Agent 尚未接入。接口已留好：读遥测、列参数、提议修改；任何提议都要在这里点“采纳”才会下发。</div></div>
+        <div class="ph"><h3>Agent <span class="serif">suggests</span></h3><div class="sp"></div>
+          <button class="btn ghost sm" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
+          <button class="btn ghost sm" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交">写回 yaml</button>
+          <button class="btn ghost sm" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）">⚙</button></div>
+        <div id="props" class="feed"></div>
+        <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
       </section>
+      <dialog id="cfg" class="dlg">
+        <form method="dialog" id="cfg-form">
+          <h3>大模型设置</h3>
+          <p class="hint">任何 OpenAI 兼容接口都行。Key 只存在本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回传界面。没网时“分析阶跃”照样能用。</p>
+          <label>服务商<select id="cfg-prov" class="in"></select></label>
+          <label>接口地址<input id="cfg-url" class="in"></label>
+          <label>模型<input id="cfg-model" class="in"></label>
+          <label>工程仓库（Agent 改文件、跑 make check、git 提交的地方）<input id="cfg-repo" class="in" placeholder="D:\\dianzai\\my-project"></label>
+          <label>API Key<input id="cfg-key" class="in" type="password" autocomplete="off"></label>
+          <div class="act"><button class="btn pri" value="save">保存</button><button class="btn" value="cancel">取消</button></div>
+        </form>
+      </dialog>
     </aside>
   </main>
   <footer class="status">

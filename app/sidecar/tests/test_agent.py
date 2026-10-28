@@ -244,3 +244,9 @@ def test_openai_compat_against_local_fake_server(tmp_path, monkeypatch):
         llm_mod.OpenAICompat({"provider": "deepseek", "base_url": "x", "model": "m"}).chat([])
     assert "Key" in e.value.message
     srv.shutdown()
+
+
+def test_yaml_rewrite_keeps_numerically_equal():
+    src = "  - { name: a, type: float, default: 5.0, min: 0 }\n  - { name: b, type: float, default: 1.5, min: 0 }\n"
+    out, _ = yamlpar.rewrite(src, {"a": 5.0, "b": struct.unpack("<f", struct.pack("<f", 1.95))[0]})
+    assert "default: 5.0," in out and "default: 1.95," in out

@@ -18,7 +18,16 @@ def rewrite(text: str, values: dict[str, float]) -> tuple[str, list[str]]:
     for line in text.splitlines(keepends=True):
         m = ROW.match(line)
         if m and m["name"] in values:
-            new, k = DEF.subn(lambda d: d.group(1) + fmt_num(values[m["name"]]), line, count=1)
+            v = values[m["name"]]
+            def sub(d, v=v):   # 数值上没变（含 f32 舍入）就保留原写法，diff 只出真正改了的行
+                old = d.group(0)[len(d.group(1)):]
+                try:
+                    if abs(float(old) - v) <= 1e-6 * max(1.0, abs(v)):
+                        return d.group(0)
+                except ValueError:
+                    pass
+                return d.group(1) + fmt_num(v)
+            new, k = DEF.subn(sub, line, count=1)
             if k:
                 found.add(m["name"])
                 line = new
