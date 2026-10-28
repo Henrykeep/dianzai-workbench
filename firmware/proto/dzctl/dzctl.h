@@ -7,7 +7,8 @@
  *   板 -> 上位机  PARAM_ACK id=参数序号  payload: u8 status, f32 生效值
  *   上位机 -> 板  DATA id=DZCTL_ID_ESTOP len=0   急停（应用必须锁存，只有复位/显式解除才能恢复）
  *   上位机 -> 板  DATA id=DZCTL_ID_CMD   len=1   单字节命令（应用自定义，如 'G' 开始 'S' 停止 'R' 复位）
- *   板 -> 上位机  HEARTBEAT id=0 payload: u32 schema_hash  —— 上位机据此匹配 link_schema.json
+ *   板 -> 上位机  HEARTBEAT id=0 payload: u32 schema_hash [, u32 board_uid]  —— 上位机据此匹配 link_schema.json；
+ *                 board_uid（0.3.0 起）= 芯片唯一 ID 折成 32 位，两块同型号板同时插着时上位机靠它认板；0 = 未知
  * 参数表由 tools/gen_link.py 从 yaml 生成，应用不手写。
  */
 #ifndef DZCTL_H
@@ -18,7 +19,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.2.0"
+#define DZCTL_VERSION "0.3.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 
@@ -51,7 +52,10 @@ bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack);
 /** 是否急停帧。 */
 bool dzctl_is_estop(const dzframe_t *f);
 
-/** 填心跳帧（带 schema 哈希）。 */
+/** 芯片唯一 ID 折成 32 位（端口实现；弱默认返回 0 = 未知）。 */
+uint32_t dzctl_board_uid(void);
+
+/** 填心跳帧（schema 哈希 + 板 ID）。 */
 void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);
 
 /** 上位机链路看门狗：收到上位机 HEARTBEAT（LEN=0）才"布防"，之后超过 timeout_ms 没有任何上位机帧

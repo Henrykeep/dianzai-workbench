@@ -2,6 +2,7 @@
  * @file pal_host.c
  * @brief pal.h 的 PC 仿真实现。资源数量来自生成的 board_gen.h（boards/host-sim/board.yaml）。
  */
+#include <stdlib.h>
 #include <string.h>
 #include "board_gen.h"
 #include "host_sim.h"
@@ -331,3 +332,7 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
     if (!S.spi[id].fn) { memset(rx ? rx : sink, 0xFF, n); return DZ_OK; }   /* MISO 悬空读到 0xFF，和真板一样 */
     return S.spi[id].fn(S.spi[id].ctx, tx, rx ? rx : sink, n);
 }
+
+/* 心跳里的板 ID：仿真板用环境变量 DZ_SIM_UID（测试里模拟“两块同型号板”），没设 = 0 未知 */
+uint32_t dzctl_board_uid(void);
+uint32_t dzctl_board_uid(void) { const char *e = getenv("DZ_SIM_UID"); return e ? (uint32_t)strtoul(e, NULL, 0) : 0u; }

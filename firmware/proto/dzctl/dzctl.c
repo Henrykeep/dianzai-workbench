@@ -74,7 +74,10 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     memset(out, 0, sizeof *out);
     out->kind = DZF_HEARTBEAT; out->seq = seq;
     (void)dzframe_put_u32(out, t ? t->schema_hash : 0u);
+    (void)dzframe_put_u32(out, dzctl_board_uid());
 }
+
+DZ_WEAK uint32_t dzctl_board_uid(void) { return 0u; }
 
 void dzctl_wd_init(dzctl_wd_t *w, uint32_t timeout_ms) { w->last_ms = 0u; w->timeout_ms = timeout_ms; w->armed = false; }
 

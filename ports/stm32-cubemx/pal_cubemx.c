@@ -161,6 +161,10 @@ uint32_t pal_irq_save(void) { uint32_t p = __get_PRIMASK(); __disable_irq(); ret
 void pal_irq_restore(uint32_t s) { if (!s) __enable_irq(); }
 
 /* ---------- 时间：HAL_GetTick 提供毫秒，微秒部分读 HAL 时基的计数 ---------- */
+/* 心跳里的板 ID：96 位 UID 折成 32 位（HAL_GetUIDw* 在 F1/F4 HAL 里都有） */
+uint32_t dzctl_board_uid(void);   /* 声明在 dzctl.h；端口不依赖 proto 层，这里只覆盖弱定义 */
+uint32_t dzctl_board_uid(void) { uint32_t u = HAL_GetUIDw0() ^ HAL_GetUIDw1() ^ HAL_GetUIDw2(); return u ? u : 1u; }
+
 uint32_t pal_millis(void) { return HAL_GetTick(); }
 #ifdef DZ_CM_TIM_TIMEBASE
 /* HAL 时基 = TIMx（由 board_gen.c 提供句柄）：CubeMX 把它配成 1 ms 更新中断（HAL_InitTick），
