@@ -226,6 +226,7 @@ check:
 	$(MAKE) ioc-check
 	$(MAKE) -C examples/2026H_ball/tests
 	cd host/python && $(PY) -m dzlink.test_dzlink
+	$(PY) host/maixcam/test_ball_sender.py
 
 fetch:
 	tools/fetch_stm32f4.sh

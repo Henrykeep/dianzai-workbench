@@ -1,7 +1,8 @@
 name: 2026H_ball
-version: 0.1.0
+version: 0.2.0
+# 单轴球杆：QD4310 摆杆（BEAM 串口）+ MaixCAM2 视觉（VISION 串口）+ 两轮底盘。LINK（遥测/命令）可选：板上有就用。
 requires:
-  gpio: [LED, MOTOR_A_IN1, MOTOR_A_IN2]
-  pwm: [MOTOR_A, SERVO_X, SERVO_Y]
-  encoder: [MOTOR_A]
-  uart: [LINK, VISION]
+  gpio: [MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2]
+  pwm: [MOTOR_A, MOTOR_B]
+  encoder: [MOTOR_A, MOTOR_B]
+  uart: [BEAM, VISION]

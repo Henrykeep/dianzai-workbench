@@ -1,71 +1,91 @@
-# 2026 H 题参考实例（第一个用框架描述的题目，不是框架的一部分）。
-# 子系统划分依据用户的描述：底盘、钢珠控制、视觉。具体测试项/指标请以官方题目原文为准，
-# 下面的 tests 只是占位示例（标了 TODO），不要当作题目要求。
+# 2026 H 题参考实例：单轴球杆（钢珠在摆杆上，QD4310 无刷电机控制摆杆角度）+ 两轮底盘 + MaixCAM2 视觉。
+# 结构与参数来自用户 P1（Bldc，F407）/P2（Car_Mode1021，F103）两份工程的阅读整理（docs/12）。
+# ⚠ 所有数值参数：**来自非最终版比赛代码，未验证**（P1 为主，α-β/超前/摆杆零点限位来自 P2），上车前逐项实测。
+# 具体测试项请以官方题目原文为准；tests 只是占位示例。
 schema_version: 1
 name: 2026H_ball
-description: 底盘 + 钢珠控制 + 视觉（Jetson Nano 识别，经 UART 发给主控）
+description: 两轮底盘 + 单轴球杆（QD4310 摆杆）+ 视觉（MaixCAM2，dzframe 二进制帧）
 
 boards:
-  main: stm32f407-skystar     # 主控；子系统都跑在 main 上
-  vision_cpu: jetson-nano-vision   # 协处理板（kind: coprocessor）：不跑本框架，经 VISION 串口发 dzframe 帧；自动生成 cp_vision_cpu.{h,c}
+  main: stm32f407-bldc-freertos-cubemx   # P1 的 F407 小车（UART4=BEAM、USART2=VISION）；换板只改 BOARD=
+  vision_cpu: maixcam2-vision            # 协处理板：经 VISION 串口发 dzframe 帧；自动生成 cp_vision_cpu.{h,c}
 
 state:
-  io_in:                       # 传感器原始输入，由 io 胶水层写（读硬件），子系统只读
+  io_in:
     owner: io
     fields:
-      - { name: wheel_rps,  type: float,  unit: 转/秒, desc: 底盘轮速（编码器） }
-      - { name: cam_x_px,   type: int16,  unit: px, desc: 视觉帧中钢珠 x }
-      - { name: cam_y_px,   type: int16,  unit: px, desc: 视觉帧中钢珠 y }
-      - { name: cam_found,  type: bool,   desc: 本帧是否识别到 }
-      - { name: cam_seq,    type: uint32, desc: 收到的有效帧计数 }
-      - { name: cam_rx_ms,  type: uint32, unit: ms, desc: 最近一帧到达时间 }
-  coord:                       # 协调器下发的目标，由 coord 的 pre_step 钩子写
+      - { name: wheel_a_mps, type: float, unit: m/s, desc: 左轮线速度（编码器，左右对应关系未验证） }
+      - { name: wheel_b_mps, type: float, unit: m/s, desc: 右轮线速度 }
+      - { name: cam_x_px,    type: int16, unit: px, desc: 钢珠相对画面中心 x }
+      - { name: cam_flags,   type: uint8, desc: 视觉帧 flags（bit0 有效 bit1 预测 bit2 标定过期 bit3 识别到） }
+      - { name: cam_seq,     type: uint32, desc: 收到的有效帧计数 }
+      - { name: cam_rx_ms,   type: uint32, unit: ms, desc: 最近一帧到达本机时刻 }
+      - { name: beam_online, type: bool, desc: QD4310 链路在线（最近 100 ms 内有回包） }
+      - { name: beam_fb_deg, type: float, unit: °, desc: QD4310 回报的绝对角 }
+  coord:
     owner: coord
     fields:
-      - { name: test_id,        type: uint8 }
-      - { name: chassis_sp_rps, type: float, unit: 转/秒 }
-      - { name: ball_sp_x_mm,   type: float, unit: mm }
-      - { name: ball_sp_y_mm,   type: float, unit: mm }
+      - { name: test_id,     type: uint8 }
+      - { name: chassis_mps, type: float, unit: m/s }
+      - { name: ball_sp_px,  type: float, unit: px, desc: 钢珠目标位置（相对画面中心） }
   vision_out:
     owner: vision
     fields:
-      - { name: x_mm,   type: float, unit: mm }
-      - { name: y_mm,   type: float, unit: mm }
-      - { name: valid,  type: bool, desc: 有新鲜且识别到的数据 }
-      - { name: age_ms, type: uint32 }
+      - { name: new_sample, type: bool, desc: 本周期有新的有效样本 }
+      - { name: x_px,       type: float, unit: px }
+      - { name: t_ms,       type: uint32, unit: ms, desc: 样本到达时刻 }
   chassis_out:
     owner: chassis
     fields:
-      - { name: motor_cmd, type: float, desc: -1..1 }
-      - { name: accel_rps2, type: float, desc: 底盘加速度估计，给钢珠控制做前馈 }
-  ball_out:
+      - { name: cmd_a, type: float, desc: -1..1 }
+      - { name: cmd_b, type: float, desc: -1..1 }
+      - { name: accel_mps2, type: float, desc: 底盘加速度估计（滤波后），给钢珠环前馈 }
+  beam_out:
     owner: ball
     fields:
-      - { name: servo_x_us, type: uint16 }
-      - { name: servo_y_us, type: uint16 }
+      - { name: angle_deg,  type: float, unit: °, desc: 相对水平的摆杆角 }
+      - { name: target_abs_deg, type: float, unit: °, desc: 下发给 QD4310 的绝对角（零点+角度，已硬限位） }
+      - { name: state, type: uint8, desc: ball_beam_state_t }
 
 subsystems:
   - { name: vision,  board: main, period_ms: 5,  owns: [vision_out],  reads: [io_in] }
-  - { name: chassis, board: main, period_ms: 1,  owns: [chassis_out], reads: [io_in, coord] }
-  - { name: ball,    board: main, period_ms: 10, owns: [ball_out],    reads: [vision_out, coord, chassis_out] }
+  - { name: chassis, board: main, period_ms: 10, owns: [chassis_out], reads: [io_in, coord] }
+  - { name: ball,    board: main, period_ms: 10, owns: [beam_out],    reads: [vision_out, coord, chassis_out] }
 
 params:
-  - { name: chassis_kp, type: float, default: 0.08 }
-  - { name: chassis_ki, type: float, default: 1.5 }
-  - { name: ball_kp,    type: float, default: 2.0, desc: us/mm }
-  - { name: ball_kd,    type: float, default: 0.6, desc: us/(mm/s) }
-  - { name: ball_ff,    type: float, default: 0.0, desc: 底盘加速度前馈 us/(rps²)，0 关闭 }
-  - { name: mm_per_px,  type: float, default: 0.5, desc: TODO(用户) 按相机标定填写 }
-  - { name: cam_cx_px,  type: float, default: 320 }
-  - { name: cam_cy_px,  type: float, default: 240 }
-  - { name: vision_timeout_ms, type: uint32, default: 100 }
-  - { name: servo_mid_us, type: uint16, default: 1500 }
-  - { name: servo_span_us, type: uint16, default: 400, desc: 中位 ± 最大偏移 }
+  # 底盘（P1：1456 counts/rev，周长 0.2041 m；是否 4 倍频未知——用 docs/12 的 10 圈标定确认）
+  - { name: counts_per_rev, type: float, default: 1456, desc: 来自非最终版比赛代码，未验证 }
+  - { name: wheel_circ_m,   type: float, default: 0.2041, desc: 来自非最终版比赛代码，未验证 }
+  - { name: chassis_kp,     type: float, default: 0.8, desc: "占位：P1 轮速 PID 输出是 CCR，量纲不同不能直接搬（TODO 实调）" }
+  - { name: chassis_ki,     type: float, default: 4.0, desc: 占位（TODO 实调） }
+  # 钢珠环（P1 普通档；α-β 与超前来自 P2）
+  - { name: bb_alpha,   type: float, default: 0.55, desc: P2，未验证 }
+  - { name: bb_beta,    type: float, default: 0.20, desc: P2，未验证 }
+  - { name: bb_lead_s,  type: float, default: 0.07, desc: P2 超前 70 ms，未验证 }
+  - { name: pos_k,      type: float, default: 0.72, desc: "(px/s)/px，P1，未验证" }
+  - { name: vel_max,    type: float, default: 320,  desc: px/s，P1，未验证 }
+  - { name: vel_k,      type: float, default: 0.016, desc: "°/(px/s)，P1，未验证" }
+  - { name: ball_ki,    type: float, default: 0.055, desc: P1，单位按 °/(px·s) 解读（P1 代码单位未写明，未验证） }
+  - { name: i_zone_px,  type: float, default: 55, desc: P1，未验证 }
+  - { name: i_max_deg,  type: float, default: 2.5, desc: P1，未验证 }
+  - { name: i_decay,    type: float, default: 0.5, desc: 误差变号时积分衰减系数（P1 衰减比例未整理，TODO 核对） }
+  - { name: angle_max_deg, type: float, default: 5.5, desc: P1，未验证 }
+  - { name: rate_max_dps,  type: float, default: 220, desc: P1，未验证 }
+  - { name: hold_ms,    type: uint32, default: 120, desc: P1 预测保持，未验证 }
+  - { name: vision_timeout_ms, type: uint32, default: 600, desc: P1，未验证 }
+  - { name: beam_dir,   type: float, default: 1.0, desc: "TODO(用户)：+1/-1，θ>0 应使球向 +x 滚（P2 的 BEAM_DIR 也标着待确认）" }
+  # 摆杆机械（P2 那台机械的值，换机械必须重测）
+  - { name: beam_zero_deg, type: float, default: 82.02, desc: P2 电机绝对角零点，只对那台机械有效，未验证 }
+  - { name: beam_min_deg,  type: float, default: 61, desc: P2 硬限位，未验证 }
+  - { name: beam_max_deg,  type: float, default: 105, desc: P2 硬限位，未验证 }
+  # 底盘加速度前馈（P1：θ ≈ a/g·57.3·1.30，上限 5°）
+  - { name: ff_gain,    type: float, default: 0.0, desc: 0 关闭；P1 为 1.30（快档开启），未验证 }
+  - { name: ff_max_deg, type: float, default: 5.0, desc: P1，未验证 }
 
 profiles:
-  - { name: base, desc: 默认 }
-  - { name: moving, desc: 底盘运动时加前馈, set: { ball_ff: 30.0, ball_kd: 0.8 } }
+  - { name: base, desc: P1 普通档 }
+  - { name: fast, desc: P1 快档 + 前馈, set: { pos_k: 0.86, vel_max: 420, vel_k: 0.018, angle_max_deg: 6.5, rate_max_dps: 320, ff_gain: 1.30 } }
 
 tests:      # TODO(用户)：按官方题目原文改写小题、限时
-  - { id: 1, name: 示例-钢珠静止定位, profile: base, time_limit_s: 30 }
-  - { id: 2, name: 示例-底盘运动中保持钢珠, profile: moving, time_limit_s: 60 }
+  - { id: 1, name: 示例-静止平衡钢珠, profile: base, time_limit_s: 30 }
+  - { id: 2, name: 示例-行驶中保持钢珠, profile: fast, time_limit_s: 60 }

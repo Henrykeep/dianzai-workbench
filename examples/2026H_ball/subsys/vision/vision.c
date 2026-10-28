@@ -1,37 +1,41 @@
 /**
- * 子系统 vision：把 io_in 里的原始像素坐标变成以平台中心为原点的毫米坐标，并判断数据是否新鲜。
+ * 子系统 vision：从 io_in 取出“新到达且有效”的视觉样本交给钢珠环。像素坐标已由相机给成相对画面中心。
  * 读：io_in   写：vision_out
+ * flags：bit0 有效 才算样本；bit2 标定过期只做提示（不丢弃）。
  */
 #include "project_gen.h"
+
+static uint32_t s_last_seq;
 
 static dz_err_t vision_init(void *state, const void *params)
 {
     shared_state_t *st = state; (void)params;
     st->vision_out = (st_vision_out_t){0};
+    s_last_seq = st->io_in.cam_seq;
     return DZ_OK;
 }
 
 static void vision_step(void *state, const void *params, uint32_t now_ms)
 {
-    shared_state_t *st = state; const params_t *p = params;
-    uint32_t age = st->io_in.cam_seq ? now_ms - st->io_in.cam_rx_ms : UINT32_MAX;
-    st->vision_out.age_ms = age;
-    st->vision_out.valid = st->io_in.cam_seq && st->io_in.cam_found && age <= p->vision_timeout_ms;
-    if (st->vision_out.valid) {
-        st->vision_out.x_mm = ((float)st->io_in.cam_x_px - p->cam_cx_px) * p->mm_per_px;
-        st->vision_out.y_mm = ((float)st->io_in.cam_y_px - p->cam_cy_px) * p->mm_per_px;
-    }
+    shared_state_t *st = state; (void)params; (void)now_ms;
+    st->vision_out.new_sample = false;
+    if (st->io_in.cam_seq == s_last_seq) return;
+    s_last_seq = st->io_in.cam_seq;
+    if (!(st->io_in.cam_flags & 0x01u)) return;                 /* 无效帧：不更新，钢珠环靠超时处理 */
+    st->vision_out.new_sample = true;
+    st->vision_out.x_px = (float)st->io_in.cam_x_px;
+    st->vision_out.t_ms = st->io_in.cam_rx_ms;
 }
 
 static dz_err_t vision_selftest(void)
 {
     shared_state_t st = {0};
-    params_t p = { .mm_per_px = 0.5f, .cam_cx_px = 320, .cam_cy_px = 240, .vision_timeout_ms = 100 };
-    st.io_in = (st_io_in_t){ .cam_x_px = 340, .cam_y_px = 240, .cam_found = true, .cam_seq = 1, .cam_rx_ms = 0 };
-    vision_step(&st, &p, 50);
-    if (!st.vision_out.valid || st.vision_out.x_mm < 9.99f || st.vision_out.x_mm > 10.01f) return DZ_EFAIL;
-    vision_step(&st, &p, 500);
-    return st.vision_out.valid ? DZ_EFAIL : DZ_OK;
+    vision_init(&st, 0);
+    st.io_in = (st_io_in_t){ .cam_x_px = -20, .cam_flags = 0x09, .cam_seq = 1, .cam_rx_ms = 7 };
+    vision_step(&st, 0, 8);
+    if (!st.vision_out.new_sample || st.vision_out.x_px != -20.0f || st.vision_out.t_ms != 7u) return DZ_EFAIL;
+    vision_step(&st, 0, 9);
+    return st.vision_out.new_sample ? DZ_EFAIL : DZ_OK;
 }
 
 const subsys_t SUBSYS_VISION = { "vision", PERIOD_MS_VISION, true, vision_init, vision_step, 0, vision_selftest };

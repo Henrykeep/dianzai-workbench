@@ -150,6 +150,13 @@ resources:
       baud: 115200
       verified: false
       note: 建议接线：Jetson Nano（视觉/图传协处理器）的 UART；Jetson 为 3.3V 电平，共地即可，切勿接 5V TTL
+    - name: BEAM
+      instance: UART4
+      tx: PC10
+      rx: PC11
+      baud: 921600
+      verified: false
+      note: 建议接线：QD4310 摆杆驱动器（2026H_ball），3.3V TTL
 
   timer:
     - name: CTRL

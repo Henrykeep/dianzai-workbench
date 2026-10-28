@@ -27,6 +27,7 @@ resources:
   uart:
     - { name: LINK, instance: SIMUART0, tx: SIM7, rx: SIM8, baud: 460800 }
     - { name: VISION, instance: SIMUART1, tx: SIM12, rx: SIM13, baud: 115200 }
+    - { name: BEAM, instance: SIMUART2, tx: SIM19, rx: SIM20, baud: 921600 }
   timer:
     - { name: CTRL, instance: SIMTIM2 }
   adc:

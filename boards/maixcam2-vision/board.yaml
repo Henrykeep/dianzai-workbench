@@ -1,0 +1,37 @@
+# Sipeed MaixCAM2 视觉协处理板（kind: coprocessor）——用户两份 2026H 工程实际用的相机。
+# 不跑本框架 C 代码；只描述它与主控之间的 dzframe/1 通道。帧格式：A5 5A VER KIND ID SEQ LEN payload CRC16-CCITT-FALSE。
+# 发送端：host/maixcam/ball_sender.py（MaixPy，依赖 host/python/dzlink，可拷到相机上运行）。
+# 取代 P1 的 AA55 私有帧与 P2 的 ASCII 行协议（两者字段在 flags 里保留了 P1 的语义）。
+schema_version: 1
+name: maixcam2-vision
+kind: coprocessor
+vendor: Sipeed
+description: MaixCAM2 识别钢珠，经串口用 dzframe 二进制帧（CRC16）发相对画面中心的 x 像素
+
+coprocessor:
+  device: Sipeed MaixCAM2
+  class: linux_vision
+  link:
+    transport: uart
+    protocol: dzframe/1
+    baud: 115200
+    logic_level_v: 3.3          # 【未验证】MaixCAM2 排针 UART 电平，接线前用万用表确认
+    host_resource: VISION
+  channels:
+    - id: 1
+      name: ball
+      dir: to_host
+      rate_hz: TODO             # 取决于相机帧率与算法耗时，实测后填写（P1 约 25 Hz 级，未测）
+      fields:
+        - { name: flags,  type: u8,  note: "bit0 有效 bit1 预测值 bit2 标定过期 bit3 识别到球（沿用 P1 语义）" }
+        - { name: x_px,   type: i16, unit: px, note: 相对画面中心，右为正 }
+        - { name: cam_ms, type: u32, unit: ms, note: 相机曝光时刻（相机本地时钟，用于诊断延迟） }
+  params:
+    - { id: 1, name: thresh, type: u8, min: 0, max: 255, default: 128, note: 示例：二值化阈值，按你的算法替换 }
+  linux:
+    device_path: TODO           # MaixCAM2 上的串口设备名，以 MaixPy 文档为准
+    python: python3
+    host: TODO
+    user: TODO
+    deploy: { method: ssh, remote_dir: /root/dz_vision, entry: ball_sender.py }
+    log: { method: journalctl }
