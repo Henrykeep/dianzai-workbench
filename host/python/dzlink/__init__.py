@@ -10,7 +10,10 @@
 from .protocol import DATA, PARAM_SET, PARAM_ACK, HEARTBEAT, MAX_PAYLOAD, Parser, crc16, encode, pack_fields, unpack_fields
 from .channels import Link
 from .transport import SerialTransport, UdpTransport, LoopbackTransport
+from .sender import Sender, MaixUartTransport
+from .autodetect import detect_platform, find_serial
 
 __all__ = ["DATA", "PARAM_SET", "PARAM_ACK", "HEARTBEAT", "MAX_PAYLOAD", "Parser", "crc16", "encode",
-           "pack_fields", "unpack_fields", "Link", "SerialTransport", "UdpTransport", "LoopbackTransport"]
-__version__ = "1.0.0"
+           "pack_fields", "unpack_fields", "Link", "SerialTransport", "UdpTransport", "LoopbackTransport",
+           "Sender", "MaixUartTransport", "detect_platform", "find_serial"]
+__version__ = "1.1.0"

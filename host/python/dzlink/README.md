@@ -8,3 +8,7 @@
 
 ## 参考来源
 见 docs/08-协处理板与软核.md（MAVLink 帧结构、CRC 目录）。
+
+## 1.1.0：发送端与串口自动探测
+`sender.py`（Sender：按通道打包、seq、截断、限速、心跳；MaixCAM 自动用 maix.uart）、`autodetect.py`（平台识别 + 心跳探测选口）。
+K230（MicroPython）用 `host/k230/dzsend.py`。用法见 docs/22-协处理器发送库.md。

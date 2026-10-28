@@ -280,6 +280,8 @@ check:
 	$(PY) host/maixcam/test_ball_sender.py
 	$(PY) host/maixcam/test_ball_tracker.py
 	cd host/python && $(PY) -m dzlink.test_latency
+	cd host/python && $(PY) -m dzlink.test_sender
+	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && node_modules/.bin/esbuild tests/decimate.test.ts --bundle --platform=node --log-level=error | node; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
 
 fetch:
