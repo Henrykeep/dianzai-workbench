@@ -76,6 +76,22 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     (void)dzframe_put_u32(out, t ? t->schema_hash : 0u);
 }
 
+void dzctl_wd_init(dzctl_wd_t *w, uint32_t timeout_ms) { w->last_ms = 0u; w->timeout_ms = timeout_ms; w->armed = false; }
+
+void dzctl_wd_feed(dzctl_wd_t *w, const dzframe_t *f, uint32_t now_ms)
+{
+    if (!w || !f) return;
+    if (f->kind == DZF_HEARTBEAT && f->len == 0u) w->armed = true;
+    w->last_ms = now_ms;
+}
+
+bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms)
+{
+    if (!w || !w->armed || w->timeout_ms == 0u || (uint32_t)(now_ms - w->last_ms) <= w->timeout_ms) return false;
+    w->armed = false;
+    return true;
+}
+
 int dzctl_selftest(void)
 {
     typedef struct { float k; uint16_t n; bool on; } p_t;
@@ -91,5 +107,17 @@ int dzctl_selftest(void)
     memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 0;
     fail += !dzctl_handle(&t, &in, &ack) || ack.kind != DZF_PARAM_ACK || dzframe_get_u8(&ack, 0) != DZCTL_OK
             || dzframe_get_f32(&ack, 1) != 1.0f;
+    {   /* 看门狗：未布防不触发；心跳布防后超时触发一次并撤防 */
+        dzctl_wd_t w; dzframe_t hb, d2;
+        memset(&hb, 0, sizeof hb); hb.kind = DZF_HEARTBEAT;
+        memset(&d2, 0, sizeof d2); d2.kind = DZF_DATA;
+        dzctl_wd_init(&w, 100u);
+        dzctl_wd_feed(&w, &d2, 0u);
+        fail += dzctl_wd_expired(&w, 1000u);
+        dzctl_wd_feed(&w, &hb, 1000u); dzctl_wd_feed(&w, &d2, 1050u);
+        fail += dzctl_wd_expired(&w, 1150u);
+        fail += !dzctl_wd_expired(&w, 1151u);
+        fail += dzctl_wd_expired(&w, 5000u);
+    }
     return fail;
 }

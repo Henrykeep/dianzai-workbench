@@ -407,10 +407,16 @@
    "dzctl.h: bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack);",
    "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
    "dzctl.h: void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);",
+   "dzctl.h: typedef struct { uint32_t last_ms, timeout_ms;",
+   "dzctl.h: bool armed;",
+   "dzctl.h: } dzctl_wd_t;",
+   "dzctl.h: void dzctl_wd_init(dzctl_wd_t *w, uint32_t timeout_ms);",
+   "dzctl.h: void dzctl_wd_feed(dzctl_wd_t *w, const dzframe_t *f, uint32_t now_ms);",
+   "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "dd32a43530a07400",
-  "version": "0.1.0"
+  "hash": "b9b8b094fec0c677",
+  "version": "0.2.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

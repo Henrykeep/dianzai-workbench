@@ -34,6 +34,7 @@ static coord_t COORD;
 static motor_dc_t MA, MB;
 static encoder_t EA, EB;
 static dzframe_parser_t VL;
+static dzctl_wd_t WD;
 static qd4310_t BEAM;
 #ifdef RES_UART_LINK
 static dzframe_parser_t LL;   /* LINK 上位机帧 */
@@ -63,6 +64,7 @@ dz_err_t app_init(void)
     dzframe_parser_init(&VL);
 #ifdef RES_UART_LINK
     dzframe_parser_init(&LL);
+    dzctl_wd_init(&WD, 1000u);   /* 上位机心跳看门狗（侧车每 250 ms 发心跳；脱机比赛不布防） */
 #endif
     if ((e = qd4310_init(&BEAM, RES_UART_BEAM, BEAM_MOTOR_ID)) != DZ_OK) return e;
     if ((e = subsys_sched_init(&SCHED, g_project_subsys, PROJECT_N_SUBSYS, &S, &g_project_params[0])) != DZ_OK) return e;
@@ -99,9 +101,11 @@ static void read_link(void)
     uint8_t buf[32]; uint16_t got = 0, i;
     dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_project_params[COORD.profile_idx]);
+    if (dzctl_wd_expired(&WD, pal_millis())) coord_event(&COORD, COORD_EV_ESTOP);   /* 急停路径负责输出归零 */
     if (pal_uart_read(RES_UART_LINK, buf, sizeof buf, &got) != DZ_OK) return;
     for (i = 0; i < got; i++) {
         if (!dzframe_feed(&LL, buf[i], &f)) continue;
+        dzctl_wd_feed(&WD, &f, pal_millis());
         if (dzctl_is_estop(&f)) coord_event(&COORD, COORD_EV_ESTOP);
         else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);
         else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) handle_cmd(&f);

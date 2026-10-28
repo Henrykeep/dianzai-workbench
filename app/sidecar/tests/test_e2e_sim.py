@@ -124,3 +124,28 @@ def test_tune_analyze_on_sim_step(home, tmp_path):
         assert r["hints"] and all("text" in h for h in r["hints"])
     finally:
         s.disconnect()
+
+
+def test_host_heartbeat_watchdog_latches_estop(home):
+    """侧车心跳停了（模拟崩溃）> 1 s：car_2wd 固件输出归零并锁存急停；R 解除后才恢复。"""
+    import struct
+    s = Session()
+    s.connect("sim:car_2wd")
+    try:
+        assert wait(lambda: s.schema)
+        time.sleep(0.6)                                   # 至少一帧上位机心跳 -> 看门狗布防
+        sp = lambda: s.window(0.1)[-1][1]["sp_a"] if s.window(0.1) else None  # noqa: E731
+        s.send_data(1, struct.pack("<ff", 0.3, 0.0))
+        assert wait(lambda: (sp() or 0) > 0.5), "命令应生效"
+        s.host_hb = False
+        time.sleep(1.6)                                   # cmd_timeout 也会停车，所以下面再发命令验证"锁存"
+        s.send_data(1, struct.pack("<ff", 0.3, 0.0))
+        time.sleep(0.3)
+        assert sp() == 0.0, "看门狗触发后应锁存急停，命令被拒"
+        s.host_hb = True
+        s.cmd("R")
+        time.sleep(0.1)
+        s.send_data(1, struct.pack("<ff", 0.3, 0.0))
+        assert wait(lambda: (sp() or 0) > 0.5), "R 解除后恢复"
+    finally:
+        s.disconnect()

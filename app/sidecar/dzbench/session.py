@@ -44,6 +44,7 @@ class Session:
         self.lock = threading.RLock()
         self.history_s = history_s
         self._open = open_transport          # 测试可注入
+        self.host_hb = True                  # 测试用开关：False 模拟侧车卡死
         self._gen = 0                        # 每次 connect/disconnect +1，用来取消旧的自动重连
         self.auto_reconnect = True
         self.on_sample: Callable[[dict], None] | None = None   # 触发发送用
@@ -102,7 +103,26 @@ class Session:
             self._gen += 1
             gen = self._gen
         tr.start(self._on_bytes, lambda msg: self._on_transport_error(msg, gen))
+        if not isinstance(tr, ReplayTransport):
+            threading.Thread(target=self._host_heartbeat, args=(gen,), daemon=True).start()
         return {"port": port, "baud": baud, "note": note}
+
+    HOST_HB_PERIOD_S = 0.25   # 固件 dzctl_wd 超时 1000 ms：侧车崩溃/拔线 -> 板子输出归零并锁存急停
+
+    def _host_heartbeat(self, gen: int) -> None:
+        """认出工作台固件（收到带 schema 的心跳）后，每 250 ms 发一帧上位机心跳（HEARTBEAT, LEN=0）。
+        非工作台设备（AT 模块、printf）从不绑定 schema，就不会收到这些字节。急停锁定期间照发（心跳不驱动执行器）。"""
+        while True:
+            time.sleep(self.HOST_HB_PERIOD_S)
+            with self.lock:
+                if gen != self._gen and not self.reconnecting:
+                    return
+                bound = self.schema_hash is not None and self.tr is not None
+            if bound and self.host_hb:
+                try:
+                    self._send(HEARTBEAT, 0, b"")
+                except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
+                    pass
 
     def disconnect(self) -> None:
         with self.lock:

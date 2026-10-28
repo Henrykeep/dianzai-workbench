@@ -42,6 +42,7 @@ static volatile uint32_t s_ctrl_errors;
 static drive_params_t s_params = { .wheel_diam_m = 0.065f, .track_m = 0.15f };   /* 其余字段来自 g_link_params */
 static volatile bool s_estop;
 static volatile bool s_gains_dirty;
+static dzctl_wd_t s_wd;   /* 上位机心跳看门狗：调参时上位机崩溃/拔线 -> 输出归零并锁存急停 */
 
 /* 上位机改了参数：同步到 drive_plan 参数；PID 增益交给控制中断在自己的节拍里换（不在两次 update 之间撕裂）。 */
 static void apply_params(void)
@@ -100,6 +101,7 @@ dz_err_t app_init(void)
     if (subsys_sched_selftest(&s_sched) >= 0) return DZ_EIO;
     subsys_sched_set_mode(&s_sched, SUBSYS_MODE_RUN);
     dzframe_parser_init(&s_rx);
+    dzctl_wd_init(&s_wd, 1000u);   /* 侧车每 250 ms 发一次心跳 */
     return pal_timer_start(RES_TIMER_CTRL, CTRL_PERIOD_US, ctrl_isr, 0);
 }
 
@@ -118,6 +120,7 @@ static void handle_rx(uint32_t now)
     dzctl_table_t t = link_param_table(&g_link_params);
     for (uint16_t i = 0; i < got; i++) {
         if (!dzframe_feed(&s_rx, buf[i], &f)) continue;
+        dzctl_wd_feed(&s_wd, &f, now);
         if (dzctl_is_estop(&f)) {
             s_estop = true;
             s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f;
@@ -140,6 +143,7 @@ void app_loop(void)
     static uint8_t seq;
     uint32_t now = pal_millis();
     handle_rx(now);
+    if (dzctl_wd_expired(&s_wd, now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
     subsys_sched_poll(&s_sched, now);
     uint32_t st = pal_irq_save();
     s_sp[0] = s_state.sp_a_rps; s_sp[1] = s_state.sp_b_rps;

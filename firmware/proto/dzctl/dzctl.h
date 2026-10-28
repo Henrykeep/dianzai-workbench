@@ -18,7 +18,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.1.0"
+#define DZCTL_VERSION "0.2.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 
@@ -53,6 +53,15 @@ bool dzctl_is_estop(const dzframe_t *f);
 
 /** 填心跳帧（带 schema 哈希）。 */
 void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);
+
+/** 上位机链路看门狗：收到上位机 HEARTBEAT（LEN=0）才"布防"，之后超过 timeout_ms 没有任何上位机帧
+ *  -> dzctl_wd_expired() 返回一次 true（应用必须：输出归零 + 锁存急停）并撤防。
+ *  没连电脑跑比赛时上位机从不发心跳，看门狗不布防，不影响脱机运行。未上板验证。 */
+typedef struct { uint32_t last_ms, timeout_ms; bool armed; } dzctl_wd_t;
+void dzctl_wd_init(dzctl_wd_t *w, uint32_t timeout_ms);
+/** 每收到一帧完整的上位机帧调用一次。 */
+void dzctl_wd_feed(dzctl_wd_t *w, const dzframe_t *f, uint32_t now_ms);
+bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);
 
 /** 自检：返回失败项数。 */
 int dzctl_selftest(void);
