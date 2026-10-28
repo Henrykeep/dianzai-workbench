@@ -1,0 +1,14 @@
+import { minmax, windowSlice } from "../src/decimate.ts";
+const t = Array.from({length: 10000}, (_, i) => i / 1000), y = t.map((_, i) => i === 5003 ? 99 : Math.sin(i / 50));
+const [a, b] = windowSlice(t, 2, 8); if (t[a] > 2 || t[b - 1] < 8) throw "slice";
+const [ot, [oy]] = minmax(t, [y], a, b, 2, 8, 300);
+if (ot.length > 600 + 4 || ot.length !== oy.length) throw "len " + ot.length;
+if (Math.max(...oy) !== 99) throw "spike lost";
+for (let i = 1; i < ot.length; i++) if (ot[i] < ot[i - 1]) throw "order";
+const [st] = minmax(t, [y], 0, 100, 0, 0.1, 300); if (st.length !== 100) throw "small";
+console.log("decimate ok", ot.length);
+import { matchNames } from "../src/names.ts";
+const m = matchNames("bb_* err", ["bb_x", "bb_v", "err", "u", "x"]);
+if (m.join() !== "true,true,true,false,false") throw "names " + m;
+if (matchNames("", ["a","b","c","d","e"]).join() !== "true,true,true,true,false") throw "names default";
+console.log("names ok");

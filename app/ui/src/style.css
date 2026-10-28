@@ -162,3 +162,5 @@ select:disabled{opacity:.6}
 #snd input#snd-ms { flex: 0 0 5em; }
 #snd-presets { flex-wrap: wrap; gap: 4px; min-height: 0; }
 #snd-presets .btn.on { color: var(--accent, #e8590c); }
+
+#chan-q { width: calc(100% - 16px); margin: 4px 8px; padding: 3px 6px; font-size: 11px; background: var(--bg-2, transparent); color: inherit; border: 1px solid var(--grid-2); border-radius: 3px; }

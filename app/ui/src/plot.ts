@@ -1,6 +1,7 @@
 // uPlot 封装：环形缓冲（最多 30 s），按窗口跟随；SerialPlot/VOFA+ 式“开箱即看”，PlotJuggler 式通道开关
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
+import { minmax, windowSlice } from "./decimate";
 
 const KEEP_S = 32;
 const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -53,9 +54,12 @@ export class Plot {
   redraw() {
     if (!this.u) return;
     this.dirty = false;
-    const tEnd = this.t.length ? this.t[this.t.length - 1] : this.win;
+    const tEnd = this.t.length ? this.t[this.t.length - 1] : this.win, t0 = tEnd - this.win;
+    // 只送窗口内的数据，且按像素列做 min/max 抽稀：30 s × 1 kHz 也不卡，尖峰不丢
+    const [a, b] = windowSlice(this.t, t0, tEnd);
+    const [dt, dy] = minmax(this.t, this.ys, a, b, t0, tEnd, Math.round(this.u.bbox.width / devicePixelRatio) || 800);
     this.u.batch(() => {
-      this.u!.setData([this.t, ...this.ys] as any, false);
+      this.u!.setData([dt, ...dy] as any, false);
       this.u!.setScale("x", { min: tEnd - this.win, max: tEnd });
     });
   }

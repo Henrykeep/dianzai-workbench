@@ -6,6 +6,7 @@ import "./tokens.css";
 import "./style.css";
 import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
+import { matchNames } from "./names";
 import { AGENT_IDLE, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
@@ -120,6 +121,13 @@ function renderChans() {
     const i = +el.dataset.i!; S.visible[i] = !S.visible[i]; el.classList.toggle("on", S.visible[i]); plot.show(i, S.visible[i]);
   });
 }
+// 按名字画：输入 "bb_* err" 回车，只显示匹配的通道；空回车恢复默认前 4 路
+$<HTMLInputElement>("chan-q").onkeydown = e => {
+  if (e.key !== "Enter") return;
+  e.stopPropagation();
+  S.visible = matchNames((e.target as HTMLInputElement).value, S.plotted.map(f => f.name));
+  S.visible.forEach((on, i) => plot.show(i, on)); renderChans();
+};
 setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
   S.plotted.forEach((f, i) => { const el = document.getElementById(`cv-${i}`); if (el) el.textContent = fmt(plot.last(i), f); });
   S.enums.forEach(f => {
