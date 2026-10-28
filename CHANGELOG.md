@@ -6,6 +6,10 @@
 
 ## [未发布]
 
+### 编码器 1.1.0
+- `firmware/common/dz_wrap.h`：16/32 位计数回绕差分，MSPM0 PAL 改用它，有主机测试。
+- `encoder_cfg_t.window_n`：滑动窗口测速（M 法加长窗口），适合低 PPR + 高频控制。真 M/T 法需要边沿捕获，**未实现**。实板**未测**。
+
 ### 调参实验
 - experiment.py：相对基线打分 + 权重模板（balanced/conservative/actuator）、四段正负阶跃 + 不对称提示、稳态原因码、分阶段 P→I→D（无 LLM 默认）、开环 plant_stable 门禁、群体搜索仅仿真 [仿真]
 - 护栏：慢但未进调节带不再算不稳定（修 sluggish 调不动）[仿真]

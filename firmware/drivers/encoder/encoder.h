@@ -19,7 +19,8 @@
 #include "pal.h"
 #include "lpf1.h"
 
-#define ENCODER_VERSION "1.0.0"
+#define ENCODER_VERSION "1.1.0"
+#define ENCODER_WINDOW_MAX 32u
 
 typedef struct {
     pal_id_t enc;            /**< 编码器逻辑 ID，例如 RES_ENCODER_MOTOR_A */
@@ -27,6 +28,11 @@ typedef struct {
     float dt_s;              /**< encoder_update 的调用周期（秒），> 0 */
     float speed_lpf_hz;      /**< 速度低通截止频率；0 关闭 */
     bool  invert;            /**< 方向反了就置 true */
+    uint8_t window_n;        /**< 测速窗口（周期数，1..ENCODER_WINDOW_MAX；0/1 = 单周期差分）。
+                                  低 PPR + 高频控制时每周期只有零点几个脉冲，量化噪声极大：
+                                  例 1 kHz、每周期 0.3 脉冲 → 单周期速度只能是 0 或 1 脉冲/ms。
+                                  取 window_n=20 → 分辨率提高 20 倍，代价是约 window_n/2 个周期的延迟（M 法加长窗口；
+                                  真 M/T 法要边沿时间戳捕获，PAL 暂无，未实现）。 */
 } encoder_cfg_t;
 
 typedef struct {
@@ -36,6 +42,9 @@ typedef struct {
     int64_t total;           /**< 累计计数（64 位，长时间运行不溢出） */
     int32_t last_delta;
     float   speed_rps;
+    int32_t win[ENCODER_WINDOW_MAX];
+    int32_t win_sum;
+    uint8_t win_i, win_fill;
     bool    use_lpf;
     bool    ready;
 } encoder_t;

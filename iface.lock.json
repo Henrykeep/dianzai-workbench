@@ -120,11 +120,13 @@
  },
  "firmware/drivers/encoder": {
   "decls": [
+   "encoder.h: #define ENCODER_WINDOW_MAX 32u",
    "encoder.h: typedef struct { pal_id_t enc;",
    "encoder.h: float counts_per_rev;",
    "encoder.h: float dt_s;",
    "encoder.h: float speed_lpf_hz;",
    "encoder.h: bool invert;",
+   "encoder.h: uint8_t window_n;",
    "encoder.h: } encoder_cfg_t;",
    "encoder.h: typedef struct { encoder_cfg_t cfg;",
    "encoder.h: lpf1_t lpf;",
@@ -132,6 +134,9 @@
    "encoder.h: int64_t total;",
    "encoder.h: int32_t last_delta;",
    "encoder.h: float speed_rps;",
+   "encoder.h: int32_t win[ENCODER_WINDOW_MAX];",
+   "encoder.h: int32_t win_sum;",
+   "encoder.h: uint8_t win_i, win_fill;",
    "encoder.h: bool use_lpf;",
    "encoder.h: bool ready;",
    "encoder.h: } encoder_t;",
@@ -146,8 +151,8 @@
    "encoder.h: void encoder_zero(encoder_t *e);",
    "encoder.h: dz_err_t encoder_selftest_still(encoder_t *e, uint32_t duration_ms, int32_t max_jitter_counts);"
   ],
-  "hash": "58651024995716d8",
-  "version": "1.0.0"
+  "hash": "f6e8eca45c483500",
+  "version": "1.1.0"
  },
  "firmware/drivers/key": {
   "decls": [

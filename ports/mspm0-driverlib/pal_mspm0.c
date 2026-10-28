@@ -15,6 +15,7 @@
 #include <string.h>
 #include "port_mspm0.h"
 #include "board_gen.h"
+#include "dz_wrap.h"
 
 #if BOARD_ADC_COUNT > 0
 #error "mspm0-driverlib 移植层还没实现 ADC（pal_adc_*）"
@@ -219,7 +220,7 @@ dz_err_t pal_enc_get_count(pal_id_t id, int32_t *count)
     uint32_t st = pal_irq_save();
     if (e->inst) {
         uint16_t raw = (uint16_t)DL_Timer_getTimerCount(e->inst);
-        int32_t d = (int16_t)(uint16_t)(raw - s_enc_last[id]);
+        int32_t d = dz_wrap16_delta(raw, s_enc_last[id]);   /* TIMG8 QEI 只有 16 位 */
         s_enc_last[id] = raw;
         s_enc_acc[id] += e->invert ? -d : d;
     }

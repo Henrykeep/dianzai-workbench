@@ -4,6 +4,7 @@
 #include "host_sim.h"
 #include "motor_dc.h"
 #include "encoder.h"
+#include "dz_wrap.h"
 
 static motor_dc_cfg_t mcfg(void)
 {
@@ -103,6 +104,25 @@ static encoder_cfg_t ecfg(void)
     return c;
 }
 
+TEST(encoder_wrap16_and_window)
+{
+    /* 16 位硬件计数回绕（MSPM0 TIMG8 / STM32 TIM3 编码器模式）：65530 -> 4 是 +10，4 -> 65530 是 -10 */
+    CHECK(dz_wrap16_delta(4u, 65530u) == 10);
+    CHECK(dz_wrap16_delta(65530u, 4u) == -10);
+    CHECK(dz_wrap16_delta(100u, 100u) == 0);
+    CHECK(dz_wrap32_delta(3u, 0xFFFFFFFEu) == 5);
+    /* 低 PPR：每周期 0.3 脉冲（每 10 周期 3 个）。单周期速度只能是 0 或 1 脉冲/ms，窗口 20 可得到 0.3 */
+    fresh();
+    encoder_t e; encoder_cfg_t c = ecfg(); c.window_n = 20;
+    CHECK(encoder_init(&e, &c) == DZ_OK);
+    for (int k = 0; k < 40; k++) {
+        if (k % 10 == 0 || k % 10 == 3 || k % 10 == 6) host_sim_enc_add(RES_ENCODER_MOTOR_A, 1);
+        encoder_update(&e);
+    }
+    CHECK_NEAR(encoder_speed_rps(&e), 0.3, 1e-4);         /* 0.3 计数/ms / 1000 × 1000 = 0.3 转/秒 */
+    c.window_n = ENCODER_WINDOW_MAX + 1; CHECK(encoder_init(&e, &c) == DZ_EINVAL);
+}
+
 TEST(encoder_invalid_cfg)
 {
     fresh();
@@ -163,5 +183,5 @@ void suite_drivers(void)
 {
     RUN(motor_invalid_cfg); RUN(motor_direction_change_order); RUN(motor_deadband_maxduty_invert_nan);
     RUN(motor_brake_coast_and_fault); RUN(motor_dir_mode);
-    RUN(encoder_invalid_cfg); RUN(encoder_speed_position_invert); RUN(encoder_int32_wrap); RUN(encoder_lpf_and_selftest);
+    RUN(encoder_invalid_cfg); RUN(encoder_speed_position_invert); RUN(encoder_int32_wrap); RUN(encoder_wrap16_and_window); RUN(encoder_lpf_and_selftest);
 }
