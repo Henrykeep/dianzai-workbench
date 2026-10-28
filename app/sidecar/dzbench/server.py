@@ -164,7 +164,7 @@ class Server:
             return {"on": self.session.auto_reconnect}
         if op == "log_export":
             try:
-                return await run(None, dzlog_to_csv, m["path"])
+                return await run(None, lambda: dzlog_to_csv(m["path"], fmt=m.get("fmt", "excel")))
             except ExportError as e:
                 raise LinkError("export", e.message, e.fix) from e
         # ---- 内置 Agent（docs/18）

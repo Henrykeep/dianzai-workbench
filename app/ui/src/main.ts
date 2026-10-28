@@ -298,10 +298,10 @@ rpPos.oninput = () => { rpDrag = true; };
 rpPos.onchange = async () => { rpDrag = false; await call("replay_ctl", { seek: +rpPos.value / 1000 * (S.status.replay_len || 0) }); };
 $("rp-play").onclick = () => call("replay_ctl", { pause: !S.status.replay_paused });
 $("rp-speed").onchange = () => call("replay_ctl", { speed: +$<HTMLSelectElement>("rp-speed").value });
-$("export").onclick = async () => {
+$("export").onclick = async (e: MouseEvent) => {
   const p = $<HTMLSelectElement>("logs").value;
   if (!p) return toast("还没有记录可导出：连上板子会自动记录", "info");
-  const r = await call("log_export", { path: p }).catch(() => null);
+  const r = await call("log_export", { path: p, fmt: e.shiftKey ? "plotjuggler" : "excel" }).catch(() => null);
   if (r) toast(`已导出 ${r.rows} 行 → ${r.path}`, "ok", 12000);
 };
 $("props").innerHTML = AGENT_IDLE;

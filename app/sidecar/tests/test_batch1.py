@@ -120,3 +120,8 @@ def test_dzlog_to_csv_bom_and_enum(tmp_path):
     rows = list(csv.reader((tmp_path / "a.csv").read_text(encoding="utf-8-sig").splitlines()))
     assert rows[0] == ["t_s", "spd[rps]", "state", "state_txt"]
     assert rows[3] == ["0.0400", "1.0", "0", "空闲"] and rows[2][3] == "运行"
+    r = dzlog_to_csv(tmp_path / "a.dzlog", schema=sch, fmt="plotjuggler")
+    pj = (tmp_path / "a.pj.csv").read_bytes()
+    assert not pj.startswith(b"\xef\xbb\xbf") and r["fmt"] == "plotjuggler"
+    rows = list(csv.reader(pj.decode().splitlines()))
+    assert rows[0] == ["time", "spd[rps]", "state"] and rows[3] == ["0.0400", "1.0", "0"]
