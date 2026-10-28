@@ -16,7 +16,7 @@ mcu:
   ram_kb: 192
 
 clock:
-  hse_hz: TODO             # 官方手册摘录未写外部晶振频率；常见说法为 12MHz，但未核实，请看原理图或官方 CubeMX 例程 .ioc
+  hse_hz: 12000000         # 官方手册没写；取自社区 C 板工程 .ioc（RCC.HSE_VALUE=12000000、PLLM=6 → 168 MHz），A 型板同为 12 MHz。未上板核实
   sysclk_hz: 168000000
 
 toolchain:
@@ -30,16 +30,17 @@ sources:
     url: https://rm-static.djicdn.com/tem/35228/RoboMaster%20Development%20Board%20Type%20C%20User%20Manual.pdf
   - what: 中文用户手册（外壳丝印 UART1 = STM32 USART6，丝印 UART2 = STM32 USART1）
     url: https://rm-static.djicdn.com/tem/35228/RoboMaster%20%20%E5%BC%80%E5%8F%91%E6%9D%BF%20C%20%E5%9E%8B%E7%94%A8%E6%88%B7%E6%89%8B%E5%86%8C.pdf
+  - what: 社区 C 板 INS 工程 .ioc（HSE 12 MHz、SPI1 mode 3、CS 引脚的交叉核对；只取事实）
+    url: https://github.com/WangHongxi2001/RoboMaster-C-Board-INS-Example/blob/master/C_Board_Standard_Robot.ioc
   - what: 官方 CubeMX 例程（可从其 .ioc 用 tools/ioc_import.py 生成/核对本文件）
     url: https://github.com/RoboMaster/Development-Board-C-Examples
 
 todo:
-  - HSE 晶振频率（未在手册文字中核实）
+  - HSE 12 MHz 来自社区工程 .ioc，未对照原理图/实物核实
   - KEY 有效电平与上下拉（手册只给出 PA0）
   - ADC_BAT(PF10) 的 ADC 实例/通道（按数据手册推断为 ADC3_IN8，未核实）与分压比
-  - 本 schema 第 0 阶段尚无 can/spi/i2c 资源类型：CAN1(PD0 RX/PD1 TX)、CAN2(PB5 RX/PB6 TX)、
-    BMI088 SPI1(PB3 CLK/PA7 MOSI/PB4 MISO, CS_Accel PA4, CS_Gyro PB0, INT PC4/PC5)、IMU 加热 TIM10_CH1(PF6)、
-    IST8310 I2C3(PA8/PC9)、DBUS USART3_RX(PC11) 均已在官方手册中列出，留待后续阶段加入 schema 与 PAL
+  - BMI088 SPI1 已加入（resources.spi）；仍未加入的：CAN1(PD0 RX/PD1 TX)、CAN2(PB5 RX/PB6 TX)、BMI088 INT PC4/PC5、
+    IMU 加热 TIM10_CH1(PF6)、IST8310 I2C3(PA8/PC9，schema 已支持 i2c，驱动未写)、DBUS USART3_RX(PC11)
   - 未上板测试
 
 resources:
@@ -53,6 +54,9 @@ resources:
     - {name: PWM2, timer: TIM1, channel: 2, pin: PE11, freq_hz: 50, verified: true}
   uart:
     - {name: LINK, instance: USART6, tx: PG14, rx: PG9, baud: 460800, dma: true, verified: true, note: 外壳丝印 UART1（3-pin）}
-    - {name: UART2, instance: USART1, tx: PA9, rx: PB7, baud: 115200, verified: true, note: 外壳丝印 UART2（4-pin）}
+    - {name: IMU, instance: USART1, tx: PA9, rx: PB7, baud: 460800, dma: true, verified: true, note: 外壳丝印 UART2（4-pin）；apps/imu_module 从这里发 dzimu 姿态帧给主控}
+  spi:   # 板载 BMI088：加速度计、陀螺仪共用 SPI1，各自一根片选。引脚见官方手册 IO 对照表；mode 3 与社区 C 板工程 .ioc（CPOL=High/CPHA=2Edge）一致
+    - {name: IMU_ACC, instance: SPI1, sck: PB3, mosi: PA7, miso: PB4, cs: PA4, mode: 3, hz: 5000000, verified: true}
+    - {name: IMU_GYR, instance: SPI1, sck: PB3, mosi: PA7, miso: PB4, cs: PB0, mode: 3, hz: 5000000, verified: true}
   timer:
     - {name: CTRL, instance: TIM6, irq_priority: 1, note: 控制环节拍（内部定时器，无引脚）}

@@ -98,7 +98,7 @@ MCU     := -mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard
 CFLAGS  := -std=c11 -Os -g3 $(MCU) $(WARN) -ffunction-sections -fdata-sections $(BOARD_DEFS)
 HAL_INC := $(F4_HAL)/Inc $(F4_DEV)/Include $(CMSIS)
 HAL_MODS := hal hal_cortex hal_rcc hal_rcc_ex hal_gpio hal_dma hal_dma_ex hal_tim hal_tim_ex \
-            hal_uart hal_adc hal_adc_ex hal_pwr hal_pwr_ex hal_flash hal_flash_ex hal_exti
+            hal_uart hal_adc hal_adc_ex hal_pwr hal_pwr_ex hal_flash hal_flash_ex hal_exti hal_i2c hal_spi
 HAL_SRC := $(patsubst %,$(F4_HAL)/Src/stm32f4xx_%.c,$(HAL_MODS)) $(F4_DEV)/Source/Templates/system_stm32f4xx.c
 STARTUP := $(F4_DEV)/Source/Templates/gcc/startup_stm32f407xx.s
 LDSCRIPT = $(PORT_DIR)/stm32f407_flash.ld
@@ -186,7 +186,7 @@ all: $(TARGET)
 # 交叉编译矩阵：每个 板×应用 组合都编一遍（需要 arm-none-eabi-gcc 和 third_party/）。CI firmware-cross 跑它。
 CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm32f103c8t6-car-cubemx:car_2wd \
          stm32f407-bldc-freertos-cubemx:2026H_ball mspm0g3507-tianmengxing:car_2wd mspm0g3507-launchpad:car_2wd \
-         host-sim:car_2wd host-sim:2026H_ball
+         host-sim:car_2wd host-sim:2026H_ball dji-rm-c:imu_module host-sim:imu_module
 cross:
 	@for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done
 
