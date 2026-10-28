@@ -336,6 +336,17 @@
         "file": {
           "type": "string",
           "description": "相对 board.yaml 的配置文件路径；还没有就写 TODO"
+        },
+        "hal_timebase": {
+          "type": "string",
+          "pattern": "^(SysTick|TIM[0-9]+)$",
+          "description": "CubeMX: SYS > Timebase Source。SysTick（裸机默认）或 TIMx（FreeRTOS 工程推荐）；由 ioc_import 写入，移植层据此选择 pal_micros 的实现"
+        },
+        "rtos": {
+          "enum": [
+            "freertos"
+          ],
+          "description": "CubeMX 工程启用了 FreeRTOS（CMSIS-RTOS v2）；不写 = 裸机"
         }
       }
     },

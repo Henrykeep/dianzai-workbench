@@ -240,13 +240,13 @@ FAMILY_CHECKS = {"stm32f4": stm32f4_check}
 
 
 def cubemx_check(board: dict, rep: Report) -> None:
-    """port: stm32-cubemx —— CubeMX 是唯一配置源：必须指明 .ioc；串口必须 DMA 接收（循环模式由 ioc_import 核对）。"""
+    """port: stm32-cubemx —— CubeMX 是唯一配置源：必须指明 .ioc；串口 RX 无 DMA 时给警告（DMA 模式由 ioc_import 核对）。"""
     cs = board.get("config_source") or {}
     if cs.get("tool") != "cubemx" or not cs.get("file"):
         rep.err("[CubeMX] port: stm32-cubemx 必须写 config_source: {tool: cubemx, file: <相对本文件的 .ioc 路径>}")
     for r in (board.get("resources") or {}).get("uart") or []:
         if r.get("dma") is False:
-            rep.err(f"[CubeMX] uart.{r['name']}: 本移植层要求 RX 为循环 DMA（在 CubeMX 里给该串口加 RX DMA，Mode=Circular）")
+            rep.warn(f"[CubeMX] uart.{r['name']}: 没有 RX DMA，移植层用逐字节中断接收；高波特率建议加 RX DMA（Circular）")
 
 
 PORT_CHECKS = {"stm32-cubemx": cubemx_check}

@@ -3,9 +3,12 @@
  * @brief PAL 的 STM32 CubeMX 实现：只调用 HAL API，包装 CubeMX 生成的句柄，不做任何外设配置。
  *
  * 前提（tools/ioc_import.py 会检查）：
- *  - HAL 时基为 SysTick（Pinout > SYS > Timebase Source = SysTick），否则 pal_micros 不成立；
- *  - NVIC 优先级分组 4（全部抢占位）；SysTick 优先级数值 ≤ 所有用到 HAL_Delay/超时的中断；
- *  - 串口 RX DMA 为 Circular，TX DMA 为 Normal；
+ *  - HAL 时基：SysTick（裸机默认）或 TIMx（FreeRTOS 工程推荐；board.yaml config_source.hal_timebase，
+ *    生成 -DDZ_CM_TIM_TIMEBASE，pal_micros 改读该定时器计数，main.c 的回调里调 dz_cubemx_tim_callback）；
+ *  - NVIC 优先级分组 4（全部抢占位）；HAL 时基中断优先级数值 ≤ 所有用到 HAL_Delay/超时的中断；
+ *  - 串口 RX 三种都支持（运行时按句柄判断）：
+ *      Circular DMA（推荐）；Normal DMA（收满后在 RxCplt 里重启；中断延迟超过 1 字节时间才会丢字节）；
+ *      无 DMA（逐字节中断接收，HAL_UART_Receive_IT 1 字节，适合 ≤115200 或小流量）；TX DMA 为 Normal 或不用 DMA；
  *  - 编码器定时器为 Encoder Mode；PWM 定时器 PSC/ARR 已按目标频率配置（本层只改 CCR）；
  *  - CTRL 等节拍定时器打开了更新中断（本层在启动时按周期改 PSC/ARR）。
  * 与芯片系列有关的只有 timer_clock_hz() 中“定时器挂在哪条 APB 上”的判断（见注释）。
@@ -16,6 +19,10 @@
 #include "dz_cubemx.h"
 #include "app.h"
 
+#if BOARD_ADC_COUNT > 0 && !defined(HAL_ADC_MODULE_ENABLED)
+#error "board.yaml 有 adc 资源，但 CubeMX 工程没启用 ADC（hal_conf 缺 HAL_ADC_MODULE_ENABLED）"
+#endif
+
 static cm_diag_t s_diag;
 const cm_diag_t *cm_diag(void) { return &s_diag; }
 
@@ -24,7 +31,7 @@ static uint32_t s_enc_last[BOARD_ENCODER_COUNT];
 static int32_t  s_enc_acc[BOARD_ENCODER_COUNT];
 #endif
 #if BOARD_UART_COUNT > 0
-static volatile uint32_t s_rx_wraps[BOARD_UART_COUNT];   /* RX DMA 完整回绕次数（RxCplt 回调） */
+static volatile uint32_t s_rx_wraps[BOARD_UART_COUNT];   /* RX DMA 完整回绕次数（RxCplt 回调）；无 DMA 时为已收字节数 */
 static uint32_t s_rx_seen[BOARD_UART_COUNT];             /* 上次计算出的已写入总量（单调） */
 static uint32_t s_rx_read[BOARD_UART_COUNT];
 static uint32_t s_rx_dropped[BOARD_UART_COUNT];
@@ -40,9 +47,13 @@ static uint32_t timer_clock_hz(const TIM_HandleTypeDef *h)
     RCC_ClkInitTypeDef c; uint32_t lat;
     HAL_RCC_GetClockConfig(&c, &lat);
 #if defined(APB2PERIPH_BASE) && defined(AHB1PERIPH_BASE)
-    /* F0/F1/F2/F3/F4/F7/G0/G4/L4 等：APB2 定时器地址位于 [APB2PERIPH_BASE, AHB1PERIPH_BASE)。 */
+    /* F2/F3/F4/F7/G4/L4 等：APB2 定时器地址位于 [APB2PERIPH_BASE, AHB1PERIPH_BASE)。 */
     uint32_t a = (uint32_t)h->Instance;
     bool apb2 = a >= APB2PERIPH_BASE && a < AHB1PERIPH_BASE;
+#elif defined(APB2PERIPH_BASE) && defined(AHBPERIPH_BASE)
+    /* F0/F1：总线叫 AHB（无编号），APB2 定时器位于 [APB2PERIPH_BASE, AHBPERIPH_BASE)。 */
+    uint32_t a = (uint32_t)h->Instance;
+    bool apb2 = a >= APB2PERIPH_BASE && a < AHBPERIPH_BASE;
 #else
 #error "本系列（如 H7/U5）APB 布局不同：请在此补充判断，并在 docs/05-CubeMX工作流.md 的支持系列表里登记"
 #endif
@@ -60,6 +71,16 @@ static bool tim_is_32bit(TIM_HandleTypeDef *h)
     __HAL_TIM_SET_AUTORELOAD(h, keep);
     return w;
 }
+
+/* ---------- 串口接收启动：有 RX DMA 收整个 rx_buf；无 DMA 时逐字节中断收进环形缓冲 ---------- */
+#if BOARD_UART_COUNT > 0
+static HAL_StatusTypeDef uart_rx_arm(unsigned i)
+{
+    const cm_uart_t *u = &g_cm_uart[i];
+    if (u->h->hdmarx) return HAL_UART_Receive_DMA(u->h, u->rx_buf, u->rx_size);
+    return HAL_UART_Receive_IT(u->h, &u->rx_buf[s_rx_wraps[i] % u->rx_size], 1u);
+}
+#endif
 
 /* ---------- 启动 ---------- */
 static bool s_started;
@@ -81,9 +102,7 @@ static dz_err_t start_all(void)
 #endif
 #if BOARD_UART_COUNT > 0
     for (unsigned i = 0; i < BOARD_UART_COUNT; i++) {
-        const cm_uart_t *u = &g_cm_uart[i];
-        if (u->h->hdmarx == 0) { rc = DZ_EIO; continue; }   /* ioc_import 已检查；这里兜底 */
-        if (HAL_UART_Receive_DMA(u->h, u->rx_buf, u->rx_size) != HAL_OK) rc = DZ_EIO;
+        if (uart_rx_arm(i) != HAL_OK) rc = DZ_EIO;
     }
 #endif
     return rc;
@@ -135,8 +154,28 @@ pal_reset_cause_t pal_reset_cause(void)
 uint32_t pal_irq_save(void) { uint32_t p = __get_PRIMASK(); __disable_irq(); return p; }
 void pal_irq_restore(uint32_t s) { if (!s) __enable_irq(); }
 
-/* ---------- 时间（SysTick 由 CubeMX 生成的 SysTick_Handler -> HAL_IncTick 驱动） ---------- */
+/* ---------- 时间：HAL_GetTick 提供毫秒，微秒部分读 HAL 时基的计数 ---------- */
 uint32_t pal_millis(void) { return HAL_GetTick(); }
+#ifdef DZ_CM_TIM_TIMEBASE
+/* HAL 时基 = TIMx（由 board_gen.c 提供句柄）：CubeMX 把它配成 1 ms 更新中断（HAL_InitTick），
+ * 计数器 0..ARR 对应这 1 ms 内的进度。全部用 HAL 宏读取。 */
+extern TIM_HandleTypeDef *const g_cm_timebase;
+uint32_t pal_micros(void)
+{
+    TIM_HandleTypeDef *h = g_cm_timebase;
+    uint32_t ms, ms2, cnt, period = __HAL_TIM_GET_AUTORELOAD(h) + 1u;
+    bool pend;
+    do {
+        ms = HAL_GetTick();
+        cnt = __HAL_TIM_GET_COUNTER(h);
+        pend = __HAL_TIM_GET_FLAG(h, TIM_FLAG_UPDATE) != RESET;
+        ms2 = HAL_GetTick();
+    } while (ms != ms2);
+    /* 关中断上下文中计数已回绕而更新中断未执行：补 1 ms（与 SysTick 版同理） */
+    if (pend && cnt < period / 2u) ms++;
+    return ms * 1000u + (cnt * 1000u) / period;
+}
+#else
 uint32_t pal_micros(void)
 {
     /* DZ-REG-OK: HAL 只提供 1 ms 节拍，微秒时间必须读 SysTick 计数（CMSIS 内核寄存器） */
@@ -150,6 +189,7 @@ uint32_t pal_micros(void)
     if ((SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) && val > (load / 2u)) ms++;
     return ms * 1000u + ((load - 1u - val) * 1000u) / load;
 }
+#endif
 void pal_delay_us(uint32_t us) { uint32_t t0 = pal_micros(); while (pal_micros() - t0 < us) { } }
 void pal_delay_ms(uint32_t ms) { pal_delay_us(ms * 1000u); }
 
@@ -277,7 +317,11 @@ static int uart_index(const UART_HandleTypeDef *h)
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *h)
 {
 #if BOARD_UART_COUNT > 0
-    int i = uart_index(h); if (i >= 0) s_rx_wraps[i]++;
+    int i = uart_index(h);
+    if (i < 0) return;
+    s_rx_wraps[i]++;
+    /* Circular DMA 自己继续；Normal DMA 与逐字节中断都需要重新启动接收 */
+    if (h->hdmarx == 0 || h->hdmarx->Init.Mode != DMA_CIRCULAR) (void)uart_rx_arm((unsigned)i);
 #else
     (void)h;
 #endif
@@ -292,7 +336,7 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *h)
     HAL_UART_AbortReceive(h);
     s_rx_dropped[i]++;
     s_rx_wraps[i] = 0; s_rx_seen[i] = 0; s_rx_read[i] = 0;
-    (void)HAL_UART_Receive_DMA(h, g_cm_uart[i].rx_buf, g_cm_uart[i].rx_size);
+    (void)uart_rx_arm((unsigned)i);
 #else
     (void)h;
 #endif
@@ -339,9 +383,14 @@ dz_err_t pal_uart_read(pal_id_t id, uint8_t *buf, uint16_t max, uint16_t *got)
      * 关中断期间 DMA 回绕而 RxCplt 尚未执行时，总量会比上次小 —— 此时补一个 size（总量必须单调）。
      * 前提：两次调用之间新数据不超过 size 字节（rx_buf 按“最长调用间隔 × 波特率”留够，见 docs）。 */
     uint32_t st = pal_irq_save();
-    uint32_t pos = size - __HAL_DMA_GET_COUNTER(u->h->hdmarx);
-    uint32_t written = s_rx_wraps[id] * size + (pos % size);
-    if (written < s_rx_seen[id]) written += size;
+    uint32_t written;
+    if (u->h->hdmarx) {
+        uint32_t pos = size - __HAL_DMA_GET_COUNTER(u->h->hdmarx);
+        written = s_rx_wraps[id] * size + (pos % size);
+        if (written < s_rx_seen[id]) written += size;
+    } else {
+        written = s_rx_wraps[id];          /* 逐字节中断：计数即已收字节数 */
+    }
     s_rx_seen[id] = written;
     pal_irq_restore(st);
 
@@ -406,16 +455,25 @@ dz_err_t pal_timer_stop(pal_id_t id)
     (void)id; return DZ_ENODEV;
 #endif
 }
-/* CubeMX 的 main.c 若已在 USER CODE 里定义了本回调会重复定义：ioc_import 会提示改用 dz 的钩子。 */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *h)
+static void tim_dispatch(TIM_HandleTypeDef *h)
 {
 #if BOARD_TIMER_COUNT > 0
     for (unsigned i = 0; i < BOARD_TIMER_COUNT; i++)
         if (g_cm_timer[i].h == h) { if (s_tmr_cb[i]) s_tmr_cb[i](s_tmr_ctx[i]); return; }
 #endif
+#ifdef DZ_CM_TIM_TIMEBASE
+    if (h == g_cm_timebase) return;     /* HAL 时基：CubeMX 的回调已调用 HAL_IncTick */
+#endif
     s_diag.tim_cb_unknown++;
-    (void)h;
 }
+#ifdef DZ_CM_TIM_TIMEBASE
+/* TIM 时基工程里 CubeMX 必定在 main.c 生成 HAL_TIM_PeriodElapsedCallback（给 HAL_IncTick 用），
+ * 所以本层不能再定义它，改由 main.c 的 USER CODE Callback 1 调用本函数（ioc_import 会核对）。 */
+void dz_cubemx_tim_callback(TIM_HandleTypeDef *htim) { tim_dispatch(htim); }
+#else
+/* CubeMX 的 main.c 若已在 USER CODE 里定义了本回调会重复定义：ioc_import 会提示改用 dz 的钩子。 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *h) { tim_dispatch(h); }
+#endif
 
 /* ---------- ADC：单次软件触发；通道配置跨系列差异用 #ifdef 处理 ---------- */
 dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw)

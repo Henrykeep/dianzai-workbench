@@ -100,7 +100,6 @@ meta:
   hse_hz: 8000000
   hse_source: cubemx_default
   sysclk_hz: 72000000
-errors:
-- D2
-warnings: 10
+errors: []
+warnings: 14
 infos: []

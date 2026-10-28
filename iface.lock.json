@@ -328,6 +328,7 @@
   "decls": [
    "dz_cubemx.h: void dz_cubemx_start(void);",
    "dz_cubemx.h: void dz_cubemx_loop(void);",
+   "dz_cubemx.h: void dz_cubemx_tim_callback(TIM_HandleTypeDef *htim);",
    "port_cubemx.h: typedef struct { GPIO_TypeDef *port;",
    "port_cubemx.h: uint16_t pin;",
    "port_cubemx.h: uint8_t active_low;",
@@ -350,6 +351,10 @@
    "port_cubemx.h: uint32_t channel;",
    "port_cubemx.h: pal_adc_info_t info;",
    "port_cubemx.h: } cm_adc_t;",
+   "port_cubemx.h: typedef struct { void *h;",
+   "port_cubemx.h: uint32_t channel;",
+   "port_cubemx.h: pal_adc_info_t info;",
+   "port_cubemx.h: } cm_adc_t;",
    "port_cubemx.h: extern const cm_gpio_t g_cm_gpio[];",
    "port_cubemx.h: extern const cm_pwm_t g_cm_pwm[];",
    "port_cubemx.h: extern const cm_enc_t g_cm_enc[];",
@@ -362,8 +367,8 @@
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "7d88b2217b5c75b4",
-  "version": "1.0.0"
+  "hash": "44b9ba43eb55f0f4",
+  "version": "1.1.0"
  },
  "ports/stm32f4-hal": {
   "decls": [

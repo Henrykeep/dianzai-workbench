@@ -266,12 +266,22 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
                            ("timer", "cm_timer_t", "g_cm_timer"), ("adc", "cm_adc_t", "g_cm_adc")):
         c += _table(typ, name, rows[key])
     c.append("const char *const g_board_name = BOARD_NAME;\n")
+    cs = board["config_source"]
+    tb = cs.get("hal_timebase", "SysTick")
+    defs = ""
+    if tb != "SysTick":
+        # HAL 时基 = TIMx（CubeMX 在 stm32xxxx_hal_timebase_tim.c 里定义该句柄）：pal_micros 改读它的计数
+        h = _cube_handle(tb)
+        c += ["/* HAL 时基定时器（config_source.hal_timebase） */", f"extern TIM_HandleTypeDef {h};",
+              f"TIM_HandleTypeDef *const g_cm_timebase = &{h};", ""]
+        defs += " -DDZ_CM_TIM_TIMEBASE"
+    if cs.get("rtos"):
+        defs += f" -DDZ_CM_RTOS_{cs['rtos'].upper()}"
 
     mcu = board["mcu"]
     core = mcu.get("core", "")
     if core not in CPU_FLAGS:
         raise SystemExit(f"✗ mcu.core={core!r} 未知，可选 {sorted(CPU_FLAGS)}")
-    cs = board["config_source"]
     cube_dir = (pathlib.Path(src).parent / cs["file"]).parent.as_posix()
     family = mcu["family"]                        # stm32f4 -> 用 STM32Cube<F4> 的 HAL 源码
     mk = {
@@ -279,7 +289,8 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
         "BOARD_FAMILY": "stm32-cubemx",
         "BOARD_SERIES": family,
         "BOARD_CPU": CPU_FLAGS[core],
-        "BOARD_DEFS": f"-D{cube_define(mcu['part'])} -DUSE_HAL_DRIVER",
+        "BOARD_DEFS": f"-D{cube_define(mcu['part'])} -DUSE_HAL_DRIVER{defs}",
+        "BOARD_RTOS": cs.get("rtos", ""),
         "BOARD_FLASH_KB": str(mcu.get("flash_kb", 0)),
         "BOARD_PART": mcu["part"],
         "CUBE_DIR": cube_dir,

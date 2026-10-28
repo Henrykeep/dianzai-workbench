@@ -17,7 +17,8 @@
       禁止直接读写外设寄存器（TIM2->CNT、htim->Instance->CCR1、RCC->CR …），
       除非该行或上一行带注释 `DZ-REG-OK: <原因>`（官方 HAL 做不到时才允许，且必须写明原因）。
   C1  CubeMX 工程（含 .ioc 的目录，如 boards/<板>/cubemx/）视为厂商生成代码：允许 HAL，禁止标准库；
-      其 USER CODE 区只允许框架接缝（#include "dz_cubemx.h"、dz_cubemx_start/loop()），业务逻辑一律写进子系统。
+      其 USER CODE 区只允许框架接缝（#include "dz_cubemx.h"、dz_cubemx_start/loop()、FreeRTOS 默认任务的 for(;;)+osDelay(1)、
+      Callback 1 里的 dz_cubemx_tim_callback(htim)），业务逻辑一律写进子系统。
   P2  厂商 API 不得串用：HAL_/LL_ 只能在 ports/stm32*，DL_ 只能在 ports/mspm0*。
   V1  每个模块目录的 VERSION 必须与头文件里的 XXX_VERSION 宏一致。
 """
@@ -85,7 +86,9 @@ class Checker:
 
     USER_RE = re.compile(r'/\* USER CODE BEGIN ([^*]+?) \*/(.*?)/\* USER CODE END \1 \*/', re.S)
     # 允许：接缝两行；CubeMX 自身落在 USER CODE WHILE/3 区里的 while(1) { } 结构行
-    USER_OK = re.compile(r'^\s*(#include\s+"dz_cubemx\.h"|dz_cubemx_(start|loop)\(\);|while\s*\(1\)|\{|\})?\s*$')
+    # FreeRTOS 默认任务的固定写法（for(;;){ dz_cubemx_loop(); osDelay(1); }）与 TIM 回调转发也算接缝
+    USER_OK = re.compile(r'^\s*(#include\s+"dz_cubemx\.h"|dz_cubemx_(start|loop)\(\);|dz_cubemx_tim_callback\(htim\);'
+                         r'|\(void\)\s*argument;|for\s*\(\s*;\s*;\s*\)|osDelay\(1\);|while\s*\(1\)|\{|\})?\s*$')
 
     def check_cube(self, path):
         raw = open(path, encoding="utf-8", errors="replace").read()

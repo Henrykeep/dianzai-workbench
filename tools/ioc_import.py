@@ -14,7 +14,7 @@ CubeMX 是唯一配置源：引脚/时钟/DMA/中断都在 .ioc 里改，board.y
 检查（错误 = 退出码 1）：
     T1 HAL 时基必须是 SysTick（pal_micros 依赖）       N1 NVIC 优先级分组必须为 4（全抢占）
     N2 节拍定时器/串口/串口 DMA 的中断必须打开          N3 SysTick 优先级数值应 ≤ 其它已开中断（警告）
-    D1 DMA 数据流不得被两个请求共用                     D2 串口 RX 必须有 DMA 且为 Circular；TX DMA 应为 Normal
+    D1 DMA 数据流不得被两个请求共用                     D2 串口 RX：Circular DMA 最佳；Normal DMA / 无 DMA(仅中断) 可用但给警告；TX DMA 应为 Normal
     L1 标签前缀/信号不匹配、UART 缺 TX/RX、ENC 缺 A/B    U1（--project）main.c 的 USER CODE 钩子齐全且无冲突回调
 
 用法：
@@ -65,6 +65,12 @@ class Rep:
 
     def warn(self, msg):
         self.warnings.append(msg)
+
+
+FAMILY_CORE = {"stm32f0": "cortex-m0", "stm32g0": "cortex-m0plus", "stm32f1": "cortex-m3", "stm32f2": "cortex-m3",
+               "stm32f3": "cortex-m4f", "stm32f4": "cortex-m4f", "stm32g4": "cortex-m4f", "stm32l4": "cortex-m4f",
+               "stm32f7": "cortex-m7f"}
+PWM_MOTOR_MIN_HZ = 5000   # 低于此频率的非舵机 PWM 给警告（电机啸叫）
 
 
 def _nvic(ioc, irq):
@@ -134,11 +140,16 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
 
     # ---- 时基 / NVIC 分组
     tb = ioc.get("NVIC.TimeBaseIP") or ("SysTick" if ioc.get("VP_SYS_VS_Systick.Mode") == "SysTick" else None)
-    if "NVIC.TimeBase" in ioc or tb != "SysTick":
-        why = ("（FreeRTOS 工程里 CubeMX 推荐把 HAL 时基让给 TIMx、SysTick 留给内核，这本身是对的配置；"
-               "但当前 ports/stm32-cubemx 的 pal_micros 依赖 HAL 时基=SysTick，需要移植层支持 TIM 时基后才能直接接入）"
-               if rtos else "：SYS > Timebase Source 选 SysTick")
-        rep.err("T1", f"HAL 时基是 {tb or ioc.get('NVIC.TimeBase')}，不是 SysTick{why}")
+    if tb is None:
+        m = next((v for k, v in ioc.items() if re.fullmatch(r"VP_SYS_VS_tim\d+\.Mode", k)), None)
+        tb = m if m and re.fullmatch(r"TIM\d+", m) else None
+    if tb is None:
+        rep.err("T1", f"认不出 HAL 时基（NVIC.TimeBase={ioc.get('NVIC.TimeBase')}）：SYS > Timebase Source 选 SysTick 或某个 TIMx")
+    elif tb != "SysTick":
+        # 移植层支持 TIM 时基：pal_micros 改读该定时器计数；main.c 里 CubeMX 生成的 HAL_TIM_PeriodElapsedCallback
+        # 需在 USER CODE Callback 1 调 dz_cubemx_tim_callback(htim)（check_project 会核对）
+        rep.info(f"HAL 时基是 {tb}（{'FreeRTOS 工程的推荐配置' if rtos else '裸机也可以，但 SysTick 更省一个定时器'}）："
+                 f"移植层按 TIM 时基工作，main.c 的 HAL_TIM_PeriodElapsedCallback 里要调用 dz_cubemx_tim_callback(htim)")
     if ioc.get("NVIC.PriorityGroup") != "NVIC_PRIORITYGROUP_4":
         rep.err("N1", f"NVIC 优先级分组为 {ioc.get('NVIC.PriorityGroup')}，必须为 NVIC_PRIORITYGROUP_4")
 
@@ -194,6 +205,10 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
                 tclk = ioc_int(ioc.get("RCC.APB2TimFreq_Value" if tim in APB2_TIMERS else "RCC.APB1TimFreq_Value"))
                 if psc is not None and arr is not None and tclk:
                     r["freq_hz"] = round(tclk / ((psc + 1) * (arr + 1)))
+                    if r["freq_hz"] < PWM_MOTOR_MIN_HZ and "SERVO" not in name.upper():
+                        rep.warn(f"{name}: PWM 只有 {r['freq_hz']} Hz——若驱动电机（TB6612 等），低于 {PWM_MOTOR_MIN_HZ} Hz "
+                                 f"会有明显啸叫和电流纹波，建议 10~20 kHz（改 {tim} 的 Prescaler/Period）；舵机/LED 请忽略，"
+                                 f"舵机建议标签写 PWM_SERVO_xxx")
                 else:
                     r["freq_hz"] = "TODO"
                     rep.warn(f"{name}: .ioc 里读不到 {tim} 的 Prescaler/Period/时钟，freq_hz 记 TODO")
@@ -302,9 +317,13 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
                      f"（建议标 UART_<名>_TX / UART_<名>_RX）")
         rx, tx = dma.get(f"{inst}_RX"), dma.get(f"{inst}_TX")
         if not rx:
-            rep.err("D2", f"{inst}（{name}）没有 RX DMA：DMA Settings 里 Add {inst}_RX，Mode=Circular")
+            rep.warn(f"D2 {inst}（{name}）没有 RX DMA：移植层退化为逐字节中断接收（每字节一次中断，"
+                         f"{ioc_int(ioc.get(f'{inst}.BaudRate')) or 115200} baud 时约 {(ioc_int(ioc.get(f'{inst}.BaudRate')) or 115200) // 10} 次/秒）；"
+                         f"高波特率/大流量建议在 DMA Settings 里 Add {inst}_RX，Mode=Circular")
         elif rx.get("Mode") != "DMA_CIRCULAR":
-            rep.err("D2", f"{inst}_RX DMA 模式为 {rx.get('Mode')}，必须为 DMA_CIRCULAR（移植层用环形 DMA + 空闲中断收包）")
+            rep.warn(f"D2 {inst}_RX DMA 模式为 {rx.get('Mode')}：移植层在每次收满后自动重启 DMA（可用），"
+                     f"重启期间新字节暂存在串口数据寄存器里，只要 DMA 完成中断被延迟不超过 1 个字节时间（115200 时约 87 µs）就不丢；"
+                     f"改成 DMA_CIRCULAR 最稳")
         if tx and tx.get("Mode") != "DMA_NORMAL":
             rep.err("D2", f"{inst}_TX DMA 模式为 {tx.get('Mode')}，必须为 DMA_NORMAL")
         b = ioc_int(ioc.get(f"{inst}.BaudRate"))
@@ -395,7 +414,7 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
     return {k: v for k, v in res.items() if v}, {k: v for k, v in meta.items() if v not in (None, {})}
 
 
-def check_project(proj: pathlib.Path, rep: Rep) -> None:
+def check_project(proj: pathlib.Path, rep: Rep, rtos: bool = False, tim_timebase: bool = False) -> None:
     main = proj / "Core/Src/main.c"
     if not main.exists():
         rep.err("U1", f"找不到 {main}")
@@ -408,12 +427,25 @@ def check_project(proj: pathlib.Path, rep: Rep) -> None:
         rep.err("U1", 'main.c 的 USER CODE Includes 里缺 #include "dz_cubemx.h"')
     if "dz_cubemx_start()" not in block("2"):
         rep.err("U1", "main.c 的 USER CODE 2 里缺 dz_cubemx_start();")
-    if "dz_cubemx_loop()" not in block("3"):
+    if rtos:
+        # FreeRTOS：osKernelStart() 之后 main 的 while 不再执行，app_loop 放进默认任务的循环
+        fr = proj / "Core/Src/freertos.c"
+        ft = fr.read_text(encoding="utf-8", errors="replace") if fr.exists() else ""
+        m = re.search(r"/\* USER CODE BEGIN StartDefaultTask \*/(.*?)/\* USER CODE END StartDefaultTask \*/", ft, re.S)
+        if "dz_cubemx_loop()" not in block("5") and not (m and "dz_cubemx_loop()" in m[1]):
+            rep.err("U1", "FreeRTOS 工程：StartDefaultTask 的 for 循环里（main.c USER CODE 5 或 freertos.c USER CODE StartDefaultTask）"
+                          "缺 dz_cubemx_loop(); osDelay(1);")
+    elif "dz_cubemx_loop()" not in block("3"):
         rep.err("U1", "main.c 的 USER CODE 3（while 循环内）缺 dz_cubemx_loop();")
     for f in (proj / "Core/Src").glob("*.c"):
         s = f.read_text(encoding="utf-8", errors="replace")
         for cb in ("HAL_TIM_PeriodElapsedCallback", "HAL_UART_RxCpltCallback", "HAL_UART_ErrorCallback"):
             if re.search(rf"^\s*void\s+{cb}\s*\(", s, re.M):
+                if cb == "HAL_TIM_PeriodElapsedCallback" and f.name == "main.c" and tim_timebase:
+                    # TIM 时基工程：CubeMX 强制在 main.c 生成此回调（给 HAL_IncTick），移植层改由钩子接管
+                    if "dz_cubemx_tim_callback(htim)" not in block("Callback 1"):
+                        rep.err("U1", "main.c 的 HAL_TIM_PeriodElapsedCallback 里 USER CODE Callback 1 缺 dz_cubemx_tim_callback(htim);")
+                    continue
                 rep.err("U1", f"{f.name} 定义了 {cb}，与 ports/stm32-cubemx 冲突：删掉，需要的逻辑放进子系统")
 
 
@@ -423,11 +455,13 @@ def build_board(res: dict, meta: dict, base: dict | None, ioc_rel: str) -> dict:
         "toolchain": {"compiler": "arm-none-eabi-gcc", "flasher": "openocd", "openocd_interface": "TODO",
                       "openocd_target": "TODO"}}
     b["port"] = "stm32-cubemx"
-    b["config_source"] = {"tool": "cubemx", "file": ioc_rel}
+    b["config_source"] = {"tool": "cubemx", "file": ioc_rel,
+                          **{k: meta[k] for k in ("hal_timebase", "rtos") if meta.get(k)}}
     mcu = b.setdefault("mcu", {})
     mcu["part"] = meta["part"]
     mcu["family"] = meta["family"]
-    mcu.setdefault("core", "TODO")
+    if mcu.get("core", "TODO") == "TODO":
+        mcu["core"] = FAMILY_CORE.get(meta["family"], "TODO")
     if meta.get("flash_kb") and "variants" not in mcu:
         mcu["flash_kb"] = meta["flash_kb"]
     b["clock"] = {"hse_hz": meta.get("hse_hz", "TODO"), "sysclk_hz": meta["sysclk_hz"]}
@@ -475,10 +509,12 @@ def selftest() -> int:
     base = FIXTURE.read_text(encoding="utf-8")
     cases = {
         "ok": (lambda s: s, set()),
-        "timebase_tim": (lambda s: s.replace("VP_SYS_VS_Systick.Mode=SysTick", "VP_SYS_VS_tim7.Mode=TIM7") + "NVIC.TimeBase=TIM7_IRQn\n", {"T1"}),
+        "timebase_tim": (lambda s: s.replace("VP_SYS_VS_Systick.Mode=SysTick", "VP_SYS_VS_tim7.Mode=TIM7") + "NVIC.TimeBase=TIM7_IRQn\n", set()),
+        "timebase_unknown": (lambda s: s.replace("VP_SYS_VS_Systick.Mode=SysTick", "") + "NVIC.TimeBase=TIM7_IRQn\n", {"T1"}),
         "prio_group2": (lambda s: s.replace("NVIC_PRIORITYGROUP_4", "NVIC_PRIORITYGROUP_2"), {"N1"}),
         "dma_conflict": (lambda s: s.replace("Dma.USART2_RX.2.Instance=DMA1_Stream5", "Dma.USART2_RX.2.Instance=DMA2_Stream2"), {"D1"}),
-        "rx_not_circular": (lambda s: s.replace("Dma.USART1_RX.0.Mode=DMA_CIRCULAR", "Dma.USART1_RX.0.Mode=DMA_NORMAL"), {"D2"}),
+        "rx_not_circular": (lambda s: s.replace("Dma.USART1_RX.0.Mode=DMA_CIRCULAR", "Dma.USART1_RX.0.Mode=DMA_NORMAL"), set()),
+        "rx_no_dma_no_irq": (lambda s: s.replace("Dma.USART1_RX.0.", "X.").replace("NVIC.USART1_IRQn=true", "NVIC.USART1_IRQn=false"), {"N2"}),
         "ctrl_irq_off": (lambda s: s.replace("NVIC.TIM6_DAC_IRQn=true", "NVIC.TIM6_DAC_IRQn=false"), {"N2"}),
         "bad_label": (lambda s: s.replace("PA8.GPIO_Label=PWM_MOTOR_A", "PA8.GPIO_Label=GPIO_MOTOR_A"), {"L1"}),
         "enc_missing_b": (lambda s: s.replace("PD13.GPIO_Label=ENC_MOTOR_A_B", "PD13.GPIO_Label=X"), {"L1"}),
@@ -526,7 +562,13 @@ def main() -> int:
     rep = Rep()
     res, meta = run(a.ioc, timers, rep)
     if a.project:
-        check_project(a.project, rep)
+        check_project(a.project, rep, rtos=bool(meta.get("rtos")),
+                      tim_timebase=meta.get("hal_timebase", "SysTick") != "SysTick")
+    if a.check and ref_board:
+        cs = ref_board.get("config_source") or {}
+        for k, dflt in (("hal_timebase", "SysTick"), ("rtos", None)):
+            if meta.get(k, dflt) != cs.get(k, dflt):
+                rep.err("T1", f"config_source.{k}: .ioc={meta.get(k, dflt)!r}  board.yaml={cs.get(k, dflt)!r}（重新导入或手改 board.yaml）")
     for i in rep.infos:
         print(f"信息  {i}")
     for w in rep.warnings:

@@ -106,9 +106,8 @@ meta:
     I2C1:
     - I2C1_SCL=PB8
     - I2C1_SDA=PB9
-errors:
-- D2
-- T1
-warnings: 6
+errors: []
+warnings: 10
 infos:
+- HAL 时基是 TIM1（FreeRTOS 工程的推荐配置）：移植层按 TIM 时基工作，main.c 的 HAL_TIM_PeriodElapsedCallback 里要调用 dz_cubemx_tim_callback(htim)
 - I2C1 已配置（I2C1_SCL=PB8, I2C1_SDA=PB9），board.yaml 的 resources 暂无该类型，未导入

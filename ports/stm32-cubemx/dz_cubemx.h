@@ -13,7 +13,13 @@
 
 /** 启动 PWM/编码器/串口 DMA 接收，然后调用 app_init()。失败时 LED（若有 RES_GPIO_LED）快闪并停在这里。 */
 void dz_cubemx_start(void);
-/** 调用一次 app_loop()。 */
+/** 调用一次 app_loop()。裸机放 main.c USER CODE 3（while 内）；FreeRTOS 放 StartDefaultTask 的 for 循环（后面 osDelay(1)）。 */
 void dz_cubemx_loop(void);
+
+#ifdef DZ_CM_TIM_TIMEBASE
+#include "main.h"
+/** 仅 HAL 时基 = TIMx 的工程：在 main.c 的 HAL_TIM_PeriodElapsedCallback 里 USER CODE Callback 1 调用。 */
+void dz_cubemx_tim_callback(TIM_HandleTypeDef *htim);
+#endif
 
 #endif
