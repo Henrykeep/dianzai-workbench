@@ -1,4 +1,39 @@
 {
+ "firmware/algo/ball_beam": {
+  "decls": [
+   "ball_beam.h: typedef struct { float alpha, beta;",
+   "ball_beam.h: float lead_s;",
+   "ball_beam.h: float pos_k;",
+   "ball_beam.h: float vel_max;",
+   "ball_beam.h: float vel_k;",
+   "ball_beam.h: float ki;",
+   "ball_beam.h: float i_zone;",
+   "ball_beam.h: float i_max;",
+   "ball_beam.h: float i_decay;",
+   "ball_beam.h: float angle_max;",
+   "ball_beam.h: float rate_max;",
+   "ball_beam.h: uint32_t hold_ms, timeout_ms;",
+   "ball_beam.h: float dir;",
+   "ball_beam.h: } ball_beam_cfg_t;",
+   "ball_beam.h: typedef enum { BB_WAIT = 0, BB_TRACK, BB_HOLD, BB_LOST } ball_beam_state_t;",
+   "ball_beam.h: typedef struct { ball_beam_cfg_t cfg;",
+   "ball_beam.h: bool primed;",
+   "ball_beam.h: float x, v;",
+   "ball_beam.h: uint32_t t_sample;",
+   "ball_beam.h: float integ, e_prev, out;",
+   "ball_beam.h: bool new_sample;",
+   "ball_beam.h: ball_beam_state_t state;",
+   "ball_beam.h: } ball_beam_t;",
+   "ball_beam.h: dz_err_t ball_beam_init(ball_beam_t *b, const ball_beam_cfg_t *cfg);",
+   "ball_beam.h: void ball_beam_reset(ball_beam_t *b);",
+   "ball_beam.h: void ball_beam_sample(ball_beam_t *b, float x_px, uint32_t t_ms);",
+   "ball_beam.h: float ball_beam_update(ball_beam_t *b, float setpoint_px, float ff_deg, uint32_t now_ms, float dt_s);",
+   "ball_beam.h: ball_beam_state_t ball_beam_state(const ball_beam_t *b);",
+   "ball_beam.h: dz_err_t ball_beam_selftest(void);"
+  ],
+  "hash": "95a3999df6cd857e",
+  "version": "1.0.0"
+ },
  "firmware/algo/lpf": {
   "decls": [
    "lpf1.h: typedef struct { float cutoff_hz;",
@@ -114,6 +149,27 @@
   "hash": "58651024995716d8",
   "version": "1.0.0"
  },
+ "firmware/drivers/key": {
+  "decls": [
+   "key.h: typedef enum { KEY_EV_NONE = 0, KEY_EV_SHORT, KEY_EV_LONG, KEY_EV_REPEAT } key_event_t;",
+   "key.h: typedef struct { pal_id_t gpio;",
+   "key.h: uint16_t debounce_ms;",
+   "key.h: uint16_t long_ms;",
+   "key.h: uint16_t repeat_ms;",
+   "key.h: } key_cfg_t;",
+   "key.h: typedef struct { key_cfg_t cfg;",
+   "key.h: bool raw, stable, long_sent, primed;",
+   "key.h: uint32_t raw_since, press_at, last_rep;",
+   "key.h: } dz_key_t;",
+   "key.h: dz_err_t key_init(dz_key_t *k, const key_cfg_t *cfg);",
+   "key.h: key_event_t key_feed(dz_key_t *k, bool pressed, uint32_t now_ms);",
+   "key.h: key_event_t key_poll(dz_key_t *k);",
+   "key.h: bool key_is_down(const dz_key_t *k);",
+   "key.h: dz_err_t key_selftest(void);"
+  ],
+  "hash": "ebed22c92f9785c3",
+  "version": "1.0.0"
+ },
  "firmware/drivers/motor_dc": {
   "decls": [
    "motor_dc.h: typedef enum { MOTOR_DC_PWM_IN1_IN2 = 0, MOTOR_DC_PWM_DIR = 1 } motor_dc_mode_t;",
@@ -139,6 +195,66 @@
    "motor_dc.h: dz_err_t motor_dc_selftest(motor_dc_t *m, float test_duty, uint32_t hold_ms);"
   ],
   "hash": "65f17efe2649dbed",
+  "version": "1.0.0"
+ },
+ "firmware/drivers/qd4310": {
+  "decls": [
+   "qd4310.h: #define QD4310_TX_LEN 5u",
+   "qd4310.h: #define QD4310_RX_LEN 10u",
+   "qd4310.h: enum { QD_CMD_NOP = 0x00, QD_CMD_ENABLE = 0x01, QD_CMD_DISABLE = 0x02, QD_CMD_CURRENT = 0x03, QD_CMD_SPEED = 0x04, QD_CMD_ANGLE = 0x05, QD_CMD_LOW_SPEED = 0x06, QD_CMD_STEP_ANGLE = 0x07, QD_CMD_CLEAR_FAULT = 0xFB, QD_CMD_SET_ZERO = 0xFE, QD_CMD_REBOOT = 0xFF };",
+   "qd4310.h: typedef struct { uint8_t status;",
+   "qd4310.h: float current_a, speed_rpm, angle_deg;",
+   "qd4310.h: uint32_t t_ms;",
+   "qd4310.h: } qd4310_fb_t;",
+   "qd4310.h: typedef struct { pal_id_t uart;",
+   "qd4310.h: uint8_t id;",
+   "qd4310.h: uint8_t rx[QD4310_RX_LEN];",
+   "qd4310.h: uint8_t rx_n;",
+   "qd4310.h: bool have_fb;",
+   "qd4310.h: qd4310_fb_t fb;",
+   "qd4310.h: uint32_t rx_ok, rx_err, tx_busy;",
+   "qd4310.h: } qd4310_t;",
+   "qd4310.h: uint8_t qd4310_crc8(const uint8_t *p, uint16_t n);",
+   "qd4310.h: void qd4310_encode(uint8_t id, uint8_t cmd, uint16_t val, uint8_t out[QD4310_TX_LEN]);",
+   "qd4310.h: bool qd4310_decode(const uint8_t in[QD4310_RX_LEN], uint8_t id, qd4310_fb_t *fb);",
+   "qd4310.h: dz_err_t qd4310_init(qd4310_t *m, pal_id_t uart, uint8_t id);",
+   "qd4310.h: dz_err_t qd4310_cmd(qd4310_t *m, uint8_t cmd, uint16_t val);",
+   "qd4310.h: dz_err_t qd4310_enable(qd4310_t *m, bool on);",
+   "qd4310.h: dz_err_t qd4310_set_current(qd4310_t *m, float amps);",
+   "qd4310.h: dz_err_t qd4310_set_speed(qd4310_t *m, float rpm);",
+   "qd4310.h: dz_err_t qd4310_set_angle_deg(qd4310_t *m, float deg);",
+   "qd4310.h: bool qd4310_feed(qd4310_t *m, const uint8_t *buf, uint16_t n, uint32_t now_ms);",
+   "qd4310.h: bool qd4310_poll(qd4310_t *m);",
+   "qd4310.h: bool qd4310_online(const qd4310_t *m, uint32_t now_ms, uint32_t timeout_ms);",
+   "qd4310.h: dz_err_t qd4310_selftest(void);"
+  ],
+  "hash": "3bcf9fad16329ac6",
+  "version": "1.0.0"
+ },
+ "firmware/drivers/ssd1306": {
+  "decls": [
+   "ssd1306.h: #define SSD1306_W 128u",
+   "ssd1306.h: typedef dz_err_t (*ssd1306_write_fn)(void *ctx, bool is_data, const uint8_t *buf, uint16_t n);",
+   "ssd1306.h: typedef struct { ssd1306_write_fn write;",
+   "ssd1306.h: void *ctx;",
+   "ssd1306.h: uint8_t height;",
+   "ssd1306.h: bool flip;",
+   "ssd1306.h: uint8_t buf[SSD1306_W * 64u / 8u];",
+   "ssd1306.h: } ssd1306_t;",
+   "ssd1306.h: extern const uint8_t ssd1306_font8x8[95][8];",
+   "ssd1306.h: dz_err_t ssd1306_init(ssd1306_t *d, ssd1306_write_fn write, void *ctx, uint8_t height, bool flip);",
+   "ssd1306.h: dz_err_t ssd1306_flush(ssd1306_t *d);",
+   "ssd1306.h: dz_err_t ssd1306_power(ssd1306_t *d, bool on);",
+   "ssd1306.h: dz_err_t ssd1306_contrast(ssd1306_t *d, uint8_t level);",
+   "ssd1306.h: void ssd1306_clear(ssd1306_t *d);",
+   "ssd1306.h: void ssd1306_pixel(ssd1306_t *d, int x, int y, bool on);",
+   "ssd1306.h: bool ssd1306_get_pixel(const ssd1306_t *d, int x, int y);",
+   "ssd1306.h: void ssd1306_fill_rect(ssd1306_t *d, int x, int y, int w, int h, bool on);",
+   "ssd1306.h: int ssd1306_text(ssd1306_t *d, int col, int row, const char *s);",
+   "ssd1306.h: int ssd1306_label_float(ssd1306_t *d, int col, int row, const char *label, float v, int decimals);",
+   "ssd1306.h: dz_err_t ssd1306_selftest(void);"
+  ],
+  "hash": "e97c3ee5984b58f7",
   "version": "1.0.0"
  },
  "firmware/framework/coord": {
@@ -179,6 +295,25 @@
   ],
   "hash": "167ee87528b00f89",
   "version": "1.1.0"
+ },
+ "firmware/framework/spsc": {
+  "decls": [
+   "spsc.h: typedef struct { uint8_t *buf;",
+   "spsc.h: uint16_t elem_size;",
+   "spsc.h: uint16_t cap;",
+   "spsc.h: volatile uint32_t head;",
+   "spsc.h: volatile uint32_t tail;",
+   "spsc.h: volatile uint32_t dropped;",
+   "spsc.h: } spsc_t;",
+   "spsc.h: dz_err_t spsc_init(spsc_t *q, void *storage, uint16_t elem_size, uint16_t cap);",
+   "spsc.h: dz_err_t spsc_push(spsc_t *q, const void *elem);",
+   "spsc.h: bool spsc_pop(spsc_t *q, void *elem);",
+   "spsc.h: bool spsc_pop_latest(spsc_t *q, void *elem);",
+   "spsc.h: uint32_t spsc_count(const spsc_t *q);",
+   "spsc.h: dz_err_t spsc_selftest(void);"
+  ],
+  "hash": "e73361a57215f636",
+  "version": "1.0.0"
  },
  "firmware/framework/subsys": {
   "decls": [

@@ -12,3 +12,5 @@
 
 ## 参考来源
 - TB6612FNG 数据手册真值表（东芝）
+- SparkFun TB6612FNG Arduino Library（github.com/sparkfun/SparkFun_TB6612FNG_Arduino_Library，MIT）：方向+PWM 接口划分作对照，未拷贝代码。
+- 用户 P1 工程的 motor.c **未使用**；本模块是工作台自写。

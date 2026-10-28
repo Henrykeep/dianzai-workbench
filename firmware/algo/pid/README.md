@@ -12,3 +12,5 @@
 
 ## 参考来源
 - Brett Beauregard《Improving the Beginner's PID》系列（brettbeauregard.com，微分取测量值、抗积分饱和、无扰切换）；RoboMaster 官方开发板 C 型例程中的 PID（github.com/RoboMaster/Development-Board-C-Examples，位置式+增量式结构）
+- PX4 Autopilot 姿态/速率控制器（github.com/PX4/PX4-Autopilot，src/lib/pid，BSD-3）：积分钳位与微分取测量值的同类做法，作对照，未拷贝代码。
+- 用户 P1 工程的 pid.c（商家教程风格，许可不明）**未使用**；本模块是工作台自写。

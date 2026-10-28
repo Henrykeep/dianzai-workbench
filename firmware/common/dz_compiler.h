@@ -62,4 +62,17 @@
 
 #define DZ_ARRAY_LEN(a) (sizeof(a) / sizeof((a)[0]))
 
+
+/* 编译器屏障：阻止编译器把普通内存访问重排到屏障另一侧（单核 ISR↔主循环共享数据够用；
+ * 多核/DMA 一致性另需 __DMB，不在此处）。 */
+#if defined(__CC_ARM)
+#define DZ_COMPILER_BARRIER() __schedule_barrier()
+#elif defined(__ICCARM__)
+#define DZ_COMPILER_BARRIER() __asm volatile("" ::: "memory")
+#elif defined(__GNUC__) || defined(__clang__)
+#define DZ_COMPILER_BARRIER() __asm__ __volatile__("" ::: "memory")
+#else
+#define DZ_COMPILER_BARRIER() ((void)0)
+#endif
+
 #endif /* DZ_COMPILER_H */
