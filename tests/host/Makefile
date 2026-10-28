@@ -11,8 +11,9 @@ SRC  := $(wildcard *.c) $(wildcard $(ROOT)/firmware/algo/*/*.c $(ROOT)/firmware/
 CFLAGS := -std=c11 -O1 -g -Wall -Wextra -Werror -Wshadow -Wno-unused-parameter -fsanitize=address,undefined -fno-omit-frame-pointer
 
 .PHONY: run
-run: $(OUT)/unit_tests
+run: $(OUT)/unit_tests $(OUT)/car_2wd_test
 	$(OUT)/unit_tests
+	$(OUT)/car_2wd_test
 $(GEN)/board_gen.h: $(ROOT)/boards/host-sim/board.yaml
 	python3 $(ROOT)/tools/gen_board.py $(ROOT)/boards/host-sim/board.yaml -o $(GEN)
 $(OUT)/unit_tests: $(SRC) $(GEN)/board_gen.h $(wildcard *.h) $(wildcard $(ROOT)/firmware/*/*/*.h)
@@ -23,3 +24,14 @@ $(OUT)/unit_tests: $(SRC) $(GEN)/board_gen.h $(wildcard *.h) $(wildcard $(ROOT)/
 # C↔Python 互通：用 host/python/dzlink 现场编码一帧，把它算出的 CRC 传给 C 测试
 PYFRAME := $(shell cd $(ROOT)/host/python && python3 -c "from dzlink.protocol import encode; print(encode(0, 5, 9, bytes.fromhex('01020304')).hex())")
 CFLAGS += -DPY_CRC_L=0x$(shell echo $(PYFRAME) | cut -c23-24) -DPY_CRC_H=0x$(shell echo $(PYFRAME) | cut -c25-26)
+
+# 应用级闭环测试：car_2wd（多板验收用例）的真实 app 代码 + host-sim 电机模型
+CAR := $(ROOT)/apps/car_2wd
+CAR_SRC := $(CAR)/tests/test_car.c $(CAR)/app_main.c $(CAR)/drive_plan.c $(CAR)/sim_setup.c \
+           $(filter-out $(wildcard $(ROOT)/firmware/*/*/*selftest*.c),$(wildcard $(ROOT)/firmware/algo/*/*.c $(ROOT)/firmware/drivers/*/*.c)) \
+           $(ROOT)/ports/host-sim/pal_host.c $(GEN)/board_gen.c \
+           $(wildcard $(ROOT)/firmware/framework/*/*.c) $(wildcard $(ROOT)/firmware/proto/*/*.c)
+$(OUT)/car_2wd_test: $(CAR_SRC) $(GEN)/board_gen.h $(wildcard $(CAR)/*.h)
+	@mkdir -p $(OUT)
+	@echo "  CC+LD  $@"
+	@gcc $(CFLAGS) $(INC) -I$(CAR) $(CAR_SRC) -lm -o $@

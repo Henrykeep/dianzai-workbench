@@ -71,6 +71,18 @@ resources:
       init: false
       verified: false
       note: 建议接线：TB6612 AIN2
+    - name: MOTOR_B_IN1
+      pin: PB14
+      dir: out
+      init: false
+      verified: false
+      note: 建议接线：TB6612 BIN1
+    - name: MOTOR_B_IN2
+      pin: PB15
+      dir: out
+      init: false
+      verified: false
+      note: 建议接线：TB6612 BIN2
 
   pwm:
     - name: MOTOR_A
@@ -80,6 +92,13 @@ resources:
       freq_hz: 20000
       verified: false
       note: 建议接线：TB6612 PWMA；20kHz 在人耳可闻范围之外
+    - name: MOTOR_B
+      timer: TIM1
+      channel: 2
+      pin: PE11
+      freq_hz: 20000
+      verified: false
+      note: 建议接线：TB6612 PWMB（TIM1_CH2 的 PA9 被 LINK 占用，故用 PE11）
     - name: SERVO_X
       timer: TIM3
       channel: 1
@@ -104,6 +123,14 @@ resources:
       filter: 6
       verified: false
       note: 建议接线：电机霍尔编码器 A/B 相；方向反了改 invert，不要改代码
+    - name: MOTOR_B
+      timer: TIM2
+      pin_a: PA15
+      pin_b: PB3
+      invert: false
+      filter: 6
+      verified: false
+      note: 建议接线：右轮编码器 A/B 相。PA15/PB3 是 JTAG 脚，用 SWD 下载不受影响；TIM2 为 32 位计数
 
   uart:
     - name: LINK

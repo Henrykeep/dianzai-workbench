@@ -14,12 +14,16 @@ resources:
     - { name: KEY, pin: SIM1, dir: in }
     - { name: MOTOR_A_IN1, pin: SIM2, dir: out }
     - { name: MOTOR_A_IN2, pin: SIM3, dir: out }
+    - { name: MOTOR_B_IN1, pin: SIM14, dir: out }
+    - { name: MOTOR_B_IN2, pin: SIM15, dir: out }
   pwm:
     - { name: MOTOR_A, timer: SIMTIM0, channel: 1, pin: SIM4, freq_hz: 20000 }
+    - { name: MOTOR_B, timer: SIMTIM0, channel: 2, pin: SIM16, freq_hz: 20000 }
     - { name: SERVO_X, timer: SIMTIM3, channel: 1, pin: SIM10, freq_hz: 50 }
     - { name: SERVO_Y, timer: SIMTIM3, channel: 2, pin: SIM11, freq_hz: 50 }
   encoder:
     - { name: MOTOR_A, timer: SIMTIM1, pin_a: SIM5, pin_b: SIM6 }
+    - { name: MOTOR_B, timer: SIMTIM4, pin_a: SIM17, pin_b: SIM18 }
   uart:
     - { name: LINK, instance: SIMUART0, tx: SIM7, rx: SIM8, baud: 460800 }
     - { name: VISION, instance: SIMUART1, tx: SIM12, rx: SIM13, baud: 115200 }
