@@ -1,0 +1,130 @@
+# 由 tools/ioc_import.py 从 CubeMX .ioc 生成；引脚/实例请改 .ioc 后重新导入，这里只手改 name/verified/note/invert/scale 等说明字段
+schema_version: 1
+name: stm32f103c8t6-car-cubemx
+vendor: 通用 STM32F103C8T6 最小系统板（蓝色小板）
+description: 用户真实工程 USART.ioc（F103C8T6 循迹小车）的拷贝，按 docs/05 约定补了 User Label，并加了 TIM1 作 CTRL 节拍定时器；cubemx/Core
+  下工程为【合成样例】（仿 CubeMX 生成结构手写），未上板测试
+sources:
+- what: 引脚分配、定时器/串口/DMA 配置来自用户上传的 USART.ioc（tools/testdata/real/usart_f103c8t6.ioc）
+  url: tools/testdata/real/README.md
+todo:
+- 相对用户原工程的改动（需用户确认）：加了 TIM1（72MHz/72/1000=1kHz 更新中断，作 CTRL）；给 PA0/PA1、PA6/PA7、PB6/PB7、PB10/11/14/15、
+  USART1/2 补了约定标签（PWMA=PA0、PWMB=PA1、左轮编码器=TIM3、右轮=TIM4 是推测）
+- TIM2 PWM 只有 100Hz（原工程配置）：驱动 TB6612 会啸叫，建议改 10~20kHz（Prescaler=0, Period=3600-1 即 20kHz）
+- USART1/USART2 RX DMA 是 Normal 模式（原工程配置），移植层自动重启接收；改 Circular 更稳
+- PA8/PB1 两个输出脚没有标签，用途未知（LED？）
+- 晶振：.ioc 未写 HSE_VALUE，按 F1 默认 8MHz
+toolchain:
+  compiler: arm-none-eabi-gcc
+  flasher: openocd
+  openocd_interface: TODO
+  openocd_target: target/stm32f1x.cfg
+port: stm32-cubemx
+config_source:
+  tool: cubemx
+  file: cubemx/f103car.ioc
+  hal_timebase: SysTick
+mcu:
+  part: STM32F103C8T6
+  family: stm32f1
+  core: cortex-m3
+  flash_kb: 64
+clock:
+  hse_hz: 8000000
+  sysclk_hz: 72000000
+resources:
+  gpio:
+  - name: KEY1
+    pin: PA4
+    dir: in
+    pull: up
+  - name: KEY2
+    pin: PA5
+    dir: in
+    pull: up
+  - name: PA8
+    pin: PA8
+    dir: out
+  - name: R4
+    pin: PA11
+    dir: in
+  - name: R2
+    pin: PA15
+    dir: in
+  - name: PB1
+    pin: PB1
+    dir: out
+  - name: R1
+    pin: PB3
+    dir: in
+  - name: L1
+    pin: PB4
+    dir: in
+  - name: L2
+    pin: PB5
+    dir: in
+  - name: L3
+    pin: PB8
+    dir: in
+  - name: L4
+    pin: PB9
+    dir: in
+  - name: MOTOR_B_IN2
+    pin: PB10
+    dir: out
+  - name: MOTOR_B_IN1
+    pin: PB11
+    dir: out
+  - name: OLED_SCL
+    pin: PB12
+    dir: out
+  - name: OLED_SDA
+    pin: PB13
+    dir: out
+  - name: MOTOR_A_IN1
+    pin: PB14
+    dir: out
+  - name: MOTOR_A_IN2
+    pin: PB15
+    dir: out
+  - name: R3
+    pin: PC14
+    dir: in
+  pwm:
+  - name: MOTOR_A
+    timer: TIM2
+    channel: 1
+    pin: PA0
+    freq_hz: 100
+  - name: MOTOR_B
+    timer: TIM2
+    channel: 2
+    pin: PA1
+    freq_hz: 100
+  encoder:
+  - name: MOTOR_A
+    timer: TIM3
+    pin_a: PA6
+    pin_b: PA7
+  - name: MOTOR_B
+    timer: TIM4
+    pin_a: PB6
+    pin_b: PB7
+  uart:
+  - name: LINK
+    instance: USART1
+    tx: PA9
+    rx: PA10
+    baud: 115200
+    dma: true
+  - name: AUX
+    instance: USART2
+    tx: PA2
+    rx: PA3
+    baud: 115200
+    dma: true
+  timer:
+  - name: CTRL
+    instance: TIM1
+    irq_priority: 1
+    note: 按 .ioc 计算更新频率 1000 Hz
