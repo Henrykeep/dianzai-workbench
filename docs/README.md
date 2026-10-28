@@ -16,6 +16,7 @@
 | 12-参考工程与参数来源.md | P1/P2 角色、收编原则、counts_per_rev 与“转 10 圈”标定 |
 | 13-版本管理.md | 仓库/模块两层版本、CHANGELOG、分支与提交约定 |
 | 14-Keil工作流.md | AC6/AC5 要求、keil_inject.py 注入模块 |
+| 15-CCS工作流.md | 天猛星导入 CCS（projectspec + .syscfg，tiarmclang） |
 | 硬件路线图.md | 各板卡/协处理器状态 |
 | 参考来源.md | 借鉴的开源项目与资料汇总 |
 

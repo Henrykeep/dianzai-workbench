@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 由 tools/gen_ccs_projectspec.py 生成，勿手改；改源文件列表后重跑。【未验证】未在 CCS 中导入编译。
+     导入前先在仓库根目录跑：make BOARD=mspm0g3507-tianmengxing APP=car_2wd gen   （生成 build/mspm0g3507-tianmengxing/gen/board_gen.c） -->
+<projectSpec>
+    <applicability>
+        <when>
+            <context deviceFamily="ARM" deviceId="MSPM0G3507"/>
+        </when>
+    </applicability>
+
+    <project
+        title="mspm0g3507-tianmengxing_car_2wd"
+        name="mspm0g3507-tianmengxing_car_2wd"
+        configurations="Debug"
+        toolChain="TICLANG"
+        connection="TIXDS110_Connection.xml"
+        device="MSPM0G3507"
+        ignoreDefaultDeviceSettings="true"
+        ignoreDefaultCCSSettings="true"
+        products="MSPM0-SDK;sysconfig"
+        compilerBuildOptions="
+            -I${PROJECT_ROOT}
+            -I${PROJECT_ROOT}/${ConfigName}
+            -I${PROJECT_LOC}/../../../firmware/common
+            -I${PROJECT_LOC}/../../../firmware/pal
+            -I${PROJECT_LOC}/../../../firmware/algo/ball_beam
+            -I${PROJECT_LOC}/../../../firmware/algo/lpf
+            -I${PROJECT_LOC}/../../../firmware/algo/pid
+            -I${PROJECT_LOC}/../../../firmware/framework/coord
+            -I${PROJECT_LOC}/../../../firmware/framework/spsc
+            -I${PROJECT_LOC}/../../../firmware/framework/subsys
+            -I${PROJECT_LOC}/../../../firmware/proto/dzframe
+            -I${PROJECT_LOC}/../../../firmware/drivers/encoder
+            -I${PROJECT_LOC}/../../../firmware/drivers/key
+            -I${PROJECT_LOC}/../../../firmware/drivers/motor_dc
+            -I${PROJECT_LOC}/../../../firmware/drivers/qd4310
+            -I${PROJECT_LOC}/../../../firmware/drivers/ssd1306
+            -I${PROJECT_LOC}/../../../apps/include
+            -I${PROJECT_LOC}/../../../ports/mspm0-driverlib
+            -I${PROJECT_LOC}/../../../build/mspm0g3507-tianmengxing/gen
+            -O2
+            @device.opt
+            -I${COM_TI_MSPM0_SDK_INSTALL_DIR}/source/third_party/CMSIS/Core/Include
+            -I${COM_TI_MSPM0_SDK_INSTALL_DIR}/source
+            -mcpu=cortex-m0plus
+            -march=thumbv6m
+            -mfloat-abi=soft
+            -mthumb
+            -std=c11
+            -Wall
+            -D__MSPM0G3507__
+        "
+        linkerBuildOptions="
+            -ldevice.cmd.genlibs
+            -L${COM_TI_MSPM0_SDK_INSTALL_DIR}/source
+            -L${PROJECT_ROOT}
+            -L${PROJECT_BUILD_DIR}/syscfg
+            -Wl,--rom_model
+            -Wl,--warn_sections
+            -L${CG_TOOL_ROOT}/lib
+            -llibc.a
+        "
+        sysConfigBuildOptions="
+            --output .
+            --product ${COM_TI_MSPM0_SDK_INSTALL_DIR}/.metadata/product.json
+            --compiler ticlang
+        "
+        sourceLookupPath="${COM_TI_MSPM0_SDK_INSTALL_DIR}/source/ti/driverlib"
+        description="dianzai-workbench：mspm0g3507-tianmengxing + car_2wd">
+        <property name="buildProfile" value="release"/>
+        <property name="isHybrid" value="true"/>
+        <file path="tianmengxing.syscfg" openOnCreation="true" excludeFromBuild="false" action="copy"/>
+        <file path="${COM_TI_MSPM0_SDK_INSTALL_DIR}/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c" openOnCreation="false" excludeFromBuild="false" targetDirectory="ticlang" action="copy"/>
+        <file path="../../../firmware/algo/ball_beam/ball_beam.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/lpf/lpf1.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/pid/pid.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/framework/coord/coord.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/framework/spsc/spsc.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/framework/subsys/subsys.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/proto/dzframe/dzframe.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/encoder/encoder.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/key/key.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/motor_dc/motor_dc.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/qd4310/qd4310.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/ssd1306/font8x8.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/ssd1306/ssd1306.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../apps/car_2wd/app_main.c" targetDirectory="dz/apps" action="link"/>
+        <file path="../../../apps/car_2wd/drive_plan.c" targetDirectory="dz/apps" action="link"/>
+        <file path="../../../ports/mspm0-driverlib/pal_mspm0.c" targetDirectory="dz/ports" action="link"/>
+        <file path="../../../ports/mspm0-driverlib/main_mspm0.c" targetDirectory="dz/ports" action="link"/>
+        <file path="../../../build/mspm0g3507-tianmengxing/gen/board_gen.c" targetDirectory="dz/gen" action="link"/>
+    </project>
+</projectSpec>

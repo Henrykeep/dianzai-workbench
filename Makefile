@@ -157,7 +157,7 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -201,6 +201,13 @@ ioc-check:
 	  $(PY) tools/ioc_import.py $$ioc --check $$b --project $$(dirname $$ioc) || exit 1; done
 
 # 只生成 board_gen.{h,c,mk}（给 Keil / CCS 工程用）
+# 打印本次构建的源文件/头文件路径/宏（给 tools/gen_ccs_projectspec.py 等 IDE 生成器用）
+vars: $(GEN)/board_gen.mk
+	@echo "SRCS=$(SRCS)"
+	@echo "INC=$(FW_INC) $(PROJ_INC) $(PORT_DIR) $(GEN)"
+	@echo "DEFS=$(BOARD_DEFS)"
+	@echo "GEN=$(GEN)"
+
 gen: $(GEN)/board_gen.mk
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
@@ -222,6 +229,8 @@ check:
 	$(PY) tools/keil_inject.py --selftest
 	$(PY) tools/test_keil_inject.py
 	$(PY) tools/syscfg_import.py --selftest
+	$(PY) tools/syscfg_import.py boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg --check boards/mspm0g3507-tianmengxing/board.yaml
+	$(PY) tools/gen_ccs_projectspec.py --board mspm0g3507-tianmengxing --app car_2wd --check
 	$(PY) tools/audit_port.py --selftest
 	$(MAKE) ioc-check
 	$(MAKE) -C examples/2026H_ball/tests
