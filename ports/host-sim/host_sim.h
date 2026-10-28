@@ -55,6 +55,9 @@ unsigned host_sim_events(host_sim_ev_t *out, unsigned max);  /**< 取出并清�
 typedef enum { HS_FAIL_GPIO, HS_FAIL_PWM, HS_FAIL_ENC, HS_FAIL_UART, HS_FAIL_ADC, HS_FAIL_COUNT } host_sim_fail_t;
 void host_sim_fail_next(host_sim_fail_t what, unsigned n);
 
+/** 仿真侧的周期事件（模拟外部设备，例如协处理器定时发帧）。与 PAL 定时器无关，最多 4 个。 */
+int host_sim_add_periodic(uint32_t period_us, void (*fn)(void *), void *ctx);
+
 /** 设置 pal_reset_cause() 的返回值（测试上电自报）。 */
 void host_sim_set_reset_cause(pal_reset_cause_t c);
 

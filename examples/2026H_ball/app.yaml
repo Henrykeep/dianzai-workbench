@@ -1,0 +1,7 @@
+name: 2026H_ball
+version: 0.1.0
+requires:
+  gpio: [LED, MOTOR_A_IN1, MOTOR_A_IN2]
+  pwm: [MOTOR_A, SERVO_X, SERVO_Y]
+  encoder: [MOTOR_A]
+  uart: [LINK, VISION]

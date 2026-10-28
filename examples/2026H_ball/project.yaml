@@ -1,0 +1,71 @@
+# 2026 H 题参考实例（第一个用框架描述的题目，不是框架的一部分）。
+# 子系统划分依据用户的描述：底盘、钢珠控制、视觉。具体测试项/指标请以官方题目原文为准，
+# 下面的 tests 只是占位示例（标了 TODO），不要当作题目要求。
+schema_version: 1
+name: 2026H_ball
+description: 底盘 + 钢珠控制 + 视觉（Jetson Nano 识别，经 UART 发给主控）
+
+boards:
+  main: stm32f407-skystar     # 主控；子系统都跑在 main 上
+  # vision_cpu: jetson-nano   # 协处理器，不跑本框架，只通过 VISION 串口发帧（协议见 lib/vision_link.h）
+
+state:
+  io_in:                       # 传感器原始输入，由 io 胶水层写（读硬件），子系统只读
+    owner: io
+    fields:
+      - { name: wheel_rps,  type: float,  unit: 转/秒, desc: 底盘轮速（编码器） }
+      - { name: cam_x_px,   type: int16,  unit: px, desc: 视觉帧中钢珠 x }
+      - { name: cam_y_px,   type: int16,  unit: px, desc: 视觉帧中钢珠 y }
+      - { name: cam_found,  type: bool,   desc: 本帧是否识别到 }
+      - { name: cam_seq,    type: uint32, desc: 收到的有效帧计数 }
+      - { name: cam_rx_ms,  type: uint32, unit: ms, desc: 最近一帧到达时间 }
+  coord:                       # 协调器下发的目标，由 coord 的 pre_step 钩子写
+    owner: coord
+    fields:
+      - { name: test_id,        type: uint8 }
+      - { name: chassis_sp_rps, type: float, unit: 转/秒 }
+      - { name: ball_sp_x_mm,   type: float, unit: mm }
+      - { name: ball_sp_y_mm,   type: float, unit: mm }
+  vision_out:
+    owner: vision
+    fields:
+      - { name: x_mm,   type: float, unit: mm }
+      - { name: y_mm,   type: float, unit: mm }
+      - { name: valid,  type: bool, desc: 有新鲜且识别到的数据 }
+      - { name: age_ms, type: uint32 }
+  chassis_out:
+    owner: chassis
+    fields:
+      - { name: motor_cmd, type: float, desc: -1..1 }
+      - { name: accel_rps2, type: float, desc: 底盘加速度估计，给钢珠控制做前馈 }
+  ball_out:
+    owner: ball
+    fields:
+      - { name: servo_x_us, type: uint16 }
+      - { name: servo_y_us, type: uint16 }
+
+subsystems:
+  - { name: vision,  board: main, period_ms: 5,  owns: [vision_out],  reads: [io_in] }
+  - { name: chassis, board: main, period_ms: 1,  owns: [chassis_out], reads: [io_in, coord] }
+  - { name: ball,    board: main, period_ms: 10, owns: [ball_out],    reads: [vision_out, coord, chassis_out] }
+
+params:
+  - { name: chassis_kp, type: float, default: 0.08 }
+  - { name: chassis_ki, type: float, default: 1.5 }
+  - { name: ball_kp,    type: float, default: 2.0, desc: us/mm }
+  - { name: ball_kd,    type: float, default: 0.6, desc: us/(mm/s) }
+  - { name: ball_ff,    type: float, default: 0.0, desc: 底盘加速度前馈 us/(rps²)，0 关闭 }
+  - { name: mm_per_px,  type: float, default: 0.5, desc: TODO(用户) 按相机标定填写 }
+  - { name: cam_cx_px,  type: float, default: 320 }
+  - { name: cam_cy_px,  type: float, default: 240 }
+  - { name: vision_timeout_ms, type: uint32, default: 100 }
+  - { name: servo_mid_us, type: uint16, default: 1500 }
+  - { name: servo_span_us, type: uint16, default: 400, desc: 中位 ± 最大偏移 }
+
+profiles:
+  - { name: base, desc: 默认 }
+  - { name: moving, desc: 底盘运动时加前馈, set: { ball_ff: 30.0, ball_kd: 0.8 } }
+
+tests:      # TODO(用户)：按官方题目原文改写小题、限时
+  - { id: 1, name: 示例-钢珠静止定位, profile: base, time_limit_s: 30 }
+  - { id: 2, name: 示例-底盘运动中保持钢珠, profile: moving, time_limit_s: 60 }

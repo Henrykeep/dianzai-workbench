@@ -182,7 +182,10 @@ def gen_stm32f4(board: dict, src: str, sha: str) -> tuple[str, dict]:
 
 
 def gen_host(board: dict, src: str, sha: str) -> tuple[str, dict]:
-    c = HEADER.format(src=src, sha=sha[:12]) + '#include "board_gen.h"\nconst char *const g_board_name = BOARD_NAME;\n'
+    res = usable(board)
+    freqs = ", ".join(f"{r['freq_hz']}u" for r in res["pwm"]) or "0u"
+    c = (HEADER.format(src=src, sha=sha[:12]) + '#include "board_gen.h"\nconst char *const g_board_name = BOARD_NAME;\n'
+         f"const uint32_t g_host_pwm_freq[] = {{ {freqs} }};\n")
     return c, {"BOARD_PORT": board["port"], "BOARD_FAMILY": "host", "BOARD_DEFS": ""}
 
 

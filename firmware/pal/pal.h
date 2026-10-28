@@ -40,6 +40,9 @@ typedef uint8_t pal_id_t;
 /** "不使用该资源"，例如单方向引脚的 H 桥没有 IN2。 */
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
+/** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
+#define PAL_VERSION "1.0.0"
+
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
 

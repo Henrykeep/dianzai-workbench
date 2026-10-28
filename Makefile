@@ -16,10 +16,13 @@ PY    ?= python3
 .DEFAULT_GOAL := all
 ROOT      := $(CURDIR)
 BOARD_YML := boards/$(BOARD)/board.yaml
-APP_DIR   := apps/$(APP)
+APP_DIR   ?= $(firstword $(wildcard apps/$(APP) examples/$(APP)))
 OUT       := build/$(BOARD)/$(APP)
 GEN       := build/$(BOARD)/gen
 
+ifeq ($(APP_DIR),)
+$(error 找不到应用 $(APP)（apps/ 或 examples/ 下）)
+endif
 ifeq ($(wildcard $(BOARD_YML)),)
 $(error 找不到 $(BOARD_YML)。可用板卡：$(notdir $(wildcard boards/*)))
 endif
@@ -30,9 +33,21 @@ $(GEN)/board_gen.mk: $(BOARD_YML) $(wildcard $(APP_DIR)/app.yaml) tools/gen_boar
 $(GEN)/board_gen.h $(GEN)/board_gen.c: $(GEN)/board_gen.mk
 -include $(GEN)/board_gen.mk
 
-FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard firmware/drivers/*) apps/include
-LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/drivers/*/*.c)
-APP_SRC  = $(filter-out $(APP_DIR)/sim_setup.c,$(wildcard $(APP_DIR)/*.c))
+# 题目工程（有 project.yaml）：生成共享状态/子系统表
+PROJECT_YML := $(wildcard $(APP_DIR)/project.yaml)
+PROJ_GEN    := $(OUT)/projgen
+ifneq ($(PROJECT_YML),)
+$(PROJ_GEN)/project_gen.h $(PROJ_GEN)/project_gen.c: $(PROJECT_YML) tools/gen_project.py
+	$(PY) tools/gen_project.py $(PROJECT_YML) -o $(PROJ_GEN) --role $(or $(ROLE),main)
+PROJ_SRC := $(PROJ_GEN)/project_gen.c
+PROJ_INC := $(PROJ_GEN) $(APP_DIR)/lib $(APP_DIR)/io
+endif
+
+FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard firmware/framework/*) $(wildcard firmware/drivers/*) apps/include
+LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/drivers/*/*.c)
+APP_ALL := $(shell find $(APP_DIR) -name '*.c' -not -path '*/tests/*')
+SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
+APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC)
 PORT_DIR = ports/$(BOARD_PORT)
 WARN := -Wall -Wextra -Werror -Wshadow -Wdouble-promotion -Wno-unused-parameter
 
@@ -41,7 +56,7 @@ ifeq ($(BOARD_FAMILY),host)
 CC      := gcc
 CFLAGS  := -std=c11 -O2 -g $(WARN) -Wno-double-promotion -fsanitize=address,undefined -fno-omit-frame-pointer
 LDFLAGS := -fsanitize=address,undefined -lm
-PORT_SRC = $(PORT_DIR)/pal_host.c $(PORT_DIR)/main_host.c $(wildcard $(APP_DIR)/sim_setup.c)
+PORT_SRC = $(PORT_DIR)/pal_host.c $(PORT_DIR)/main_host.c $(SIM_SETUP)
 TARGET   = $(OUT)/$(APP).elf
 endif
 
@@ -69,7 +84,7 @@ PORT_SRC = $(PORT_DIR)/pal_stm32f4.c $(PORT_DIR)/main_stm32f4.c $(PORT_DIR)/sysc
 TARGET   = $(OUT)/$(APP).elf
 endif
 
-INC  = $(addprefix -I,$(FW_INC) $(PORT_DIR) $(GEN) $(HAL_INC))
+INC  = $(addprefix -I,$(FW_INC) $(PROJ_INC) $(PORT_DIR) $(GEN) $(HAL_INC))
 SRCS = $(LIB_SRC) $(APP_SRC) $(PORT_SRC) $(GEN)/board_gen.c
 OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
@@ -78,7 +93,7 @@ HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 .PHONY: all run test check selftest clean fetch
 all: $(TARGET)
 
-$(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h
+$(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
 $(OUT)/hal/%.c.o: %.c $(GEN)/board_gen.h
@@ -111,6 +126,7 @@ test:
 
 check:
 	$(PY) tools/validate_board.py boards/*/board.yaml
+	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
 	$(PY) tools/check_deps.py
 	$(PY) tools/iface_hash.py --check
 

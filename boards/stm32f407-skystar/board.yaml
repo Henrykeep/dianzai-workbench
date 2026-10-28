@@ -77,6 +77,20 @@ resources:
       freq_hz: 20000
       verified: false
       note: 建议接线：TB6612 PWMA；20kHz 在人耳可闻范围之外
+    - name: SERVO_X
+      timer: TIM3
+      channel: 1
+      pin: PC6
+      freq_hz: 50
+      verified: false
+      note: 建议接线：舵机通道 X 信号线（舵机需独立 5~6V 供电，与板子共地）
+    - name: SERVO_Y
+      timer: TIM3
+      channel: 2
+      pin: PC7
+      freq_hz: 50
+      verified: false
+      note: 建议接线：舵机通道 Y。避开 PA6/PA7（高配版 SPI Flash 可能使用 SPI1，未核实）
 
   encoder:
     - name: MOTOR_A
@@ -99,6 +113,13 @@ resources:
       dma: true
       verified: false
       note: 与工作台通信；USB-TTL 需支持 460800
+    - name: VISION
+      instance: USART2
+      tx: PA2
+      rx: PA3
+      baud: 115200
+      verified: false
+      note: 建议接线：Jetson Nano（视觉/图传协处理器）的 UART；Jetson 为 3.3V 电平，共地即可，切勿接 5V TTL
 
   timer:
     - name: CTRL

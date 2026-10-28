@@ -10,6 +10,7 @@
 #define UART_BUF   4096
 
 extern const char *const g_board_name;
+extern const uint32_t g_host_pwm_freq[];  /* board_gen.c，按 board.yaml freq_hz */
 
 static struct {
     bool inited;
@@ -28,6 +29,7 @@ static struct {
     host_sim_ev_t ev[256];
     unsigned ev_n;
     unsigned fail[HS_FAIL_COUNT];
+    struct { void (*fn)(void *); void *ctx; uint32_t period_us; uint64_t next_us; } per[4];
 } S;
 
 static bool take_fail(host_sim_fail_t w) { if (S.fail[w]) { S.fail[w]--; return true; } return false; }
@@ -65,6 +67,8 @@ static void step(void)
         S.enc[p->enc] += whole;
     }
     S.now_us += HOST_SIM_STEP_US;
+    for (unsigned i = 0; i < 4; i++)
+        if (S.per[i].fn && S.now_us >= S.per[i].next_us) { S.per[i].next_us += S.per[i].period_us; S.per[i].fn(S.per[i].ctx); }
     for (unsigned i = 0; i < BOARD_TIMER_COUNT; i++) {
         if (S.tmr[i].cb && S.now_us >= S.tmr[i].next_us) {
             S.tmr[i].next_us += S.tmr[i].period_us;
@@ -96,6 +100,13 @@ uint16_t host_sim_pwm_duty(pal_id_t id) { return id < BOARD_PWM_COUNT ? S.pwm[id
 void host_sim_enc_add(pal_id_t id, int32_t c) { if (id < BOARD_ENCODER_COUNT) S.enc[id] = (int32_t)((uint32_t)S.enc[id] + (uint32_t)c); }
 void host_sim_adc_set(pal_id_t id, uint16_t r) { if (id < BOARD_ADC_COUNT) S.adc[id] = r; }
 void host_sim_uart_set_busy(pal_id_t id, bool b) { if (id < BOARD_UART_COUNT) S.uart[id].busy = b; }
+int host_sim_add_periodic(uint32_t period_us, void (*fn)(void *), void *ctx)
+{
+    if (!fn || period_us < HOST_SIM_STEP_US) return -1;
+    for (int i = 0; i < 4; i++)
+        if (!S.per[i].fn) { S.per[i].fn = fn; S.per[i].ctx = ctx; S.per[i].period_us = period_us; S.per[i].next_us = S.now_us + period_us; return i; }
+    return -1;
+}
 void host_sim_set_reset_cause(pal_reset_cause_t c) { S.reset = c; }
 void host_sim_fail_next(host_sim_fail_t w, unsigned n) { if (w < HS_FAIL_COUNT) S.fail[w] = n; }
 
@@ -170,15 +181,15 @@ dz_err_t pal_pwm_set_duty(pal_id_t id, uint16_t d)
 dz_err_t pal_pwm_set_pulse_us(pal_id_t id, uint32_t us)
 {
     if (id >= BOARD_PWM_COUNT) return DZ_ENODEV;
-    /* 仿真板 PWM 固定 20 kHz（周期 50 µs） */
-    if (us > 50u) return DZ_EINVAL;
-    return pal_pwm_set_duty(id, (uint16_t)(us * PAL_DUTY_MAX / 50u));
+    uint32_t period_us = 1000000u / g_host_pwm_freq[id];
+    if (us > period_us) return DZ_EINVAL;
+    return pal_pwm_set_duty(id, (uint16_t)((uint64_t)us * PAL_DUTY_MAX / period_us));
 }
 dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *f)
 {
     if (id >= BOARD_PWM_COUNT) return DZ_ENODEV;
     if (!f) return DZ_EINVAL;
-    *f = 20000u;
+    *f = g_host_pwm_freq[id];
     return DZ_OK;
 }
 
