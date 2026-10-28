@@ -1,28 +1,71 @@
-# 嘉立创·天猛星 MSPM0G3507 开发板（插件位）
-# 第 0 阶段：ports/mspm0-driverlib 尚未实现，本文件只占位。配置来源为 SysConfig（.syscfg），
-# 资源将由 tools/syscfg_import.py 从你的 .syscfg 导入；板载 LED/按键等引脚未核实，全部 TODO（不编造）。
+# 嘉立创·天猛星 MSPM0G3507 开发板 —— 2 电机小车（car_2wd）
+# 配置来源为 SysConfig（.syscfg -> ti_msp_dl_config.{c,h}）。本目录 syscfg/ 下的 ti_msp_dl_config.{c,h}
+# 是【合成样例】：按 SysConfig 生成代码的结构与 TI 命名手写，未用真实 SysConfig 生成、未上板。
+# 引脚为我按 mspm0g350x.h 的 IOMUX 表挑的可用组合（复用功能已对照该头文件），**不是天猛星原理图核实的接线**。
 schema_version: 1
 name: mspm0g3507-tianmengxing
 vendor: 嘉立创 (LCKFB)
-description: 天猛星 MSPM0G3507 开发板；SysConfig + DriverLib；移植层未实现、未上板测试
+description: 天猛星 MSPM0G3507；SysConfig + DriverLib；car_2wd 可交叉编译，未上板测试
 port: mspm0-driverlib
 config_source:
   tool: sysconfig
-  file: TODO            # 你的工程里的 .syscfg 相对路径
+  file: TODO            # 你的工程里的 .syscfg 相对路径；目前用 syscfg/ 下的合成 ti_msp_dl_config
 mcu:
   family: mspm0
   part: MSPM0G3507
   core: cortex-m0plus
   fpu: false
-  flash_kb: 128
-  ram_kb: 32
+  flash_kb: 128         # 与 SDK linker_files/gcc/mspm0g3507.lds 一致（0x20000）
+  ram_kb: 32            # 同上（SRAM 0x8000）
 clock:
-  sysclk_hz: 80000000   # MSPM0G3507 最高主频 80MHz；实际以 SysConfig 设置为准
+  sysclk_hz: 32000000   # 合成配置用 SYSOSC 32 MHz、不开 PLL（最高 80 MHz，换成真实 .syscfg 后以其为准）
 toolchain:
   compiler: arm-none-eabi-gcc
   flasher: TODO
 todo:
-  - 实现 ports/mspm0-driverlib（第 1 阶段），PAL 包装 SysConfig 生成的实例宏
-  - 板载 LED / 按键 / 调试串口引脚（查嘉立创天猛星原理图后填写，标 verified 与出处）
-  - flash_kb/ram_kb 按数据手册核实（128KB/32KB 为 G3507 公开规格，仍需对照芯片手册）
-resources: {}
+  - 用真实 .syscfg 重新生成 ti_msp_dl_config 替换 syscfg/ 下的合成文件，并按天猛星原理图核对全部引脚
+  - 板载 LED / 按键 / 调试串口引脚（查原理图后填写）
+resources:
+  gpio:
+  - name: MOTOR_A_IN1
+    pin: PB13
+    dir: out
+  - name: MOTOR_A_IN2
+    pin: PB14
+    dir: out
+  - name: MOTOR_B_IN1
+    pin: PB15
+    dir: out
+  - name: MOTOR_B_IN2
+    pin: PB16
+    dir: out
+  pwm:                    # SysConfig 实例名 PWM_TIMG0（两路共用 TIMG0）
+  - name: MOTOR_A
+    timer: TIMG0
+    channel: 0
+    pin: PA12
+    freq_hz: 20000
+  - name: MOTOR_B
+    timer: TIMG0
+    channel: 1
+    pin: PA13
+    freq_hz: 20000
+  encoder:
+  - name: MOTOR_A         # SysConfig QEI 实例 ENC_MOTOR_A（G3507 只有 TIMG8 带 QEI）
+    timer: TIMG8
+    pin_a: PA29
+    pin_b: PA30
+  - name: MOTOR_B         # SysConfig GPIO 组 ENC_MOTOR_B（引脚 A/B，双边沿中断）
+    mode: gpio_isr
+    pin_a: PB6
+    pin_b: PB7
+  uart:
+  - name: LINK
+    instance: UART0
+    tx: PA10
+    rx: PA11
+    baud: 115200
+    dma: false            # 本移植层用 RX/TX 中断 + 软件环形缓冲（未用 DMA）
+  timer:
+  - name: CTRL
+    instance: TIMG7

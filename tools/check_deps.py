@@ -19,6 +19,7 @@
   C1  CubeMX 工程（含 .ioc 的目录，如 boards/<板>/cubemx/）视为厂商生成代码：允许 HAL，禁止标准库；
       其 USER CODE 区只允许框架接缝（#include "dz_cubemx.h"、dz_cubemx_start/loop()、FreeRTOS 默认任务的 for(;;)+osDelay(1)、
       Callback 1 里的 dz_cubemx_tim_callback(htim)），业务逻辑一律写进子系统。
+  C2  SysConfig 生成的 ti_msp_dl_config.{c,h} 视为厂商生成代码：允许 DriverLib，禁止 HAL/LL。
   P2  厂商 API 不得串用：HAL_/LL_ 只能在 ports/stm32*，DL_ 只能在 ports/mspm0*。
   V1  每个模块目录的 VERSION 必须与头文件里的 XXX_VERSION 宏一致。
 """
@@ -52,6 +53,9 @@ def strip_comments(src):
 
 def lineno(src, pos):
     return src.count("\n", 0, pos) + 1
+
+
+SYSCFG_GEN = {"ti_msp_dl_config.c", "ti_msp_dl_config.h"}   # SysConfig 生成文件（C2）
 
 
 class Checker:
@@ -104,6 +108,13 @@ class Checker:
                 if not self.USER_OK.match(line):
                     ln = lineno(raw, m.start(2)) + i
                     self.err("C1", path, ln, f"USER CODE {m.group(1)} 里有业务代码 `{line.strip()}`：只允许 dz_cubemx 接缝，逻辑写进子系统")
+
+    def check_syscfg(self, path):
+        """SysConfig 生成的 ti_msp_dl_config.{c,h} 视为厂商生成代码：允许 DriverLib，禁止 STM32 HAL/LL（C2）。"""
+        src = strip_comments(open(path, encoding="utf-8", errors="replace").read())
+        for m in VENDOR_CALL_RE.finditer(src):
+            if m.group(1).startswith(("HAL_", "LL_")):
+                self.err("C2", path, lineno(src, m.start()), f"SysConfig 生成代码里出现 STM32 调用 {m.group(1)}()")
 
     def layer_of(self, path):
         rel = os.path.relpath(path, self.root).split(os.sep)
@@ -252,6 +263,9 @@ class Checker:
             for p in self.files(top):
                 if self.cube_root(p):
                     self.check_cube(p)
+                    continue
+                if os.path.basename(p) in SYSCFG_GEN:
+                    self.check_syscfg(p)
                     continue
                 self.check_file(p)
                 self.check_port(p)

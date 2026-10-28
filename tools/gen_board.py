@@ -298,13 +298,75 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
     return "\n".join(c), mk
 
 
+def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
+    """port: mspm0-driverlib —— 生成“逻辑 ID -> SysConfig 实例宏”表与中断入口；外设配置全在 ti_msp_dl_config.c。
+
+    实例名约定（SysConfig 每个实例的 Name）：GPIO_<名>（组内引脚 PIN）、PWM_<定时器>、ENC_<名>（QEI，或 GPIO 组的 A/B 脚）、
+    UART_<名>、TIMER_<名>。宏名按 SysConfig 的派生规则（<Name>_INST、<Name>_INST_IRQHandler…）。"""
+    res = usable(board)
+    c = [HEADER.format(src=src, sha=sha[:12]), '#include "port_mspm0.h"', '#include "board_gen.h"', ""]
+    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer")}
+    isr = []
+    for r in res["gpio"]:
+        n = f"GPIO_{r['name']}"
+        rows["gpio"].append(f"    {{ {n}_PORT, {n}_PIN_PIN, {int(bool(r.get('active_low')))}u }}, /* {r['name']} {r['pin']} */")
+    for r in res["pwm"]:
+        n = f"PWM_{r['timer']}"
+        rows["pwm"].append(f"    {{ {n}_INST, DL_TIMER_CC_{r['channel']}_INDEX, {n}_INST_CLK_FREQ }}, /* {r['name']} {r['pin']} */")
+    gpio_enc = False
+    for r in res["encoder"]:
+        n = f"ENC_{r['name']}"
+        inv = int(bool(r.get("invert")))
+        if r.get("mode") == "gpio_isr":
+            gpio_enc = True
+            rows["encoder"].append(f"    {{ 0, {n}_PORT, {n}_A_PIN, {n}_B_PIN, {inv}u }}, /* {r['name']} GPIO 软件解码 */")
+        else:
+            rows["encoder"].append(f"    {{ {n}_INST, 0, 0u, 0u, {inv}u }}, /* {r['name']} QEI */")
+    bufs = []
+    for i, r in enumerate(res["uart"]):
+        n = f"UART_{r['name']}"
+        rx_n, tx_n = r.get("rx_buf", 512), r.get("tx_buf", 256)
+        bufs.append(f"static uint8_t s_uart{i}_rx[{rx_n}];\nstatic uint8_t s_uart{i}_tx[{tx_n}];")
+        rows["uart"].append(f"    {{ {n}_INST, {n}_INST_INT_IRQN, s_uart{i}_rx, {rx_n}u, s_uart{i}_tx, {tx_n}u }}, /* {r['name']} */")
+        isr.append(f"void {n}_INST_IRQHandler(void) {{ dz_m0_uart_isr({i}u); }}")
+    for i, r in enumerate(res["timer"]):
+        n = f"TIMER_{r['name']}"
+        wide = r["instance"] in ("TIMG12", "TIMG13")      # 32 位 TIMG；其余 16 位
+        rows["timer"].append(f"    {{ {n}_INST, {n}_INST_INT_IRQN, {n}_INST_CLK_FREQ, {'0xFFFFFFFFu' if wide else '0xFFFFu'} }}, /* {r['name']} {r['instance']} */")
+        isr.append(f"void {n}_INST_IRQHandler(void) {{ dz_m0_timer_isr({i}u); }}")
+    if gpio_enc:
+        isr.append("void GROUP1_IRQHandler(void) { dz_m0_gpio_enc_isr(); }   /* GPIOA/GPIOB 中断组 */")
+    c += bufs + [""]
+    for key, typ, name in (("gpio", "m0_gpio_t", "g_m0_gpio"), ("pwm", "m0_pwm_t", "g_m0_pwm"),
+                           ("encoder", "m0_enc_t", "g_m0_enc"), ("uart", "m0_uart_t", "g_m0_uart"),
+                           ("timer", "m0_timer_t", "g_m0_timer")):
+        c += _table(typ, name, rows[key])
+    c += ["/* 中断入口：向量名来自 SysConfig 的 <实例>_INST_IRQHandler 宏 */"] + isr + [""]
+    c.append("const char *const g_board_name = BOARD_NAME;\n")
+    mcu = board["mcu"]
+    core = mcu.get("core", "")
+    if core not in CPU_FLAGS:
+        raise SystemExit(f"✗ mcu.core={core!r} 未知，可选 {sorted(CPU_FLAGS)}")
+    part = mcu["part"].upper()
+    mk = {
+        "BOARD_PORT": board["port"],
+        "BOARD_FAMILY": "mspm0-driverlib",
+        "BOARD_CPU": CPU_FLAGS[core],
+        "BOARD_DEFS": f"-D__{part}__",
+        "BOARD_PART": part,
+        "BOARD_PART_LC": part.lower(),
+        "SYSCFG_DIR": (pathlib.Path(src).parent / "syscfg").as_posix(),
+    }
+    return "\n".join(c), mk
+
+
 def _table(typ, name, rows):
     if not rows:
         return [f"const {typ} {name}[1];  /* 本板没有此类资源，占位避免零长度数组 */", ""]
     return [f"const {typ} {name}[] = {{"] + rows + ["};", ""]
 
 
-PORT_GENERATORS = {"stm32-cubemx": gen_cubemx}   # 按移植层生成（与芯片系列无关）
+PORT_GENERATORS = {"stm32-cubemx": gen_cubemx, "mspm0-driverlib": gen_mspm0}   # 按移植层生成（与芯片系列无关）
 GENERATORS = {"stm32f4": gen_stm32f4, "host": gen_host, **PORT_GENERATORS}
 
 

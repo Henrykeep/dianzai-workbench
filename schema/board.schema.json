@@ -129,13 +129,31 @@
       "allOf": [
         {
           "$ref": "#/$defs/common"
+        },
+        {
+          "if": {
+            "not": {
+              "properties": {
+                "mode": {
+                  "const": "gpio_isr"
+                }
+              },
+              "required": [
+                "mode"
+              ]
+            }
+          },
+          "then": {
+            "required": [
+              "timer"
+            ]
+          }
         }
       ],
       "type": "object",
       "unevaluatedProperties": false,
       "required": [
         "name",
-        "timer",
         "pin_a",
         "pin_b"
       ],
@@ -159,6 +177,14 @@
           "maximum": 15,
           "default": 6,
           "description": "输入数字滤波等级（STM32 ICxF），抗干扰"
+        },
+        "mode": {
+          "enum": [
+            "hw",
+            "gpio_isr"
+          ],
+          "default": "hw",
+          "description": "hw = 定时器硬件正交解码（STM32 Encoder Mode / MSPM0 QEI）；gpio_isr = 两路 GPIO 双边沿中断软件 4 倍频解码（MSPM0G3507 只有 TIMG8 有 QEI 时用，高转速会占 CPU）"
         }
       }
     },

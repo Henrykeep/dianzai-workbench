@@ -13,3 +13,10 @@
 
 ## 参考来源
 - TI SysConfig（https://www.ti.com/tool/SYSCONFIG）、MSPM0-SDK（https://www.ti.com/tool/MSPM0-SDK）。
+
+## 移植层 ports/mspm0-driverlib（0.1.0）
+- 实例名约定与实现见 `ports/mspm0-driverlib/README.md`：GPIO_<名>（组内引脚 PIN）、PWM_<定时器>、ENC_<名>、UART_<名>、TIMER_<名>。
+- 第二路编码器：G3507 只有 TIMG8 有 QEI，另一路用 board.yaml `encoder.mode: gpio_isr`（两脚双边沿中断、软件 4 倍频）。
+- 【已实测（仅编译）】`make BOARD=mspm0g3507-tianmengxing APP=car_2wd`（FLASH 约 15 KB / RAM 约 2.2 KB）。
+- 【未验证】上板行为；`boards/mspm0g3507-tianmengxing/syscfg/ti_msp_dl_config.{c,h}` 是按 TI 命名手写的合成样例，引脚未对照天猛星原理图。
+- syscfg_import.py 尚未按上述 PWM_<定时器>/ENC 约定更新（仍是第 0 阶段解析）。
