@@ -6,6 +6,8 @@
 
 ## [未发布]
 
+## [0.5.0] - 2026-10-29 模块库 + MSPM0 I2C/SPI + IMU 去重力 + 2026H 评测
+
 ### 模块库（可移植驱动）
 每个都有 README（含 board.yaml 片段）、VERSION、selftest，以及 host-sim 上的假芯片单测（tests/host/test_modlib.c）；host-sim 板新增对应测试资源。全部 **[仿真]**（主机单测），**上板 [未测]**。
 - servo 1.0.0：角度→脉宽、trim、反向、软件限位、速率限制。
