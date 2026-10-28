@@ -25,7 +25,7 @@ f1()       { get stm32f1xx-hal-driver STMicroelectronics/stm32f1xx-hal-driver v1
 # CubeMX 的 FreeRTOS（含 CMSIS_RTOS_V2 封装）。STM32CubeF4 V1.28.x 自带 10.6.2
 freertos() { get stm32-mw-freertos STMicroelectronics/stm32-mw-freertos v10.6.2_20241011; }
 # TI MSPM0 SDK：只取 DriverLib、器件头/启动文件/链接脚本、CMSIS Core
-mspm0()    { get mspm0-sdk TexasInstruments/mspm0-sdk mspm0_sdk_2_11_00_07 \
+mspm0()    { get mspm0-sdk TexasInstruments/mspm0-sdk mspm0_sdk_2_11_00_07 .metadata \
                source/ti/driverlib source/ti/devices/msp source/third_party/CMSIS/Core/Include; }
 for g in f4 f1 freertos mspm0; do
   if [ -z "$ALL" ] || [[ " $ALL " == *" $g "* ]]; then $g; fi

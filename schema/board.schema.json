@@ -253,6 +253,11 @@
         "instance": {
           "type": "string"
         },
+        "clk_hz": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "计数时钟（Hz，分频后）。MSPM0：SysConfig 不导出定时器计数时钟，需在此填写"
+        },
         "irq_priority": {
           "type": "integer",
           "minimum": 0,

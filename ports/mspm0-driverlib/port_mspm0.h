@@ -2,7 +2,7 @@
  * @file port_mspm0.h
  * @brief MSPM0 SysConfig + DriverLib 移植层的内部类型。SysConfig（.syscfg -> ti_msp_dl_config.{c,h}）是唯一配置来源：
  *        时钟、引脚复用、定时器/串口参数都在 SysConfig 里配，SYSCFG_DL_init() 完成初始化；本层只包装它生成的
- *        实例宏（PWM_<定时器>_INST、ENC_<名>_INST、UART_<名>_INST、TIMER_<名>_INST、GPIO_<名>_PORT/_PIN_PIN），只调 DriverLib。
+ *        实例宏（PWM_<定时器>_INST、ENC_<名>_INST、UART_<名>_INST、TIMER_<名>_INST、GPIO_<名>_PORT/GPIO_<名>_<名>_PIN），只调 DriverLib。
  *
  * 只允许 ports/mspm0-driverlib 与生成的 board_gen.c 包含。
  */

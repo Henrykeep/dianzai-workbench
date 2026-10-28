@@ -6,6 +6,11 @@
 
 ## [未发布]
 
+### MSPM0 SysConfig CLI
+- 【已实测】`tools/syscfg_gen.sh` 用 SysConfig CLI 1.28.0 + SDK 2.11 重新生成天猛星 `ti_msp_dl_config`，入库文件换成真实生成物；car_2wd 用它交叉编译通过。CI `mspm0-syscfg` 负责比对和编译（CI 尚未跑过）。
+- 真 CLI 发现的问题：GPIO 引脚 `$name` 不能都叫 `PIN`，改为逻辑名（宏改为 `GPIO_<名>_<名>_PIN`）；定时器没有 `CLK_FREQ`，board.yaml 的 timer 加 `clk_hz`（schema 已更新）。
+- STM32F4 PAL 也改用 `dz_wrap.h`。
+
 ### 编码器 1.1.0
 - `firmware/common/dz_wrap.h`：16/32 位计数回绕差分，MSPM0 PAL 改用它，有主机测试。
 - `encoder_cfg_t.window_n`：滑动窗口测速（M 法加长窗口），适合低 PPR + 高频控制。真 M/T 法需要边沿捕获，**未实现**。实板**未测**。

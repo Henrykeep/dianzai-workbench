@@ -1,6 +1,6 @@
 # 嘉立创·天猛星 MSPM0G3507 开发板 —— 2 电机小车（car_2wd）
-# 配置来源为 SysConfig（.syscfg -> ti_msp_dl_config.{c,h}）。本目录 syscfg/ 下的 ti_msp_dl_config.{c,h}
-# 是【合成样例】：按 SysConfig 生成代码的结构与 TI 命名手写，未用真实 SysConfig 生成、未上板。
+# 配置来源为 SysConfig（ccs/tianmengxing.syscfg -> syscfg/ti_msp_dl_config.{c,h}）。
+# 【已实测】syscfg/ 下文件由 SysConfig CLI 1.28.0 + MSPM0 SDK 2.11 生成（tools/syscfg_gen.sh，CI mspm0-syscfg 比对）；【未验证】未上板。
 # 引脚为我按 mspm0g350x.h 的 IOMUX 表挑的可用组合（复用功能已对照该头文件），**不是天猛星原理图核实的接线**。
 schema_version: 1
 name: mspm0g3507-tianmengxing
@@ -9,7 +9,7 @@ description: 天猛星 MSPM0G3507；SysConfig + DriverLib；car_2wd 可交叉编
 port: mspm0-driverlib
 config_source:
   tool: sysconfig
-  file: TODO            # 你的工程里的 .syscfg 相对路径；目前用 syscfg/ 下的合成 ti_msp_dl_config
+  file: ccs/tianmengxing.syscfg
 mcu:
   family: mspm0
   part: MSPM0G3507
@@ -23,7 +23,7 @@ toolchain:
   compiler: arm-none-eabi-gcc
   flasher: TODO
 todo:
-  - 用真实 .syscfg 重新生成 ti_msp_dl_config 替换 syscfg/ 下的合成文件，并按天猛星原理图核对全部引脚
+  - 按天猛星原理图核对全部引脚（改 .syscfg 后跑 tools/syscfg_gen.sh --write）
   - 板载 LED / 按键 / 调试串口引脚（查原理图后填写）
 resources:
   gpio:
@@ -69,3 +69,4 @@ resources:
   timer:
   - name: CTRL
     instance: TIMG7
+    clk_hz: 1000000       # 计数时钟 = 32 MHz / timerClkPrescale 32（与 .syscfg 一致）

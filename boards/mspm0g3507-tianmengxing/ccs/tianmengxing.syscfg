@@ -24,16 +24,16 @@ const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1  = UART.addInstance();
 
 GPIO1.$name                         = "GPIO_MOTOR_A_IN1";
-GPIO1.associatedPins[0].$name       = "PIN";
+GPIO1.associatedPins[0].$name       = "MOTOR_A_IN1";
 GPIO1.associatedPins[0].pin.$assign = "PB13";
 GPIO2.$name                         = "GPIO_MOTOR_A_IN2";
-GPIO2.associatedPins[0].$name       = "PIN";
+GPIO2.associatedPins[0].$name       = "MOTOR_A_IN2";
 GPIO2.associatedPins[0].pin.$assign = "PB14";
 GPIO3.$name                         = "GPIO_MOTOR_B_IN1";
-GPIO3.associatedPins[0].$name       = "PIN";
+GPIO3.associatedPins[0].$name       = "MOTOR_B_IN1";
 GPIO3.associatedPins[0].pin.$assign = "PB15";
 GPIO4.$name                         = "GPIO_MOTOR_B_IN2";
-GPIO4.associatedPins[0].$name       = "PIN";
+GPIO4.associatedPins[0].$name       = "MOTOR_B_IN2";
 GPIO4.associatedPins[0].pin.$assign = "PB16";
 
 GPIO5.$name                              = "ENC_MOTOR_B";

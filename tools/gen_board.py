@@ -309,7 +309,7 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     isr = []
     for r in res["gpio"]:
         n = f"GPIO_{r['name']}"
-        rows["gpio"].append(f"    {{ {n}_PORT, {n}_PIN_PIN, {int(bool(r.get('active_low')))}u }}, /* {r['name']} {r['pin']} */")
+        rows["gpio"].append(f"    {{ {n}_PORT, {n}_{r['name']}_PIN, {int(bool(r.get('active_low')))}u }}, /* {r['name']} {r['pin']} */")
     for r in res["pwm"]:
         n = f"PWM_{r['timer']}"
         rows["pwm"].append(f"    {{ {n}_INST, DL_TIMER_CC_{r['channel']}_INDEX, {n}_INST_CLK_FREQ }}, /* {r['name']} {r['pin']} */")
@@ -332,6 +332,10 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     for i, r in enumerate(res["timer"]):
         n = f"TIMER_{r['name']}"
         wide = r["instance"] in ("TIMG12", "TIMG13")      # 32 位 TIMG；其余 16 位
+        # 真实 SysConfig 对 Basic_Periodic 定时器只给 LOAD_VALUE、不给 CLK_FREQ（2026-10 用 CLI 1.28 实测），
+        # 所以计数时钟取 board.yaml 的 clk_hz（= 时钟源 / timerClkPrescale），生成头里有 CLK_FREQ 时优先用它。
+        if r.get("clk_hz"):
+            c.append(f"#ifndef {n}_INST_CLK_FREQ\n#define {n}_INST_CLK_FREQ {int(r['clk_hz'])}u\n#endif")
         rows["timer"].append(f"    {{ {n}_INST, {n}_INST_INT_IRQN, {n}_INST_CLK_FREQ, {'0xFFFFFFFFu' if wide else '0xFFFFu'} }}, /* {r['name']} {r['instance']} */")
         isr.append(f"void {n}_INST_IRQHandler(void) {{ dz_m0_timer_isr({i}u); }}")
     if gpio_enc:
