@@ -6,6 +6,12 @@
  *   板→PC：遥测 DATA id=2 每 20 ms（字段见 project.yaml link.telemetry），心跳带 schema 哈希，PARAM_ACK
  *   PC→板：PARAM_SET 读写“当前参数档”（板端限幅）；DATA 0x7F 急停；DATA 0x7E u8 命令：
  *          'T'+n 选测试项（n 在第 2 字节）  'P'+n 选参数档  'G' 开始  'S' 停止  'R' 复位
+ *
+ * IMU（可选，编译期按板上资源选来源，填 io_in.imu_ax_mps2 / imu_rx_ms / imu_ok，给 ff_src=1 的加速度前馈用）：
+ *   板上有 uart IMU → 收姿态模块的 dzimu 帧（RM C 型板跑 apps/imu_module）；
+ *   否则有 i2c IMU   → 直接轮询 MPU6050（每 2 ms 一次，阻塞约 0.4 ms @400 kHz）；
+ *   都没有           → imu_ok 恒 false，前馈自动回退为 0。
+ *   安装方向用参数 imu_axis 选（0..5 = 模块 +x -x +y -y +z -z 指向车头）。注意：车身俯仰时重力分量会混进前向加速度。
  */
 #include <math.h>
 #include <stdio.h>
@@ -22,6 +28,13 @@
 #endif
 #include "qd4310.h"
 #include "cp_vision_cpu.h"   /* 由 boards/maixcam2-vision/board.yaml 自动生成 */
+#if defined(RES_UART_IMU)
+#include "dzimu.h"
+#define IO_IMU_UART 1
+#elif defined(RES_I2C_IMU)
+#include "mpu6050.h"
+#define IO_IMU_MPU 1
+#endif
 
 #define BEAM_MOTOR_ID     0u      /* P1/P2：电机 ID 0（未验证） */
 #define BEAM_TIMEOUT_MS   100u
@@ -35,6 +48,11 @@ static motor_dc_t MA, MB;
 static encoder_t EA, EB;
 static dzframe_parser_t VL;
 static qd4310_t BEAM;
+#if defined(IO_IMU_UART)
+static dzframe_parser_t IL;   /* IMU 姿态模块帧 */
+#elif defined(IO_IMU_MPU)
+static mpu6050_t MPU;
+#endif
 #ifdef RES_UART_LINK
 static dzctl_wd_t WD;
 static dzframe_parser_t LL;   /* LINK 上位机帧 */
@@ -67,6 +85,14 @@ dz_err_t app_init(void)
     dzctl_wd_init(&WD, 1000u);   /* 上位机心跳看门狗（侧车每 250 ms 发心跳；脱机比赛不布防） */
 #endif
     if ((e = qd4310_init(&BEAM, RES_UART_BEAM, BEAM_MOTOR_ID)) != DZ_OK) return e;
+#if defined(IO_IMU_UART)
+    dzframe_parser_init(&IL);
+#elif defined(IO_IMU_MPU)
+    {   /* IMU 起不来不算致命：imu_ok 保持 false，前馈回退为 0 */
+        mpu6050_cfg_t mc = mpu6050_cfg_default(RES_I2C_IMU);
+        if (mpu6050_init(&MPU, &mc) == DZ_OK) (void)mpu6050_calib_gyro(&MPU, 200u, 1u);
+    }
+#endif
     if ((e = subsys_sched_init(&SCHED, g_project_subsys, PROJECT_N_SUBSYS, &S, &g_project_params[0])) != DZ_OK) return e;
     return coord_init(&COORD, &SCHED, g_project_tests, PROJECT_N_TESTS, g_project_profiles, PROJECT_N_PROFILES, &g_project_hooks);
 }
@@ -127,6 +153,7 @@ static void write_link(uint32_t now)
         t.vis_state = S.vision_out.state; t.vis_age_ms = S.vision_out.age_ms; t.vis_drops = S.vision_out.drops;
         t.vis_lat_ms = (int16_t)(S.vision_out.lat_jit_ms > 32767 ? 32767 : S.vision_out.lat_jit_ms);
         t.ff_deg = S.beam_out.ff_deg;
+        t.imu_ax_mps2 = S.io_in.imu_ax_mps2; t.imu_ok = S.io_in.imu_ok ? 1u : 0u;
         if (link_telem_pack(&f, &t)) link_send(&f);
     }
     if (now - last_hb >= 500u) {
@@ -137,6 +164,29 @@ static void write_link(uint32_t now)
     }
 }
 #endif
+
+static void read_imu(uint32_t now, const params_t *p)
+{
+#if defined(IO_IMU_UART)
+    uint8_t buf[64]; uint16_t got = 0, i;
+    if (pal_uart_read(RES_UART_IMU, buf, sizeof buf, &got) == DZ_OK) {
+        dzframe_t f; dzimu_sample_t s;
+        for (i = 0; i < got; i++)
+            if (dzframe_feed(&IL, buf[i], &f) && dzimu_decode(&f, &s)) {
+                S.io_in.imu_ok = (s.status & DZIMU_ST_ACC_OK) && !(s.status & DZIMU_ST_ACC_SAT);
+                if (S.io_in.imu_ok) { S.io_in.imu_ax_mps2 = dzimu_axis(s.acc, p->imu_axis); S.io_in.imu_rx_ms = now; }
+            }
+    }
+#elif defined(IO_IMU_MPU)
+    mpu6050_data_t d;
+    if (!MPU.ok || now % 2u) return;
+    S.io_in.imu_ok = mpu6050_read(&MPU, &d) == DZ_OK && !d.acc_sat;
+    if (S.io_in.imu_ok) { S.io_in.imu_ax_mps2 = dzimu_axis(d.acc, p->imu_axis); S.io_in.imu_rx_ms = now; }
+#else
+    (void)now; (void)p;
+    S.io_in.imu_ok = false;
+#endif
+}
 
 static void read_inputs(uint32_t now)
 {
@@ -155,6 +205,7 @@ static void read_inputs(uint32_t now)
                 S.io_in.cam_seq++; S.io_in.cam_rx_ms = now;
             }
     }
+    read_imu(now, p);
     (void)qd4310_poll(&BEAM);
     S.io_in.beam_online = qd4310_online(&BEAM, now, BEAM_TIMEOUT_MS);
     S.io_in.beam_fb_deg = BEAM.fb.angle_deg;

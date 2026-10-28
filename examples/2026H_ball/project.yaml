@@ -22,7 +22,7 @@ state:
       - { name: cam_rx_ms,   type: uint32, unit: ms, desc: 最近一帧到达本机时刻 }
       - { name: cam_fseq,    type: uint8, desc: 最近一帧的 dzframe seq（8 位回绕，用于丢帧统计） }
       - { name: cam_ms,      type: uint32, unit: ms, desc: 最近一帧的相机时间戳（相机本地时钟） }
-      - { name: imu_ax_mps2, type: float, unit: m/s², desc: "IMU 前向加速度（TODO：本工程无 IMU 驱动，io 层未填写）" }
+      - { name: imu_ax_mps2, type: float, unit: m/s², desc: "IMU 前向加速度（io 层按板上资源取：uart IMU 姿态模块 / i2c MPU6050；未上板验证）" }
       - { name: imu_rx_ms,   type: uint32, unit: ms, desc: IMU 最近一次有效读数时刻 }
       - { name: imu_ok,      type: bool, desc: IMU 读数有效 }
       - { name: beam_online, type: bool, desc: QD4310 链路在线（最近 100 ms 内有回包） }
@@ -113,6 +113,7 @@ params:
   - { name: ff_src,      type: uint8, default: 0, min: 0, max: 1, unit: "", desc: "0 编码器差分 / 1 IMU（IMU 失效自动回退为 0 前馈）" }
   - { name: ff_dead_mps2, type: float, default: 0.15, min: 0, max: 5, unit: "m/s²", desc: 死区：小于它不前馈（滤掉噪声抖动） }
   - { name: ff_fail_mps2, type: float, default: 8, min: 0.5, max: 50, unit: "m/s²", desc: 超过它视为读数异常 → 前馈置 0 }
+  - { name: imu_axis, type: uint8, default: 0, min: 0, max: 5, unit: "", desc: "IMU 哪根轴朝车头：0 +x 1 −x 2 +y 3 −y 4 +z 5 −z（按实际安装改）" }
   - { name: imu_timeout_ms, type: uint32, default: 50, min: 1, max: 1000, unit: "ms", desc: IMU 数据超过它没更新 → 前馈置 0 }
   # 摆杆机械（P2 那台机械的值，换机械必须重测）
   - { name: beam_zero_deg, type: float, default: 82.02, min: 0, max: 360, unit: "°", desc: P2 电机绝对角零点，只对那台机械有效，未验证 }
@@ -144,6 +145,8 @@ link:
       - { name: vis_drops,  type: uint32 }
       - { name: vis_lat_ms, type: int16, unit: ms }
       - { name: ff_deg,     type: float, unit: "°" }
+      - { name: imu_ax_mps2, type: float, unit: m/s² }
+      - { name: imu_ok,     type: uint8 }
 
 profiles:
   - { name: base, desc: P1 普通档 }

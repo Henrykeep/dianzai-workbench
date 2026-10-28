@@ -149,3 +149,18 @@ def test_host_heartbeat_watchdog_latches_estop(home):
         assert wait(lambda: (sp() or 0) > 0.5), "R 解除后恢复"
     finally:
         s.disconnect()
+
+
+def test_2026h_imu_module_path(home):
+    """仿真里有 IMU 姿态模块（sim_setup 200 Hz 发 dzimu）：io 层解出来 → 遥测 imu_ok=1，imu_axis 参数可调。"""
+    s = Session()
+    s.connect("sim:2026H_ball")
+    try:
+        assert wait(lambda: s.schema and s.window(1))
+        assert wait(lambda: s.window(0.2) and s.window(0.2)[-1][1].get("imu_ok") == 1), "IMU 帧应被解出"
+        assert wait(lambda: s.params.get("imu_axis") == 0), "参数表应含 imu_axis"
+        assert abs(s.window(0.2)[-1][1]["imu_ax_mps2"]) < 5.0   # 静止：前向加速度≈0
+        r = s.set_param("imu_axis", 9)
+        assert r["applied"] == 5 and r["status"] == "clamped"
+    finally:
+        s.disconnect()
