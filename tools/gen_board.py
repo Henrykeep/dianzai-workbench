@@ -213,6 +213,10 @@ def gen_host(board: dict, src: str, sha: str) -> tuple[str, dict]:
     freqs = ", ".join(f"{r['freq_hz']}u" for r in res["pwm"]) or "0u"
     c = (HEADER.format(src=src, sha=sha[:12]) + '#include "board_gen.h"\nconst char *const g_board_name = BOARD_NAME;\n'
          f"const uint32_t g_host_pwm_freq[] = {{ {freqs} }};\n")
+    # ADC 换算参数也按 board.yaml（与真板端口一致；以前写死 1/1，分压配置在仿真里不生效）
+    adc = ", ".join(f"{{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }}"
+                    for r in res.get("adc") or []) or "{ 12u, 3300u, 1u, 1u }"
+    c += f"const pal_adc_info_t g_host_adc_info[] = {{ {adc} }};\n"
     return c, {"BOARD_PORT": board["port"], "BOARD_FAMILY": "host", "BOARD_DEFS": ""}
 
 

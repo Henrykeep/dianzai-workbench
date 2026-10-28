@@ -56,7 +56,7 @@ resources:
   timer:
     - { name: CTRL, instance: SIMTIM2 }
   adc:
-    - { name: VBAT, instance: SIMADC0, channel: 0, pin: SIM9 }
+    - { name: VBAT, instance: SIMADC0, channel: 0, pin: SIM9, scale_num: 11, scale_den: 1 }   # 仿真按 10k:1k 分压
     - { name: LINE_A0, instance: SIMADC0, channel: 1, pin: SIM54 }
     - { name: LINE_A1, instance: SIMADC0, channel: 2, pin: SIM55 }
     - { name: LINE_A2, instance: SIMADC0, channel: 3, pin: SIM56 }

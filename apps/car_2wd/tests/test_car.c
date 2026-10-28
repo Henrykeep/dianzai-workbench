@@ -40,6 +40,9 @@ static int run(uint32_t ms, bool cmd, float v, float w, float t[4])
     return frames;
 }
 
+/* 板上分压 1:11、3.3 V 12 位 ADC（与 battery_cfg_default 一致） */
+static uint16_t vbat_raw(float mv_pack) { return (uint16_t)(mv_pack / 11.0f / 3300.0f * 4095.0f + 0.5f); }
+
 int main(void)
 {
     float t[4] = {0};   /* sp_a, spd_a, sp_b, spd_b */
@@ -81,6 +84,19 @@ int main(void)
     run(1500, true, 0.3f, 0.0f, t);   /* 回波没了 → 超时、无效 → 不再限制 */
     CHECK(t[0] > 1.0f);
     printf("  障碍移走: sp_a=%.3f\n", t[0]);
+
+    /* car_aux 电池：先见过 OK（8.2 V，2S）再掉到 CRIT（6.0 V）→ 锁急停，之后再发前进指令也不动；电压回升也不自动解除 */
+    host_sim_adc_set(RES_ADC_VBAT, vbat_raw(8200.0f));
+    run(3000, true, 0.3f, 0.0f, t);
+    CHECK(t[0] > 1.0f);
+    host_sim_adc_set(RES_ADC_VBAT, vbat_raw(6000.0f));
+    run(3000, true, 0.3f, 0.0f, t);
+    CHECK(t[0] == 0.0f);
+    printf("  电池 6.0 V: sp_a=%.3f spd_a=%.3f（急停）\n", t[0], t[1]);
+    host_sim_adc_set(RES_ADC_VBAT, vbat_raw(8200.0f));
+    run(1500, true, 0.3f, 0.0f, t);
+    CHECK(t[0] == 0.0f && fabsf(t[1]) < 0.1f);
+    printf("  电压回升: sp_a=%.3f spd_a=%.3f（急停保持，只能人工解除）\n", t[0], t[1]);
 
     printf(fails ? "car_2wd: %d 项失败\n" : "car_2wd: 全部通过\n", fails);
     return fails != 0;

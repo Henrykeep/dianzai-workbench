@@ -10,6 +10,7 @@
 #define UART_BUF   4096
 
 extern const char *const g_board_name;
+extern const pal_adc_info_t g_host_adc_info[];  /* board_gen.c，按 board.yaml bits/vref/scale */
 extern const uint32_t g_host_pwm_freq[];  /* board_gen.c，按 board.yaml freq_hz */
 
 static struct {
@@ -297,7 +298,7 @@ dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info)
 {
     if (id >= BOARD_ADC_COUNT) return DZ_ENODEV;
     if (!info) return DZ_EINVAL;
-    *info = (pal_adc_info_t){ 12u, 3300u, 1u, 1u };
+    *info = g_host_adc_info[id];
     return DZ_OK;
 }
 

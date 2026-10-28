@@ -61,8 +61,10 @@ static void ctrl_isr(void *ctx)
     for (unsigned i = 0; i < 2; i++) {
         wheel_t *w = &s_w[i];
         if (s_gains_dirty) (void)pid_set_gains(&w->pid, g_link_params.kp, g_link_params.ki, 0.0f);
+        /* 急停时也要更新编码器：否则遥测里的转速冻结在急停前的值，上位机看着像还在转 */
+        dz_err_t ee = encoder_update(&w->enc);
         if (s_estop) { motor_dc_stop(&w->motor, MOTOR_DC_BRAKE); pid_reset(&w->pid); continue; }
-        if (encoder_update(&w->enc) != DZ_OK) { s_ctrl_errors++; motor_dc_stop(&w->motor, MOTOR_DC_COAST); continue; }
+        if (ee != DZ_OK) { s_ctrl_errors++; motor_dc_stop(&w->motor, MOTOR_DC_COAST); continue; }
         if (motor_dc_set(&w->motor, pid_update(&w->pid, s_sp[i], encoder_speed_rps(&w->enc))) != DZ_OK) s_ctrl_errors++;
     }
     s_gains_dirty = false;
