@@ -9,19 +9,20 @@ jobs:
   sidecar-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
       - run: pip install -r app/sidecar/requirements.txt
+      - run: make BOARD=host-sim APP=car_2wd && make BOARD=host-sim APP=2026H_ball
       - run: python -m pytest -q app/sidecar/tests   # e2e 需要 host-sim（make + cc，ubuntu 自带）
   build:
     needs: sidecar-test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with: { node-version: "22", cache: npm, cache-dependency-path: app/ui/package-lock.json }
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2

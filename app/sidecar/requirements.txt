@@ -1,3 +1,4 @@
 pyserial>=3.5
 websockets>=12
 pytest>=7
+pyyaml>=6
