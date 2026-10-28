@@ -138,7 +138,7 @@ function renderParams() {
   $("plist").innerHTML = ps.map(p => `<div class="prow" title="${esc(p.desc ?? "")}">
     <span class="k">${esc(p.name)}<i>${esc(p.desc ?? "")}</i></span>
     <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off">
-    <span class="rng mono">${fmt(p.min, p)}…${fmt(p.max, p)}${p.unit ? " " + esc(p.unit) : ""}</span></div>`).join("")
+    <span class="rng mono" id="pr-${p.name}" data-r="${fmt(p.min, p)}…${fmt(p.max, p)}${p.unit ? " " + esc(p.unit) : ""}"></span></div>`).join("")
     || `<div class="hint">连上板子并识别出数据格式后，这里会列出可调参数。</div>`;
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
@@ -170,7 +170,12 @@ function syncParams() {
 }
 function markParams() {
   const pend = new Set(pending().map(p => p.name));
-  (S.schema?.params ?? []).forEach(p => document.getElementById(`pi-${p.name}`)?.classList.toggle("chg", pend.has(p.name)));
+  (S.schema?.params ?? []).forEach(p => {
+    document.getElementById(`pi-${p.name}`)?.classList.toggle("chg", pend.has(p.name));
+    // 草稿 ≠ 板上真值时，范围位置改显示板子回报的生效值（ACK/读回），避免把草稿当成已生效
+    const r = document.getElementById(`pr-${p.name}`);
+    if (r) { r.classList.toggle("brd", pend.has(p.name)); r.textContent = pend.has(p.name) ? `板上 ${fmt(S.applied[p.name], p)}` : r.dataset.r!; }
+  });
   $("pend").textContent = pend.size ? `${pend.size} 项待下发` : "";
   $<HTMLButtonElement>("p-send").disabled = !pend.size;
   $<HTMLButtonElement>("p-revert").disabled = !Object.keys(S.edit).length;
