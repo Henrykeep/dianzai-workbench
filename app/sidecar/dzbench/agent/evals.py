@@ -36,3 +36,67 @@ def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
         if x not in text:
             bad.append(f"回答里应出现 {x}")
     return not bad, bad
+
+
+# ---------------------------------------------------------------- 在仿真板上真跑评测集
+def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | None = None, log=print) -> list[dict]:
+    """连仿真板，每个用例前给一次设定值阶跃（后台一直发，防断线停车），用 AgentService 真跑一轮对话再打分。
+
+    llm=None → 用 AgentService 的默认选择（没 Key 时就是离线规则助手）。用例里的 context.verdict 注入为“上一轮实验结果”。
+    """
+    import struct
+    import threading
+    import time
+
+    from ..agent_api import AgentTools
+    from ..session import Session
+    from .service import AgentService
+
+    s = Session()
+    s.connect(port)
+    out = []
+    try:
+        t0 = time.monotonic()
+        while not (s.schema and s.window(0.5)) and time.monotonic() - t0 < 15:
+            time.sleep(0.05)
+        for case in cases or load():
+            ev: list[dict] = []
+            svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=root, llm=llm)
+            st = svc.cfg.get("step_test") or {}
+            stop = threading.Event()
+
+            def drive():      # 0 → high 的阶跃，之后保持 high
+                k = 0
+                while not stop.is_set():
+                    v = st["low"] if k < 8 else st["high"]
+                    s.send_data(int(st["id"]), struct.pack(st["fmt"], *v))
+                    k += 1
+                    stop.wait(0.1)
+            th = threading.Thread(target=drive, daemon=True)
+            if st:
+                th.start()
+                time.sleep(2.5)
+            if (v := (case.get("context") or {}).get("verdict")):
+                svc.last_verdict = v
+            try:
+                text = svc.ask(case["user"])
+            except Exception as e:  # noqa: BLE001 —— 记成失败，不中断整套
+                text = f"<异常 {e}>"
+            stop.set()
+            if st:
+                th.join()
+            calls = [{"tool": e["name"], "args": e["args"]} for e in ev if e.get("type") == "agent_tool"]
+            ok, why = grade(case, {"calls": calls, "text": text})
+            mode = next((e["name"] for e in ev if e.get("type") == "agent_mode"), "")
+            out.append({"id": case["id"], "ok": ok, "why": why, "calls": [c["tool"] for c in calls], "text": text, "mode": mode})
+            log(f"{'PASS' if ok else 'FAIL'} {case['id']:<22} {' → '.join(out[-1]['calls'])}" + (f"  {why}" if why else ""))
+    finally:
+        s.disconnect()
+    return out
+
+
+if __name__ == "__main__":       # python -m dzbench.agent.evals [sim:car_2wd]
+    import sys
+    res = run_sim(sys.argv[1] if len(sys.argv) > 1 else "sim:car_2wd")
+    print(f"{sum(r['ok'] for r in res)}/{len(res)} 通过（{res[0]['mode'] if res else ''}）")
+    sys.exit(0 if all(r["ok"] for r in res) else 1)

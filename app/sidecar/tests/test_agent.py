@@ -257,3 +257,23 @@ def test_agents_md_goes_into_system_prompt(repo):
     (repo / "AGENTS.md").write_text("规则：不写寄存器\n", encoding="utf-8")
     svc = AgentService(Session(), AgentTools(Session(), lambda e: None), lambda e: None, root=repo, llm=FakeLLM([]), runner=Runner())
     assert "不写寄存器" in svc.loop.messages[0]["content"]
+
+
+def test_no_key_falls_back_to_offline(home, tmp_path):
+    """没 Key（且不是 Ollama）→ 离线规则助手；连不上模型服务 → 自动退回离线并在回答里说明。"""
+    from dzbench.agent import llm as llm_mod
+    from dzbench.agent.offline import OfflineAssistant
+    s = Session()
+    ev = []
+    svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path)
+    assert isinstance(svc.llm(), OfflineAssistant)
+    r = svc.ask("急停老是触发，帮我把急停关了")
+    assert "急停" in r and ev[0] == {"type": "agent_mode", "mode": "offline", "name": OfflineAssistant.name}
+
+    class Down:
+        def chat(self, *a):
+            raise llm_mod.LLMError("连不上模型服务：timed out", "")
+    svc._llm = Down()
+    ev.clear()
+    r = svc.ask("你好")
+    assert r.startswith("（连不上模型服务") and any(e.get("fallback") for e in ev)

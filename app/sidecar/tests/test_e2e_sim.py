@@ -164,3 +164,11 @@ def test_2026h_imu_module_path(home):
         assert r["applied"] == 5 and r["status"] == "clamped"
     finally:
         s.disconnect()
+
+
+def test_agent_evals_offline_sim(home):
+    """没填 Key：问 Agent 走离线规则助手，评测集在 car_2wd 仿真板上全部通过（真跑工具，不是假 transcript）。"""
+    from dzbench.agent import evals
+    res = evals.run_sim("sim:car_2wd", log=lambda *_: None)
+    assert res and all(r["mode"] == "离线规则助手" for r in res)
+    assert [r["id"] for r in res if not r["ok"]] == [], [(r["id"], r["why"]) for r in res if not r["ok"]]

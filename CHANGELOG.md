@@ -6,6 +6,16 @@
 
 ## [未发布]
 
+### Agent：从用户视角走通“打开 → 连板 → 问调参”
+- 没填 Key 时问 Agent 不再报“没有 API Key”，改由**离线规则助手**回答（`agent/offline.py`）。它走同一套工具、护栏和确认流程。配置了大模型但连不上时，会自动退回离线助手。**[仿真]**
+- 评测集可以在仿真板上真跑：`python -m dzbench.agent.evals`。离线助手在 car_2wd 上 8/8 通过，已加入端到端测试。**真实大模型没跑过 [未测]**。
+- tune_context 带上一轮实验的 `last_verdict`（是否稳定、是否不对称、建议），LLM 和离线助手都据此决定先 observe 还是改参数。
+- 界面改动：
+  - 空闲面板加了 4 个示例问题，点一下直接问；
+  - 每条回答标出是谁在答（离线 / 大模型名）；
+  - 修复：工具事件比回答晚到时，工具标签会丢失。
+  - 截图：`app-first-run.png`、`app-agent-offline.png`。
+
 ### IMU：给加速度前馈接上真实数据源
 - PAL 1.1.0 新增阻塞式 `pal_i2c_mem_read/mem_write` 和 `pal_spi_xfer`（一个 SPI id 对应一颗芯片，片选由移植层软件控制）。board.yaml 新增 `i2c` 和 `spi` 资源类型，引脚和复用检查都在 boardlib 里。
 - 各移植层：

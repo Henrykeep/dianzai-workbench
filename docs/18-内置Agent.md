@@ -46,6 +46,26 @@
 - 常见错误（401/402/404/429/断网）都给出修法；断网时提示改用“分析阶跃”或本地 Ollama。
 - 真实服务商联调 [未测]（测试用本地假 HTTP 服务验证请求格式与错误映射）。
 
+### 3.1 离线规则助手（没 Key / 没网时“问 Agent”）
+
+用户第一次打开工作台一般还没填 Key，比赛现场也常常没网，所以“问 Agent”不能直接报错。规则如下：
+
+- 没填 Key 且服务商不是 Ollama 时，使用 `agent/offline.py` 的离线规则助手。
+- 配置了大模型但**连不上**时，自动退回离线助手，回答开头会说明。Key 错误、余额不足这类错误不退回，照常报错，让用户去修。
+- 离线助手的接口和 LLM 一样（`chat(messages, tools)`），也走同一个 AgentLoop。工具白名单、风险分级、护栏、人工确认都不变。
+- 它按关键词识别 8 类问题：调 PID、上一轮结果、左右差异、改 yaml 默认值、上车前检查、四段不对称、急停，以及其他问题时的概览。每类有固定的工具调用剧本，回答用模板，标【实测】/【源码】/【推断】，结尾列出待实板确认的事项。
+- 认不出的问题会告诉用户能问什么，不会编造。
+- 界面上每条回答下方显示调用过的工具，以及这次是“离线规则助手 · 无需联网”还是“大模型 xxx”在回答。面板空闲时有 4 个示例问题，点一下就直接问。
+
+### 3.2 在仿真板上跑评测集
+
+运行 `python -m dzbench.agent.evals [sim:car_2wd]`，在 app/sidecar 目录下执行。
+
+- 连接仿真板后，每个用例先在后台持续发送一次 0 → step_test.high 的阶跃（防止断线停车），再用 AgentService 真跑一轮对话。
+- 最后由 `grade()` 按调用序列和回答打分。用例里的 `context.verdict` 会注入为“上一轮实验结果”，tune_context 里的字段是 `last_verdict`。
+- 离线助手 8/8 通过，`test_e2e_sim.py::test_agent_evals_offline_sim` 守着这个结果。
+- 真实大模型还没跑过这套评测（**[未测]**）。填了 Key 后可以用同一个命令跑。
+
 ## 4. 离线阶跃分析（不需要大模型）
 
 在曲线上给一个设定值阶跃（或斜坡——加速度限幅后的设定值也认），点“分析阶跃”。反馈/设定通道按名字自动配对（`sp_x ↔ x`、`target/ref/set`），可改。
@@ -68,7 +88,7 @@
 
 ## 6. 截图
 
-`python3 app/tools/shot.py` 生成 `app-tune.png`（阶跃分析）、`app-agent.png`（对话，假 LLM）、`app-diff.png`（写回 yaml 的 diff）、`app-commit.png`（门禁通过已提交）、`app-llm.png`（设置）。Agent 截图改的是临时克隆，门禁 `make check` 是真跑的。
+`python3 app/tools/shot.py` 生成 `app-tune.png`（阶跃分析）、`app-first-run.png`（空闲面板 + 示例问题）、`app-agent-offline.png`（没填 Key 时离线规则助手回答，带工具与模式标签）、`app-agent.png`（对话，假 LLM）、`app-diff.png`（写回 yaml 的 diff）、`app-commit.png`（门禁通过已提交）、`app-llm.png`（设置）。Agent 截图改的是临时克隆，门禁 `make check` 是真跑的。
 
 ## 风险分级（agent/risk.py）
 

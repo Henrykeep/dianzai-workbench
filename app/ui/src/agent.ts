@@ -8,8 +8,10 @@ const n = (v: number | null | undefined, d = 2, u = "") => v == null ? "—" : `
 
 export const AGENT_IDLE = `<div class="hint">
   <b>分析阶跃</b>：给一个设定值阶跃后点它，离线算超调 / 上升 / 调节时间 / 振荡，并给调参建议。<br>
-  <b>问 Agent</b>：需要先在 ⚙ 里填大模型（DeepSeek、通义千问、本地 Ollama 都行）。<br>
-  Agent 只能<b>提议</b>：参数改动要你点“采纳”才下发；文件改动先给 diff，确认后跑 <code>make check</code> 通过才 git 提交，随时可回滚。它碰不到急停。</div>`;
+  <b>问 Agent</b>：没填 Key 也能问，由<b>离线规则助手</b>回答（只认常见问题）；在 ⚙ 里填大模型（DeepSeek、通义千问、本地 Ollama）对话更灵活。<br>
+  Agent 只能<b>提议</b>：参数改动要你点“采纳”才下发；文件改动先给 diff，确认后跑 <code>make check</code> 通过才 git 提交，随时可回滚。它碰不到急停。
+  <div class="chips">${["超调好大，怎么办", "帮我把速度环调好", "为什么左轮比右轮慢", "仿真里调好了，可以上车了吗"]
+    .map(q => `<button type="button" class="chip" data-q="${q}">${q}</button>`).join("")}</div></div>`;
 
 export function initAgent(call: Call) {
   const feed = $("props");
@@ -97,18 +99,24 @@ export function initAgent(call: Call) {
   $("ag-yaml").onclick = () => call("yaml_writeback").then(renderChange, () => {});
 
   // ---------------------------------------------------------------- 对话
-  let tools: HTMLElement | null = null;
+  let tools: HTMLElement | null = null, mode: HTMLElement | null = null;
+  // 示例问题：点一下直接问（第一次打开时最省事的入口）
+  feed.addEventListener("click", e => {
+    const q = (e.target as HTMLElement).closest<HTMLElement>(".chip")?.dataset.q;
+    if (q) { $<HTMLInputElement>("ag-in").value = q; $<HTMLFormElement>("ag-form").requestSubmit(); }
+  });
   $("ag-form").onsubmit = async e => {
     e.preventDefault();
     const inp = $<HTMLInputElement>("ag-in"), text = inp.value.trim();
     if (!text) return;
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
     add(esc(text), "msg me");
-    const w = add(`<span class="lbl">思考中…</span><div class="tools"></div>`, "msg bot");
-    tools = w.querySelector(".tools");
+    const w = add(`<span class="lbl">思考中…</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
+    tools = w.querySelector(".tools"); mode = w.querySelector(".mode");
     try { const r = await call<string>("agent_ask", { text }); w.firstElementChild!.outerHTML = `<div>${esc(r).replace(/\n/g, "<br>")}</div>`; }
     catch { w.remove(); }
-    finally { tools = null; $<HTMLButtonElement>("ag-send").disabled = false; }
+    // 不清 tools/mode：工具事件会比回答晚到（侧车线程 → 事件循环），留给这条消息直到下一问
+    finally { $<HTMLButtonElement>("ag-send").disabled = false; }
   };
 
   // ---------------------------------------------------------------- 设置
@@ -133,6 +141,7 @@ export function initAgent(call: Call) {
       if (m.type === "change") renderChange(m);
       if (m.type === "agent_action") renderAction(m);
       if (m.type === "tune_round") renderRound(m);
+      if (m.type === "agent_mode" && mode) mode.textContent = m.mode === "offline" ? `${m.name} · 无需联网${m.fallback ? "（大模型连不上，已自动切换）" : ""}` : `大模型 ${m.name}`;
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
     },
     add,

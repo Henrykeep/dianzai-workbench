@@ -19,6 +19,7 @@ from . import risk, yamlpar
 from .guard import GuardError, TuneGuard, key_samples
 from .gateway import Gateway, GatewayError
 from .loop import AgentLoop
+from .offline import OfflineAssistant
 from .experiment import StagedSearch, asymmetry, four_segment_metrics, four_segment_plan, steady_state
 from .tuning import StepMetrics, step_metrics, tuning_hints
 
@@ -58,6 +59,7 @@ class AgentService:
         self.actions: dict[int, dict] = {}
         self._aid = itertools.count(1)
         self.syms: dict | None = None
+        self.last_verdict: dict | None = None
         self.loop = AgentLoop(None, {
             "read_telemetry": tools.read_telemetry,
             "list_params": tools.list_params,
@@ -156,6 +158,8 @@ class AgentService:
         w = self.s.window(float(st.get("hold_s", 3)) + 1)
         out = {"rules": g.prompt_rules(), "history": g.history_table(), "gains": self._gains(), "stopped": g.stopped,
                "reply_format": '{"action":"PROPOSE|OBSERVE|DONE","param":"kp","value":0.1,"reason":"..."}'}
+        if self.last_verdict:
+            out["last_verdict"] = {k: self.last_verdict.get(k) for k in ("round", "action", "reason", "steady", "asymmetry", "advice") if k in self.last_verdict}
         if w and st.get("y") and st.get("sp"):
             t = [a for a, _ in w]
             y, sp = [float(v.get(st["y"], 0)) for _, v in w], [float(v.get(st["sp"], 0)) for _, v in w]
@@ -209,6 +213,7 @@ class AgentService:
             verdict["segments"], verdict["asymmetry"] = segs, asymmetry(segs)
         if verdict["action"] == "rollback" and verdict.get("auto"):
             verdict["rolled_back"] = self.rollback_best(_auto=True)
+        self.last_verdict = verdict
         self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
         return {"verdict": verdict, "metrics": m.as_dict()}
 
@@ -350,14 +355,27 @@ class AgentService:
 
     # -------------------------------------------------------------- LLM
     def llm(self):
-        return self._llm or llm_mod.OpenAICompat()
+        """注入的 LLM > 配置的大模型 > 离线规则助手（没填 Key 且不是 Ollama）。"""
+        if self._llm:
+            return self._llm
+        c = llm_mod.load_config()
+        if not c.get("api_key") and c.get("provider") != "ollama":
+            return OfflineAssistant()
+        return llm_mod.OpenAICompat(c)
 
     def ask(self, text: str) -> str:
+        """回答前发 agent_mode（界面标出这次是哪个“脑子”在答）。连不上模型服务时自动退回离线规则助手。"""
         self.loop.llm = self.llm()
+        mode = "offline" if isinstance(self.loop.llm, OfflineAssistant) else "llm"
+        self.emit({"type": "agent_mode", "mode": mode, "name": getattr(self.loop.llm, "name", "") or llm_mod.load_config().get("model", "")})
         try:
             return self.loop.ask(text)
         except llm_mod.LLMError as e:
-            raise LinkError("llm", e.message, e.fix) from e
+            if mode == "offline" or not e.message.startswith("连不上"):
+                raise LinkError("llm", e.message, e.fix) from e
+            self.loop.llm = OfflineAssistant()
+            self.emit({"type": "agent_mode", "mode": "offline", "name": OfflineAssistant.name, "fallback": e.message})
+            return f"（连不上模型服务，改由{OfflineAssistant.name}回答）\n" + self.loop.ask(text)
 
 
 __all__ = ["AgentService", "GatewayError", "guess_pairs"]
