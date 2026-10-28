@@ -54,7 +54,8 @@ static void dma(DMA_HandleTypeDef *d, DMA_Channel_TypeDef *c, uint32_t dir)
   d->Init.MemInc = DMA_MINC_ENABLE;
   d->Init.PeriphDataAlignment = DMA_PDATAALIGN_BYTE;
   d->Init.MemDataAlignment = DMA_MDATAALIGN_BYTE;
-  d->Init.Mode = DMA_NORMAL;          /* 用户原工程 RX 也是 Normal：移植层收满后自动重启 */
+  /* RX 用 Circular（推荐，移植层按 NDTR 读环形缓冲）；TX 用 Normal。用户原工程 RX 是 Normal，移植层也支持 */
+  d->Init.Mode = (dir == DMA_PERIPH_TO_MEMORY) ? DMA_CIRCULAR : DMA_NORMAL;
   d->Init.Priority = DMA_PRIORITY_LOW;
   if (HAL_DMA_Init(d) != HAL_OK) Error_Handler();
 }

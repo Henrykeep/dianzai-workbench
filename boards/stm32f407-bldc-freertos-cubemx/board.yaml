@@ -2,15 +2,15 @@
 schema_version: 1
 name: stm32f407-bldc-freertos-cubemx
 vendor: 学长的 F407VET6 小车板（Bldc.ioc，板卡型号未知）
-description: 学长真实工程 Bldc.ioc 的拷贝（FreeRTOS + HAL 时基 TIM1），按 docs/05 约定补了 User Label；用来验证移植层的 FreeRTOS/TIM 时基模式。cubemx/Core
-  下工程为【合成样例】（仿 CubeMX 生成结构手写），未上板测试
+description: 学长真实工程 Bldc.ioc 的拷贝（FreeRTOS + HAL 时基 TIM1），按 docs/05 约定补了 User Label；用来验证移植层的
+  FreeRTOS/TIM 时基模式。cubemx/Core 下工程为【合成样例】（仿 CubeMX 生成结构手写），未上板测试
 sources:
 - what: 引脚分配、定时器/串口/FreeRTOS 配置来自用户上传的 Bldc.ioc（tools/testdata/real/bldc_f407vet6.ioc）
   url: tools/testdata/real/README.md
 todo:
 - 相对原工程的改动（需确认）：只补了约定标签（AIN1=PB13→MOTOR_A_IN1、AIN2=PB12、BIN1=PB14、BIN2=PB15、PWMA=PA1、PWMB=PA0、
-  左轮编码器=TIM3、右轮=TIM4、UART4=LINK、USART2=AUX 是推测），删掉了 functionlistsort 里残留的 MX_TIM6_Init
-- TIM2 PWM 只有 500Hz（原工程配置）：驱动 TB6612 会啸叫，建议 10~20kHz
+  左轮编码器=TIM3、右轮=TIM4、UART4=BEAM（QD4310 摆杆）、USART2=VISION（MaixCAM2），据 review.md），删掉了 functionlistsort 里残留的 MX_TIM6_Init
+- TIM2 PWM 已从原工程 500Hz 改为 20kHz（Prescaler=0, Period=4200-1）
 - UART4 921600 无 RX DMA：移植层逐字节中断接收（约 9.2 万次中断/秒），建议加 UART4_RX Circular DMA
 - I2C1（PB8/PB9）已配置但 PAL 暂无 I2C 类型，未纳入 resources
 toolchain:
@@ -91,12 +91,12 @@ resources:
     timer: TIM2
     channel: 1
     pin: PA0
-    freq_hz: 500
+    freq_hz: 20000
   - name: MOTOR_A
     timer: TIM2
     channel: 2
     pin: PA1
-    freq_hz: 500
+    freq_hz: 20000
   encoder:
   - name: MOTOR_A
     timer: TIM3
@@ -107,13 +107,13 @@ resources:
     pin_a: PB6
     pin_b: PB7
   uart:
-  - name: LINK
+  - name: BEAM
     instance: UART4
     tx: PC10
     rx: PC11
     baud: 921600
     dma: false
-  - name: AUX
+  - name: VISION
     instance: USART2
     tx: PA2
     rx: PA3

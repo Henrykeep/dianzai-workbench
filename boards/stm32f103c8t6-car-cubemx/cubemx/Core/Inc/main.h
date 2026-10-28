@@ -10,6 +10,10 @@ extern "C" {
 /* USER CODE BEGIN Includes */
 /* USER CODE END Includes */
 void Error_Handler(void);
+#define GPIO_LED_Pin GPIO_PIN_8
+#define GPIO_LED_GPIO_Port GPIOA
+#define GPIO_BUZZER_Pin GPIO_PIN_1
+#define GPIO_BUZZER_GPIO_Port GPIOB
 #define KEY1_Pin GPIO_PIN_4
 #define KEY1_GPIO_Port GPIOA
 #define KEY2_Pin GPIO_PIN_5

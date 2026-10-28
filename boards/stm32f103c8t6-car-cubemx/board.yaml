@@ -2,17 +2,16 @@
 schema_version: 1
 name: stm32f103c8t6-car-cubemx
 vendor: 通用 STM32F103C8T6 最小系统板（蓝色小板）
-description: 用户真实工程 USART.ioc（F103C8T6 循迹小车）的拷贝，按 docs/05 约定补了 User Label，并加了 TIM1 作 CTRL 节拍定时器；cubemx/Core
-  下工程为【合成样例】（仿 CubeMX 生成结构手写），未上板测试
+description: 用户真实工程 USART.ioc（F103C8T6 循迹小车）的拷贝，按 docs/05 约定补了 User Label，并加了 TIM1
+  作 CTRL 节拍定时器；cubemx/Core 下工程为【合成样例】（仿 CubeMX 生成结构手写），未上板测试
 sources:
 - what: 引脚分配、定时器/串口/DMA 配置来自用户上传的 USART.ioc（tools/testdata/real/usart_f103c8t6.ioc）
   url: tools/testdata/real/README.md
 todo:
 - 相对用户原工程的改动（需用户确认）：加了 TIM1（72MHz/72/1000=1kHz 更新中断，作 CTRL）；给 PA0/PA1、PA6/PA7、PB6/PB7、PB10/11/14/15、
   USART1/2 补了约定标签（PWMA=PA0、PWMB=PA1、左轮编码器=TIM3、右轮=TIM4 是推测）
-- TIM2 PWM 只有 100Hz（原工程配置）：驱动 TB6612 会啸叫，建议改 10~20kHz（Prescaler=0, Period=3600-1 即 20kHz）
-- USART1/USART2 RX DMA 是 Normal 模式（原工程配置），移植层自动重启接收；改 Circular 更稳
-- PA8/PB1 两个输出脚没有标签，用途未知（LED？）
+- TIM2 PWM 已从原工程 100Hz 改为 20kHz（Prescaler=0, Period=3600-1），USART1/2 RX DMA 改 Circular（原工程 Normal）
+- PA8=LED、PB1=BUZZER 按 P2 工程用途补的标签（review.md），极性未验证
 - 晶振：.ioc 未写 HSE_VALUE，按 F1 默认 8MHz
 toolchain:
   compiler: arm-none-eabi-gcc
@@ -42,7 +41,7 @@ resources:
     pin: PA5
     dir: in
     pull: up
-  - name: PA8
+  - name: LED
     pin: PA8
     dir: out
   - name: R4
@@ -51,7 +50,7 @@ resources:
   - name: R2
     pin: PA15
     dir: in
-  - name: PB1
+  - name: BUZZER
     pin: PB1
     dir: out
   - name: R1
@@ -95,12 +94,12 @@ resources:
     timer: TIM2
     channel: 1
     pin: PA0
-    freq_hz: 100
+    freq_hz: 20000
   - name: MOTOR_B
     timer: TIM2
     channel: 2
     pin: PA1
-    freq_hz: 100
+    freq_hz: 20000
   encoder:
   - name: MOTOR_A
     timer: TIM3

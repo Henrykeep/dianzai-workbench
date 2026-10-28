@@ -47,6 +47,17 @@
 4. `python3 tools/ioc_import.py boards/<板>/cubemx/xxx.ioc --base boards/<旧板>/board.yaml --timer CTRL=TIM6 -o boards/<板>/board.yaml`，生成/合并 board.yaml（手写字段保留）。
 5. `make ioc-check`、`make check`、`make BOARD=<板> APP=port_selftest` 编译自检固件并上板。
 
+## 串口接收：推荐 Circular DMA（IT 为兜底）
+移植层按 CubeMX 配置自动选模式（ioc_import 会报告是哪种）：
+| CubeMX 配置 | 移植层行为 | 建议 |
+|---|---|---|
+| RX DMA，Mode = **Circular** | DMA 一直跑，主循环按 NDTR 取新字节，零中断开销 | **推荐** |
+| RX DMA，Mode = Normal | 收满或空闲后自动重启 DMA，重启间隙依赖数据寄存器缓冲 | 可用（用户原工程就是这样） |
+| 无 RX DMA | 每字节一次中断（1 字节 IT） | 兜底；低流量（如 QD4310 每 10 ms 一帧 10 字节）完全够用 |
+
+CubeMX 里设 Circular：Connectivity → USARTx → **DMA Settings** → Add → 选 `USARTx_RX` → Mode 选 **Circular**，Data Width 两边都是 Byte，Increment Address 只勾 Memory；NVIC Settings 里勾上 USARTx global interrupt（空闲中断要用）。TX 保持 Normal。改完 Generate Code，再跑 `make ioc-check`。
+- 【已实测（仅编译）】F103 合成工程两路 RX 已改 Circular、交叉编译通过。【未验证】上板。
+
 ## 验证状态
 - 【已实测】ioc_import 自检 9/9；`boards/stm32f407-skystar-cubemx` 合成工程交叉编译 motor_speed_demo（text 约 32 KB）、port_selftest、2026H_ball。
 - 【未验证】该 .ioc 与 Core/ 是**手写合成样例**，没有用真实 CubeMX 打开/重新生成过；需用户用 CubeMX 打开确认后再当真。

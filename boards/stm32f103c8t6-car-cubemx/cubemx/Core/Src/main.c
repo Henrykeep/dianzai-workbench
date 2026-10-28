@@ -95,9 +95,9 @@ static void MX_TIM2_Init(void)
 {
   TIM_OC_InitTypeDef sConfigOC = {0};
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 7200-1;      /* 用户原工程：72MHz/7200/100 = 100 Hz */
+  htim2.Init.Prescaler = 0;           /* 72MHz/1/3600 = 20 kHz（用户原工程 100 Hz，TB6612 会啸叫） */
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 100-1;
+  htim2.Init.Period = 3600-1;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK) Error_Handler();
@@ -161,8 +161,8 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_1|GPIO_MOTOR_B_IN2_Pin|GPIO_MOTOR_B_IN1_Pin|OLED_SCL_Pin|OLED_SDA_Pin
+  HAL_GPIO_WritePin(GPIO_LED_GPIO_Port, GPIO_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, GPIO_BUZZER_Pin|GPIO_MOTOR_B_IN2_Pin|GPIO_MOTOR_B_IN1_Pin|OLED_SCL_Pin|OLED_SDA_Pin
                           |GPIO_MOTOR_A_IN1_Pin|GPIO_MOTOR_A_IN2_Pin, GPIO_PIN_RESET);
   GPIO_InitStruct.Pin = GPIO_PIN_14;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
@@ -176,11 +176,11 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
   GPIO_InitStruct.Pin = GPIO_PIN_3|GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_8|GPIO_PIN_9;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = GPIO_PIN_8;
+  GPIO_InitStruct.Pin = GPIO_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-  GPIO_InitStruct.Pin = GPIO_PIN_1|GPIO_MOTOR_B_IN2_Pin|GPIO_MOTOR_B_IN1_Pin|OLED_SCL_Pin|OLED_SDA_Pin
+  GPIO_InitStruct.Pin = GPIO_BUZZER_Pin|GPIO_MOTOR_B_IN2_Pin|GPIO_MOTOR_B_IN1_Pin|OLED_SCL_Pin|OLED_SDA_Pin
                           |GPIO_MOTOR_A_IN1_Pin|GPIO_MOTOR_A_IN2_Pin;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 }
