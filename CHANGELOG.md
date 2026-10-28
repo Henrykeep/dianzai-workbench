@@ -6,6 +6,30 @@
 
 ## [未发布]
 
+### IMU：给加速度前馈接上真实数据源
+- PAL 1.1.0 新增阻塞式 `pal_i2c_mem_read/mem_write` 和 `pal_spi_xfer`（一个 SPI id 对应一颗芯片，片选由移植层软件控制）。board.yaml 新增 `i2c` 和 `spi` 资源类型，引脚和复用检查都在 boardlib 里。
+- 各移植层：
+  - host-sim 2.0.0：可以挂假芯片回调，能注入 I2C/SPI 故障。故障枚举改了，所以升了主版本。
+  - stm32f4-hal 1.1.0：用 HAL I2C/SPI 实现，生成器加了 I2C1-3、SPI1-3 的复用表。共用总线的两个条目 mode 或速率不同时，会重新初始化 SPI。**[编译]**
+  - stm32-cubemx 1.2.0：用 CubeMX 的 hi2cN/hspiN 句柄实现；CubeMX 没启用对应模块时返回 ENOTSUP。**[编译]**
+  - mspm0-driverlib 0.2.0：I2C/SPI 返回 ENOTSUP，board check 会给出警告。MSPM0 主控要用 IMU，请走 UART 姿态模块。
+- 新驱动和算法：
+  - `drivers/mpu6050` 1.0.0：I2C，写寄存器后读回校验，带零偏标定。
+  - `drivers/bmi088` 1.0.0：SPI，处理了加速度计上电后的哑读切换 SPI 和哑字节，带温度读取。
+  - `algo/attitude` 1.0.0：互补滤波求 roll/pitch，加速度门限在晃动时停止修正。
+  - `proto/dzimu` 1.0.0：姿态模块到主控的数据帧，DATA 通道 0x20，37 字节。
+  - 以上全部 **[仿真]**：tests/host/test_imu.c 用假芯片测寄存器序列、换算、无应答、片选接反、读回不一致、标定失败不改零偏。**真芯片未测**。
+- 新应用 `apps/imu_module`：RM C 型板读 BMI088 → 开机静止 1 s 标定零偏 → 1 kHz 互补滤波 → 从 IMU 串口（丝印 UART2 = USART1）以 200 Hz 发 dzimu。dji-rm-c 板做了这些改动：
+  - 加了 BMI088 的 SPI1 资源；
+  - HSE 填 12 MHz（取自社区 C 板工程的 .ioc，**未对照实物核实**）；
+  - 原来没被使用的 `UART2` 改名为 `IMU`。
+  - 已加入 `make cross`。**[编译]**，**未上板**。
+- 2026H io 层按板上资源在编译期选 IMU 来源：有 uart IMU 就解 dzimu，否则有 i2c IMU 就轮询 MPU6050，都没有时 imu_ok 恒为 false。
+  - 新参数 `imu_axis` 选哪根轴朝车头。
+  - 遥测增加 `imu_ax_mps2` / `imu_ok`。
+  - 仿真板会以 200 Hz 发假 dzimu 帧，sidecar 端到端测试检查 imu_ok=1 和 imu_axis 的限幅。**[仿真]**
+  - 注意：车身俯仰时，重力分量会混进前向加速度。
+
 ### ELF 变量观察
 - 通道栏的“ELF 变量”：输入变量名时从 ELF 符号表联想；“开始观察”后通过 SWD 直接读内存，样本走虚拟通道画线，不用改固件。sidecar 新增 elf_symbols、watch_start、watch_stop。
 - 已对照验证：
