@@ -35,6 +35,11 @@ def usable(board: dict) -> dict:
     return {t: [r for r in (res.get(t) or []) if not _is_todo(r)] for t in boardlib.RES_TYPES}
 
 
+def _adc_info(r: dict) -> str:
+    """pal_adc_info_t 初值（四个端口共用）：bits / vref_mv / 外部分压 scale_num/scale_den，缺省 12 位、3.3 V、1/1。"""
+    return f"{{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }}"
+
+
 def gen_header(board: dict, src: str, sha: str) -> str:
     res = usable(board)
     todo = {t: [r for r in (board.get("resources", {}) or {}).get(t) or [] if _is_todo(r)] for t in boardlib.RES_TYPES}
@@ -147,7 +152,7 @@ def gen_stm32f4(board: dict, src: str, sha: str) -> tuple[str, dict]:
         need_port(r["pin"]); adcs.add(r["instance"])
         p, n = _pin(r["pin"])
         rows.append(f"    {{ {r['instance']}, ADC_CHANNEL_{r['channel']}, {p}, {n}, "
-                    f"{{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }} }}, /* {r['name']} */")
+                    f"{_adc_info(r)} }}, /* {r['name']} */")
     c += _table("p4_adc_t", "g_p4_adc", rows)
 
     # I2C（阻塞式，HAL_I2C_Mem_*）
@@ -214,7 +219,7 @@ def gen_host(board: dict, src: str, sha: str) -> tuple[str, dict]:
     c = (HEADER.format(src=src, sha=sha[:12]) + '#include "board_gen.h"\nconst char *const g_board_name = BOARD_NAME;\n'
          f"const uint32_t g_host_pwm_freq[] = {{ {freqs} }};\n")
     # ADC 换算参数也按 board.yaml（与真板端口一致；以前写死 1/1，分压配置在仿真里不生效）
-    adc = ", ".join(f"{{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }}"
+    adc = ", ".join(f"{_adc_info(r)}"
                     for r in res.get("adc") or []) or "{ 12u, 3300u, 1u, 1u }"
     c += f"const pal_adc_info_t g_host_adc_info[] = {{ {adc} }};\n"
     return c, {"BOARD_PORT": board["port"], "BOARD_FAMILY": "host", "BOARD_DEFS": ""}
@@ -290,7 +295,7 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
         rows["timer"].append(f"    {{ &{need(r['instance'], 'TIM')} }}, /* {r['name']} */")
     for r in res["adc"]:
         rows["adc"].append(f"    {{ &{need(r['instance'], 'ADC')}, ADC_CHANNEL_{r['channel']},\n"
-                           f"      {{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }} }}, /* {r['name']} */")
+                           f"      {_adc_info(r)} }}, /* {r['name']} */")
     c.append("/* CubeMX 在 main.c / tim.c / usart.c / adc.c 中定义的句柄 */")
     c += [f"extern {t}_HandleTypeDef {h};" for h, t in handles] + [""]
     c += bufs + [""]
@@ -380,7 +385,7 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     for r in res.get("adc") or []:
         inst = r["instance"]   # ADC0 / ADC1 -> SysConfig 实例 ADC12_0 / ADC12_1
         rows["adc"].append(f"    {{ ADC12_{inst[-1]}_INST, DL_ADC12_INPUT_CHAN_{int(r['channel'])},\n"
-                           f"      {{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }} }}, /* {r['name']} {inst} CH{r['channel']} {r.get('pin', '')} */")
+                           f"      {_adc_info(r)} }}, /* {r['name']} {inst} CH{r['channel']} {r.get('pin', '')} */")
     if gpio_enc or any(r.get("dir") == "in" for r in res["gpio"]):
         # 输入脚可能被 pal_gpio_irq_attach 挂边沿中断（PAL 1.2.0），与 GPIO 编码器共用 GROUP1
         isr.append("void GROUP1_IRQHandler(void) { dz_m0_gpio_enc_isr(); dz_m0_gpio_irq_isr(); }   /* GPIOA/GPIOB 中断组 */")
