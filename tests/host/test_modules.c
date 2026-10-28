@@ -1,3 +1,4 @@
+#include <math.h>
 /* 新模块：spsc、key、qd4310、ssd1306、ball_beam。 */
 #include <string.h>
 #include "tt.h"
@@ -107,7 +108,7 @@ TEST(ssd1306_fb_text_flush)
 static ball_beam_cfg_t bb_cfg(void)
 {
     ball_beam_cfg_t c = { 0.55f, 0.20f, 0.07f, 0.72f, 320.0f, 0.016f, 0.055f, 55.0f, 2.5f, 0.5f,
-                          5.5f, 220.0f, 120u, 600u, 1.0f };
+                          5.5f, 220.0f, 120u, 600u, 1.0f, 0u, 0.0f, 0u, 0.0f, 0.0f, 0.0f, 0u, {0}, {0} };
     return c;
 }
 
@@ -189,9 +190,43 @@ TEST(dzctl_param_and_estop)
     CHECK(ack.kind == DZF_HEARTBEAT && dzframe_get_u32(&ack, 0) == 0xCAFEu);
 }
 
+
+/* 1.1.0 A/B 选项：每个 B 选项单独开，对比 A 的输出 */
+static float bb_run(ball_beam_cfg_t c, float x_px, int steps)
+{
+    ball_beam_t b; float a = 0;
+    if (ball_beam_init(&b, &c) != DZ_OK) return NAN;
+    for (int k = 0; k < steps; k++) { ball_beam_sample(&b, x_px, (uint32_t)(k * 10)); a = ball_beam_update(&b, 0, 0, (uint32_t)(k * 10), 0.01f); }
+    return a;
+}
+
+TEST(ball_beam_ab_options)
+{
+    ball_beam_cfg_t c = bb_cfg(); c.ki = 0; c.rate_max = 0;
+    float a = bb_run(c, -30.0f, 20);
+    CHECK_NEAR(a, 0.016 * 0.72 * 30, 1e-3);                  /* A：静止球，θ = vel_k·pos_k·e */
+    ball_beam_cfg_t d = c; d.est_mode = BB_EST_DIFF_LPF;    /* B 估计器：静止球结果相同 */
+    CHECK_NEAR(bb_run(d, -30.0f, 20), a, 1e-3);
+    d = c; d.vel_max = 10.0f;                                /* 串级 v_des 被限住 */
+    float cas = bb_run(d, -30.0f, 20);
+    d.loop_mode = BB_LOOP_SINGLE;                            /* 单环不限 v_des */
+    CHECK(bb_run(d, -30.0f, 20) > cas + 0.1f);
+    d = c; d.stic_deg = 0.4f; d.stic_vel = 5.0f; d.stic_e = 10.0f;
+    CHECK_NEAR(bb_run(d, -30.0f, 20), a + 0.4, 1e-3);        /* 静摩擦补偿沿误差方向 */
+    CHECK_NEAR(bb_run(d, -5.0f, 20), 0.016 * 0.72 * 5, 1e-3);/* |e|<stic_e 不加 */
+    d = c; d.bal_n = 3; d.bal_x[0] = -100; d.bal_x[1] = 0; d.bal_x[2] = 100;
+    d.bal_deg[0] = 1.0f; d.bal_deg[1] = 0.0f; d.bal_deg[2] = -0.5f;
+    CHECK_NEAR(ball_beam_bal_ff(&d, -50), 0.5, 1e-5);
+    CHECK_NEAR(ball_beam_bal_ff(&d, 200), -0.5, 1e-5);
+    CHECK_NEAR(bb_run(d, -30.0f, 20), a + 0.3, 1e-2);        /* x_now 含超前外推，静止球即 −30 */
+    ball_beam_t b;
+    d.bal_x[2] = -200; CHECK(ball_beam_init(&b, &d) == DZ_EINVAL);
+    d = c; d.est_mode = 2; CHECK(ball_beam_init(&b, &d) == DZ_EINVAL);
+}
+
 void suite_modules(void)
 {
     RUN(spsc_basic_and_wrap); RUN(key_events); RUN(qd4310_codec_and_resync);
-    RUN(ssd1306_fb_text_flush); RUN(ball_beam_estimator_and_limits); RUN(ball_beam_integral);
+    RUN(ssd1306_fb_text_flush); RUN(ball_beam_estimator_and_limits); RUN(ball_beam_integral); RUN(ball_beam_ab_options);
     RUN(dzctl_param_and_estop);
 }

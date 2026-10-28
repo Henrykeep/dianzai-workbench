@@ -1,6 +1,31 @@
 {
+ "firmware/algo/abobs": {
+  "decls": [
+   "abobs.h: typedef struct { float alpha;",
+   "abobs.h: float beta;",
+   "abobs.h: float gate;",
+   "abobs.h: float max_predict_s;",
+   "abobs.h: } abobs_cfg_t;",
+   "abobs.h: typedef struct { abobs_cfg_t cfg;",
+   "abobs.h: float x, v;",
+   "abobs.h: float coast_s;",
+   "abobs.h: bool primed;",
+   "abobs.h: unsigned rejected;",
+   "abobs.h: } abobs_t;",
+   "abobs.h: dz_err_t abobs_init(abobs_t *o, const abobs_cfg_t *cfg);",
+   "abobs.h: bool abobs_update(abobs_t *o, float z, float dt_s);",
+   "abobs.h: void abobs_predict(abobs_t *o, float dt_s);",
+   "abobs.h: void abobs_reset(abobs_t *o, float x0);",
+   "abobs.h: dz_err_t abobs_selftest(void);"
+  ],
+  "hash": "1b440a8c998a868a",
+  "version": "1.0.0"
+ },
  "firmware/algo/ball_beam": {
   "decls": [
+   "ball_beam.h: #define BB_BAL_MAX 5u",
+   "ball_beam.h: typedef enum { BB_EST_ALPHA_BETA = 0, BB_EST_DIFF_LPF = 1 } bb_est_mode_t;",
+   "ball_beam.h: typedef enum { BB_LOOP_CASCADE = 0, BB_LOOP_SINGLE = 1 } bb_loop_mode_t;",
    "ball_beam.h: typedef struct { float alpha, beta;",
    "ball_beam.h: float lead_s;",
    "ball_beam.h: float pos_k;",
@@ -14,6 +39,15 @@
    "ball_beam.h: float rate_max;",
    "ball_beam.h: uint32_t hold_ms, timeout_ms;",
    "ball_beam.h: float dir;",
+   "ball_beam.h: uint8_t est_mode;",
+   "ball_beam.h: float est_lpf;",
+   "ball_beam.h: uint8_t loop_mode;",
+   "ball_beam.h: float stic_deg;",
+   "ball_beam.h: float stic_vel;",
+   "ball_beam.h: float stic_e;",
+   "ball_beam.h: uint8_t bal_n;",
+   "ball_beam.h: float bal_x[BB_BAL_MAX];",
+   "ball_beam.h: float bal_deg[BB_BAL_MAX];",
    "ball_beam.h: } ball_beam_cfg_t;",
    "ball_beam.h: typedef enum { BB_WAIT = 0, BB_TRACK, BB_HOLD, BB_LOST } ball_beam_state_t;",
    "ball_beam.h: typedef struct { ball_beam_cfg_t cfg;",
@@ -29,10 +63,11 @@
    "ball_beam.h: void ball_beam_sample(ball_beam_t *b, float x_px, uint32_t t_ms);",
    "ball_beam.h: float ball_beam_update(ball_beam_t *b, float setpoint_px, float ff_deg, uint32_t now_ms, float dt_s);",
    "ball_beam.h: ball_beam_state_t ball_beam_state(const ball_beam_t *b);",
+   "ball_beam.h: float ball_beam_bal_ff(const ball_beam_cfg_t *c, float x_px);",
    "ball_beam.h: dz_err_t ball_beam_selftest(void);"
   ],
-  "hash": "95a3999df6cd857e",
-  "version": "1.0.0"
+  "hash": "22c12e7bc0ac2f81",
+  "version": "1.1.0"
  },
  "firmware/algo/lpf": {
   "decls": [
@@ -116,6 +151,40 @@
    "pid.h: dz_err_t pid_selftest(void);"
   ],
   "hash": "b4ef6e491b2eed67",
+  "version": "1.0.0"
+ },
+ "firmware/algo/vision": {
+  "decls": [
+   "vis.h: #define VIS_CALIB_MAX 9u",
+   "vis.h: typedef enum { VIS_LOST = 0, VIS_HELD = 1, VIS_VALID = 2 } vis_state_t;",
+   "vis.h: typedef struct { uint32_t hold_ms;",
+   "vis.h: uint32_t lost_ms;",
+   "vis.h: uint32_t lat_win;",
+   "vis.h: } vis_link_cfg_t;",
+   "vis.h: typedef struct { vis_link_cfg_t cfg;",
+   "vis.h: bool have, have_seq;",
+   "vis.h: uint8_t last_seq;",
+   "vis.h: uint32_t last_rx_ms, last_cam_ms;",
+   "vis.h: float x;",
+   "vis.h: uint32_t drops, frames, invalid;",
+   "vis.h: int32_t off_min, off_min_next;",
+   "vis.h: uint32_t win_n;",
+   "vis.h: int32_t lat_jitter_ms;",
+   "vis.h: } vis_link_t;",
+   "vis.h: dz_err_t vis_link_init(vis_link_t *l, const vis_link_cfg_t *cfg);",
+   "vis.h: void vis_link_feed(vis_link_t *l, uint8_t seq, uint32_t cam_ms, uint32_t rx_ms, bool valid, float x);",
+   "vis.h: vis_state_t vis_link_poll(const vis_link_t *l, uint32_t now_ms);",
+   "vis.h: uint32_t vis_link_age_ms(const vis_link_t *l, uint32_t now_ms);",
+   "vis.h: const char *vis_state_name(vis_state_t s);",
+   "vis.h: typedef struct { uint8_t n;",
+   "vis.h: float px[VIS_CALIB_MAX];",
+   "vis.h: float val[VIS_CALIB_MAX];",
+   "vis.h: } vis_calib_t;",
+   "vis.h: dz_err_t vis_calib_init(vis_calib_t *c, const float *px, const float *val, uint8_t n);",
+   "vis.h: float vis_calib_apply(const vis_calib_t *c, float px, bool *out_of_range);",
+   "vis.h: dz_err_t vis_selftest(void);"
+  ],
+  "hash": "de1f93202fb16e9c",
   "version": "1.0.0"
  },
  "firmware/drivers/encoder": {
