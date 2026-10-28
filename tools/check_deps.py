@@ -16,6 +16,8 @@
       禁止 stm32f4xx_gpio.h 等 StdPeriph 头、GPIO_Init()/RCC_AHB1PeriphClockCmd() 等 StdPeriph 调用；
       禁止直接读写外设寄存器（TIM2->CNT、htim->Instance->CCR1、RCC->CR …），
       除非该行或上一行带注释 `DZ-REG-OK: <原因>`（官方 HAL 做不到时才允许，且必须写明原因）。
+  C1  CubeMX 工程（含 .ioc 的目录，如 boards/<板>/cubemx/）视为厂商生成代码：允许 HAL，禁止标准库；
+      其 USER CODE 区只允许框架接缝（#include "dz_cubemx.h"、dz_cubemx_start/loop()），业务逻辑一律写进子系统。
   P2  厂商 API 不得串用：HAL_/LL_ 只能在 ports/stm32*，DL_ 只能在 ports/mspm0*。
   V1  每个模块目录的 VERSION 必须与头文件里的 XXX_VERSION 宏一致。
 """
@@ -68,6 +70,37 @@ class Checker:
             for f in sorted(fs):
                 if f.endswith(exts):
                     yield os.path.join(d, f)
+
+    def cube_root(self, path):
+        """path 位于 CubeMX 工程（向上找到含 .ioc 的目录，止于仓库根）时返回该目录。"""
+        d = os.path.dirname(os.path.abspath(path))
+        while d.startswith(self.root) and d != self.root:
+            try:
+                if any(f.endswith(".ioc") for f in os.listdir(d)):
+                    return d
+            except OSError:
+                return None
+            d = os.path.dirname(d)
+        return None
+
+    USER_RE = re.compile(r'/\* USER CODE BEGIN ([^*]+?) \*/(.*?)/\* USER CODE END \1 \*/', re.S)
+    # 允许：接缝两行；CubeMX 自身落在 USER CODE WHILE/3 区里的 while(1) { } 结构行
+    USER_OK = re.compile(r'^\s*(#include\s+"dz_cubemx\.h"|dz_cubemx_(start|loop)\(\);|while\s*\(1\)|\{|\})?\s*$')
+
+    def check_cube(self, path):
+        raw = open(path, encoding="utf-8", errors="replace").read()
+        src = strip_comments(raw)
+        for m in INC_RE.finditer(src):
+            if self.STDPERIPH_HDR.match(os.path.basename(m.group(1))):
+                self.err("C1", path, lineno(src, m.start()), f"CubeMX 工程里出现标准外设库头文件 {m.group(1)}")
+        for m in self.STDPERIPH_CALL.finditer(src):
+            self.err("C1", path, lineno(src, m.start()), f"CubeMX 工程里出现标准外设库调用 {m.group(1)}()")
+        for m in self.USER_RE.finditer(raw):
+            body = strip_comments(m.group(2))
+            for i, line in enumerate(body.splitlines()):
+                if not self.USER_OK.match(line):
+                    ln = lineno(raw, m.start(2)) + i
+                    self.err("C1", path, ln, f"USER CODE {m.group(1)} 里有业务代码 `{line.strip()}`：只允许 dz_cubemx 接缝，逻辑写进子系统")
 
     def layer_of(self, path):
         rel = os.path.relpath(path, self.root).split(os.sep)
@@ -214,6 +247,9 @@ class Checker:
         self.index_headers()
         for top in ("firmware", "apps", "examples", "ports", "boards"):
             for p in self.files(top):
+                if self.cube_root(p):
+                    self.check_cube(p)
+                    continue
                 self.check_file(p)
                 self.check_port(p)
         ex = os.path.join(self.root, "examples")

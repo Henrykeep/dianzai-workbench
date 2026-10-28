@@ -13,6 +13,7 @@
 生成前先跑与 validate_board.py 完全相同的检查，有错误就不生成。
 """
 import argparse
+import re
 import hashlib
 import pathlib
 import sys
@@ -191,13 +192,99 @@ def gen_host(board: dict, src: str, sha: str) -> tuple[str, dict]:
     return c, {"BOARD_PORT": board["port"], "BOARD_FAMILY": "host", "BOARD_DEFS": ""}
 
 
+CPU_FLAGS = {
+    "cortex-m0":   "-mcpu=cortex-m0 -mthumb -mfloat-abi=soft",
+    "cortex-m0plus": "-mcpu=cortex-m0plus -mthumb -mfloat-abi=soft",
+    "cortex-m3":   "-mcpu=cortex-m3 -mthumb -mfloat-abi=soft",
+    "cortex-m4":   "-mcpu=cortex-m4 -mthumb -mfloat-abi=soft",
+    "cortex-m4f":  "-mcpu=cortex-m4 -mthumb -mfpu=fpv4-sp-d16 -mfloat-abi=hard",
+    "cortex-m7f":  "-mcpu=cortex-m7 -mthumb -mfpu=fpv5-d16 -mfloat-abi=hard",
+    "cortex-m33f": "-mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard",
+}
+
+
+def _cube_handle(inst: str) -> str:
+    """CubeMX 句柄命名：TIM3 -> htim3，USART1/UART4/LPUART1 -> huart1/huart4/hlpuart1，ADC1 -> hadc1。"""
+    m = re.fullmatch(r"(TIM|USART|UART|LPUART|ADC)(\d+)", inst)
+    if not m:
+        raise SystemExit(f"✗ 无法推出 CubeMX 句柄名：{inst}")
+    pre = {"TIM": "htim", "USART": "huart", "UART": "huart", "LPUART": "hlpuart", "ADC": "hadc"}[m[1]]
+    return f"{pre}{m[2]}"
+
+
+def cube_define(part: str) -> str:
+    """STM32F407VETx / STM32F407IGH6 -> STM32F407xx；STM32G431CBU6 -> STM32G431xx（CubeMX/HAL 的器件宏）。"""
+    m = re.fullmatch(r"(STM32[A-Z]\d{3})[A-Z0-9]{2,4}x?", part)
+    if not m:
+        raise SystemExit(f"✗ mcu.part={part!r} 无法推出 HAL 器件宏；请先填写真实型号（看芯片丝印）")
+    return m[1] + "xx"
+
+
+def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
+    """port: stm32-cubemx —— 只生成“逻辑 ID -> CubeMX 句柄”表；外设配置全在 .ioc / CubeMX 生成代码里。"""
+    res = usable(board)
+    c = [HEADER.format(src=src, sha=sha[:12]), '#include "port_cubemx.h"', '#include "board_gen.h"', ""]
+    handles = []
+    def need(inst, typ):
+        h = _cube_handle(inst)
+        if h not in [x for x, _ in handles]:
+            handles.append((h, typ))
+        return h
+    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "adc")}
+    for r in res["gpio"]:
+        port, pin = _pin(r["pin"])
+        rows["gpio"].append(f"    {{ {port}, {pin}, {int(bool(r.get('active_low')))}u }}, /* {r['name']} {r['pin']} */")
+    for r in res["pwm"]:
+        rows["pwm"].append(f"    {{ &{need(r['timer'], 'TIM')}, TIM_CHANNEL_{r['channel']} }}, /* {r['name']} */")
+    for r in res["encoder"]:
+        rows["encoder"].append(f"    {{ &{need(r['timer'], 'TIM')}, {int(bool(r.get('invert')))}u }}, /* {r['name']} */")
+    bufs = []
+    for i, r in enumerate(res["uart"]):
+        rx_n, tx_n = r.get("rx_buf", 512), r.get("tx_buf", 256)
+        bufs.append(f"static uint8_t s_uart{i}_rx[{rx_n}];\nstatic uint8_t s_uart{i}_tx[{tx_n}];")
+        rows["uart"].append(f"    {{ &{need(r['instance'], 'UART')}, s_uart{i}_rx, {rx_n}u, s_uart{i}_tx, {tx_n}u }}, /* {r['name']} */")
+    for r in res["timer"]:
+        rows["timer"].append(f"    {{ &{need(r['instance'], 'TIM')} }}, /* {r['name']} */")
+    for r in res["adc"]:
+        rows["adc"].append(f"    {{ &{need(r['instance'], 'ADC')}, ADC_CHANNEL_{r['channel']},\n"
+                           f"      {{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }} }}, /* {r['name']} */")
+    c.append("/* CubeMX 在 main.c / tim.c / usart.c / adc.c 中定义的句柄 */")
+    c += [f"extern {t}_HandleTypeDef {h};" for h, t in handles] + [""]
+    c += bufs + [""]
+    for key, typ, name in (("gpio", "cm_gpio_t", "g_cm_gpio"), ("pwm", "cm_pwm_t", "g_cm_pwm"),
+                           ("encoder", "cm_enc_t", "g_cm_enc"), ("uart", "cm_uart_t", "g_cm_uart"),
+                           ("timer", "cm_timer_t", "g_cm_timer"), ("adc", "cm_adc_t", "g_cm_adc")):
+        c += _table(typ, name, rows[key])
+    c.append("const char *const g_board_name = BOARD_NAME;\n")
+
+    mcu = board["mcu"]
+    core = mcu.get("core", "")
+    if core not in CPU_FLAGS:
+        raise SystemExit(f"✗ mcu.core={core!r} 未知，可选 {sorted(CPU_FLAGS)}")
+    cs = board["config_source"]
+    cube_dir = (pathlib.Path(src).parent / cs["file"]).parent.as_posix()
+    family = mcu["family"]                        # stm32f4 -> 用 STM32Cube<F4> 的 HAL 源码
+    mk = {
+        "BOARD_PORT": board["port"],
+        "BOARD_FAMILY": "stm32-cubemx",
+        "BOARD_SERIES": family,
+        "BOARD_CPU": CPU_FLAGS[core],
+        "BOARD_DEFS": f"-D{cube_define(mcu['part'])} -DUSE_HAL_DRIVER",
+        "BOARD_FLASH_KB": str(mcu.get("flash_kb", 0)),
+        "BOARD_PART": mcu["part"],
+        "CUBE_DIR": cube_dir,
+    }
+    return "\n".join(c), mk
+
+
 def _table(typ, name, rows):
     if not rows:
         return [f"const {typ} {name}[1];  /* 本板没有此类资源，占位避免零长度数组 */", ""]
     return [f"const {typ} {name}[] = {{"] + rows + ["};", ""]
 
 
-GENERATORS = {"stm32f4": gen_stm32f4, "host": gen_host}
+PORT_GENERATORS = {"stm32-cubemx": gen_cubemx}   # 按移植层生成（与芯片系列无关）
+GENERATORS = {"stm32f4": gen_stm32f4, "host": gen_host, **PORT_GENERATORS}
 
 
 def main() -> int:
@@ -222,6 +309,8 @@ def main() -> int:
         print(f"✗ {a.board}: 协处理板（kind: coprocessor）不运行本框架代码，不生成固件；它的通道描述供 gen_coproc.py 使用")
         return 1
     fam = board["mcu"]["family"]
+    if board.get("port") in PORT_GENERATORS:
+        fam = board["port"]
     if fam not in GENERATORS:
         print(f"✗ 还没有 {fam} 系列的代码生成器（见 docs/06-add-board.md）", file=sys.stderr)
         return 1

@@ -133,12 +133,13 @@ def stm32f4_check(board: dict, rep: Report) -> None:
         return True
 
     clk = board.get("clock", {}) or {}
-    hse = clk.get("hse_hz", 0)
+    cube = board.get("port") == "stm32-cubemx"   # CubeMX 管时钟与 DMA：这里只核对引脚复用，时钟/DMA 由 ioc_import 检查
+    hse = 0 if cube else clk.get("hse_hz", 0)
     if hse == "TODO":
         hse = 0   # 已作为 TODO 记录；gen_board.py 生成固件时会拒绝
     if hse and (hse % 1_000_000 or not 2 <= hse // 1_000_000 <= 26):
         rep.err(f"[时钟] hse_hz={hse}：移植层要求 HSE 为 2~26 MHz 的整 MHz")
-    if clk.get("sysclk_hz", 168_000_000) != 168_000_000:
+    if not cube and clk.get("sysclk_hz", 168_000_000) != 168_000_000:
         rep.err("[时钟] stm32f4-hal 移植层目前只实现 168 MHz（PLL N=336, P=2, Q=7）")
 
     for r in res.get("gpio", []) or []:
@@ -181,6 +182,8 @@ def stm32f4_check(board: dict, rep: Report) -> None:
             rep.err(f"[复用错误] {where}.tx: {r['tx']} 不能作为 {inst}_TX，可选 {txs}")
         if pin_ok(r["rx"], where + ".rx") and r["rx"] not in rxs:
             rep.err(f"[复用错误] {where}.rx: {r['rx']} 不能作为 {inst}_RX，可选 {rxs}")
+        if cube:
+            continue
         if not r.get("dma", True):
             rep.err(f"[移植层能力] {where}: stm32f4-hal 端口目前只实现 DMA 模式串口")
         for kind, table in (("RX", F.UART_DMA_RX), ("TX", F.UART_DMA_TX)):
@@ -208,6 +211,19 @@ def stm32f4_check(board: dict, rep: Report) -> None:
 
 
 FAMILY_CHECKS = {"stm32f4": stm32f4_check}
+
+
+def cubemx_check(board: dict, rep: Report) -> None:
+    """port: stm32-cubemx —— CubeMX 是唯一配置源：必须指明 .ioc；串口必须 DMA 接收（循环模式由 ioc_import 核对）。"""
+    cs = board.get("config_source") or {}
+    if cs.get("tool") != "cubemx" or not cs.get("file"):
+        rep.err("[CubeMX] port: stm32-cubemx 必须写 config_source: {tool: cubemx, file: <相对本文件的 .ioc 路径>}")
+    for r in (board.get("resources") or {}).get("uart") or []:
+        if r.get("dma") is False:
+            rep.err(f"[CubeMX] uart.{r['name']}: 本移植层要求 RX 为循环 DMA（在 CubeMX 里给该串口加 RX DMA，Mode=Circular）")
+
+
+PORT_CHECKS = {"stm32-cubemx": cubemx_check}
 
 TYPE_SIZE = {"u8": 1, "i8": 1, "u16": 2, "i16": 2, "u32": 4, "i32": 4, "f32": 4}
 DZFRAME_MAX_PAYLOAD = 64   # 与 firmware/proto/dzframe/dzframe.h 的 DZFRAME_MAX_PAYLOAD 一致
@@ -255,6 +271,8 @@ def check_board(board: dict) -> Report:
         FAMILY_CHECKS[fam](board, rep)
     elif fam != "host":
         rep.warn(f"[知识库] 没有 {fam} 系列的复用/DMA 知识表，只做了通用检查")
+    if board.get("port") in PORT_CHECKS:
+        PORT_CHECKS[board["port"]](board, rep)
     return rep
 
 

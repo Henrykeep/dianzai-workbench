@@ -87,13 +87,42 @@ PORT_SRC = $(PORT_DIR)/pal_stm32f4.c $(PORT_DIR)/main_stm32f4.c $(PORT_DIR)/sysc
 TARGET   = $(OUT)/$(APP).elf
 endif
 
+# ------------------------------------------------------------------ stm32-cubemx（任意 STM32 系列，CubeMX 工程提供一切外设配置）
+ifeq ($(BOARD_FAMILY),stm32-cubemx)
+TC      ?= arm-none-eabi-
+CC      := $(TC)gcc
+SERIES  := $(subst stm32,,$(BOARD_SERIES))
+SERIES_U := $(shell echo $(SERIES) | tr a-z A-Z)
+# HAL 优先用 CubeMX 复制进工程的 Drivers/；没有则退回 third_party（目前只备有 F4）
+CUBE_HAL ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/STM32$(SERIES_U)xx_HAL_Driver) $(if $(filter f4,$(SERIES)),third_party/stm32f4xx-hal-driver))
+CUBE_DEV ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/Device/ST/STM32$(SERIES_U)xx) $(if $(filter f4,$(SERIES)),third_party/cmsis-device-f4))
+CMSIS   ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/Include) third_party/CMSIS_5/CMSIS/Core/Include)
+ifeq ($(CUBE_HAL),)
+$(error 找不到 STM32$(SERIES_U) HAL：在 CubeMX 里 Project Manager > Code Generator 选 "Copy all used libraries"，或设置 CUBE_HAL/CUBE_DEV)
+endif
+MCU     := $(BOARD_CPU)
+CFLAGS  := -std=c11 -Os -g3 $(MCU) $(WARN) -ffunction-sections -fdata-sections $(BOARD_DEFS)
+HAL_INC := $(CUBE_DIR)/Core/Inc $(CUBE_HAL)/Inc $(CUBE_DEV)/Include $(CMSIS)
+CUBE_SYS := $(firstword $(wildcard $(CUBE_DIR)/Core/Src/system_stm32*.c) $(CUBE_DEV)/Source/Templates/system_stm32$(SERIES)xx.c)
+# CubeMX 生成代码与 HAL 都按第三方代码编译（不套 -Werror，永远不手改）
+HAL_SRC := $(filter-out %template.c,$(wildcard $(CUBE_HAL)/Src/*.c)) \
+           $(filter-out $(wildcard $(CUBE_DIR)/Core/Src/system_stm32*.c),$(wildcard $(CUBE_DIR)/Core/Src/*.c)) $(CUBE_SYS)
+DEV_LC  := $(shell echo $(BOARD_DEFS) | sed -E 's/.*-D(STM32[A-Z0-9]+xx).*/\1/' | tr A-Z a-z)
+STARTUP := $(firstword $(wildcard $(CUBE_DIR)/startup_*.s $(CUBE_DIR)/Core/Startup/startup_*.s) $(CUBE_DEV)/Source/Templates/gcc/startup_$(DEV_LC).s)
+LDSCRIPT = $(firstword $(wildcard $(CUBE_DIR)/*_FLASH.ld))
+LDFLAGS  = $(MCU) -T$(LDSCRIPT) -Wl,--defsym=__flash_kb=$(BOARD_FLASH_KB) -Wl,--gc-sections \
+           -Wl,-Map=$(OUT)/$(APP).map -Wl,--print-memory-usage -Wl,--no-warn-rwx-segments --specs=nano.specs --specs=nosys.specs -lm
+PORT_SRC = $(PORT_DIR)/pal_cubemx.c
+TARGET   = $(OUT)/$(APP).elf
+endif
+
 INC  = $(addprefix -I,$(FW_INC) $(PROJ_INC) $(PORT_DIR) $(GEN) $(HAL_INC))
 SRCS = $(LIB_SRC) $(APP_SRC) $(PORT_SRC) $(GEN)/board_gen.c
 OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch
+.PHONY: all run test check selftest clean fetch ioc-check
 all: $(TARGET)
 
 $(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h)
@@ -112,7 +141,7 @@ $(OUT)/hal/%.s.o: %.s
 $(TARGET): $(OBJS) $(HAL_OBJS)
 	@echo "  LD  $@"
 	$(Q)$(CC) $^ $(LDFLAGS) -o $@
-ifeq ($(BOARD_FAMILY),stm32f4)
+ifneq ($(filter stm32f4 stm32-cubemx,$(BOARD_FAMILY)),)
 	$(TC)objcopy -O binary $@ $(OUT)/$(APP).bin
 	$(TC)objcopy -O ihex $@ $(OUT)/$(APP).hex
 	$(TC)size $@
@@ -124,6 +153,12 @@ ifneq ($(BOARD_FAMILY),host)
 	$(error make run 只支持 BOARD=host-sim；真板请用 make flash（见 docs/06-add-board.md）)
 endif
 	./$(TARGET) $(ARGS)
+
+# 所有 port: stm32-cubemx 的板卡：.ioc 与 board.yaml 一致、CubeMX 配置满足移植层前提、main.c 钩子齐全
+ioc-check:
+	@for b in $$(grep -l "^port: stm32-cubemx" boards/*/board.yaml); do d=$$(dirname $$b); \
+	  ioc=$$d/$$(sed -nE 's/^  file: (.*)/\1/p' $$b | head -1); \
+	  $(PY) tools/ioc_import.py $$ioc --check $$b --project $$(dirname $$ioc) || exit 1; done
 
 selftest:
 	$(MAKE) APP=port_selftest BOARD=$(BOARD)
@@ -138,6 +173,8 @@ check:
 	$(PY) tools/check_deps.py --selftest
 	$(PY) tools/iface_hash.py --check
 	$(PY) tools/iface_hash.py --selftest
+	$(PY) tools/ioc_import.py --selftest
+	$(MAKE) ioc-check
 	$(MAKE) -C examples/2026H_ball/tests
 	cd host/python && $(PY) -m dzlink.test_dzlink
 

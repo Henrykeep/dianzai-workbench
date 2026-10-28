@@ -1,0 +1,128 @@
+# 由 tools/ioc_import.py 从 CubeMX .ioc 生成；引脚/实例请改 .ioc 后重新导入，这里只手改 name/verified/note/invert/scale 等说明字段
+schema_version: 1
+name: stm32f407-skystar-cubemx
+vendor: 立创开发板 (LCKFB)
+description: 立创·天空星 STM32F407，CubeMX 流程（与 stm32f407-skystar 同一块板，配置来源改为 cubemx/skystar.ioc）。cubemx/
+  下工程为【合成样例】，未上板测试
+port: stm32-cubemx
+mcu:
+  family: stm32f4
+  part: STM32F407VETx
+  core: cortex-m4f
+  fpu: true
+  flash_kb: 512
+  ram_kb: 192
+clock:
+  hse_hz: 8000000
+  sysclk_hz: 168000000
+toolchain:
+  compiler: arm-none-eabi-gcc
+  flasher: openocd
+  openocd_interface: TODO
+  openocd_target: target/stm32f4x.cfg
+sources:
+- what: 板卡版本、芯片、晶振 8MHz、调试口引出 SWD+SWO+串口1
+  url: https://wiki.lckfb.com/zh-hans/fdb/skystar.html
+- what: 用户 LED 接 PB2（BOOT1），高电平点亮；用户按键外置下拉、按下为高电平
+  url: https://wiki.lckfb.com/zh-hans/tkx/hardware/schematic.html
+- what: LED 高电平点亮（MicroPython 教程中的资源汇总表）
+  url: https://wiki.lckfb.com/zh-hans/fdb/micropython/gpio-basic/led-control.html
+todo:
+- cubemx/ 下 .ioc 与 Core/ 是仿 CubeMX 格式手写的合成样例：请用 CubeMX 新建/打开工程按 docs/05-cubemx.md
+  标签约定配置后覆盖，再运行 make ioc-check
+- 芯片型号：样例 .ioc 写的 STM32F407VETx，高配版为 VGTx，请按丝印在 CubeMX 选择
+- 芯片具体型号（VET6 还是 VGT6）
+- 用户按键所接引脚（文档文字未写明引脚号，需看原理图图片或丝印）
+- 调试口"串口1"实际是哪两个引脚（推测为 USART1 默认的 PA9/PA10，未在文字资料中核实）
+- 电机驱动、编码器、电池分压的实际接线（下面是建议接线）
+- 下载器类型（ST-Link / DAP-Link）
+- 建议接线是否与板载 TF 卡（SDIO）和 SPI FLASH 的引脚冲突（未查到 SPI FLASH 的引脚）
+resources:
+  gpio:
+  - name: LED
+    pin: PB2
+    dir: out
+    active_low: false
+    init: false
+    verified: true
+    note: 板载绿色 LED，高电平点亮；PB2 兼作 BOOT1，板上已下拉
+  - name: MOTOR_A_IN1
+    pin: PB12
+    dir: out
+    init: false
+    verified: false
+    note: 建议接线：TB6612 AIN1
+  - name: MOTOR_A_IN2
+    pin: PB13
+    dir: out
+    init: false
+    verified: false
+    note: 建议接线：TB6612 AIN2
+  pwm:
+  - name: MOTOR_A
+    timer: TIM1
+    channel: 1
+    pin: PA8
+    freq_hz: 20000
+    verified: false
+    note: 建议接线：TB6612 PWMA；20kHz 在人耳可闻范围之外
+  - name: SERVO_X
+    timer: TIM3
+    channel: 1
+    pin: PC6
+    freq_hz: 50
+    verified: false
+    note: 建议接线：舵机通道 X 信号线（舵机需独立 5~6V 供电，与板子共地）
+  - name: SERVO_Y
+    timer: TIM3
+    channel: 2
+    pin: PC7
+    freq_hz: 50
+    verified: false
+    note: 建议接线：舵机通道 Y。避开 PA6/PA7（高配版 SPI Flash 可能使用 SPI1，未核实）
+  encoder:
+  - name: MOTOR_A
+    timer: TIM4
+    pin_a: PD12
+    pin_b: PD13
+    invert: false
+    filter: 6
+    verified: false
+    note: 建议接线：电机霍尔编码器 A/B 相；方向反了改 invert，不要改代码
+  uart:
+  - name: LINK
+    instance: USART1
+    tx: PA9
+    rx: PA10
+    baud: 460800
+    rx_buf: 512
+    tx_buf: 256
+    dma: true
+    verified: false
+    note: 与工作台通信；USB-TTL 需支持 460800
+  - name: VISION
+    instance: USART2
+    tx: PA2
+    rx: PA3
+    baud: 115200
+    verified: false
+    note: 建议接线：Jetson Nano（视觉/图传协处理器）的 UART；Jetson 为 3.3V 电平，共地即可，切勿接 5V TTL
+    dma: true
+  timer:
+  - name: CTRL
+    instance: TIM6
+    irq_priority: 1
+    note: 控制环节拍，优先级高于串口 DMA
+  adc:
+  - name: VBAT
+    instance: ADC1
+    channel: 10
+    pin: PC0
+    vref_mv: 3300
+    scale_num: 1
+    scale_den: 1
+    verified: false
+    note: 电池电压监测；请按你的分压电阻填写 scale（例如 10k/1k 分压填 11/1）
+config_source:
+  tool: cubemx
+  file: cubemx/skystar.ioc
