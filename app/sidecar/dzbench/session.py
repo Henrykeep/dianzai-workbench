@@ -273,7 +273,7 @@ class Session:
             self.schema = s
         if s:
             self.emit({"type": "schema", "schema": s.summary()})
-            threading.Thread(target=self.read_all_params, daemon=True).start()
+            threading.Thread(target=self._read_all_params_bg, daemon=True, name="read_all_params").start()
         else:
             self.emit(LinkError("schema_missing", f"板子的数据格式（哈希 {h:08X}）在本机找不到对应的 link_schema.json",
                                 "在仓库根目录对这块板和应用跑一次 make（例如 make BOARD=xxx APP=car_2wd），"
@@ -432,12 +432,22 @@ class Session:
 
     def read_all_params(self) -> dict:
         out = {}
-        for p in (self.schema.params if self.schema else []):
+        schema = self.schema                      # 快照：断开/换板时 self.schema 可能被别的线程置 None
+        for p in (schema.params if schema else []):
             try:
                 out[p["name"]] = self.read_param(p["name"])
             except LinkError:
                 break
         return out
+
+    def _read_all_params_bg(self) -> None:
+        """识别出 schema 后的后台读参。断开/关串口时 _send 可能抛 OSError/ValueError 等，
+        后台线程里不能让异常逃逸（否则 PytestUnhandledThreadExceptionWarning，打包版里是静默丢线程）。"""
+        try:
+            self.read_all_params()
+        except Exception as e:  # noqa: BLE001
+            self.emit(LinkError("param_read_aborted", f"后台读参数中断：{type(e).__name__}: {e}",
+                                "通常是读参途中断开/换口；重新连接后会自动再读").as_dict())
 
     # ------------------------------------------------------------------ 快照 / 日志
     def snapshot_save(self, name: str, note: str = "") -> str:

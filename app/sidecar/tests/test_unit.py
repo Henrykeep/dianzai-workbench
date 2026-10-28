@@ -90,3 +90,32 @@ def test_unknown_schema_gives_fix(tmp_path, monkeypatch):
     s._bind_schema(0xDEADBEEF)
     (e,) = [x for x in ev if x["type"] == "error"]
     assert e["code"] == "schema_missing" and "make" in e["fix"]
+
+
+def test_read_all_params_bg_swallows_thread_exception():
+    """v0.6.0：后台读参途中串口被关（_send 抛 OSError）不能变成未处理线程异常。"""
+    import threading
+    from dzbench.session import Session
+
+    ev = []
+    s = Session(emit=ev.append)
+
+    class FakeSchema:
+        params = [{"name": "kp"}]
+        param_index = {"kp": 0}
+    s.schema = FakeSchema()
+
+    def boom(*a, **k):
+        raise OSError("port closed")
+    s._send = boom
+    caught = []
+    old = threading.excepthook
+    threading.excepthook = lambda a: caught.append(a)
+    try:
+        t = threading.Thread(target=s._read_all_params_bg)
+        t.start()
+        t.join(2)
+    finally:
+        threading.excepthook = old
+    assert not caught
+    assert any(e.get("code") == "param_read_aborted" for e in ev if isinstance(e, dict)), ev
