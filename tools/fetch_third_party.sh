@@ -17,7 +17,7 @@ get() {  # get <目录> <仓库> <tag> [稀疏检出路径...]
   fi
 }
 ALL="${*:-}"
-cmsis()    { get CMSIS_5 ARM-software/CMSIS_5 5.9.0 CMSIS/Core/Include; }
+cmsis()    { get CMSIS_5 ARM-software/CMSIS_5 5.9.0 CMSIS/Core/Include CMSIS/RTOS2/Include; }
 f4()       { get stm32f4xx-hal-driver STMicroelectronics/stm32f4xx-hal-driver v1.8.5
              get cmsis-device-f4      STMicroelectronics/cmsis-device-f4      v2.6.11; cmsis; }
 f1()       { get stm32f1xx-hal-driver STMicroelectronics/stm32f1xx-hal-driver v1.1.9
