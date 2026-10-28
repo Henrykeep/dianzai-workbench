@@ -36,7 +36,13 @@ endif
 $(GEN)/board_gen.mk: $(BOARD_YML) $(wildcard $(APP_DIR)/app.yaml) tools/gen_board.py tools/boardlib.py $(wildcard tools/families/*.py)
 	$(PY) tools/gen_board.py $(BOARD_YML) -o $(GEN) $(if $(VARIANT),--variant $(VARIANT)) $(if $(wildcard $(APP_DIR)/app.yaml),--app $(APP_DIR)/app.yaml)
 $(GEN)/board_gen.h $(GEN)/board_gen.c: $(GEN)/board_gen.mk
+# 构建目标必须 include（生成失败要报错，-include 会把失败吞掉，曾导致 CI 里“成功”但没有 elf）
+NO_GEN_GOALS := clean check test compat selftest fetch ioc-check
+ifeq ($(if $(MAKECMDGOALS),$(filter-out $(NO_GEN_GOALS),$(MAKECMDGOALS)),all),)
 -include $(GEN)/board_gen.mk
+else
+include $(GEN)/board_gen.mk
+endif
 
 # 题目工程（有 project.yaml）：生成共享状态/子系统表
 PROJECT_YML := $(wildcard $(APP_DIR)/project.yaml)
