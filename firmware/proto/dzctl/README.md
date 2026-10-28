@@ -8,7 +8,7 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 | 板→PC | PARAM_ACK id=序号 | u8 status（0 OK / 1 已限幅 / 2 序号错 / 3 长度错 / 4 NaN·Inf 拒绝）, f32 生效值 |
 | PC→板 | DATA id=0x7F | 空：急停（应用锁存） |
 | PC→板 | DATA id=0x7E | u8 命令字符（应用自定义） |
-| 板→PC | HEARTBEAT | u32 schema_hash，上位机据此找 `link_schema.json`；0.3.0 起再跟 u32 board_uid（芯片 UID 折成 32 位，0 = 未知：MSPM0 端口暂未实现【未测】）。旧上位机只读前 4 字节，兼容 |
+| 板→PC | HEARTBEAT | u32 schema_hash，上位机据此找 `link_schema.json`；0.3.0 起再跟 u32 board_uid（芯片 UID 折成 32 位，0 = 未知；F1/F4 读 UID，MSPM0 读 FACTORYREGION TRACEID/USERID，上板【未测】）。旧上位机只读前 4 字节，兼容 |
 
 参数表、遥测打包函数和 `link_schema.json` 由 `tools/gen_link.py` 从 yaml 的 `link:` 段生成，C 与上位机同源。
 

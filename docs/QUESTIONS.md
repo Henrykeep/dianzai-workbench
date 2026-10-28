@@ -76,4 +76,4 @@
 52. **侧车看护：1 分钟内最多重启 5 次** [助手决定]：再多说明是一启动就崩（环境问题），继续重启只会刷屏。退出码 3（端口已被占用）不重启。
 53. **只允许开一个窗口** [助手决定]：两个窗口各起一个侧车会抢串口。再双击图标会把已有窗口拉到前面。一个侧车同时连多个界面（浏览器模式）仍允许，状态栏会提示“另有 N 个窗口”。
 54. **删掉 hardfault_decode / change_list 两个 WebSocket 操作** [助手决定]：界面没用过，Agent 有自己的 decode_hardfault 工具。send_data / propose / agent_tool 留作脚本接口（test_wiring 里写明用途）。
-55. **心跳带板 ID 认板** [助手决定]：dzctl 0.3.0 起心跳多 4 字节芯片 ID。拔线换口后只跟 ID 相同的板；旧固件没有 ID 时，候选不止一个就不猜、提示手动选。MSPM0（天猛星）的唯一 ID 寄存器地址我没核对手册，暂报 0（= 按旧规则）。要的话给我 TRM 里 FACTORYREGION 那一页。
+55. **心跳带板 ID 认板** [助手决定，已关闭]：dzctl 0.3.0 起心跳多 4 字节芯片 ID，拔线换口后只跟 ID 相同的板；没有 ID 时候选不止一个就不猜。各端口：F1/F4 = 96 位 UID 异或；**MSPM0 = FACTORYREGION TRACEID（0x41C40000）混 USERID（0x41C40008）**，出处 MSPM0G350x 数据手册 SLASEX6 §8.35、SDK `dl_factoryregion.h`、TI E2E 帖 1302805（预量产片 TRACEID 可能为 0 → 报未知）。上板 【未测】。

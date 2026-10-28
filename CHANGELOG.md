@@ -9,7 +9,7 @@
 ### 修复 / 改进
 - 外壳代码 main.rs 在本机用 rustc 1.99 对 Windows（x86_64-pc-windows-msvc）`cargo check` 通过（debug + release）[编译]。
 - 侧车收到 SIGTERM 先删“上次连接”记录，退得慢也不会下次误报“意外退出” [仿真]。
-- **dzctl 0.3.0：心跳带板 ID**（芯片 UID 折成 32 位；F1/F4 端口用 HAL_GetUIDw*，仿真用 DZ_SIM_UID；MSPM0 暂报 0 = 未知 [未测]）。旧上位机只读前 4 字节，兼容 [仿真]。
+- **dzctl 0.3.0：心跳带板 ID**（芯片 UID 折成 32 位；F1/F4 端口用 HAL_GetUIDw*，仿真用 DZ_SIM_UID；MSPM0 读 FACTORYREGION TRACEID（0x41C40000，SLASEX6 §8.35）混 USERID，预量产片 TRACEID=0 时报未知 [编译]）。旧上位机只读前 4 字节，兼容 [仿真]。
 - 换 USB 口自动跟随改为**按板 ID 认板**：两块同型号 CH340 板同时插着也不会跟错；旧固件（无 ID）+ 无 USB 序列号 + 多个候选时不猜，中文提示手动选 [仿真]。真 CH340 [未测]。
 
 ## [0.8.0] - 2026-10-29 “真的接上了吗” + 赛场鲁棒性 + 板名

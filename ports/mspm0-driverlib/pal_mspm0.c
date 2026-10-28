@@ -27,6 +27,18 @@ static volatile uint32_t s_ms;
 static uint32_t s_systick_load;
 void SysTick_Handler(void) { s_ms++; }
 
+/* 心跳里的板 ID：FACTORYREGION（0x41C40000，只读）TRACEID 量产片每颗唯一，再混 USERID（区分料号/封装）。
+ * 出处：MSPM0G350x 数据手册 SLASEX6 §8.35 Identification（DEVICEID 0x41C40004、USERID 0x41C40008）；
+ * SDK dl_factoryregion.h DL_FactoryRegion_getTraceID()（读前关指令缓存）；TI E2E 1302805：预量产片 TRACEID 可能为 0/重复。 */
+uint32_t dzctl_board_uid(void);   /* 声明在 dzctl.h；端口不依赖 proto 层，这里只覆盖弱定义 */
+uint32_t dzctl_board_uid(void)
+{
+    uint32_t t = DL_FactoryRegion_getTraceID();
+    if (t == 0u) return 0u;                       /* 预量产片：报“未知”，上位机退回旧规则，不会误认 */
+    uint32_t u = t ^ (FACTORYREGION->USERID * 0x9E3779B1u);
+    return u ? u : 1u;
+}
+
 uint32_t pal_millis(void) { return s_ms; }
 uint32_t pal_micros(void)
 {
