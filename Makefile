@@ -49,11 +49,21 @@ $(PROJ_GEN)/project_gen.h $(PROJ_GEN)/project_gen.c: $(PROJ_GEN)/project_gen.mk
 PROJ_INC := $(PROJ_GEN) $(wildcard $(APP_DIR)/lib) $(APP_DIR)/io
 endif
 
+# 上位机链路（yaml 有 link: 段）：遥测打包 + 参数表 + link_schema.json（tools/gen_link.py）
+LINK_YML := $(firstword $(shell grep -l '^link:' $(PROJECT_YML) $(APP_DIR)/app.yaml 2>/dev/null))
+LINK_GEN := $(OUT)/linkgen
+ifneq ($(LINK_YML),)
+$(LINK_GEN)/link_gen.c $(LINK_GEN)/link_gen.h $(LINK_GEN)/link_schema.json &: $(LINK_YML) tools/gen_link.py
+	$(PY) tools/gen_link.py $(LINK_YML) -o $(LINK_GEN)
+LINK_SRC := $(LINK_GEN)/link_gen.c
+PROJ_INC += $(LINK_GEN)
+endif
+
 FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard firmware/framework/*) $(wildcard firmware/proto/*) $(wildcard firmware/drivers/*) apps/include
 LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/proto/*/*.c firmware/drivers/*/*.c)
 APP_ALL := $(shell find $(APP_DIR) -name '*.c' -not -path '*/tests/*')
 SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
-APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC)
+APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC) $(LINK_SRC)
 PORT_DIR = ports/$(BOARD_PORT)
 WARN := -Wall -Wextra -Werror -Wshadow -Wdouble-promotion -Wno-unused-parameter
 
@@ -165,7 +175,7 @@ compat:
 	  $(addprefix -I,$(FW_INC)) -fsyntax-only $$f || exit 1; done; echo "✓ compat: $(words $(COMPAT_SRC)) 个模块源文件按 C99 -pedantic-errors 通过"
 all: $(TARGET)
 
-$(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h)
+$(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
 	@mkdir -p $(dir $@)
 	@echo "  CC  $<"
 	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
@@ -200,7 +210,6 @@ ioc-check:
 	  ioc=$$d/$$(sed -nE 's/^  file: (.*)/\1/p' $$b | head -1); \
 	  $(PY) tools/ioc_import.py $$ioc --check $$b --project $$(dirname $$ioc) || exit 1; done
 
-# 只生成 board_gen.{h,c,mk}（给 Keil / CCS 工程用）
 # 打印本次构建的源文件/头文件路径/宏（给 tools/gen_ccs_projectspec.py 等 IDE 生成器用）
 vars: $(GEN)/board_gen.mk
 	@echo "SRCS=$(SRCS)"
@@ -208,7 +217,8 @@ vars: $(GEN)/board_gen.mk
 	@echo "DEFS=$(BOARD_DEFS)"
 	@echo "GEN=$(GEN)"
 
-gen: $(GEN)/board_gen.mk
+# 只生成 board_gen.{h,c,mk}（给 Keil / CCS 工程用）
+gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
 selftest:
@@ -229,6 +239,7 @@ check:
 	$(PY) tools/keil_inject.py --selftest
 	$(PY) tools/test_keil_inject.py
 	$(PY) tools/syscfg_import.py --selftest
+	$(PY) tools/gen_link.py --selftest
 	$(PY) tools/syscfg_import.py boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg --check boards/mspm0g3507-tianmengxing/board.yaml
 	$(PY) tools/gen_ccs_projectspec.py --board mspm0g3507-tianmengxing --app car_2wd --check
 	$(PY) tools/audit_port.py --selftest

@@ -1,0 +1,60 @@
+/**
+ * @file dzctl.h
+ * @brief 上位机控制服务（dzframe/1 之上）：参数读写（带限幅）+ 急停 + 带 schema 哈希的心跳。
+ *
+ * 线上格式（全部小端，见 README）：
+ *   上位机 -> 板  PARAM_SET id=参数序号  len=0 读 / len=4 写（f32，板端按类型换算并限幅）
+ *   板 -> 上位机  PARAM_ACK id=参数序号  payload: u8 status, f32 生效值
+ *   上位机 -> 板  DATA id=DZCTL_ID_ESTOP len=0   急停（应用必须锁存，只有复位/显式解除才能恢复）
+ *   上位机 -> 板  DATA id=DZCTL_ID_CMD   len=1   单字节命令（应用自定义，如 'G' 开始 'S' 停止 'R' 复位）
+ *   板 -> 上位机  HEARTBEAT id=0 payload: u32 schema_hash  —— 上位机据此匹配 link_schema.json
+ * 参数表由 tools/gen_link.py 从 yaml 生成，应用不手写。
+ */
+#ifndef DZCTL_H
+#define DZCTL_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include "dzframe.h"
+
+#define DZCTL_VERSION "0.1.0"
+#define DZCTL_ID_CMD   0x7Eu
+#define DZCTL_ID_ESTOP 0x7Fu
+
+typedef enum { DZCTL_F32, DZCTL_U32, DZCTL_I32, DZCTL_U16, DZCTL_I16, DZCTL_U8, DZCTL_BOOL } dzctl_type_t;
+typedef enum { DZCTL_OK = 0, DZCTL_CLAMPED = 1, DZCTL_BAD_ID = 2, DZCTL_BAD_LEN = 3, DZCTL_BAD_VALUE = 4 } dzctl_status_t;
+
+typedef struct {
+    const char *name;
+    uint16_t offset;      /**< 在参数结构体里的偏移（offsetof） */
+    uint8_t  type;        /**< dzctl_type_t */
+    float    min, max;    /**< 写入时限幅到 [min, max] */
+} dzctl_param_t;
+
+typedef struct {
+    void *base;                     /**< 当前生效的参数结构体 */
+    const dzctl_param_t *desc;
+    uint8_t n;
+    uint32_t schema_hash;
+} dzctl_table_t;
+
+/** 读第 i 个参数（换算成 float）；i 越界返回 0。 */
+float dzctl_get(const dzctl_table_t *t, uint8_t i);
+
+/** 写第 i 个参数：NaN/Inf 拒绝（BAD_VALUE），超界限幅（CLAMPED）；*applied 返回生效值。 */
+dzctl_status_t dzctl_set(const dzctl_table_t *t, uint8_t i, float v, float *applied);
+
+/** 处理一帧 PARAM_SET；是则填好 ack 并返回 true（调用方负责发送），不是 PARAM_SET 返回 false。 */
+bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack);
+
+/** 是否急停帧。 */
+bool dzctl_is_estop(const dzframe_t *f);
+
+/** 填心跳帧（带 schema 哈希）。 */
+void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);
+
+/** 自检：返回失败项数。 */
+int dzctl_selftest(void);
+
+#endif

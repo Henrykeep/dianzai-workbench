@@ -6,6 +6,7 @@
 #include "qd4310.h"
 #include "ssd1306.h"
 #include "ball_beam.h"
+#include "dzctl.h"
 
 TEST(spsc_basic_and_wrap)
 {
@@ -162,8 +163,35 @@ TEST(ball_beam_integral)
     CHECK(b.integ == 0.0f);                           /* 积分区外不积 */
 }
 
+TEST(dzctl_param_and_estop)
+{
+    typedef struct { float kp; uint32_t ms; int16_t off; } p_t;
+    static const dzctl_param_t d[] = { { "kp", 0, DZCTL_F32, 0.0f, 2.0f }, { "ms", 4, DZCTL_U32, 50.0f, 2000.0f },
+                                       { "off", 8, DZCTL_I16, -100.0f, 100.0f } };
+    p_t p = { 0.1f, 200u, 0 };
+    dzctl_table_t t = { &p, d, 3u, 0xCAFEu };
+    dzframe_t in, ack;
+    float nan = 0.0f;
+    CHECK(dzctl_selftest() == 0);
+    memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 1; in.seq = 7;
+    CHECK(dzframe_put_f32(&in, 9999.0f));
+    CHECK(dzctl_handle(&t, &in, &ack));
+    CHECK(ack.id == 1 && ack.seq == 7 && dzframe_get_u8(&ack, 0) == DZCTL_CLAMPED && p.ms == 2000u);
+    memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 2;
+    CHECK(dzframe_put_f32(&in, -42.4f) && dzctl_handle(&t, &in, &ack) && p.off == -42);
+    nan = nan / nan;
+    CHECK(dzctl_set(&t, 0, nan, 0) == DZCTL_BAD_VALUE && p.kp == 0.1f);         /* NaN 不写入 */
+    memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 9;
+    CHECK(dzctl_handle(&t, &in, &ack) && dzframe_get_u8(&ack, 0) == DZCTL_BAD_ID);
+    memset(&in, 0, sizeof in); in.kind = DZF_DATA; in.id = DZCTL_ID_ESTOP;
+    CHECK(dzctl_is_estop(&in) && !dzctl_handle(&t, &in, &ack));
+    dzctl_heartbeat(&t, 3, &ack);
+    CHECK(ack.kind == DZF_HEARTBEAT && dzframe_get_u32(&ack, 0) == 0xCAFEu);
+}
+
 void suite_modules(void)
 {
     RUN(spsc_basic_and_wrap); RUN(key_events); RUN(qd4310_codec_and_resync);
     RUN(ssd1306_fb_text_flush); RUN(ball_beam_estimator_and_limits); RUN(ball_beam_integral);
+    RUN(dzctl_param_and_estop);
 }

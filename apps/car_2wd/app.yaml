@@ -9,3 +9,21 @@ requires:
   encoder: [MOTOR_A, MOTOR_B]
   uart: [LINK]
   timer: [CTRL]
+# 上位机链路（tools/gen_link.py → link_gen.{h,c} + link_schema.json；桌面工作台 app/ 用）
+link:
+  telemetry:
+    id: 2
+    period_ms: 20
+    fields:
+      - { name: t_ms,     type: uint32, unit: ms }
+      - { name: sp_a,     type: float, unit: rps }
+      - { name: spd_a,    type: float, unit: rps }
+      - { name: sp_b,     type: float, unit: rps }
+      - { name: spd_b,    type: float, unit: rps }
+      - { name: ctrl_err, type: uint32 }
+  params:
+    - { name: kp,             type: float,  default: 0.08, min: 0,   max: 2,    desc: 轮速 PID（起步值，未实测） }
+    - { name: ki,             type: float,  default: 1.5,  min: 0,   max: 20,   desc: 轮速 PID（起步值，未实测） }
+    - { name: max_rps,        type: float,  default: 5.0,  min: 0,   max: 20,   unit: rps }
+    - { name: accel_rps2,     type: float,  default: 10.0, min: 0.1, max: 100,  unit: rps/s }
+    - { name: cmd_timeout_ms, type: uint32, default: 200,  min: 50,  max: 2000, unit: ms, desc: 断线停车 }

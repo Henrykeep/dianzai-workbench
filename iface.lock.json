@@ -386,6 +386,32 @@
   "hash": "84859ccf17f6ab69",
   "version": "1.0.0"
  },
+ "firmware/proto/dzctl": {
+  "decls": [
+   "dzctl.h: #define DZCTL_ID_CMD 0x7Eu",
+   "dzctl.h: #define DZCTL_ID_ESTOP 0x7Fu",
+   "dzctl.h: typedef enum { DZCTL_F32, DZCTL_U32, DZCTL_I32, DZCTL_U16, DZCTL_I16, DZCTL_U8, DZCTL_BOOL } dzctl_type_t;",
+   "dzctl.h: typedef enum { DZCTL_OK = 0, DZCTL_CLAMPED = 1, DZCTL_BAD_ID = 2, DZCTL_BAD_LEN = 3, DZCTL_BAD_VALUE = 4 } dzctl_status_t;",
+   "dzctl.h: typedef struct { const char *name;",
+   "dzctl.h: uint16_t offset;",
+   "dzctl.h: uint8_t type;",
+   "dzctl.h: float min, max;",
+   "dzctl.h: } dzctl_param_t;",
+   "dzctl.h: typedef struct { void *base;",
+   "dzctl.h: const dzctl_param_t *desc;",
+   "dzctl.h: uint8_t n;",
+   "dzctl.h: uint32_t schema_hash;",
+   "dzctl.h: } dzctl_table_t;",
+   "dzctl.h: float dzctl_get(const dzctl_table_t *t, uint8_t i);",
+   "dzctl.h: dzctl_status_t dzctl_set(const dzctl_table_t *t, uint8_t i, float v, float *applied);",
+   "dzctl.h: bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack);",
+   "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
+   "dzctl.h: void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);",
+   "dzctl.h: int dzctl_selftest(void);"
+  ],
+  "hash": "dd32a43530a07400",
+  "version": "0.1.0"
+ },
  "firmware/proto/dzframe": {
   "decls": [
    "dzframe.h: #define DZFRAME_PROTO_VER 1u",

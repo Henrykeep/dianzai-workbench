@@ -2,7 +2,10 @@
  * io 胶水层：唯一接触硬件的地方。读编码器/视觉帧/QD4310 回包 → io_in；跑协调器与子系统；
  * 把 chassis_out 写到 TB6612、把 beam_out 下发给 QD4310。只用逻辑资源名（RES_*），换板子不改这里。
  *
- * LINK 串口（可选，板上有 LINK 才编译）命令每行一条：T<n> 选测试项  P<n> 选参数档  G 开始  S 停止  E 急停  R 复位
+ * LINK 串口（可选，板上有 LINK 才编译）：dzframe/1 + dzctl（见 firmware/proto/dzctl），桌面工作台 app/ 直接连。
+ *   板→PC：遥测 DATA id=2 每 20 ms（字段见 project.yaml link.telemetry），心跳带 schema 哈希，PARAM_ACK
+ *   PC→板：PARAM_SET 读写“当前参数档”（板端限幅）；DATA 0x7F 急停；DATA 0x7E u8 命令：
+ *          'T'+n 选测试项（n 在第 2 字节）  'P'+n 选参数档  'G' 开始  'S' 停止  'R' 复位
  */
 #include <math.h>
 #include <stdio.h>
@@ -13,6 +16,10 @@
 #include "motor_dc.h"
 #include "encoder.h"
 #include "dzframe.h"
+#include "dzctl.h"
+#ifdef RES_UART_LINK
+#include "link_gen.h"
+#endif
 #include "qd4310.h"
 #include "cp_vision_cpu.h"   /* 由 boards/maixcam2-vision/board.yaml 自动生成 */
 
@@ -28,6 +35,9 @@ static motor_dc_t MA, MB;
 static encoder_t EA, EB;
 static dzframe_parser_t VL;
 static qd4310_t BEAM;
+#ifdef RES_UART_LINK
+static dzframe_parser_t LL;   /* LINK 上位机帧 */
+#endif
 
 shared_state_t *io_state(void) { return &S; }
 coord_t *io_coord(void) { return &COORD; }
@@ -51,21 +61,34 @@ dz_err_t app_init(void)
     if ((e = motor_enc(&MA, RES_PWM_MOTOR_A, RES_GPIO_MOTOR_A_IN1, RES_GPIO_MOTOR_A_IN2, &EA, RES_ENCODER_MOTOR_A)) != DZ_OK) return e;
     if ((e = motor_enc(&MB, RES_PWM_MOTOR_B, RES_GPIO_MOTOR_B_IN1, RES_GPIO_MOTOR_B_IN2, &EB, RES_ENCODER_MOTOR_B)) != DZ_OK) return e;
     dzframe_parser_init(&VL);
+#ifdef RES_UART_LINK
+    dzframe_parser_init(&LL);
+#endif
     if ((e = qd4310_init(&BEAM, RES_UART_BEAM, BEAM_MOTOR_ID)) != DZ_OK) return e;
     if ((e = subsys_sched_init(&SCHED, g_project_subsys, PROJECT_N_SUBSYS, &S, &g_project_params[0])) != DZ_OK) return e;
     return coord_init(&COORD, &SCHED, g_project_tests, PROJECT_N_TESTS, g_project_profiles, PROJECT_N_PROFILES, &g_project_hooks);
 }
 
 #ifdef RES_UART_LINK
-static void handle_cmd(const char *l)
+static uint8_t link_seq;
+
+static void link_send(dzframe_t *f)
 {
-    int n = (l[1] >= '0' && l[1] <= '9') ? l[1] - '0' : -1;
-    switch (l[0]) {
-    case 'T': if (n >= 0) coord_select_test(&COORD, (uint8_t)n); break;
-    case 'P': if (n >= 0) coord_select_profile(&COORD, (uint8_t)n); break;
+    uint8_t out[DZFRAME_MAX_FRAME];
+    size_t n;
+    f->seq = link_seq++;
+    n = dzframe_encode(out, sizeof out, f);
+    if (n) (void)pal_uart_write(RES_UART_LINK, out, (uint16_t)n);   /* EBUSY 丢帧：遥测下一拍补，ACK 由上位机超时重发 */
+}
+
+static void handle_cmd(const dzframe_t *f)
+{
+    uint8_t n = f->len > 1u ? f->payload[1] : 0u;
+    switch (f->payload[0]) {
+    case 'T': coord_select_test(&COORD, n); break;
+    case 'P': coord_select_profile(&COORD, n); break;
     case 'G': coord_event(&COORD, COORD_EV_START); break;
     case 'S': coord_event(&COORD, COORD_EV_STOP); break;
-    case 'E': coord_event(&COORD, COORD_EV_ESTOP); break;
     case 'R': coord_event(&COORD, COORD_EV_RESET); break;
     default: break;
     }
@@ -73,13 +96,37 @@ static void handle_cmd(const char *l)
 
 static void read_link(void)
 {
-    static char line[16]; static unsigned n;
     uint8_t buf[32]; uint16_t got = 0, i;
+    dzframe_t f, ack;
+    dzctl_table_t t = link_param_table(&g_project_params[COORD.profile_idx]);
     if (pal_uart_read(RES_UART_LINK, buf, sizeof buf, &got) != DZ_OK) return;
     for (i = 0; i < got; i++) {
-        char c = (char)buf[i];
-        if (c == '\n' || c == '\r') { line[n] = 0; if (n) handle_cmd(line); n = 0; }
-        else if (n < sizeof line - 1) line[n++] = c; else n = 0;
+        if (!dzframe_feed(&LL, buf[i], &f)) continue;
+        if (dzctl_is_estop(&f)) coord_event(&COORD, COORD_EV_ESTOP);
+        else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);
+        else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) handle_cmd(&f);
+    }
+}
+
+static void write_link(uint32_t now)
+{
+    static uint32_t last_tx, last_hb;
+    dzframe_t f;
+    if (now - last_tx >= LINK_TELEM_PERIOD_MS) {
+        link_telem_t t;
+        last_tx = now;
+        t.t_ms = now; t.state = (uint8_t)coord_state(&COORD); t.test_id = S.coord.test_id;
+        t.cam_x_px = S.io_in.cam_x_px; t.ball_sp_px = S.coord.ball_sp_px;
+        t.angle_deg = S.beam_out.angle_deg; t.beam_fb_deg = S.io_in.beam_fb_deg;
+        t.wheel_a_mps = S.io_in.wheel_a_mps; t.wheel_b_mps = S.io_in.wheel_b_mps;
+        t.bb_state = S.beam_out.state; t.beam_online = S.io_in.beam_online ? 1u : 0u;
+        if (link_telem_pack(&f, &t)) link_send(&f);
+    }
+    if (now - last_hb >= 500u) {
+        dzctl_table_t pt = link_param_table(&g_project_params[COORD.profile_idx]);
+        last_hb = now;
+        dzctl_heartbeat(&pt, 0, &f);
+        link_send(&f);
     }
 }
 #endif
@@ -144,27 +191,21 @@ static void write_outputs(uint32_t now)
 
 void app_loop(void)
 {
-    static uint32_t last = UINT32_MAX, last_tx;
+    static uint32_t last = UINT32_MAX, last_tx;   /* last_tx：LED 闪烁节拍 */
     uint32_t now = pal_millis();
     if (now == last) return;
     last = now;
     read_inputs(now);
     coord_poll(&COORD, now);
     write_outputs(now);
+#ifdef RES_UART_LINK
+    write_link(now);
+#endif
     if (now - last_tx >= 50u) {
         last_tx = now;
-#ifdef RES_UART_LINK
-        {
-            char m[112];
-            int len = snprintf(m, sizeof m, "t=%lu st=%s test=%u x=%d bb=%u ang=%ld abs=%ld beam=%d v=%ld\n",
-                (unsigned long)now, coord_state_name(coord_state(&COORD)), S.coord.test_id, S.io_in.cam_x_px,
-                S.beam_out.state, (long)(S.beam_out.angle_deg * 100), (long)(S.beam_out.target_abs_deg * 100),
-                S.io_in.beam_online, (long)(S.io_in.wheel_a_mps * 1000));
-            if (len > 0) pal_uart_write(RES_UART_LINK, (const uint8_t *)m, (uint16_t)len);
-        }
-#endif
 #ifdef RES_GPIO_LED
         pal_gpio_toggle(RES_GPIO_LED);
 #endif
     }
+    (void)last_tx;
 }

@@ -29,9 +29,11 @@ CFLAGS += -DPY_CRC_L=0x$(shell echo $(PYFRAME) | cut -c23-24) -DPY_CRC_H=0x$(she
 CAR := $(ROOT)/apps/car_2wd
 CAR_SRC := $(CAR)/tests/test_car.c $(CAR)/app_main.c $(CAR)/drive_plan.c $(CAR)/sim_setup.c \
            $(filter-out $(wildcard $(ROOT)/firmware/*/*/*selftest*.c),$(wildcard $(ROOT)/firmware/algo/*/*.c $(ROOT)/firmware/drivers/*/*.c)) \
-           $(ROOT)/ports/host-sim/pal_host.c $(GEN)/board_gen.c \
+           $(ROOT)/ports/host-sim/pal_host.c $(GEN)/board_gen.c $(OUT)/car_link/link_gen.c \
            $(wildcard $(ROOT)/firmware/framework/*/*.c) $(wildcard $(ROOT)/firmware/proto/*/*.c)
+$(OUT)/car_link/link_gen.c: $(CAR)/app.yaml $(ROOT)/tools/gen_link.py
+	python3 $(ROOT)/tools/gen_link.py $< -o $(OUT)/car_link
 $(OUT)/car_2wd_test: $(CAR_SRC) $(GEN)/board_gen.h $(wildcard $(CAR)/*.h)
 	@mkdir -p $(OUT)
 	@echo "  CC+LD  $@"
-	@gcc $(CFLAGS) $(INC) -I$(CAR) $(CAR_SRC) -lm -o $@
+	@gcc $(CFLAGS) $(INC) -I$(CAR) -I$(OUT)/car_link $(CAR_SRC) -lm -o $@

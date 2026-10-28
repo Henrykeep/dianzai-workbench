@@ -9,7 +9,9 @@
  * LINK 协议（dzframe/1，见 firmware/proto/dzframe）：
  *   上位机 -> 板  DATA id=1  payload: f32 v_mps, f32 w_rps     速度指令（≥5 Hz 持续发送，断线 200 ms 自动停车）
  *   板 -> 上位机  DATA id=2  payload: u32 ms, f32 sp_a, f32 spd_a, f32 sp_b, f32 spd_b, u32 ctrl_err
- *   板 -> 上位机  HEARTBEAT  每 500 ms
+ *   板 -> 上位机  HEARTBEAT  每 500 ms（带 schema 哈希）
+ *   参数读写 / 急停 / 命令：dzctl（firmware/proto/dzctl），字段与参数表见 app.yaml 的 link: 段（自动生成 link_gen.h）。
+ *   急停锁存：电机刹车、忽略速度指令，直到收到命令 'R'。
  */
 #include "board_gen.h"
 #include "app.h"
@@ -17,6 +19,8 @@
 #include "motor_dc.h"
 #include "encoder.h"
 #include "dzframe.h"
+#include "dzctl.h"
+#include "link_gen.h"
 #include "subsys.h"
 #include "drive_plan.h"
 
@@ -26,7 +30,6 @@
                                         * 两车同款电机，旧代码约 3.7 倍的 ticks/m 差异疑为倍频/单位换算错误；
                                         * 按 docs/12-参考工程与参数来源.md 的“转 10 圈”标定后填写。 */
 #define ID_CMD   1u
-#define ID_TELEM 2u
 
 typedef struct { motor_dc_t motor; encoder_t enc; pid_ctrl_t pid; } wheel_t;
 
@@ -36,18 +39,30 @@ static subsys_sched_t s_sched;
 static dzframe_parser_t s_rx;
 static volatile float s_sp[2];
 static volatile uint32_t s_ctrl_errors;
-static const drive_params_t k_params = {
-    .wheel_diam_m = 0.065f, .track_m = 0.15f, .max_rps = 5.0f, .accel_rps2 = 10.0f, .cmd_timeout_ms = 200u,
-};
+static drive_params_t s_params = { .wheel_diam_m = 0.065f, .track_m = 0.15f };   /* 其余字段来自 g_link_params */
+static volatile bool s_estop;
+static volatile bool s_gains_dirty;
+
+/* 上位机改了参数：同步到 drive_plan 参数；PID 增益交给控制中断在自己的节拍里换（不在两次 update 之间撕裂）。 */
+static void apply_params(void)
+{
+    s_params.max_rps = g_link_params.max_rps;
+    s_params.accel_rps2 = g_link_params.accel_rps2;
+    s_params.cmd_timeout_ms = g_link_params.cmd_timeout_ms;
+    s_gains_dirty = true;
+}
 
 static void ctrl_isr(void *ctx)
 {
     (void)ctx;
     for (unsigned i = 0; i < 2; i++) {
         wheel_t *w = &s_w[i];
+        if (s_gains_dirty) (void)pid_set_gains(&w->pid, g_link_params.kp, g_link_params.ki, 0.0f);
+        if (s_estop) { motor_dc_stop(&w->motor, MOTOR_DC_BRAKE); pid_reset(&w->pid); continue; }
         if (encoder_update(&w->enc) != DZ_OK) { s_ctrl_errors++; motor_dc_stop(&w->motor, MOTOR_DC_COAST); continue; }
         if (motor_dc_set(&w->motor, pid_update(&w->pid, s_sp[i], encoder_speed_rps(&w->enc))) != DZ_OK) s_ctrl_errors++;
     }
+    s_gains_dirty = false;
 }
 
 static dz_err_t wheel_init(wheel_t *w, pal_id_t pwm, pal_id_t in1, pal_id_t in2, pal_id_t enc)
@@ -67,7 +82,7 @@ static dz_err_t wheel_init(wheel_t *w, pal_id_t pwm, pal_id_t in1, pal_id_t in2,
     if ((e = encoder_init(&w->enc, &ec)) != DZ_OK) return e;
 
     pid_cfg_t pc = pid_cfg_default(CTRL_PERIOD_US * 1e-6f);
-    pc.kp = 0.08f; pc.ki = 1.5f; pc.kd = 0.0f;   /* 起步参数，未实测，需上板整定 */
+    pc.kp = g_link_params.kp; pc.ki = g_link_params.ki; pc.kd = 0.0f;   /* 起步参数见 app.yaml，未实测 */
     pc.out_min = -1.0f; pc.out_max = 1.0f;
     pc.i_min = -1.0f; pc.i_max = 1.0f;
     pc.out_rate_max = 20.0f;
@@ -78,9 +93,10 @@ dz_err_t app_init(void)
 {
     static const subsys_t *const list[] = { &g_drive_plan };
     dz_err_t e;
+    apply_params();
     if ((e = wheel_init(&s_w[0], RES_PWM_MOTOR_A, RES_GPIO_MOTOR_A_IN1, RES_GPIO_MOTOR_A_IN2, RES_ENCODER_MOTOR_A)) != DZ_OK) return e;
     if ((e = wheel_init(&s_w[1], RES_PWM_MOTOR_B, RES_GPIO_MOTOR_B_IN1, RES_GPIO_MOTOR_B_IN2, RES_ENCODER_MOTOR_B)) != DZ_OK) return e;
-    if ((e = subsys_sched_init(&s_sched, list, 1, &s_state, &k_params)) != DZ_OK) return e;
+    if ((e = subsys_sched_init(&s_sched, list, 1, &s_state, &s_params)) != DZ_OK) return e;
     if (subsys_sched_selftest(&s_sched) >= 0) return DZ_EIO;
     subsys_sched_set_mode(&s_sched, SUBSYS_MODE_RUN);
     dzframe_parser_init(&s_rx);
@@ -98,9 +114,19 @@ static void handle_rx(uint32_t now)
 {
     uint8_t buf[32]; uint16_t got = 0;
     if (pal_uart_read(RES_UART_LINK, buf, sizeof buf, &got) != DZ_OK) return;
-    dzframe_t f;
+    dzframe_t f, ack;
+    dzctl_table_t t = link_param_table(&g_link_params);
     for (uint16_t i = 0; i < got; i++) {
-        if (dzframe_feed(&s_rx, buf[i], &f) && f.kind == DZF_DATA && f.id == ID_CMD && f.len == 8u) {
+        if (!dzframe_feed(&s_rx, buf[i], &f)) continue;
+        if (dzctl_is_estop(&f)) {
+            s_estop = true;
+            s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f;
+        } else if (dzctl_handle(&t, &f, &ack)) {
+            apply_params();
+            send(&ack);
+        } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'R') {
+            s_estop = false;
+        } else if (!s_estop && f.kind == DZF_DATA && f.id == ID_CMD && f.len == 8u) {
             s_state.cmd_v_mps = dzframe_get_f32(&f, 0);
             s_state.cmd_w_rps = dzframe_get_f32(&f, 4);
             s_state.cmd_ms = now;
@@ -119,20 +145,22 @@ void app_loop(void)
     s_sp[0] = s_state.sp_a_rps; s_sp[1] = s_state.sp_b_rps;
     pal_irq_restore(st);
 
-    if (now - last_tx >= 20u) {
+    if (now - last_tx >= LINK_TELEM_PERIOD_MS) {
+        link_telem_t t;
+        dzframe_t f;
         last_tx = now;
-        dzframe_t f = { .kind = DZF_DATA, .id = ID_TELEM, .seq = seq++ };
         st = pal_irq_save();
-        float spd_a = encoder_speed_rps(&s_w[0].enc), spd_b = encoder_speed_rps(&s_w[1].enc);
-        uint32_t err = s_ctrl_errors;
+        t.t_ms = now; t.sp_a = s_sp[0]; t.sp_b = s_sp[1];
+        t.spd_a = encoder_speed_rps(&s_w[0].enc); t.spd_b = encoder_speed_rps(&s_w[1].enc);
+        t.ctrl_err = s_ctrl_errors;
         pal_irq_restore(st);
-        (void)(dzframe_put_u32(&f, now) && dzframe_put_f32(&f, s_sp[0]) && dzframe_put_f32(&f, spd_a)
-               && dzframe_put_f32(&f, s_sp[1]) && dzframe_put_f32(&f, spd_b) && dzframe_put_u32(&f, err));
-        send(&f);
+        if (link_telem_pack(&f, &t)) { f.seq = seq++; send(&f); }
     }
     if (now - last_hb >= 500u) {
+        dzctl_table_t t = link_param_table(&g_link_params);
+        dzframe_t f;
         last_hb = now;
-        dzframe_t f = { .kind = DZF_HEARTBEAT, .id = 0, .seq = seq++ };
+        dzctl_heartbeat(&t, seq++, &f);
         send(&f);
     }
 #ifdef RES_GPIO_LED

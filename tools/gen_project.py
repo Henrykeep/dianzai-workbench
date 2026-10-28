@@ -156,7 +156,7 @@ def gen(p: dict, role: str | None, src: str) -> tuple[str, str]:
     h += ["", f"#define PROJECT_N_SUBSYS {len(subs)}u", f"#define PROJECT_N_TESTS {len(p['tests'])}u",
           f"#define PROJECT_N_PROFILES {len(p['profiles'])}u",
           "extern const subsys_t *const g_project_subsys[];", "extern const coord_test_t g_project_tests[];",
-          "extern const coord_profile_t g_project_profiles[];", "extern const params_t g_project_params[];", ""]
+          "extern const coord_profile_t g_project_profiles[];", "extern params_t g_project_params[];  /* RAM：上位机经 dzctl 可改当前参数档 */", ""]
     for i, pr in enumerate(p["profiles"]):
         h.append(f"#define PROFILE_{pr['name'].upper()} {i}u")
     h += ["", "#endif", ""]
@@ -166,7 +166,7 @@ def gen(p: dict, role: str | None, src: str) -> tuple[str, str]:
     c += [f"    &SUBSYS_{s['name'].upper()}," for s in subs] or ["    0"]
     c.append("};\n")
     prof_idx = {pr["name"]: i for i, pr in enumerate(p["profiles"])}
-    c.append("const params_t g_project_params[] = {")
+    c.append("params_t g_project_params[] = {")
     for pr in p["profiles"]:
         vals = dict((x["name"], x.get("default", 0)) for x in params)
         vals.update(pr.get("set") or {})

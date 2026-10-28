@@ -29,6 +29,7 @@
             -I${PROJECT_LOC}/../../../firmware/framework/coord
             -I${PROJECT_LOC}/../../../firmware/framework/spsc
             -I${PROJECT_LOC}/../../../firmware/framework/subsys
+            -I${PROJECT_LOC}/../../../firmware/proto/dzctl
             -I${PROJECT_LOC}/../../../firmware/proto/dzframe
             -I${PROJECT_LOC}/../../../firmware/drivers/encoder
             -I${PROJECT_LOC}/../../../firmware/drivers/key
@@ -36,6 +37,7 @@
             -I${PROJECT_LOC}/../../../firmware/drivers/qd4310
             -I${PROJECT_LOC}/../../../firmware/drivers/ssd1306
             -I${PROJECT_LOC}/../../../apps/include
+            -I${PROJECT_LOC}/../../../build/mspm0g3507-tianmengxing/car_2wd/linkgen
             -I${PROJECT_LOC}/../../../ports/mspm0-driverlib
             -I${PROJECT_LOC}/../../../build/mspm0g3507-tianmengxing/gen
             -O2
@@ -77,6 +79,7 @@
         <file path="../../../firmware/framework/coord/coord.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/spsc/spsc.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/subsys/subsys.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/proto/dzctl/dzctl.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/proto/dzframe/dzframe.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/encoder/encoder.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/key/key.c" targetDirectory="dz/firmware" action="link"/>
@@ -86,6 +89,7 @@
         <file path="../../../firmware/drivers/ssd1306/ssd1306.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../apps/car_2wd/app_main.c" targetDirectory="dz/apps" action="link"/>
         <file path="../../../apps/car_2wd/drive_plan.c" targetDirectory="dz/apps" action="link"/>
+        <file path="../../../build/mspm0g3507-tianmengxing/car_2wd/linkgen/link_gen.c" targetDirectory="dz/build" action="link"/>
         <file path="../../../ports/mspm0-driverlib/pal_mspm0.c" targetDirectory="dz/ports" action="link"/>
         <file path="../../../ports/mspm0-driverlib/main_mspm0.c" targetDirectory="dz/ports" action="link"/>
         <file path="../../../build/mspm0g3507-tianmengxing/gen/board_gen.c" targetDirectory="dz/gen" action="link"/>
