@@ -174,10 +174,11 @@
    "coord.h: dz_err_t coord_event(coord_t *c, coord_event_t ev);",
    "coord.h: void coord_poll(coord_t *c, uint32_t now_ms);",
    "coord.h: coord_state_t coord_state(const coord_t *c);",
-   "coord.h: const char *coord_state_name(coord_state_t s);"
+   "coord.h: const char *coord_state_name(coord_state_t s);",
+   "coord.h: dz_err_t coord_selftest(void);"
   ],
-  "hash": "a0974e0708eebe61",
-  "version": "1.0.0"
+  "hash": "167ee87528b00f89",
+  "version": "1.1.0"
  },
  "firmware/framework/subsys": {
   "decls": [
@@ -279,10 +280,11 @@
    "dzframe.h: uint8_t dzframe_get_u8 (const dzframe_t *f, size_t off);",
    "dzframe.h: uint16_t dzframe_get_u16(const dzframe_t *f, size_t off);",
    "dzframe.h: uint32_t dzframe_get_u32(const dzframe_t *f, size_t off);",
-   "dzframe.h: float dzframe_get_f32(const dzframe_t *f, size_t off);"
+   "dzframe.h: float dzframe_get_f32(const dzframe_t *f, size_t off);",
+   "dzframe.h: dz_err_t dzframe_selftest(void);"
   ],
-  "hash": "3cdc304c3be1dcb2",
-  "version": "1.0.0"
+  "hash": "d27f82859ed5d485",
+  "version": "1.1.0"
  },
  "ports/host-sim": {
   "decls": [

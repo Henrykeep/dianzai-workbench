@@ -174,6 +174,8 @@ check:
 	$(PY) tools/iface_hash.py --check
 	$(PY) tools/iface_hash.py --selftest
 	$(PY) tools/ioc_import.py --selftest
+	$(PY) tools/syscfg_import.py --selftest
+	$(PY) tools/audit_port.py --selftest
 	$(MAKE) ioc-check
 	$(MAKE) -C examples/2026H_ball/tests
 	cd host/python && $(PY) -m dzlink.test_dzlink

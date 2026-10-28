@@ -97,4 +97,6 @@ TEST(coord_state_machine)
     CHECK(coord_state_name(COORD_FAULT)[0] == 'F' && coord_state_name((coord_state_t)99)[0] == '?');
 }
 
-void suite_framework(void) { RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }
+TEST(coord_selftest_passes) { CHECK(coord_selftest() == DZ_OK); }
+
+void suite_framework(void) { RUN(coord_selftest_passes); RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }

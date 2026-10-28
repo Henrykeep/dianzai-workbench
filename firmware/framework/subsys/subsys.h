@@ -46,8 +46,8 @@ typedef struct {
 typedef struct {
     const subsys_t *list[SUBSYS_MAX];
     uint32_t        next_ms[SUBSYS_MAX];
-    uint32_t        overrun[SUBSYS_MAX];
-    bool            started[SUBSYS_MAX];   /**< 错过周期的次数（主循环太慢的信号） */
+    uint32_t        overrun[SUBSYS_MAX];   /**< 错过周期的次数（主循环太慢的信号） */
+    bool            started[SUBSYS_MAX];   /**< 是否已执行过第一次 step（不用 next_ms==0 作哨兵，回绕安全） */
     uint8_t         count;
     void           *state;
     const void     *params;

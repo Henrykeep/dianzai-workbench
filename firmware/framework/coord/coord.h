@@ -17,7 +17,7 @@
 #include "dz_err.h"
 #include "subsys.h"
 
-#define COORD_VERSION "1.0.0"
+#define COORD_VERSION "1.1.0"
 
 typedef enum { COORD_IDLE = 0, COORD_RUNNING, COORD_DONE, COORD_ESTOP, COORD_FAULT } coord_state_t;
 typedef enum { COORD_EV_START, COORD_EV_STOP, COORD_EV_ESTOP, COORD_EV_RESET, COORD_EV_FAULT, COORD_EV_FINISHED } coord_event_t;
@@ -68,5 +68,7 @@ dz_err_t coord_event(coord_t *c, coord_event_t ev);
 void     coord_poll(coord_t *c, uint32_t now_ms);
 coord_state_t coord_state(const coord_t *c);
 const char   *coord_state_name(coord_state_t s);
+/** 纯逻辑自检：用内部的空调度器走一遍 IDLE→RUNNING→ESTOP→IDLE→RUNNING→DONE 与非法转换。 */
+dz_err_t coord_selftest(void);
 
 #endif

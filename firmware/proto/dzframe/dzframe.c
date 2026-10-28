@@ -102,3 +102,22 @@ uint8_t  dzframe_get_u8 (const dzframe_t *f, size_t off) { return (uint8_t)get_l
 uint16_t dzframe_get_u16(const dzframe_t *f, size_t off) { return (uint16_t)get_le(f, off, 2); }
 uint32_t dzframe_get_u32(const dzframe_t *f, size_t off) { return get_le(f, off, 4); }
 float    dzframe_get_f32(const dzframe_t *f, size_t off) { uint32_t u = get_le(f, off, 4); float v; memcpy(&v, &u, 4); return v; }
+
+dz_err_t dzframe_selftest(void)
+{
+    if (dzframe_crc16((const uint8_t *)"123456789", 9) != 0x29B1u) return DZ_EIO;
+    dzframe_t f = { DZF_DATA, 7, 42, 0, {0} }, g;
+    if (!dzframe_put_u16(&f, 0xBEEFu) || !dzframe_put_f32(&f, 1.5f)) return DZ_EIO;
+    uint8_t buf[DZFRAME_MAX_FRAME];
+    size_t n = dzframe_encode(buf, sizeof buf, &f);
+    if (n != f.len + DZFRAME_OVERHEAD) return DZ_EIO;
+    dzframe_parser_t p;
+    dzframe_parser_init(&p);
+    bool got = false;
+    for (size_t i = 0; i < n; i++) got = dzframe_feed(&p, buf[i], &g);
+    if (!got || g.id != 7 || g.seq != 42 || dzframe_get_u16(&g, 0) != 0xBEEFu || dzframe_get_f32(&g, 2) != 1.5f) return DZ_EIO;
+    buf[n - 3] ^= 0x01u;                       /* 损坏一个负载字节 */
+    got = false;
+    for (size_t i = 0; i < n; i++) got |= dzframe_feed(&p, buf[i], &g);
+    return got ? DZ_EIO : DZ_OK;
+}

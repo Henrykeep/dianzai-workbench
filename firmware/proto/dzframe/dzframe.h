@@ -21,8 +21,9 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "dz_err.h"
 
-#define DZFRAME_VERSION "1.0.0"
+#define DZFRAME_VERSION "1.1.0"
 #define DZFRAME_PROTO_VER 1u
 #define DZFRAME_MAX_PAYLOAD 64u
 #define DZFRAME_OVERHEAD 9u          /**< 2 SOF + VER + KIND + ID + SEQ + LEN + 2 CRC */
@@ -68,5 +69,8 @@ uint8_t  dzframe_get_u8 (const dzframe_t *f, size_t off);
 uint16_t dzframe_get_u16(const dzframe_t *f, size_t off);
 uint32_t dzframe_get_u32(const dzframe_t *f, size_t off);
 float    dzframe_get_f32(const dzframe_t *f, size_t off);
+
+/** 自检：CRC 标准向量（"123456789" -> 0x29B1）、编码-解析往返、单字节损坏被拒绝。 */
+dz_err_t dzframe_selftest(void);
 
 #endif

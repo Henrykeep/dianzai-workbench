@@ -86,3 +86,27 @@ const char *coord_state_name(coord_state_t s)
     static const char *const n[] = { "IDLE", "RUNNING", "DONE", "ESTOP", "FAULT" };
     return (unsigned)s < 5u ? n[s] : "?";
 }
+
+dz_err_t coord_selftest(void)
+{
+    static subsys_sched_t sched;
+    static int dummy_state;
+    static const coord_test_t tests[1] = { { 1, "t", 0, 100 } };
+    static const coord_profile_t prof[1] = { { "p", 0 } };
+    coord_t c;
+    if (subsys_sched_init(&sched, 0, 0, &dummy_state, 0) != DZ_OK) return DZ_EIO;
+    if (coord_init(&c, &sched, tests, 1, prof, 1, 0) != DZ_OK) return DZ_EIO;
+    if (coord_event(&c, COORD_EV_STOP) != DZ_ESTATE) return DZ_EIO;          /* IDLE 下 STOP 非法 */
+    if (coord_event(&c, COORD_EV_START) != DZ_OK || c.st != COORD_RUNNING) return DZ_EIO;
+    if (sched.mode != SUBSYS_MODE_RUN) return DZ_EIO;
+    if (coord_event(&c, COORD_EV_ESTOP) != DZ_OK || c.st != COORD_ESTOP) return DZ_EIO;
+    if (sched.mode != SUBSYS_MODE_ESTOP) return DZ_EIO;
+    if (coord_event(&c, COORD_EV_START) != DZ_ESTATE) return DZ_EIO;         /* 急停后必须先 RESET */
+    if (coord_event(&c, COORD_EV_RESET) != DZ_OK || c.st != COORD_IDLE) return DZ_EIO;
+    if (coord_event(&c, COORD_EV_START) != DZ_OK) return DZ_EIO;
+    coord_poll(&c, 50);
+    if (c.st != COORD_RUNNING) return DZ_EIO;
+    coord_poll(&c, 200);                                                     /* 超过 100 ms 限时 */
+    if (c.st == COORD_RUNNING) return DZ_EIO;
+    return DZ_OK;
+}

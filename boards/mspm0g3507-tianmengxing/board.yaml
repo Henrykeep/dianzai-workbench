@@ -1,0 +1,28 @@
+# 嘉立创·天猛星 MSPM0G3507 开发板（插件位）
+# 第 0 阶段：ports/mspm0-driverlib 尚未实现，本文件只占位。配置来源为 SysConfig（.syscfg），
+# 资源将由 tools/syscfg_import.py 从你的 .syscfg 导入；板载 LED/按键等引脚未核实，全部 TODO（不编造）。
+schema_version: 1
+name: mspm0g3507-tianmengxing
+vendor: 嘉立创 (LCKFB)
+description: 天猛星 MSPM0G3507 开发板；SysConfig + DriverLib；移植层未实现、未上板测试
+port: mspm0-driverlib
+config_source:
+  tool: sysconfig
+  file: TODO            # 你的工程里的 .syscfg 相对路径
+mcu:
+  family: mspm0
+  part: MSPM0G3507
+  core: cortex-m0plus
+  fpu: false
+  flash_kb: 128
+  ram_kb: 32
+clock:
+  sysclk_hz: 80000000   # MSPM0G3507 最高主频 80MHz；实际以 SysConfig 设置为准
+toolchain:
+  compiler: arm-none-eabi-gcc
+  flasher: TODO
+todo:
+  - 实现 ports/mspm0-driverlib（第 1 阶段），PAL 包装 SysConfig 生成的实例宏
+  - 板载 LED / 按键 / 调试串口引脚（查嘉立创天猛星原理图后填写，标 verified 与出处）
+  - flash_kb/ram_kb 按数据手册核实（128KB/32KB 为 G3507 公开规格，仍需对照芯片手册）
+resources: {}

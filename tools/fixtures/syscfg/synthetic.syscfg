@@ -1,0 +1,28 @@
+/**
+ * 【合成样例】仿 TI SysConfig 1.2x 为 MSPM0G3507 生成的 .syscfg 子集，仅供 tools/syscfg_import.py 测试；
+ * 引脚是随意示例，不代表嘉立创天猛星板的真实接线。
+ * @cliArgs --device "MSPM0G350X" --package "LQFP-64(PM)" --part "Default"
+ */
+const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
+const GPIO1  = GPIO.addInstance();
+const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
+const PWM1   = PWM.addInstance();
+const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
+const UART1  = UART.addInstance();
+
+GPIO1.$name                          = "GPIO_LED";
+GPIO1.associatedPins[0].$name        = "PIN_LED";
+GPIO1.associatedPins[0].direction    = "OUTPUT";
+GPIO1.associatedPins[0].pin.$assign  = "PA14";
+
+PWM1.$name                     = "PWM_MOTOR_A";
+PWM1.timerStartTimer           = true;
+PWM1.pwmClkFreq                = 20000;
+PWM1.peripheral.$assign        = "TIMA0";
+PWM1.peripheral.ccp0Pin.$assign = "PA0";
+
+UART1.$name                    = "UART_LINK";
+UART1.targetBaudRate           = 115200;
+UART1.peripheral.$assign       = "UART0";
+UART1.peripheral.rxPin.$assign = "PA11";
+UART1.peripheral.txPin.$assign = "PA10";

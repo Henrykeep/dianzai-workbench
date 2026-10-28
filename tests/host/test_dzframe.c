@@ -66,4 +66,6 @@ TEST(dzframe_python_interop)
     CHECK(feed_all(&p, py, sizeof py, g, 1) == 1 && g[0].id == 5 && dzframe_get_u32(&g[0], 0) == 0x04030201u);
 }
 
-void suite_dzframe(void) { RUN(dzframe_crc_known_vector); RUN(dzframe_roundtrip_and_fields); RUN(dzframe_resync_after_corruption); RUN(dzframe_python_interop); }
+TEST(dzframe_selftest_passes) { CHECK(dzframe_selftest() == DZ_OK); }
+
+void suite_dzframe(void) { RUN(dzframe_selftest_passes); RUN(dzframe_crc_known_vector); RUN(dzframe_roundtrip_and_fields); RUN(dzframe_resync_after_corruption); RUN(dzframe_python_interop); }
