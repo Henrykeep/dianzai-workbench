@@ -128,6 +128,24 @@ $<HTMLInputElement>("chan-q").onkeydown = e => {
   S.visible = matchNames((e.target as HTMLInputElement).value, S.plotted.map(f => f.name));
   S.visible.forEach((on, i) => plot.show(i, on)); renderChans();
 };
+// ELF 变量观察：输入时联想符号名（来自 ELF），“开始”后样本走虚拟通道，和普通遥测一样画线
+let elfTypes: Record<string, string> = {};
+$<HTMLInputElement>("elf-q").oninput = async e => {
+  const w = (e.target as HTMLInputElement).value.split(/\s+/).pop()!.split(":")[0];
+  if (w.length < 2) return;
+  const r: any[] | null = await call("elf_symbols", { q: w }).catch(() => null);
+  if (!r) return;
+  r.forEach(x => elfTypes[x.name] = x.type);
+  $("elf-list").innerHTML = r.map(x => `<option value="${esc(x.name)}">${x.addr} · ${x.size} B</option>`).join("");
+};
+$("elf-go").onclick = async () => {
+  const vars = $<HTMLInputElement>("elf-q").value.split(/[\s,]+/).filter(Boolean)
+    .map(w => { const [name, type] = w.split(":"); return { name, type: type || elfTypes[name] || "f32" }; });
+  if (!vars.length) return toast("先输入变量名", "info");
+  const r = await call("watch_start", { vars, period_ms: 20 }).catch(() => null);
+  if (r) { $("elf-n").textContent = `${r.fields.length} 个 · ${r.period_ms} ms`; toast("开始读 " + r.fields.map((f: any) => `${f.name}@${f.addr}`).join(", "), "ok"); }
+};
+$("elf-stop").onclick = async () => { await call("watch_stop", {}).catch(() => null); $("elf-n").textContent = ""; };
 setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
   S.plotted.forEach((f, i) => { const el = document.getElementById(`cv-${i}`); if (el) el.textContent = fmt(plot.last(i), f); });
   S.enums.forEach(f => {

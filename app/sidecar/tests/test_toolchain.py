@@ -182,3 +182,24 @@ def test_service_four_segment_and_staged_rule_round(sim, tmp_path, home):
     assert v["asymmetry"] is not None
     r = svc.rule_round()                                   # 分阶段：第一步一定动 Kp
     assert r.get("status") == "pending_user_confirmation", r          # 只出提议卡，人确认才写
+
+
+def test_service_elf_watch(elf, tmp_path, home):
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    shutil.copy(elf, tmp_path / "a.elf")
+    (tmp_path / "dzbench.json").write_text(json.dumps({"build": {"elf": "a.elf"}}), encoding="utf-8")
+    ev = []
+    s = Session(emit=ev.append)
+    svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path)
+    found = svc.elf_symbols("g_")
+    assert [x["name"] for x in found] == ["g_count", "g_speed"] and found[1]["type"] == "f32"
+    probe = elfsym.MockProbe({0x20200000: bytearray(struct.pack("<f", 3.0) + b"\0" * 12)})
+    r = svc.watch_start([{"name": "g_speed", "type": "f32"}], 5, probe=probe)
+    time.sleep(0.05)
+    assert svc.watch_stop()["stopped"] and r["fields"][0]["addr"] == "0x20200000"
+    assert any(v["g_speed"] == 3.0 for _, v in s.window(10))
+    with pytest.raises(elfsym.ElfError):
+        svc.watch_start([{"name": "nope"}], 5, probe=probe)
+    assert svc.watch is None

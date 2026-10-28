@@ -6,6 +6,13 @@
 
 ## [未发布]
 
+### ELF 变量观察
+- 通道栏的“ELF 变量”：输入变量名时从 ELF 符号表联想；“开始观察”后通过 SWD 直接读内存，样本走虚拟通道画线，不用改固件。sidecar 新增 elf_symbols、watch_start、watch_stop。
+- 已对照验证：
+  - 真 F407 ELF（2026H_ball）的 222 个符号，地址和大小与 arm-none-eabi-nm 全部一致；
+  - 用假探针测过 service 层的 watch，flash dry_run 和 HardFault 分核解码也都有测试。
+- **真探针未实测**。
+
 ### 波形与导出
 - 波形只送时间窗内的数据，并按像素列做 min/max 抽稀：30 s × 1 kHz 不卡，尖峰不会丢。
 - 通道栏可以按名字选通道（`bb_* err`，支持 * 通配）。

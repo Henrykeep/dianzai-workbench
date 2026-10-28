@@ -264,6 +264,33 @@ class AgentService:
             syms = None
         return hardfault.decode(frame, exc_return, core, regs, syms)
 
+    # ---- ELF 变量观察（不用改固件：SWD 直接按地址读内存，样本走虚拟通道画线）
+    def elf_symbols(self, query: str = "", limit: int = 50) -> list[dict]:
+        q = query.lower()
+        out = [s for s in self._symbols().values() if s.kind == "object" and s.size in (1, 2, 4) and q in s.name.lower()]
+        out.sort(key=lambda s: (not s.name.lower().startswith(q), s.name))
+        return [{"name": s.name, "addr": f"0x{s.addr:08x}", "size": s.size,
+                 "type": {1: "u8", 2: "i16", 4: "f32"}[s.size]} for s in out[:limit]]
+
+    def watch_start(self, spec: list[dict], period_ms: int = 20, probe=None) -> dict:
+        self.watch_stop()
+        self._probe = probe or self.flasher.factory()
+        self.watch = elfsym.SymbolWatch(self.s, self._probe, self._symbols())
+        try:
+            return self.watch.start(spec, period_ms)
+        except Exception:
+            self.watch_stop()
+            raise
+
+    def watch_stop(self) -> dict:
+        w, pr = getattr(self, "watch", None), getattr(self, "_probe", None)
+        if w:
+            w.stop()
+        if pr and hasattr(pr, "close"):
+            pr.close()
+        self.watch = self._probe = None
+        return {"stopped": bool(w)}
+
     def read_symbol(self, name: str) -> dict:
         s = self._symbols().get(name)
         if not s:

@@ -189,6 +189,12 @@ class Server:
             return self.svc.flasher.flash(m.get("dry_run", True))
         if op == "flash_rollback":
             return self.svc.flasher.rollback(m.get("dry_run", True))
+        if op == "elf_symbols":
+            return await run(None, lambda: self.svc.elf_symbols(m.get("q", "")))
+        if op == "watch_start":
+            return await run(None, lambda: self.svc.watch_start(m["vars"], int(m.get("period_ms", 20))))
+        if op == "watch_stop":
+            return self.svc.watch_stop()
         if op == "hardfault_decode":
             return self.svc.decode_hardfault(m["frame"], m.get("exc_return"), m.get("regs"))
         if op == "agent_config":

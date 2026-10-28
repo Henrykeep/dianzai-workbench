@@ -30,6 +30,11 @@
       <div class="ph"><h3>通道</h3><div class="sp"></div><span class="lbl" id="chan-n"></span></div>
       <input id="chan-q" class="mono" placeholder="按名字画：bb_* err, Enter（空=恢复）" title="空格/逗号分隔，* 通配；只显示匹配的通道" />
       <div id="chans"></div>
+      <details id="elfw" class="elfw"><summary title="不改固件：通过 SWD 按 ELF 符号地址直接读全局变量画线（需配置 build.elf 和探针；断开串口后使用）">ELF 变量</summary>
+        <input id="elf-q" class="mono" list="elf-list" placeholder="g_speed g_cnt:i32（类型默认按大小猜）" />
+        <datalist id="elf-list"></datalist>
+        <div class="row"><button class="btn ghost sm" id="elf-go">开始观察</button><button class="btn ghost sm" id="elf-stop">停止</button><span class="lbl" id="elf-n"></span></div>
+      </details>
       <div class="cmds">
         <span class="lbl">板端命令</span>
         <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存">解除急停 R</button></div>

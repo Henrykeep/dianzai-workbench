@@ -164,3 +164,4 @@ select:disabled{opacity:.6}
 #snd-presets .btn.on { color: var(--accent, #e8590c); }
 
 #chan-q { width: calc(100% - 16px); margin: 4px 8px; padding: 3px 6px; font-size: 11px; background: var(--bg-2, transparent); color: inherit; border: 1px solid var(--grid-2); border-radius: 3px; }
+.elfw { margin: 4px 8px; font-size: 11px; } .elfw summary { cursor: pointer; color: var(--dim); } .elfw input { width: 100%; margin: 4px 0; padding: 3px 6px; font-size: 11px; background: transparent; color: inherit; border: 1px solid var(--grid-2); border-radius: 3px; } .elfw .row { display: flex; gap: 6px; align-items: center; }
