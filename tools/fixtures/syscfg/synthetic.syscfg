@@ -15,14 +15,46 @@ GPIO1.associatedPins[0].$name        = "PIN_LED";
 GPIO1.associatedPins[0].direction    = "OUTPUT";
 GPIO1.associatedPins[0].pin.$assign  = "PA14";
 
-PWM1.$name                     = "PWM_MOTOR_A";
+PWM1.$name                     = "PWM_TIMA0";
 PWM1.timerStartTimer           = true;
 PWM1.pwmClkFreq                = 20000;
 PWM1.peripheral.$assign        = "TIMA0";
 PWM1.peripheral.ccp0Pin.$assign = "PA0";
+PWM1.peripheral.ccp1Pin.$assign = "PA1";
 
 UART1.$name                    = "UART_LINK";
 UART1.targetBaudRate           = 115200;
 UART1.peripheral.$assign       = "UART0";
 UART1.peripheral.rxPin.$assign = "PA11";
 UART1.peripheral.txPin.$assign = "PA10";
+
+const GPIO2  = GPIO.addInstance();
+GPIO2.$name                          = "GPIO_MOTOR";
+GPIO2.associatedPins.create(2);
+GPIO2.associatedPins[0].$name        = "AIN1";
+GPIO2.associatedPins[0].direction    = "OUTPUT";
+GPIO2.associatedPins[0].pin.$assign  = "PA12";
+GPIO2.associatedPins[1].$name        = "AIN2";
+GPIO2.associatedPins[1].direction    = "OUTPUT";
+GPIO2.associatedPins[1].pin.$assign  = "PA13";
+
+const QEI    = scripting.addModule("/ti/driverlib/QEI", {}, false);
+const QEI1   = QEI.addInstance();
+QEI1.$name                     = "ENC_L";
+QEI1.peripheral.$assign        = "TIMG8";
+QEI1.peripheral.ccp0Pin.$assign = "PA29";
+QEI1.peripheral.ccp1Pin.$assign = "PA30";
+
+const GPIO3  = GPIO.addInstance();
+GPIO3.$name                          = "ENC_R";
+GPIO3.associatedPins.create(2);
+GPIO3.associatedPins[0].$name        = "PH_A";
+GPIO3.associatedPins[0].pin.$assign  = "PB4";
+GPIO3.associatedPins[1].$name        = "PH_B";
+GPIO3.associatedPins[1].pin.$assign  = "PB5";
+
+const TIMER  = scripting.addModule("/ti/driverlib/TIMER", {}, false);
+const TIMER1 = TIMER.addInstance();
+TIMER1.$name                   = "TIMER_CTRL";
+TIMER1.timerPeriod             = "10 ms";
+TIMER1.peripheral.$assign      = "TIMG0";
