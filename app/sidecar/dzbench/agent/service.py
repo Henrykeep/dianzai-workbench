@@ -70,6 +70,7 @@ class AgentService:
             "run_step_test": self.run_step_test,
             "rollback_best": self.rollback_best,
             "flash": lambda dry_run=True: self.flasher.flash(dry_run),
+            "flash_rollback": lambda dry_run=True: self.flasher.rollback(dry_run),
             "build": self.build,
             "build_log": self.build_log,
             "decode_hardfault": self.decode_hardfault,
@@ -94,9 +95,9 @@ class AgentService:
         if t == risk.HUMAN:
             aid = next(self._aid)
             preview = None
-            if tool == "flash":
+            if tool in ("flash", "flash_rollback"):
                 try:
-                    preview = self.flasher.flash(dry_run=True)
+                    preview = (self.flasher.flash if tool == "flash" else self.flasher.rollback)(dry_run=True)
                 except FlashError as e:
                     preview = {"error": e.message}
             self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run}
@@ -116,7 +117,7 @@ class AgentService:
         if not accept:
             return {"id": aid, "status": "rejected"}
         args = dict(a["args"])
-        if a["tool"] in ("flash",):
+        if a["tool"] in ("flash", "flash_rollback"):
             args["dry_run"] = False                      # 人点了“确认烧录”才真烧
         try:
             return {"id": aid, "status": "done", "result": self.loop.handlers[a["tool"]](**args)}

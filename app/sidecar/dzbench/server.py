@@ -177,18 +177,21 @@ class Server:
             return await run(None, self.svc.ask, m["text"])
         if op == "agent_reset":
             return self.svc.loop.reset()
-        if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”
-            return self.svc.action_decide(int(m["id"]), bool(m["accept"]))
+        if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”（烧录要几秒，放线程池）
+            return await run(None, self.svc.action_decide, int(m["id"]), bool(m["accept"]))
         if op == "tune_reset":
             return self.svc.reset_guard()
         if op == "tune_rule_round":                # 无 LLM 模式：规则给一项建议（仍是待确认提议）
             return self.svc.rule_round()
         if op == "tune_step_test":                 # 用户自己点 = 已是人工确认
             return self.svc.run_step_test()
+        # 编译 / 烧录 / 回滚都走风险网关：界面按钮和 Agent 同一条路（烧录、回滚 = human，弹确认卡；以前这里直接调烧录器，绕过了确认）
+        if op == "build":
+            return await run(None, lambda: self.svc.gate("build", {}, self.svc.build))
         if op == "flash":
-            return self.svc.flasher.flash(m.get("dry_run", True))
+            return await run(None, lambda: self.svc.gate("flash", {}, lambda: self.svc.flasher.flash(True)))
         if op == "flash_rollback":
-            return self.svc.flasher.rollback(m.get("dry_run", True))
+            return await run(None, lambda: self.svc.gate("flash_rollback", {}, lambda: self.svc.flasher.rollback(True)))
         if op == "elf_symbols":
             return await run(None, lambda: self.svc.elf_symbols(m.get("q", "")))
         if op == "watch_start":
@@ -237,12 +240,15 @@ class Server:
 
     async def serve(self, host: str, port: int, ui_dir: pathlib.Path | None = None) -> None:
         self.loop = asyncio.get_running_loop()
-        asyncio.ensure_future(self._ticker())
-        async with websockets.serve(self.handler, host, port, max_size=2**22):
-            print(f"dzbench sidecar ws://{host}:{port}", flush=True)
-            if ui_dir:
-                await _serve_static(host, port + 1, ui_dir)
-            await asyncio.Future()
+        ticker = asyncio.ensure_future(self._ticker())
+        try:
+            async with websockets.serve(self.handler, host, port, max_size=2**22):
+                print(f"dzbench sidecar ws://{host}:{port}", flush=True)
+                if ui_dir:
+                    await _serve_static(host, port + 1, ui_dir)
+                await asyncio.Future()
+        finally:
+            ticker.cancel()
 
 
 async def _serve_static(host: str, port: int, root: pathlib.Path) -> None:

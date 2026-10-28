@@ -93,6 +93,9 @@
           <button class="btn ghost sm" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
           <button class="btn ghost sm" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交">写回 yaml</button>
           <button class="btn ghost sm" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）">⚙</button></div>
+        <div class="row fw" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">
+          <button class="btn ghost sm" id="fw-build">编译</button><button class="btn ghost sm" id="fw-flash">烧录…</button>
+          <button class="btn ghost sm" id="fw-rollback">回滚固件…</button><span class="lbl" id="fw-st"></span></div>
         <div id="props" class="feed"></div>
         <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
       </section>

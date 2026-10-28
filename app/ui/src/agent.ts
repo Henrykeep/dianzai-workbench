@@ -76,7 +76,7 @@ export function initAgent(call: Call) {
     });
   }
   // 风险等级 human 的动作卡（烧录 / 实机阶跃 / 实机回滚）：人点了才执行
-  const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", rollback_best: "回滚到最好参数" };
+  const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", rollback_best: "回滚到最好参数", flash_rollback: "回滚到烧前固件" };
   function renderAction(a: Msg) {
     const pv = a.preview ? `<pre class="log">${esc(JSON.stringify(a.preview, null, 1))}</pre>` : "";
     const d = add(`<div class="hd"><span class="dotk file"></span><span class="t">需要你确认：${esc(TOOL_CN[a.tool] ?? a.tool)}</span><span class="lbl">风险 human${a.sim ? " · 仿真" : " · 实机"}</span></div>
@@ -84,10 +84,23 @@ export function initAgent(call: Call) {
     d.querySelectorAll<HTMLButtonElement>("button[data-a]").forEach(b => b.onclick = () => {
       d.querySelectorAll("button").forEach(x => (x as HTMLButtonElement).disabled = true);
       call("agent_action_decide", { id: a.id, accept: b.dataset.a === "1" })
-        .then(r => { d.querySelector(".act")!.innerHTML = `<span class="lbl ok-t">${r.status === "done" ? "已执行" : "已拒绝"}</span>`; },
+        .then(r => { d.querySelector(".act")!.innerHTML = actionResult(r); },
               () => { d.querySelector(".act")!.innerHTML = `<span class="lbl">执行失败（见提示）</span>`; });
     });
   }
+  // 烧录/回滚的结果要把心跳校验讲清楚：“已执行”不等于板子起来了
+  function actionResult(r: any): string {
+    if (r.status !== "done") return `<span class="lbl">已拒绝</span>`;
+    const v = r.result?.verify;
+    if (!v) return `<span class="lbl ok-t">已执行</span>`;
+    if (v.ok) return `<span class="lbl ok-t">已执行 · 心跳核对通过（schema ${esc(v.schema_hash)}）</span>`;
+    if (v.ok === null) return `<span class="lbl warn-t">已执行 · ${esc(v.why)}</span>`;
+    return `<span class="lbl warn-t">已执行，但${esc(v.why)}：${esc(v.fix ?? "")}</span>`;
+  }
+  const fwSt = (t: string) => { $("fw-st").textContent = t; };
+  $("fw-build").onclick = () => { fwSt("编译中…"); call<any>("build").then(r => fwSt(r.ok ? `编译成功${r.flash_ready === true ? "，可以烧录" : "（" + (r.flash_ready || "") + "）"}` : `编译失败：${r.errors} 个错误`), () => fwSt("")); };
+  $("fw-flash").onclick = () => call<any>("flash").then(() => fwSt("看下面的确认卡"), () => {});
+  $("fw-rollback").onclick = () => call<any>("flash_rollback").then(() => fwSt("看下面的确认卡"), () => {});
   const VERDICT: Record<string, string> = { continue: "继续", done: "达标，结束", rollback: "变差，建议回滚到最好一轮", stop: "停止" };
   function renderRound(m: Msg) {
     const v = m.verdict, k = m.metrics;

@@ -6,7 +6,7 @@
 3. 急停已锁存（侧车 tx_locked）——烧录会复位芯片，电机必须先停
 4. 默认 dry_run=True：只返回将要做的步骤，不动板子；人确认后带 dry_run=False 再调一次
 烧后：等心跳，schema 哈希必须等于本次编译生成的 link_schema.json；否则提示一键回滚到烧前备份。
-⚠ 全部只用 MockBackend 单测；真实 pyOCD + 探针 未实测。
+⚠ 测试：MockBackend 单测 + tests/fakepyocd（假 pyOCD 包，走真实 PyOCDBackend 代码）端到端；真实 pyOCD + 探针 未实测。
 """
 from __future__ import annotations
 
@@ -55,6 +55,12 @@ class PyOCDBackend:
         from pyocd.flash.file_programmer import FileProgrammer  # type: ignore
         FileProgrammer(self.sess).program(path, base_address=base if path.endswith(".bin") else None)
 
+    def flash_size(self) -> int | None:
+        try:
+            return int(self.sess.target.memory_map.get_boot_memory().length)
+        except Exception:  # noqa: BLE001  拿不到就按镜像/默认大小备份
+            return None
+
     def reset(self) -> None:
         self.sess.target.reset()
 
@@ -90,6 +96,7 @@ class Flasher:
         self.factory = backend_factory or (lambda: PyOCDBackend(cfg["flash"]["target"], cfg["flash"].get("probe")))
         self.last_build: dict | None = None
         self.backups: list[pathlib.Path] = []
+        self.prev_schema_hash: int | None = None        # 烧之前板上跑的固件（回滚后按它校验）
 
     def note_build(self, ok: bool, image: str, schema_hash: int | None = None) -> None:
         p = pathlib.Path(image)
@@ -133,22 +140,28 @@ class Flasher:
             if self.cfg["flash"].get("keep_previous", True):
                 bk = snapshots.base_dir() / "flash_backup" / f"{time.strftime('%Y%m%d_%H%M%S')}_{tgt or 'chip'}.bin"
                 bk.parent.mkdir(parents=True, exist_ok=True)
-                bk.write_bytes(be.read(base, img.stat().st_size if img.suffix == ".bin" else 256 * 1024))
+                # .bin 按镜像大小备份；ELF/HEX 备份整片（读不到片上 Flash 大小时最多 256 KB）
+                size = img.stat().st_size if img.suffix == ".bin" else min(256 * 1024, getattr(be, "flash_size", lambda: None)() or 256 * 1024)
+                bk.write_bytes(be.read(base, size))
                 self.backups.append(bk)
+            self.prev_schema_hash = self.s.schema_hash
             be.load(str(img), base)
+            t_reset = time.monotonic()
             be.reset()
         finally:
             be.close()
-        return plan | {"status": "flashed", "verify": self.verify(), "backup": str(self.backups[-1]) if self.backups else None}
+        return plan | {"status": "flashed", "verify": self.verify(after=t_reset), "backup": str(self.backups[-1]) if self.backups else None}
 
-    def verify(self, timeout: float | None = None) -> dict:
-        exp = (self.last_build or {}).get("schema_hash")
+    def verify(self, timeout: float | None = None, after: float | None = None, expect: int | None | bool = False) -> dict:
+        """等一帧复位之后的新心跳（after = 复位时刻；只看旧心跳会把“板子没起来”误判成成功）。"""
+        exp = (self.last_build or {}).get("schema_hash") if expect is False else expect
         timeout = self.cfg["flash"]["heartbeat_timeout_s"] if timeout is None else timeout
         if not self.s.tr:
             return {"ok": None, "why": "串口没连：无法用心跳校验，连上后点“校验”"}
         t_end = time.monotonic() + timeout
         while time.monotonic() < t_end:
-            if self.s.schema_hash is not None and (exp is None or self.s.schema_hash == exp):
+            fresh = after is None or self.s.last_hb > after
+            if fresh and self.s.schema_hash is not None and (exp is None or self.s.schema_hash == exp):
                 return {"ok": True, "schema_hash": f"{self.s.schema_hash:08X}"}
             time.sleep(0.05)
         return {"ok": False, "why": "烧后没收到匹配的心跳", "fix": "看串口/供电；不行就点“回滚到烧前固件”",
@@ -169,10 +182,11 @@ class Flasher:
         be = self.factory()
         try:
             be.load(str(bk), base)
+            t_reset = time.monotonic()
             be.reset()
         finally:
             be.close()
-        return {"status": "rolled_back", "image": str(bk)}
+        return {"status": "rolled_back", "image": str(bk), "verify": self.verify(after=t_reset, expect=self.prev_schema_hash)}
 
 
 def schema_hash_of(link_schema: str | pathlib.Path) -> int | None:

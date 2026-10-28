@@ -163,17 +163,7 @@ SCHEMA = {"version": 1, "hash": 1, "telemetry": {"id": 2, "fields": [{"name": "t
           "params": [{"name": "kp", "type": "f32", "min": 0, "max": 2, "default": 0.08}]}
 
 
-class FakeLLM:
-    def __init__(self, script):
-        self.script, self.seen = list(script), []
-
-    def chat(self, messages, tools=None):
-        self.seen.append((json.loads(json.dumps(messages)), tools))
-        return self.script.pop(0)
-
-
-def call(_tool, **args):
-    return {"id": _tool, "type": "function", "function": {"name": _tool, "arguments": json.dumps(args)}}
+from agentfake import FakeLLM, call  # noqa: E402
 
 
 def test_agent_loop_only_proposes_and_cannot_estop(repo):
