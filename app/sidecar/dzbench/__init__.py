@@ -11,4 +11,4 @@
   agent_api  给将来内置 Agent 的工具层：只读遥测 + “提议”改参（必须用户确认）
   server     WebSocket JSON 协议（UI 与 Agent 共用）
 """
-__version__ = "0.7.0"
+__version__ = "0.8.0"
