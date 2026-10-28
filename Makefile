@@ -150,7 +150,7 @@ endif
 
 run: $(TARGET)
 ifneq ($(BOARD_FAMILY),host)
-	$(error make run 只支持 BOARD=host-sim；真板请用 make flash（见 docs/06-add-board.md）)
+	$(error make run 只支持 BOARD=host-sim；真板请用 make flash（见 docs/06-新增板卡.md）)
 endif
 	./$(TARGET) $(ARGS)
 

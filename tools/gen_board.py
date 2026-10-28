@@ -312,7 +312,7 @@ def main() -> int:
     if board.get("port") in PORT_GENERATORS:
         fam = board["port"]
     if fam not in GENERATORS:
-        print(f"✗ 还没有 {fam} 系列的代码生成器（见 docs/06-add-board.md）", file=sys.stderr)
+        print(f"✗ 还没有 {fam} 系列的代码生成器（见 docs/06-新增板卡.md）", file=sys.stderr)
         return 1
     src = a.board.as_posix()
     a.out.mkdir(parents=True, exist_ok=True)

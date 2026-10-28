@@ -4,7 +4,7 @@
  *
  * 版本见 firmware/pal/VERSION。本文件受接口冻结保护（tools/iface_hash.py）。
  *
- * 设计要点（为什么这样设计，见 docs/01-interface-spec.md）：
+ * 设计要点（为什么这样设计，见 docs/01-接口规范.md）：
  *  1. 只认逻辑 ID。ID 由 board.yaml 中的逻辑名生成（board_gen.h 里的 RES_xxx），
  *     上层永远看不到 GPIOA、TIM3、USART1、PWM_0_INST 这类芯片名。
  *  2. 只用整数做硬件边界上的数值（占空比 0..PAL_DUTY_MAX、微秒、原始 ADC 码），

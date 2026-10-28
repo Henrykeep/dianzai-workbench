@@ -84,7 +84,7 @@ static void write_outputs(void)
 }
 
 /* 协作式调度：每毫秒走一轮。若主循环被阻塞超过 1 ms，调度器会记 overrun（遥测可见）。
- * 对时序要求严格的环（例如电流环）应放到 CTRL 定时器中断里，见 docs/07-app-framework.md。 */
+ * 对时序要求严格的环（例如电流环）应放到 CTRL 定时器中断里，见 docs/07-应用框架.md。 */
 void app_loop(void)
 {
     static uint32_t last = UINT32_MAX, last_tx;

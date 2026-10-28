@@ -6,7 +6,7 @@
 生成：
   <题目>/subsys/<name>/<name>.c      实现 init/step/on_mode/selftest，只读写共享状态
   <题目>/subsys/<name>/README.md     职责、输入（reads）、输出（owns）、参数、如何单独测试
-  <题目>/subsys/<name>/VERSION       0.1.0（入库前达到 1.0.0，见 docs/05-reuse-checklist.md）
+  <题目>/subsys/<name>/VERSION       0.1.0（入库前达到 1.0.0，见 docs/04-入库检查清单.md）
   <题目>/tests/test_<name>.c         模拟数据单测骨架
 然后手动把它加进 project.yaml 的 subsystems（脚本会打印要粘贴的片段）。不覆盖已存在的文件。
 """
@@ -72,7 +72,7 @@ R_TMPL = '''# 子系统 {name}
 - 写（owns，唯一写者）：{owns}
 - 用到的参数（params_t）：TODO
 - 单独测试：`make -C <题目目录>/tests`，测试只构造共享状态，不需要硬件
-- 版本：见 VERSION；入库规则见 docs/05-reuse-checklist.md
+- 版本：见 VERSION；入库规则见 docs/04-入库检查清单.md
 '''
 
 

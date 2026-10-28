@@ -44,7 +44,7 @@ static uint32_t timer_clock_hz(const TIM_HandleTypeDef *h)
     uint32_t a = (uint32_t)h->Instance;
     bool apb2 = a >= APB2PERIPH_BASE && a < AHB1PERIPH_BASE;
 #else
-#error "本系列（如 H7/U5）APB 布局不同：请在此补充判断，并在 docs/05-cubemx.md 的支持系列表里登记"
+#error "本系列（如 H7/U5）APB 布局不同：请在此补充判断，并在 docs/05-CubeMX工作流.md 的支持系列表里登记"
 #endif
     uint32_t pclk = apb2 ? HAL_RCC_GetPCLK2Freq() : HAL_RCC_GetPCLK1Freq();
     uint32_t div  = apb2 ? c.APB2CLKDivider : c.APB1CLKDivider;
@@ -438,7 +438,7 @@ dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw)
 #elif defined(ADC_SAMPLETIME_71CYCLES_5)
     c.SamplingTime = ADC_SAMPLETIME_71CYCLES_5;
 #else
-#error "未知系列的 ADC 采样时间常量：请在此补充（docs/05-cubemx.md 支持系列表）"
+#error "未知系列的 ADC 采样时间常量：请在此补充（docs/05-CubeMX工作流.md 支持系列表）"
 #endif
     if (HAL_ADC_ConfigChannel(h, &c) != HAL_OK) return DZ_EIO;
     if (HAL_ADC_Start(h) != HAL_OK) return DZ_EIO;

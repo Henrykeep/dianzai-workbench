@@ -28,7 +28,7 @@ sources:
 - what: LED 高电平点亮（MicroPython 教程中的资源汇总表）
   url: https://wiki.lckfb.com/zh-hans/fdb/micropython/gpio-basic/led-control.html
 todo:
-- cubemx/ 下 .ioc 与 Core/ 是仿 CubeMX 格式手写的合成样例：请用 CubeMX 新建/打开工程按 docs/05-cubemx.md
+- cubemx/ 下 .ioc 与 Core/ 是仿 CubeMX 格式手写的合成样例：请用 CubeMX 新建/打开工程按 docs/05-CubeMX工作流.md
   标签约定配置后覆盖，再运行 make ioc-check
 - 芯片型号：样例 .ioc 写的 STM32F407VETx，高配版为 VGTx，请按丝印在 CubeMX 选择
 - 芯片具体型号（VET6 还是 VGT6）

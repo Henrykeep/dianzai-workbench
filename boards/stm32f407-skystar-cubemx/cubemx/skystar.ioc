@@ -1,6 +1,6 @@
 #MicroXplorer Configuration settings - do not modify
 # 【合成样例】按 STM32CubeMX 6.x .ioc 格式手写的子集，用于 tools/ioc_import.py 的测试与演示；
-# 不保证 CubeMX 能直接打开。真实工程请在 CubeMX 里按 docs/05-cubemx.md 的标签约定配置后保存覆盖本文件。
+# 不保证 CubeMX 能直接打开。真实工程请在 CubeMX 里按 docs/05-CubeMX工作流.md 的标签约定配置后保存覆盖本文件。
 Mcu.Family=STM32F4
 Mcu.Name=STM32F407V(E-G)Tx
 Mcu.UserName=STM32F407VETx

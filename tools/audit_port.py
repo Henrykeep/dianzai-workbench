@@ -53,7 +53,7 @@ def audit(d: pathlib.Path, third_party: bool = True):
         found.append(("A9", "高", str(d), "-", "补 LICENSE 或 SOURCE.md（出处 URL、作者、许可证）；许可证不明不得入库"))
     for need in ("README.MD", "VERSION"):
         if need not in names:
-            found.append(("A10", "中", str(d), need, "按模块三件套补齐（docs/03-模块三件套.md）"))
+            found.append(("A10", "中", str(d), need, "按模块三件套补齐（docs/03-模块三件套与版本.md）"))
     if not any("selftest" in p.read_text(encoding="utf-8", errors="replace") for p in d.rglob("*.c")):
         found.append(("A10", "中", str(d), "selftest", "补 <模块>_selftest()"))
     return found
