@@ -12,6 +12,7 @@ import difflib
 import fnmatch
 import itertools
 import pathlib
+import os
 import subprocess
 import threading
 from dataclasses import dataclass, field
@@ -68,7 +69,8 @@ class Change:
 
 
 def _run(cmd: list[str], cwd: pathlib.Path) -> tuple[int, str]:
-    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900,
+                       env={**os.environ, "PYTHONUTF8": "1"})
     return r.returncode, (r.stdout + r.stderr)
 
 

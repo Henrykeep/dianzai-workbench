@@ -1,4 +1,5 @@
 """烧录前置条件 / Keil 日志 / HardFault / ELF 变量 / 分层配置 / 风险分级动作卡（全部离线，假探针）。"""
+import os
 import json
 import pathlib
 import shutil
@@ -100,6 +101,8 @@ def test_layered_config_and_secret_guard(tmp_path, home, monkeypatch):
 
 @pytest.fixture
 def sim(home):
+    if os.name == "nt" or not shutil.which("make") or not shutil.which("cc"):
+        pytest.skip("host-sim --stream 需要 POSIX + make + cc")
     s = Session(emit=lambda e: None)
     s.connect("sim:car_2wd", 115200, log=False)
     t0 = time.monotonic()

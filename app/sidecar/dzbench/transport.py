@@ -70,7 +70,8 @@ class SimTransport(Transport):
         self.name = SIM_PREFIX + app
         elf = sim_elf(app)
         if build:
-            r = subprocess.run(["make", "-s", "BOARD=host-sim", f"APP={app}"], cwd=ROOT, capture_output=True, text=True)
+            r = subprocess.run(["make", "-s", "BOARD=host-sim", f"APP={app}"], cwd=ROOT, capture_output=True, text=True,
+                               encoding="utf-8", errors="replace", env={**os.environ, "PYTHONUTF8": "1"})
             if r.returncode != 0:
                 raise RuntimeError(f"编译仿真板失败（make BOARD=host-sim APP={app}）：\n{r.stderr[-800:]}")
         if not elf.exists():

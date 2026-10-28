@@ -1,6 +1,6 @@
 [package]
 name = "dzbench"
-version = "0.3.1"
+version = "0.3.2"
 description = "电赛工作台"
 edition = "2021"
 

@@ -14,6 +14,8 @@ BOARD ?= host-sim
 APP   ?= motor_speed_demo
 VARIANT ?=
 PY    ?= python3
+# Windows 控制台默认 cp1252/GBK：工具输出 ✓/中文会 UnicodeEncodeError
+export PYTHONUTF8 := 1
 
 # V=1 显示完整编译命令
 Q := $(if $(filter 1,$(V)),,@)
