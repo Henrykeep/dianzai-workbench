@@ -6,6 +6,8 @@
 
 ## [未发布]
 
+## [0.3.0] - 2026-10-29 MSPM0 实生成 + 视觉链路
+
 ### 视觉工具
 - `host/maixcam/ball_tracker.py`：自写钢珠跟踪器（ROI、多重门限、α-β 外推、丢失后重捕获），已接入 ball_sender。PC 合成测试通过，**实机未测**，LAB 阈值是占位值。
 - `python -m dzlink.latency`：stats 模式给出帧率/丢帧/抖动，flash 模式用屏幕闪点法测绝对延迟。计算部分有测试，**实机未测**。
