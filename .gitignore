@@ -5,3 +5,7 @@ __pycache__/
 *.whl
 *.pyc
 __pycache__/
+
+# SolidWorks 临时/锁文件
+~$*
+*.SLDBAK

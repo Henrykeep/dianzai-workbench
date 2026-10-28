@@ -1,0 +1,10 @@
+# 题目结构限制模板（复制为 <年份><题号>.yaml，如 2026H.yaml）。每条都要能在实物上量/称/看出来。
+problem: TODO            # 例：2026H
+source: TODO             # 题目 PDF 页码/条款号
+limits:
+  - id: L1
+    text: TODO           # 原文摘录，例：“装置外形尺寸不超过 …”
+    kind: size           # size | mass | material | power | mount | other
+    value: TODO          # 数值+单位
+    how_to_check: TODO   # 测量方法与工具
+    checked: false
