@@ -619,6 +619,7 @@
    "dzimu.h: #define DZIMU_ST_ATT_OK 0x04u",
    "dzimu.h: #define DZIMU_ST_BIAS_OK 0x08u",
    "dzimu.h: #define DZIMU_ST_ACC_SAT 0x10u",
+   "dzimu.h: #define DZIMU_G 9.80665f",
    "dzimu.h: typedef struct { uint32_t t_ms;",
    "dzimu.h: float acc[3];",
    "dzimu.h: float gyr[3];",
@@ -628,10 +629,11 @@
    "dzimu.h: bool dzimu_encode(const dzimu_sample_t *s, uint8_t seq, dzframe_t *f);",
    "dzimu.h: bool dzimu_decode(const dzframe_t *f, dzimu_sample_t *out);",
    "dzimu.h: float dzimu_axis(const float v[3], uint8_t axis);",
+   "dzimu.h: bool dzimu_linear_acc(const dzimu_sample_t *s, float out[3]);",
    "dzimu.h: dz_err_t dzimu_selftest(void);"
   ],
-  "hash": "f18078a8bca08aa7",
-  "version": "1.0.0"
+  "hash": "4f5d6636fbfa1db2",
+  "version": "1.1.0"
  },
  "ports/host-sim": {
   "decls": [

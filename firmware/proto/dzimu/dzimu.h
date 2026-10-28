@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZIMU_VERSION "1.0.0"
+#define DZIMU_VERSION "1.1.0"
 #define DZIMU_CH 0x20u                /**< DATA 通道号（与视觉 1、遥测 2 等不冲突） */
 #define DZIMU_SIZE 37u
 
@@ -39,6 +39,16 @@ bool dzimu_decode(const dzframe_t *f, dzimu_sample_t *out);   /**< 通道/长度
 
 /** 取安装后的某根轴：axis 0..5 = +x -x +y -y +z -z（例如模块 y 轴朝车头 → 前向加速度用 axis=2）。越界返回 NAN。 */
 float dzimu_axis(const float v[3], uint8_t axis);
+
+/**
+ * 去重力：用模块给出的 roll/pitch 估计本体系下的重力分量，从加速度里减掉，得到“运动加速度”（m/s²，模块本体坐标）。
+ * 角度约定与 firmware/algo/attitude 一致：roll=atan2(ay,az)，pitch=atan2(-ax,√(ay²+az²))，静止时
+ * acc ≈ g·[−sin p, sin r·cos p, cos r·cos p]。
+ * 只有 status 含 DZIMU_ST_ATT_OK 时姿态才可信：否则返回 false，out 原样拷贝含重力的 acc（调用方自行决定是否使用）。
+ * 误差：姿态误差 1° ≈ 0.17 m/s² 残余；剧烈加减速时互补滤波的姿态本身会被拉偏，仍有残余。
+ */
+#define DZIMU_G 9.80665f
+bool dzimu_linear_acc(const dzimu_sample_t *s, float out[3]);
 
 dz_err_t dzimu_selftest(void);
 #endif

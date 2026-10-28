@@ -159,7 +159,10 @@ def test_2026h_imu_module_path(home):
         assert wait(lambda: s.schema and s.window(1))
         assert wait(lambda: s.window(0.2) and s.window(0.2)[-1][1].get("imu_ok") == 1), "IMU 帧应被解出"
         assert wait(lambda: s.params.get("imu_axis") == 0), "参数表应含 imu_axis"
-        assert abs(s.window(0.2)[-1][1]["imu_ax_mps2"]) < 5.0   # 静止：前向加速度≈0
+        assert abs(s.window(0.2)[-1][1]["imu_ax_mps2"]) < 0.2   # 静止且模块俯仰 3°：去重力后前向加速度≈0
+        assert s.set_param("imu_grav_comp", 0)["status"] == "ok"
+        time.sleep(0.3)
+        assert -0.7 < s.window(0.1)[-1][1]["imu_ax_mps2"] < -0.3   # 不去重力：≈ −g·sin3°
         r = s.set_param("imu_axis", 9)
         assert r["applied"] == 5 and r["status"] == "clamped"
     finally:

@@ -13,7 +13,9 @@
  *   板上有 uart IMU → 收姿态模块的 dzimu 帧（RM C 型板跑 apps/imu_module）；
  *   否则有 i2c IMU   → 直接轮询 MPU6050（每 2 ms 一次，阻塞约 0.4 ms @400 kHz）；
  *   都没有           → imu_ok 恒 false，前馈自动回退为 0。
- *   安装方向用参数 imu_axis 选（0..5 = 模块 +x -x +y -y +z -z 指向车头）。注意：车身俯仰时重力分量会混进前向加速度。
+ *   安装方向用参数 imu_axis 选（0..5 = 模块 +x -x +y -y +z -z 指向车头）。
+ *   去重力：imu_grav_comp=1（默认）时，uart 姿态模块路径用模块给的 roll/pitch 减掉重力分量（dzimu_linear_acc），
+ *   姿态未收敛的帧视为不可用（imu_ok=0）；MPU6050 直连路径没有姿态解算，仍含重力（未处理，坡道上会偏）。
  */
 #include <math.h>
 #include <stdio.h>
@@ -183,8 +185,13 @@ static void read_imu(uint32_t now, const params_t *p)
         dzframe_t f; dzimu_sample_t s;
         for (i = 0; i < got; i++)
             if (dzframe_feed(&IL, buf[i], &f) && dzimu_decode(&f, &s)) {
-                S.io_in.imu_ok = (s.status & DZIMU_ST_ACC_OK) && !(s.status & DZIMU_ST_ACC_SAT);
-                if (S.io_in.imu_ok) { S.io_in.imu_ax_mps2 = dzimu_axis(s.acc, p->imu_axis); S.io_in.imu_rx_ms = now; }
+                float lin[3];
+                bool att = dzimu_linear_acc(&s, lin);
+                S.io_in.imu_ok = (s.status & DZIMU_ST_ACC_OK) && !(s.status & DZIMU_ST_ACC_SAT) && (att || !p->imu_grav_comp);
+                if (S.io_in.imu_ok) {
+                    S.io_in.imu_ax_mps2 = dzimu_axis(p->imu_grav_comp ? lin : s.acc, p->imu_axis);
+                    S.io_in.imu_rx_ms = now;
+                }
             }
     }
 #elif defined(IO_IMU_MPU)

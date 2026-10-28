@@ -61,7 +61,9 @@ static void fake_camera(void *ctx)
     host_sim_uart_inject_rx(RES_UART_VISION, raw, (uint16_t)n);
 }
 
-/* 仿真 IMU 姿态模块：200 Hz 发 dzimu，前向加速度 = 两轮平均速度的差分（模块 +x 朝车头，即 imu_axis=0） */
+/* 仿真 IMU 姿态模块：200 Hz 发 dzimu，前向加速度 = 两轮平均速度的差分（模块 +x 朝车头，即 imu_axis=0）。
+ * 模块装歪 3°（俯仰）：原始 acc_x 带 −g·sin3° ≈ −0.51 m/s² 的重力分量，用来验证主控侧去重力。 */
+#define SIM_IMU_PITCH_DEG 3.0f
 static int s_ma = -1, s_mb = -1;
 static void fake_imu(void *ctx)
 {
@@ -72,7 +74,8 @@ static void fake_imu(void *ctx)
     float v = 0.5f * (host_sim_motor_speed_rps(s_ma) + host_sim_motor_speed_rps(s_mb)) * 0.204f;
     float ax = have ? (v - last_v) / 0.005f : 0.0f;
     last_v = v; have = 1;
-    dzimu_sample_t s = { pal_millis(), { ax, 0.0f, 9.80665f }, { 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f,
+    const float pr = SIM_IMU_PITCH_DEG * 0.017453293f;
+    dzimu_sample_t s = { pal_millis(), { ax - DZIMU_G * sinf(pr), 0.0f, DZIMU_G * cosf(pr) }, { 0.0f, 0.0f, 0.0f }, 0.0f, SIM_IMU_PITCH_DEG,
                          DZIMU_ST_ACC_OK | DZIMU_ST_GYR_OK | DZIMU_ST_ATT_OK | DZIMU_ST_BIAS_OK };
     dzframe_t f; uint8_t raw[DZFRAME_MAX_FRAME];
     if (!dzimu_encode(&s, seq++, &f)) return;

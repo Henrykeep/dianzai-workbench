@@ -113,6 +113,7 @@ params:
   - { name: ff_src,      type: uint8, default: 0, min: 0, max: 1, unit: "", desc: "0 编码器差分 / 1 IMU（IMU 失效自动回退为 0 前馈）" }
   - { name: ff_dead_mps2, type: float, default: 0.15, min: 0, max: 5, unit: "m/s²", desc: 死区：小于它不前馈（滤掉噪声抖动） }
   - { name: ff_fail_mps2, type: float, default: 8, min: 0.5, max: 50, unit: "m/s²", desc: 超过它视为读数异常 → 前馈置 0 }
+  - { name: imu_grav_comp, type: uint8, default: 1, min: 0, max: 1, unit: "", desc: "1=用姿态模块的 roll/pitch 去掉前向加速度里的重力分量（仅 uart 姿态模块路径；未上板验证）" }
   - { name: imu_axis, type: uint8, default: 0, min: 0, max: 5, unit: "", desc: "IMU 哪根轴朝车头：0 +x 1 −x 2 +y 3 −y 4 +z 5 −z（按实际安装改）" }
   - { name: imu_timeout_ms, type: uint32, default: 50, min: 1, max: 1000, unit: "ms", desc: IMU 数据超过它没更新 → 前馈置 0 }
   # 摆杆机械（P2 那台机械的值，换机械必须重测）

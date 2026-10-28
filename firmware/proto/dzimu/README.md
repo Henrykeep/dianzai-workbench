@@ -11,3 +11,8 @@ IMU 板（RoboMaster C 型板跑 `apps/imu_module`，或任何能发 dzframe 的
 
 ## 参考来源
 - 自写；字段按 MAVLink `RAW_IMU`/`ATTITUDE` 消息的常见组合裁剪（mavlink.io），没有复制代码。
+
+
+## 去重力（1.1.0）
+
+`dzimu_linear_acc(&s, out)`：按 roll/pitch 估计本体系重力 g·[−sin p, sin r·cos p, cos r·cos p] 并减掉。只在 `DZIMU_ST_ATT_OK` 时返回 true；否则 out 是原始（含重力）加速度。姿态误差 1° ≈ 0.17 m/s² 残余；急加减速时互补滤波姿态被拉偏，仍有残余。selftest 覆盖俯仰 10° 的情况。**[仿真]**，未上板。

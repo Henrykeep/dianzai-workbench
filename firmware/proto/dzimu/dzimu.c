@@ -36,6 +36,20 @@ float dzimu_axis(const float v[3], uint8_t axis)
     return (axis & 1u) ? -x : x;
 }
 
+bool dzimu_linear_acc(const dzimu_sample_t *s, float out[3])
+{
+    if (!s || !out) return false;
+    for (int i = 0; i < 3; i++) out[i] = s->acc[i];
+    if (!(s->status & DZIMU_ST_ATT_OK)) return false;
+    const float d2r = 0.017453293f;
+    float r = s->roll_deg * d2r, p = s->pitch_deg * d2r;
+    float sr = sinf(r), cr = cosf(r), sp = sinf(p), cp = cosf(p);
+    out[0] -= DZIMU_G * -sp;
+    out[1] -= DZIMU_G * sr * cp;
+    out[2] -= DZIMU_G * cr * cp;
+    return true;
+}
+
 dz_err_t dzimu_selftest(void)
 {
     dzimu_sample_t a = { 1234u, { 0.1f, -0.2f, 9.8f }, { 0.01f, 0.02f, -0.03f }, 1.5f, -2.5f, 0x0Fu }, b;
@@ -49,5 +63,13 @@ dz_err_t dzimu_selftest(void)
     if (!got || !dzimu_decode(&g, &b)) return DZ_EFAIL;
     if (b.t_ms != a.t_ms || b.acc[2] != a.acc[2] || b.gyr[1] != a.gyr[1] || b.pitch_deg != a.pitch_deg || b.status != a.status) return DZ_EFAIL;
     if (dzimu_axis(a.acc, 3) != 0.2f || !isnan(dzimu_axis(a.acc, 6))) return DZ_EFAIL;
+    /* 俯仰 10°、前向真实加速 0.5 m/s²：去重力后 x ≈ 0.5，y/z ≈ 0 */
+    {
+        float pr = 10.0f * 0.017453293f, l[3];
+        dzimu_sample_t t = { 0u, { 0.5f - DZIMU_G * sinf(pr), 0.0f, DZIMU_G * cosf(pr) }, { 0 }, 0.0f, 10.0f, DZIMU_ST_ATT_OK };
+        if (!dzimu_linear_acc(&t, l) || fabsf(l[0] - 0.5f) > 1e-3f || fabsf(l[1]) > 1e-3f || fabsf(l[2]) > 1e-3f) return DZ_EFAIL;
+        t.status = 0u;
+        if (dzimu_linear_acc(&t, l) || l[0] != t.acc[0]) return DZ_EFAIL;
+    }
     return DZ_OK;
 }
