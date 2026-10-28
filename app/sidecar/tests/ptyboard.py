@@ -29,7 +29,8 @@ def schema_of(app: str) -> Schema:
 
 
 class PtyBoard:
-    def __init__(self, app: str, path: pathlib.Path):
+    def __init__(self, app: str, path: pathlib.Path, uid: int | None = None):
+        self.uid = uid                                # 心跳里的板 ID（DZ_SIM_UID）；None = 固件报 0（未知）
         self.path = pathlib.Path(path)
         self.lock = threading.Lock()
         self.master: int | None = None
@@ -44,7 +45,8 @@ class PtyBoard:
     # ---------------------------------------------------------------- 板子（固件进程）
     def _start(self, app: str) -> None:
         self.app, self.schema = app, schema_of(app)
-        self.proc = subprocess.Popen([str(build_sim(app)), "--stream", "1.0"], stdin=subprocess.PIPE,
+        env = dict(os.environ, **({"DZ_SIM_UID": hex(self.uid)} if self.uid else {}))
+        self.proc = subprocess.Popen([str(build_sim(app)), "--stream", "1.0"], stdin=subprocess.PIPE, env=env,
                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
         self.parser = Parser()
         threading.Thread(target=self._board_out, args=(self.proc,), daemon=True).start()

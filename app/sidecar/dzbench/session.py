@@ -15,7 +15,8 @@ from . import lastsession, snapshots
 from ._dzlink import DATA, HEARTBEAT, PARAM_ACK, PARAM_SET, Parser, encode
 from .textparse import KvParser
 from .logfile import RX, TX, LogWriter
-from .ports import PortOpenError, explain_open_error, find_identity, identity, probe_baud
+from . import ports as _ports
+from .ports import PortOpenError, explain_open_error, identity, probe_baud
 from .replay import ReplayTransport
 from .schema import Schema, find_by_hash
 from .transport import SIM_PREFIX, Transport, open_transport
@@ -58,6 +59,7 @@ class Session:
         self.parser = Parser()
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
+        self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
         self.samples: collections.deque = collections.deque()
         self._new: list = []
         self.params: dict[str, float] = {}
@@ -167,7 +169,7 @@ class Session:
     def _reconnect_loop(self, port: str, baud: int, gen: int | None) -> None:
         """指数退避重开同一个口（同一波特率），直到成功或用户主动断开；成功后重读全部参数。
         板子在断线期间应已按心跳超时自行进入安全状态（QUESTIONS 决定 1），这里不自动解除急停。"""
-        k = 0
+        k, warned = 0, False
         while True:
             time.sleep(self.RECONNECT_BACKOFF[min(k, len(self.RECONNECT_BACKOFF) - 1)])
             k += 1
@@ -177,8 +179,13 @@ class Session:
             try:
                 tr = self._open(port, baud)
             except Exception:  # noqa: BLE001
-                moved = find_identity(getattr(self, "ident", None))   # 同一块板插到别的口 / 换了 COM 号
-                if not moved or moved == port:
+                moved, why = _ports.pick_moved(port, getattr(self, "ident", None), self.board_uid,
+                                               self.schema_hash, baud)               # 同一块板插到别的口 / 换了 COM 号
+                if why == "ambiguous" and not warned:
+                    warned = True
+                    self.emit(LinkError("port_ambiguous", f"{port} 不见了，但现在插着好几块同型号的板，分不清哪块是刚才那块，没有自动跟过去",
+                                        "在端口列表里手动选一下再点“连接”；固件升到 dzctl 0.3.0（心跳带板 ID）后就能自动认板").as_dict())
+                if not moved:
                     continue
                 try:
                     tr = self._open(moved, baud)
@@ -228,6 +235,8 @@ class Session:
                 self.last_hb = now
                 if len(payload) >= 4:
                     h = struct.unpack_from("<I", payload)[0]
+                    if len(payload) >= 8:
+                        self.board_uid = struct.unpack_from("<I", payload, 4)[0] or None
                     if h != self.schema_hash:
                         self._bind_schema(h)
             elif kind == DATA and self.schema and id_ == self.schema.telem_id:

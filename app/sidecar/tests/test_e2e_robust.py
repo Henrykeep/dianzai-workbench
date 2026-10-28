@@ -104,14 +104,14 @@ def test_unplug_replug(board, side):
 
 
 def test_port_moved(board, side, tmp_path, monkeypatch):
-    import dzbench.session as sess
+    import dzbench.ports as ports
     st, mk = side
     ui = mk()
     ui.ok("connect", port=str(board.path), baud="auto")
     ui.wait(lambda e: e["type"] == "schema")
     new = tmp_path / "ttyDZ1"
     st.srv.session.ident = (0x1A86, 0x7523, "X")
-    monkeypatch.setattr(sess, "find_identity", lambda ident: str(new) if ident and new.exists() else None)
+    monkeypatch.setattr(ports, "candidates", lambda ident: [str(new)] if new.exists() else [])   # USB 序列号 "X" 唯一
     m = ui.mark()
     board.unplug()
     board.path = new
@@ -248,3 +248,65 @@ def test_garbage_on_line(board, side):
     assert ui.ok("param_set", name="max_rps", value=3.5)["status"] == "ok", "乱码之后照常能调参"
     time.sleep(0.6)
     drive(ui, board)
+
+
+def _two_boards(tmp_path, uids):
+    from ptyboard import PtyBoard
+    return PtyBoard("car_2wd", tmp_path / "ttyA", uid=uids[0]), PtyBoard("car_2wd", tmp_path / "ttyB", uid=uids[1])
+
+
+def test_two_identical_boards_pinned_by_uid(home, side, tmp_path, monkeypatch):
+    """两块同型号板（CH340 无序列号）同时插着，A 拔了插到新口：靠心跳里的板 ID 跟回 A，不会跟到 B。"""
+    import dzbench.ports as ports
+    st, mk = side
+    a, b = _two_boards(tmp_path, (0xA1, 0xB2))
+    try:
+        ui = mk()
+        ui.ok("connect", port=str(a.path), baud=115200)
+        ui.wait(lambda e: e["type"] == "schema")
+        assert until(lambda: st.srv.session.board_uid == 0xA1)
+        st.srv.session.ident = (0x1A86, 0x7523, None)
+        new = tmp_path / "ttyA2"
+        monkeypatch.setattr(ports, "candidates", lambda ident: [str(b.path)] + ([str(new)] if new.exists() else []))
+        m = ui.mark()
+        a.unplug()
+        time.sleep(1.0)                                            # 这段时间只有 B 在：不能跟过去
+        assert not [e for e in ui.events[m:] if e["type"] in ("port_moved", "reconnected")]
+        a.path = new
+        a.replug()
+        e = ui.wait(lambda e: e["type"] == "port_moved", start=m, timeout=15)
+        assert e["new"] == str(new)
+        ui.wait(lambda e: e["type"] == "reconnected", start=m, timeout=10)
+        ui.ok("send_data", id=1, hex=GO)                           # 命令只到 A
+        time.sleep(0.4)
+        assert board_sp(b) in (None, 0.0)
+    finally:
+        a.close()
+        b.close()
+
+
+def test_two_identical_boards_without_uid_are_not_guessed(home, side, tmp_path, monkeypatch):
+    """旧固件（心跳没有板 ID）+ 无序列号：两个候选时不猜，提示手动选。"""
+    import dzbench.ports as ports
+    st, mk = side
+    a, b = _two_boards(tmp_path, (None, None))
+    c = None
+    try:
+        ui = mk()
+        ui.ok("connect", port=str(a.path), baud=115200)
+        ui.wait(lambda e: e["type"] == "schema")
+        st.srv.session.ident = (0x1A86, 0x7523, None)
+        from ptyboard import PtyBoard
+        m = ui.mark()
+        a.unplug()
+        c = PtyBoard("car_2wd", tmp_path / "ttyC")                  # 又插上一块同型号的
+        monkeypatch.setattr(ports, "candidates", lambda ident: [str(b.path), str(c.path)])
+        e = ui.wait(lambda e: e.get("code") == "port_ambiguous", start=m, timeout=15)
+        assert "手动选" in e["fix"] and han(e["message"])
+        time.sleep(1.0)
+        assert not [e for e in ui.events[m:] if e["type"] in ("port_moved", "reconnected")]
+    finally:
+        a.close()
+        b.close()
+        if c:
+            c.close()

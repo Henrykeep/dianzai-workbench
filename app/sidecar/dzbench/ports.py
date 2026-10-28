@@ -64,17 +64,59 @@ def identity(device: str) -> tuple | None:
     return None
 
 
-def find_identity(ident: tuple | None) -> str | None:
+def candidates(ident: tuple | None) -> list[str]:
+    """和 ident 同 VID/PID 的口（序列号有就也要相同）。CH340 多数没有序列号：两块同型号板会都在这里。"""
     if not ident:
-        return None
+        return []
+    out = []
     try:
         from serial.tools import list_ports as lp
         for p in lp.comports():
-            if (p.vid, p.pid, p.serial_number) == ident:
-                return p.device
+            if (p.vid, p.pid) == ident[:2] and (ident[2] is None or p.serial_number == ident[2]):
+                out.append(p.device)
     except Exception:  # noqa: BLE001
         pass
-    return None
+    return out
+
+
+def heartbeat_id(device: str, baud: int, listen_s: float = 0.8) -> tuple[int, int] | None:
+    """只听不发：返回板子心跳里的 (schema_hash, board_uid)；打不开（被别的程序占着）/ 没心跳返回 None。"""
+    from ._dzlink import HEARTBEAT
+    try:
+        s = open_serial(device, baud, timeout=0.05)
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        p, t0 = Parser(), time.monotonic()
+        while time.monotonic() - t0 < listen_s:
+            for kind, _id, _seq, pl in p.feed(s.read(256)):
+                if kind == HEARTBEAT and len(pl) >= 4:
+                    return (int.from_bytes(pl[:4], "little"), int.from_bytes(pl[4:8], "little") if len(pl) >= 8 else 0)
+        return None
+    finally:
+        s.close()
+
+
+def pick_moved(port: str, ident: tuple | None, uid: int | None, schema_hash: int | None, baud: int,
+               cands: list[str] | None = None) -> tuple[str | None, str]:
+    """线拔了插到别的口后找回“同一块板”。返回 (新口 | None, 为什么)。
+    有板 ID（固件心跳带 board_uid）→ 只认 ID 相同的；没有 ID 但 USB 序列号唯一 → 认序列号；
+    都没有时只剩一个候选、且 schema 一样才跟；两个以上同型号候选 → 不跟（宁可不连也不连错板）。"""
+    cands = [c for c in (candidates(ident) if cands is None else cands) if c != port]
+    if not cands:
+        return None, "none"
+    if uid:
+        for c in cands:
+            h = heartbeat_id(c, baud)
+            if h and h[1] == uid:
+                return c, "uid"
+        return None, "none"
+    if ident and ident[2] is not None and len(cands) == 1:
+        return cands[0], "serial"
+    if len(cands) == 1:
+        h = heartbeat_id(cands[0], baud)
+        return (cands[0], "schema") if h and h[0] == schema_hash else (None, "none")
+    return None, "ambiguous"
 
 
 class PortOpenError(Exception):
