@@ -1,0 +1,26 @@
+# PC 上的虚拟板卡：同一份应用代码不改一行，在电脑上跑电机+编码器仿真。
+# 用来证明应用层与硬件无关，也用于单元测试和"先在电脑上把逻辑跑通再上板"。
+schema_version: 1
+name: host-sim
+vendor: 电赛工作台
+description: 主机仿真板卡（ports/host-sim），资源全部为软件模拟
+port: host-sim
+mcu:
+  family: host
+  part: x86_64/arm64 主机
+resources:
+  gpio:
+    - { name: LED, pin: SIM0, dir: out }
+    - { name: KEY, pin: SIM1, dir: in }
+    - { name: MOTOR_A_IN1, pin: SIM2, dir: out }
+    - { name: MOTOR_A_IN2, pin: SIM3, dir: out }
+  pwm:
+    - { name: MOTOR_A, timer: SIMTIM0, channel: 1, pin: SIM4, freq_hz: 20000 }
+  encoder:
+    - { name: MOTOR_A, timer: SIMTIM1, pin_a: SIM5, pin_b: SIM6 }
+  uart:
+    - { name: LINK, instance: SIMUART0, tx: SIM7, rx: SIM8, baud: 460800 }
+  timer:
+    - { name: CTRL, instance: SIMTIM2 }
+  adc:
+    - { name: VBAT, instance: SIMADC0, channel: 0, pin: SIM9 }

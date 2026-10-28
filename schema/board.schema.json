@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local/dianzai-workbench/board.schema.json",
+  "title": "电赛工作台 板卡描述文件 board.yaml",
+  "description": "描述一块开发板：芯片、时钟、工具链、以及应用可用的逻辑资源到物理引脚/外设的映射。上层代码只认 resources 里的逻辑名。值为字符串 \"TODO\" 表示待用户确认，validate_board.py 默认给警告，--strict 时报错。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "mcu", "port", "resources"],
+  "$defs": {
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z0-9_]{0,31}$",
+      "description": "逻辑名，大写字母开头，只含大写字母/数字/下划线，生成 RES_<类型>_<名字>"
+    },
+    "pin": {
+      "type": "string",
+      "minLength": 1,
+      "description": "物理引脚名。STM32/MSPM0 形如 PA8，ESP32 形如 GPIO12；未知填 TODO"
+    },
+    "todo_or_int": {
+      "oneOf": [ { "type": "integer" }, { "const": "TODO" } ]
+    },
+    "common": {
+      "type": "object",
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "note": { "type": "string", "description": "给人看的说明，例如接线颜色、来源" },
+        "verified": { "type": "boolean", "description": "是否已对照原理图/实物确认" }
+      }
+    },
+    "gpio": {
+      "allOf": [ { "$ref": "#/$defs/common" } ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["name", "pin", "dir"],
+      "properties": {
+        "pin": { "$ref": "#/$defs/pin" },
+        "dir": { "enum": ["in", "out"] },
+        "pull": { "enum": ["none", "up", "down"], "default": "none" },
+        "active_low": { "type": "boolean", "default": false },
+        "init": { "type": "boolean", "default": false, "description": "输出脚上电后的逻辑电平（true=有效）" },
+        "open_drain": { "type": "boolean", "default": false }
+      }
+    },
+    "pwm": {
+      "allOf": [ { "$ref": "#/$defs/common" } ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["name", "timer", "channel", "pin", "freq_hz"],
+      "properties": {
+        "timer": { "type": "string", "description": "外设实例，例如 TIM1、TIMA0、LEDC_TIMER_0" },
+        "channel": { "$ref": "#/$defs/todo_or_int" },
+        "pin": { "$ref": "#/$defs/pin" },
+        "freq_hz": { "type": "integer", "minimum": 1, "maximum": 1000000 }
+      }
+    },
+    "encoder": {
+      "allOf": [ { "$ref": "#/$defs/common" } ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["name", "timer", "pin_a", "pin_b"],
+      "properties": {
+        "timer": { "type": "string" },
+        "pin_a": { "$ref": "#/$defs/pin" },
+        "pin_b": { "$ref": "#/$defs/pin" },
+        "invert": { "type": "boolean", "default": false },
+        "filter": { "type": "integer", "minimum": 0, "maximum": 15, "default": 6, "description": "输入数字滤波等级（STM32 ICxF），抗干扰" }
+      }
+    },
+    "uart": {
+      "allOf": [ { "$ref": "#/$defs/common" } ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["name", "instance", "tx", "rx", "baud"],
+      "properties": {
+        "instance": { "type": "string" },
+        "tx": { "$ref": "#/$defs/pin" },
+        "rx": { "$ref": "#/$defs/pin" },
+        "baud": { "type": "integer", "minimum": 1200, "maximum": 10500000 },
+        "rx_buf": { "type": "integer", "minimum": 16, "maximum": 8192, "multipleOf": 2, "default": 512 },
+        "tx_buf": { "type": "integer", "minimum": 16, "maximum": 8192, "default": 256 },
+        "dma": { "type": "boolean", "default": true }
+      }
+    },
+    "timer": {
+      "allOf": [ { "$ref": "#/$defs/common" } ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["name", "instance"],
+      "properties": {
+        "instance": { "type": "string" },
+        "irq_priority": { "type": "integer", "minimum": 0, "maximum": 15, "default": 1 }
+      }
+    },
+    "adc": {
+      "allOf": [ { "$ref": "#/$defs/common" } ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": ["name", "instance", "channel", "pin"],
+      "properties": {
+        "instance": { "type": "string" },
+        "channel": { "$ref": "#/$defs/todo_or_int" },
+        "pin": { "$ref": "#/$defs/pin" },
+        "bits": { "type": "integer", "minimum": 8, "maximum": 16, "default": 12 },
+        "vref_mv": { "type": "integer", "minimum": 1000, "maximum": 5000, "default": 3300 },
+        "scale_num": { "type": "integer", "minimum": 1, "default": 1 },
+        "scale_den": { "type": "integer", "minimum": 1, "default": 1 }
+      }
+    }
+  },
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{1,47}$", "description": "板卡目录名，小写加连字符" },
+    "vendor": { "type": "string" },
+    "description": { "type": "string" },
+    "port": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "使用 ports/<port>/ 下的移植层" },
+    "mcu": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "part"],
+      "properties": {
+        "family": { "type": "string", "description": "例如 stm32f4、stm32f1、mspm0g、esp32、host" },
+        "part": { "type": "string", "description": "完整型号；不确定填 TODO" },
+        "core": { "type": "string" },
+        "fpu": { "type": "boolean" },
+        "flash_kb": { "$ref": "#/$defs/todo_or_int" },
+        "ram_kb": { "$ref": "#/$defs/todo_or_int" }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hse_hz": { "type": "integer", "minimum": 0 },
+        "lse_hz": { "type": "integer", "minimum": 0 },
+        "sysclk_hz": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "compiler": { "type": "string" },
+        "flasher": { "type": "string" },
+        "openocd_interface": { "type": "string" },
+        "openocd_target": { "type": "string" }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "信息来源，每条写明出处，便于复核",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["what", "url"],
+        "properties": { "what": { "type": "string" }, "url": { "type": "string" } }
+      }
+    },
+    "todo": { "type": "array", "items": { "type": "string" }, "description": "需要用户确认的事项" },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gpio":    { "type": "array", "items": { "$ref": "#/$defs/gpio" } },
+        "pwm":     { "type": "array", "items": { "$ref": "#/$defs/pwm" } },
+        "encoder": { "type": "array", "items": { "$ref": "#/$defs/encoder" } },
+        "uart":    { "type": "array", "items": { "$ref": "#/$defs/uart" } },
+        "timer":   { "type": "array", "items": { "$ref": "#/$defs/timer" } },
+        "adc":     { "type": "array", "items": { "$ref": "#/$defs/adc" } }
+      }
+    }
+  }
+}
