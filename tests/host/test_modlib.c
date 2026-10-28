@@ -207,6 +207,40 @@ TEST(hcsr04_fake)
     CHECK(hcsr04_set_temp(&hi, 99.0f) == DZ_EINVAL);
 }
 
+/* ---- PAL 1.2.0 边沿中断：host-sim 的 host_sim_gpio_set_input 同步触发回调 ---- */
+static int s_irq_n; static bool s_irq_lv; static uint32_t s_irq_t;
+static void irq_spy(void *ctx, bool lv, uint32_t t) { (void)ctx; s_irq_n++; s_irq_lv = lv; s_irq_t = t; }
+TEST(gpio_irq_and_hcsr04_irq)
+{
+    fresh();
+    host_sim_gpio_set_input(RES_GPIO_US_ECHO, false);
+    CHECK(pal_gpio_irq_attach(RES_GPIO_US_ECHO, PAL_EDGE_RISING, irq_spy, 0) == DZ_OK);
+    CHECK(pal_gpio_irq_attach(RES_GPIO_US_ECHO, (pal_edge_t)0, irq_spy, 0) == DZ_EINVAL);
+    CHECK(pal_gpio_irq_attach(RES_GPIO_US_ECHO, PAL_EDGE_BOTH, 0, 0) == DZ_EINVAL);
+    CHECK(pal_gpio_irq_attach(BOARD_GPIO_COUNT, PAL_EDGE_BOTH, irq_spy, 0) == DZ_ENODEV);
+    s_irq_n = 0;
+    host_sim_gpio_set_input(RES_GPIO_US_ECHO, true);
+    CHECK(s_irq_n == 1 && s_irq_lv && s_irq_t == pal_micros());
+    host_sim_gpio_set_input(RES_GPIO_US_ECHO, true);  CHECK(s_irq_n == 1);   /* 电平没变不触发 */
+    host_sim_gpio_set_input(RES_GPIO_US_ECHO, false); CHECK(s_irq_n == 1);   /* 只挂了上升沿 */
+    CHECK(pal_gpio_irq_detach(RES_GPIO_US_ECHO) == DZ_OK);
+    host_sim_gpio_set_input(RES_GPIO_US_ECHO, true);  CHECK(s_irq_n == 1);
+    host_sim_gpio_set_input(RES_GPIO_US_ECHO, false);
+    /* hcsr04 中断模式：回波 1800 us，中断时间戳 = 仿真时间，脉宽精确 */
+    hcsr04_t h; hcsr04_cfg_t c = hcsr04_cfg_default(RES_GPIO_US_TRIG, RES_GPIO_US_ECHO);
+    CHECK(hcsr04_init(&h, &c) == DZ_OK);
+    CHECK(hcsr04_attach_irq(&h) == DZ_OK && h.irq);
+    CHECK(!hcsr04_update(&h, pal_millis(), pal_micros(), true) && h.phase == HCSR04_WAIT_RISE);
+    pal_delay_us(450); host_sim_gpio_set_input(RES_GPIO_US_ECHO, true);
+    CHECK(h.phase == HCSR04_WAIT_FALL);
+    pal_delay_us(1800); host_sim_gpio_set_input(RES_GPIO_US_ECHO, false);
+    CHECK(h.phase == HCSR04_DONE);
+    CHECK(hcsr04_update(&h, pal_millis(), pal_micros(), true) && hcsr04_valid(&h));
+    CHECK_NEAR(hcsr04_mm(&h), hcsr04_width_to_mm(&h, 1800u), 0.01f);   /* 1800 us = 仿真步长整数倍 */
+    CHECK(hcsr04_detach_irq(&h) == DZ_OK && !h.irq);
+    host_sim_gpio_set_input(RES_GPIO_US_ECHO, true); host_sim_gpio_set_input(RES_GPIO_US_ECHO, false);
+}
+
 /* ---- 灰度：4 路模拟（假传感器 = 线在 x 处的高斯反射）+ 8 路数字 ---- */
 #include <math.h>
 static void line_scene(float line_x_mm, float pitch)
@@ -480,6 +514,6 @@ TEST(motor_2pwm_drv8833)
 void suite_modlib(void)
 {
     RUN(servo_pwm); RUN(buzzer_patterns); RUN(battery_lowvolt);
-    RUN(ssd1306_pal_transports); RUN(hcsr04_fake); RUN(line_sensor_fake); RUN(stepper_ramp);
+    RUN(ssd1306_pal_transports); RUN(hcsr04_fake); RUN(gpio_irq_and_hcsr04_irq); RUN(line_sensor_fake); RUN(stepper_ramp);
     RUN(st77xx_fake); RUN(bt_serial_fake); RUN(motor_2pwm_drv8833);
 }

@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.1.0"
+#define PAL_VERSION "1.2.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -97,6 +97,17 @@ void pal_delay_ms(uint32_t ms);
 dz_err_t pal_gpio_write(pal_id_t id, bool active);         /**< [ISR-safe] */
 dz_err_t pal_gpio_read(pal_id_t id, bool *active);         /**< [ISR-safe] */
 dz_err_t pal_gpio_toggle(pal_id_t id);                     /**< [ISR-safe] */
+
+/*
+ * GPIO 边沿中断（PAL 1.2.0 新增）。边沿按“逻辑电平”算：RISING = 变为有效（active_low 脚即物理下降沿）。
+ * 回调在中断上下文执行：level = 触发后的逻辑电平，t_us = pal_micros() 时间戳（端口在中断入口处读取）。
+ * 资源必须是输入脚；同一引脚号在 STM32 上共用一条 EXTI 线，第二个不同端口的同号脚返回 DZ_EBUSY。
+ * 不支持中断的端口返回 DZ_ENOTSUP（上层退回轮询）。
+ */
+typedef enum { PAL_EDGE_RISING = 1, PAL_EDGE_FALLING = 2, PAL_EDGE_BOTH = 3 } pal_edge_t;
+typedef void (*pal_gpio_irq_cb_t)(void *ctx, bool level, uint32_t t_us);
+dz_err_t pal_gpio_irq_attach(pal_id_t id, pal_edge_t edge, pal_gpio_irq_cb_t cb, void *ctx);
+dz_err_t pal_gpio_irq_detach(pal_id_t id);
 
 /* ------------------------------------------------------------------------- */
 /* PWM                                                                       */

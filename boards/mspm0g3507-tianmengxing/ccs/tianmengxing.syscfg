@@ -14,6 +14,10 @@ const GPIO3  = GPIO.addInstance();
 const GPIO4  = GPIO.addInstance();
 const GPIO5  = GPIO.addInstance();
 const GPIO6  = GPIO.addInstance();
+const GPIO7  = GPIO.addInstance();
+const GPIO8  = GPIO.addInstance();
+const ADC12  = scripting.addModule("/ti/driverlib/ADC12", {}, false);
+const ADC121 = ADC12.addInstance();
 const I2C    = scripting.addModule("/ti/driverlib/I2C", {}, false);
 const I2C1   = I2C.addInstance();
 const SPI    = scripting.addModule("/ti/driverlib/SPI", {}, false);
@@ -113,3 +117,18 @@ UART2.enabledInterrupts        = ["RX"];
 UART2.peripheral.$assign       = "UART1";
 UART2.peripheral.rxPin.$assign = "PA9";
 UART2.peripheral.txPin.$assign = "PA8";
+
+/* 超声波 HC-SR04（v0.6.0）：TRIG 输出、ECHO 输入（双边沿中断由 pal_gpio_irq_attach 运行时打开）；【未验证】引脚未对照原理图 */
+GPIO7.$name                         = "GPIO_US_TRIG";
+GPIO7.associatedPins[0].$name       = "US_TRIG";
+GPIO7.associatedPins[0].pin.$assign = "PB8";
+GPIO8.$name                         = "GPIO_US_ECHO";
+GPIO8.associatedPins[0].$name       = "US_ECHO";
+GPIO8.associatedPins[0].direction   = "INPUT";
+GPIO8.associatedPins[0].pin.$assign = "PB9";
+
+/* ADC0：电池电压（单次软件触发；pal_adc_read 运行时改 MEM0 通道）；【未验证】引脚未对照原理图 */
+ADC121.$name                 = "ADC12_0";
+ADC121.adcMem0chansel        = "DL_ADC12_INPUT_CHAN_2";
+ADC121.peripheral.$assign    = "ADC0";
+ADC121.peripheral.adcPin2.$assign = "PA25";

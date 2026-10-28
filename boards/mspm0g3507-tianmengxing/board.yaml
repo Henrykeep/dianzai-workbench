@@ -39,6 +39,12 @@ resources:
   - name: MOTOR_B_IN2
     pin: PB16
     dir: out
+  - name: US_TRIG         # HC-SR04 触发（v0.6.0）；【未验证】引脚未对照原理图
+    pin: PB8
+    dir: out
+  - name: US_ECHO         # HC-SR04 回波：输入，边沿中断由 pal_gpio_irq_attach 运行时打开；5 V 模块需分压
+    pin: PB9
+    dir: in
   pwm:                    # SysConfig 实例名 PWM_TIMG0（两路共用 TIMG0）
   - name: MOTOR_A
     timer: TIMG0
@@ -89,6 +95,15 @@ resources:
     mode: 3
     hz: 1000000
     note: 板外 SPI 器件（BMI088 / TFT 等，一个设备一根片选）；【编译】未上板
+  adc:                    # SysConfig 实例 ADC12_0（ADC0 单次软件触发）；pal_adc_read 运行时切 MEM0 通道
+  - name: VBAT
+    instance: ADC0
+    channel: 2
+    pin: PA25
+    bits: 12
+    vref_mv: 3300
+    scale_num: 11         # 假定 10k:1k 分压（2S 锂电 8.4 V → 0.76 V）；【未验证】天猛星板上没有这个分压，要自己焊
+    scale_den: 1
   timer:
   - name: CTRL
     instance: TIMG7

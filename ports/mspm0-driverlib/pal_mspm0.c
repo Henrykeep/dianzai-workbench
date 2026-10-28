@@ -10,16 +10,14 @@
  * 前提：
  *  - SysTick 由本层配置为 1 ms（SysConfig 里不要再启用 SysTick）；
  *  - 节拍定时器在 SysConfig 中为 Periodic、开 ZERO 中断、计数时钟为整 MHz（TIMER_<名>_INST_CLK_FREQ）；
- *  - 串口开 RX 中断（本层再按需开关 TX 中断），不使用 DMA。
+ *  - 串口开 RX 中断（本层再按需开关 TX 中断），不使用 DMA；
+ *  - ADC：每个 ADC12 外设一个 SysConfig 实例 ADC12_<n>（单次、软件触发）。
  */
 #include <string.h>
 #include "port_mspm0.h"
 #include "board_gen.h"
 #include "dz_wrap.h"
 
-#if BOARD_ADC_COUNT > 0
-#error "mspm0-driverlib 移植层还没实现 ADC（pal_adc_*）"
-#endif
 
 static m0_diag_t s_diag;
 const m0_diag_t *m0_diag(void) { return &s_diag; }
@@ -138,6 +136,61 @@ dz_err_t pal_gpio_toggle(pal_id_t id)
 #if BOARD_GPIO_COUNT > 0
     if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
     DL_GPIO_togglePins(g_m0_gpio[id].port, g_m0_gpio[id].pin);
+    return DZ_OK;
+#else
+    (void)id; return DZ_ENODEV;
+#endif
+}
+
+/* ---------- GPIO 边沿中断（PAL 1.2.0）----------
+ * .syscfg 里引脚只需设成输入；attach 时运行时设 RISE_FALL 极性、清标志、开引脚中断和 GROUP1 NVIC。
+ * 边沿按逻辑电平在软件里过滤（中断入口读一次电平；脉宽短于中断延迟（几 us）时可能读错，HC-SR04 回波 ≥ 100 us 无影响）。
+ * 中断入口：board_gen.c 生成的 GROUP1_IRQHandler 调 dz_m0_gpio_irq_isr()。【编译】未上板。 */
+#if BOARD_GPIO_COUNT > 0
+static struct { pal_gpio_irq_cb_t cb; void *ctx; uint8_t edge; } s_girq[BOARD_GPIO_COUNT];
+#endif
+void dz_m0_gpio_irq_isr(void)
+{
+#if BOARD_GPIO_COUNT > 0
+    uint32_t t = pal_micros();
+    for (unsigned i = 0; i < BOARD_GPIO_COUNT; i++) {
+        if (!s_girq[i].cb) continue;
+        const m0_gpio_t *g = &g_m0_gpio[i];
+        if (!DL_GPIO_getEnabledInterruptStatus(g->port, g->pin)) continue;
+        DL_GPIO_clearInterruptStatus(g->port, g->pin);
+        bool hi = DL_GPIO_readPins(g->port, g->pin) != 0u;
+        bool lv = g->active_low ? !hi : hi;
+        if (s_girq[i].edge & (lv ? PAL_EDGE_RISING : PAL_EDGE_FALLING)) s_girq[i].cb(s_girq[i].ctx, lv, t);
+    }
+#endif
+}
+dz_err_t pal_gpio_irq_attach(pal_id_t id, pal_edge_t edge, pal_gpio_irq_cb_t cb, void *ctx)
+{
+#if BOARD_GPIO_COUNT > 0
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    if (!cb || edge < PAL_EDGE_RISING || edge > PAL_EDGE_BOTH) return DZ_EINVAL;
+    const m0_gpio_t *g = &g_m0_gpio[id];
+    unsigned n = 0;
+    while (n < 31u && !(g->pin & (1u << n))) n++;
+    DL_GPIO_disableInterrupt(g->port, g->pin);
+    s_girq[id].ctx = ctx; s_girq[id].edge = (uint8_t)edge; s_girq[id].cb = cb;
+    /* 2 位/脚，3 = RISE_FALL；DriverLib 的 set*PinsPolarity 是“或”写入，正好把该脚两位都置上 */
+    if (n < 16u) DL_GPIO_setLowerPinsPolarity(g->port, 3u << (2u * n));
+    else DL_GPIO_setUpperPinsPolarity(g->port, 3u << (2u * (n - 16u)));
+    DL_GPIO_clearInterruptStatus(g->port, g->pin);
+    DL_GPIO_enableInterrupt(g->port, g->pin);
+    NVIC_EnableIRQ(GPIOB_INT_IRQn);   /* GPIOA/GPIOB 共用 INT_GROUP1 */
+    return DZ_OK;
+#else
+    (void)id; (void)edge; (void)cb; (void)ctx; return DZ_ENODEV;
+#endif
+}
+dz_err_t pal_gpio_irq_detach(pal_id_t id)
+{
+#if BOARD_GPIO_COUNT > 0
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    DL_GPIO_disableInterrupt(g_m0_gpio[id].port, g_m0_gpio[id].pin);
+    s_girq[id].cb = 0;
     return DZ_OK;
 #else
     (void)id; return DZ_ENODEV;
@@ -394,9 +447,48 @@ void dz_m0_timer_isr(unsigned i)
 #endif
 }
 
-/* ---------- ADC：未实现 ---------- */
-dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw) { (void)id; (void)raw; return DZ_ENOTSUP; }
-dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info) { (void)id; (void)info; return DZ_ENOTSUP; }
+/* ---------- ADC（PAL 1.2.0）：单次软件触发、轮询 ----------
+ * SysConfig 里每个用到的 ADC12 外设配一个实例 ADC12_<n>（单次、软件触发、MEM0），通道/引脚在 .syscfg 里分配；
+ * 本层每次读时把 MEM0 改到该资源的通道（同一 ADC 上多路分时复用），开转换 → 软件启动 → 等 MEM0 结果 → 读结果。
+ * 单次模式转换完 ENC 自动清零，所以每次都重新 enableConversions。超时 1 ms（12 位典型几 us）。【编译】未上板。 */
+#if BOARD_ADC_COUNT > 0
+#define M0_ADC_TIMEOUT_US 1000u
+#endif
+dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw)
+{
+#if BOARD_ADC_COUNT > 0
+    if (id >= BOARD_ADC_COUNT) return DZ_ENODEV;
+    if (!raw) return DZ_EINVAL;
+    const m0_adc_t *a = &g_m0_adc[id];
+    DL_ADC12_disableConversions(a->inst);
+    DL_ADC12_configConversionMem(a->inst, DL_ADC12_MEM_IDX_0, a->chansel, DL_ADC12_REFERENCE_VOLTAGE_VDDA,
+        DL_ADC12_SAMPLE_TIMER_SOURCE_SCOMP0, DL_ADC12_AVERAGING_MODE_DISABLED, DL_ADC12_BURN_OUT_SOURCE_DISABLED,
+        DL_ADC12_TRIGGER_MODE_AUTO_NEXT, DL_ADC12_WINDOWS_COMP_MODE_DISABLED);
+    DL_ADC12_clearInterruptStatus(a->inst, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED);
+    DL_ADC12_enableConversions(a->inst);
+    DL_ADC12_startConversion(a->inst);
+    uint32_t t0 = pal_micros();
+    while (!DL_ADC12_getRawInterruptStatus(a->inst, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED)) {
+        if ((uint32_t)(pal_micros() - t0) > M0_ADC_TIMEOUT_US) { s_diag.adc_timeout++; return DZ_ETIMEOUT; }
+    }
+    *raw = DL_ADC12_getMemResult(a->inst, DL_ADC12_MEM_IDX_0);
+    DL_ADC12_clearInterruptStatus(a->inst, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED);
+    return DZ_OK;
+#else
+    (void)id; (void)raw; return DZ_ENODEV;
+#endif
+}
+dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info)
+{
+#if BOARD_ADC_COUNT > 0
+    if (id >= BOARD_ADC_COUNT) return DZ_ENODEV;
+    if (!info) return DZ_EINVAL;
+    *info = g_m0_adc[id].info;
+    return DZ_OK;
+#else
+    (void)id; (void)info; return DZ_ENODEV;
+#endif
+}
 
 /* I2C / SPI：MSPM0 移植层尚未实现（需要 SysConfig 里配 I2C/SPI 外设，再用 DL_I2C_* / DL_SPI_* 写，没上板之前不写）。
  * MSPM0 主控要用 IMU 的话：走 UART 姿态模块（apps/imu_module + proto/dzimu），这条路径不依赖 I2C/SPI。 */

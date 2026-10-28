@@ -16,3 +16,11 @@ CubeMX 是唯一配置源，本层只包装 CubeMX 生成的句柄（htimX/huart
 ## I2C / SPI（1.2.0）
 - 使用 CubeMX 生成的 `hi2cN` / `hspiN` 句柄，阻塞调用。SPI 片选由本层软件控制：CubeMX 里要把 CS 引脚配成 GPIO_Output，初始电平为高。
 - CubeMX 没启用 I2C/SPI 模块（hal_conf 里没有对应的 `HAL_xxx_MODULE_ENABLED`）时，调用返回 ENOTSUP。**[编译]**，未上板。
+
+## GPIO 边沿中断（1.3.0，PAL 1.2.0）
+1. CubeMX 里把引脚设成 `GPIO_EXTIx`，GPIO Mode 选 *External Interrupt Mode with Rising/Falling edge trigger detection*；
+2. NVIC 里勾上对应的 `EXTI line x interrupt`（CubeMX 会在 stm32xxxx_it.c 生成 `EXTIx_IRQHandler`）；
+3. board.yaml 里照常写 `dir: in`，应用里 `pal_gpio_irq_attach(RES_GPIO_xxx, PAL_EDGE_BOTH, cb, ctx)`。
+
+本层提供 `HAL_GPIO_EXTI_Callback`（G0/C0/L5/U5/H5 提供 Rising/Falling 两个回调）。工程里已有自己的回调：编译加 `-DDZ_CM_NO_EXTI_CALLBACK`，
+在你的回调里调用 `dz_cm_gpio_exti(GPIO_Pin)`。同号引脚共用一条 EXTI 线（PA3 与 PB3 不能同时挂，返回 DZ_EBUSY）。【编译】未上板。

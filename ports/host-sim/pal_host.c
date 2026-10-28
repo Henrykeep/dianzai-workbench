@@ -21,6 +21,7 @@ static struct {
     int32_t enc[BOARD_ENCODER_COUNT + 1];
     float enc_frac[BOARD_ENCODER_COUNT + 1];
     uint16_t adc[BOARD_ADC_COUNT + 1];
+    struct { pal_gpio_irq_cb_t cb; void *ctx; uint8_t edge; } girq[BOARD_GPIO_COUNT + 1];
     struct { uint8_t tx[UART_BUF]; uint16_t tx_n; uint8_t rx[UART_BUF]; uint16_t rx_n; bool busy; } uart[BOARD_UART_COUNT + 1];
     struct { pal_timer_cb_t cb; void *ctx; uint32_t period_us; uint64_t next_us; } tmr[BOARD_TIMER_COUNT + 1];
     host_sim_motor_t motor[MAX_MOTORS];
@@ -97,7 +98,28 @@ float host_sim_motor_speed_rps(int m) { return (m >= 0 && m < S.motors) ? S.spee
 void  host_sim_motor_set_load(int m, float l) { if (m >= 0 && m < S.motors) S.motor[m].load_rps = l; }
 
 bool host_sim_gpio_level(pal_id_t id) { return id < BOARD_GPIO_COUNT ? S.gpio[id] : false; }
-void host_sim_gpio_set_input(pal_id_t id, bool a) { if (id < BOARD_GPIO_COUNT) S.gpio[id] = a; }
+/* 外部驱动输入脚；电平变化且挂了匹配边沿的中断回调时，同步调用它（模拟 EXTI，t_us = 当前仿真时间） */
+void host_sim_gpio_set_input(pal_id_t id, bool a)
+{
+    if (id >= BOARD_GPIO_COUNT) return;
+    bool old = S.gpio[id];
+    S.gpio[id] = a;
+    if (old == a || !S.girq[id].cb) return;
+    if (S.girq[id].edge & (a ? PAL_EDGE_RISING : PAL_EDGE_FALLING)) S.girq[id].cb(S.girq[id].ctx, a, (uint32_t)S.now_us);
+}
+dz_err_t pal_gpio_irq_attach(pal_id_t id, pal_edge_t edge, pal_gpio_irq_cb_t cb, void *ctx)
+{
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    if (!cb || edge < PAL_EDGE_RISING || edge > PAL_EDGE_BOTH) return DZ_EINVAL;
+    S.girq[id].cb = cb; S.girq[id].ctx = ctx; S.girq[id].edge = (uint8_t)edge;
+    return DZ_OK;
+}
+dz_err_t pal_gpio_irq_detach(pal_id_t id)
+{
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    S.girq[id].cb = 0;
+    return DZ_OK;
+}
 uint16_t host_sim_pwm_duty(pal_id_t id) { return id < BOARD_PWM_COUNT ? S.pwm[id] : 0; }
 void host_sim_enc_add(pal_id_t id, int32_t c) { if (id < BOARD_ENCODER_COUNT) S.enc[id] = (int32_t)((uint32_t)S.enc[id] + (uint32_t)c); }
 void host_sim_adc_set(pal_id_t id, uint16_t r) { if (id < BOARD_ADC_COUNT) S.adc[id] = r; }

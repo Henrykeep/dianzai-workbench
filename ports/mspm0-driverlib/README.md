@@ -1,4 +1,4 @@
-# ports/mspm0-driverlib（0.3.0）
+# ports/mspm0-driverlib（0.4.0）
 
 MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysConfig 生成的 `ti_msp_dl_config.{c,h}` 是唯一配置源，
 本层只包装其中的实例宏，只调 DriverLib。
@@ -18,3 +18,10 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 时基：SysTick 1 ms（本层配置）。`main()` 在 `main_mspm0.c`（SysConfig 不生成 main）。
 
 **验证状态**：【已实测】car_2wd、imu_module（MPU6050 走 I2C）交叉编译通过；`.syscfg` 由 SysConfig CLI 1.28 生成。I2C/SPI **【编译】未上板**：NACK、时钟拉伸、长度 > 8 的写都没在真芯片上测过。【未验证】全部上板行为；`boards/mspm0g3507-tianmengxing/syscfg/` 下的配置是合成样例。
+
+## ADC 与 GPIO 边沿中断（0.4.0，PAL 1.2.0）
+- ADC：每个用到的 ADC12 外设在 SysConfig 里建一个实例，名字 `ADC12_<n>`（ADC0 → `ADC12_0`），单次、软件触发、MEM0；
+  board.yaml `adc:` 写 `instance: ADC0, channel: <通道号>, pin: <引脚>`。`pal_adc_read` 每次把 MEM0 切到该通道，轮询结果（超时 1 ms，计入 `m0_diag()->adc_timeout`）。
+- GPIO 中断：.syscfg 里引脚设成输入即可；`pal_gpio_irq_attach` 运行时设 RISE_FALL、开引脚中断和 GROUP1。
+  板子有输入脚时 board_gen.c 生成 `GROUP1_IRQHandler`（编码器软件解码 + 边沿中断分发共用）。
+- 【编译】两者都只交叉编译过，未上板。天猛星的 VBAT（PA25 / ADC0 CH2）和 US_TRIG/US_ECHO（PB8/PB9）是我挑的空闲脚，【未验证】未对照原理图。

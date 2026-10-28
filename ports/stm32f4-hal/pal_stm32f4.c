@@ -528,6 +528,74 @@ dz_err_t pal_gpio_toggle(pal_id_t id)
     return DZ_OK;
 }
 
+/* ------------------------------------------------------------------ GPIO 边沿中断（PAL 1.2.0）
+ * 运行时把输入脚改成 GPIO_MODE_IT_RISING_FALLING（HAL_GPIO_Init 写 SYSCFG_EXTICR 选端口），开对应 EXTI NVIC。
+ * 边沿按逻辑电平在软件里过滤。EXTI 线按引脚号共用：PA3 与 PB3 不能同时挂（第二个返回 DZ_EBUSY）。
+ * 本移植层拥有中断向量，EXTIx_IRQHandler 定义在下面。【编译】未上板。 */
+#define P4_EXTI_PRIO 6u   /* 低于串口 DMA / 控制环定时器 */
+static struct { pal_gpio_irq_cb_t cb; void *ctx; uint8_t edge; pal_id_t id; } s_exti[16];
+static unsigned pin_line(uint16_t pin) { unsigned n = 0; while (n < 15u && !(pin & (1u << n))) n++; return n; }
+static IRQn_Type exti_irqn(unsigned n)
+{
+    static const IRQn_Type k[5] = { EXTI0_IRQn, EXTI1_IRQn, EXTI2_IRQn, EXTI3_IRQn, EXTI4_IRQn };
+    return n < 5u ? k[n] : (n < 10u ? EXTI9_5_IRQn : EXTI15_10_IRQn);
+}
+static const uint32_t k_exti_line[16] = {
+    EXTI_LINE_0, EXTI_LINE_1, EXTI_LINE_2, EXTI_LINE_3, EXTI_LINE_4, EXTI_LINE_5, EXTI_LINE_6, EXTI_LINE_7,
+    EXTI_LINE_8, EXTI_LINE_9, EXTI_LINE_10, EXTI_LINE_11, EXTI_LINE_12, EXTI_LINE_13, EXTI_LINE_14, EXTI_LINE_15 };
+
+void HAL_GPIO_EXTI_Callback(uint16_t pin)
+{
+    uint32_t t = pal_micros();
+    unsigned n = pin_line(pin);
+    if (!s_exti[n].cb) return;
+    bool lv = false;
+    if (pal_gpio_read(s_exti[n].id, &lv) != DZ_OK) return;
+    if (s_exti[n].edge & (lv ? PAL_EDGE_RISING : PAL_EDGE_FALLING)) s_exti[n].cb(s_exti[n].ctx, lv, t);
+}
+static void exti_range(unsigned a, unsigned b) { for (unsigned n = a; n <= b; n++) if (s_exti[n].cb) HAL_GPIO_EXTI_IRQHandler((uint16_t)(1u << n)); }
+void EXTI0_IRQHandler(void)     { HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_0); }
+void EXTI1_IRQHandler(void)     { HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_1); }
+void EXTI2_IRQHandler(void)     { HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_2); }
+void EXTI3_IRQHandler(void)     { HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_3); }
+void EXTI4_IRQHandler(void)     { HAL_GPIO_EXTI_IRQHandler(GPIO_PIN_4); }
+void EXTI9_5_IRQHandler(void)   { exti_range(5u, 9u); }
+void EXTI15_10_IRQHandler(void) { exti_range(10u, 15u); }
+
+dz_err_t pal_gpio_irq_attach(pal_id_t id, pal_edge_t edge, pal_gpio_irq_cb_t cb, void *ctx)
+{
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    if (!cb || edge < PAL_EDGE_RISING || edge > PAL_EDGE_BOTH) return DZ_EINVAL;
+    const p4_gpio_t *g = &g_p4_gpio[id];
+    if (g->out) return DZ_EINVAL;
+    unsigned n = pin_line(g->pin);
+    if (s_exti[n].cb && s_exti[n].id != id) return DZ_EBUSY;
+    s_exti[n].cb = 0; s_exti[n].id = id; s_exti[n].ctx = ctx; s_exti[n].edge = (uint8_t)edge;
+    __HAL_RCC_SYSCFG_CLK_ENABLE();
+    GPIO_InitTypeDef c = {0};
+    c.Pin = g->pin; c.Pull = g->pull; c.Speed = GPIO_SPEED_FREQ_LOW; c.Mode = GPIO_MODE_IT_RISING_FALLING;
+    HAL_GPIO_Init(g->port, &c);
+    __HAL_GPIO_EXTI_CLEAR_IT(g->pin);
+    s_exti[n].cb = cb;
+    HAL_NVIC_SetPriority(exti_irqn(n), P4_EXTI_PRIO, 0u);
+    HAL_NVIC_EnableIRQ(exti_irqn(n));
+    return DZ_OK;
+}
+dz_err_t pal_gpio_irq_detach(pal_id_t id)
+{
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    const p4_gpio_t *g = &g_p4_gpio[id];
+    unsigned n = pin_line(g->pin);
+    if (s_exti[n].id != id || !s_exti[n].cb) return DZ_OK;
+    EXTI_HandleTypeDef h = {0};
+    if (HAL_EXTI_GetHandle(&h, k_exti_line[n]) == HAL_OK) (void)HAL_EXTI_ClearConfigLine(&h);   /* 关屏蔽、清边沿选择 */
+    s_exti[n].cb = 0;
+    GPIO_InitTypeDef c = {0};
+    c.Pin = g->pin; c.Pull = g->pull; c.Speed = GPIO_SPEED_FREQ_LOW; c.Mode = GPIO_MODE_INPUT;
+    HAL_GPIO_Init(g->port, &c);
+    return DZ_OK;
+}
+
 /* ------------------------------------------------------------------ PWM */
 dz_err_t pal_pwm_set_duty(pal_id_t id, uint16_t duty)
 {

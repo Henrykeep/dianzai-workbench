@@ -18,3 +18,7 @@
 - SPI：HAL_SPI_TransmitReceive 阻塞调用，片选由软件控制（推挽，空闲高）。分频取“不超过 board.yaml 里 hz 的最快一档”。
   两个条目共用总线但 mode 或 hz 不同时，传输前会重新 HAL_SPI_Init。
 - 不能在中断里调用。**[编译]**，未上板。
+
+## GPIO 边沿中断（1.2.0，PAL 1.2.0）
+`pal_gpio_irq_attach` 运行时把输入脚改成 `GPIO_MODE_IT_RISING_FALLING`，开 EXTI NVIC（优先级 6）；本层定义 `EXTI0..4 / EXTI9_5 / EXTI15_10_IRQHandler`。
+`detach` 用 `HAL_EXTI_ClearConfigLine` 关掉该线并把脚恢复成普通输入。【编译】未上板。

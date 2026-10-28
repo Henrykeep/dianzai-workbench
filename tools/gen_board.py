@@ -332,10 +332,10 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     """port: mspm0-driverlib —— 生成“逻辑 ID -> SysConfig 实例宏”表与中断入口；外设配置全在 ti_msp_dl_config.c。
 
     实例名约定（SysConfig 每个实例的 Name）：GPIO_<名>（组内引脚 PIN）、PWM_<定时器>、ENC_<名>（QEI，或 GPIO 组的 A/B 脚）、
-    UART_<名>、TIMER_<名>、I2C_<名>、SPI_BUS<n>（SPIn 总线）+ GPIO_CS_SPIn_<名>（软件片选，引脚名 CS）。宏名按 SysConfig 的派生规则（<Name>_INST、<Name>_INST_IRQHandler…）。"""
+    UART_<名>、TIMER_<名>、I2C_<名>、SPI_BUS<n>（SPIn 总线）+ GPIO_CS_SPIn_<名>（软件片选，引脚名 CS）、ADC12_<n>（ADCn 外设，单次软件触发）。宏名按 SysConfig 的派生规则（<Name>_INST、<Name>_INST_IRQHandler…）。"""
     res = usable(board)
     c = [HEADER.format(src=src, sha=sha[:12]), '#include "port_mspm0.h"', '#include "board_gen.h"', ""]
-    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "i2c", "spi")}
+    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "i2c", "spi", "adc")}
     isr = []
     for r in res["gpio"]:
         n = f"GPIO_{r['name']}"
@@ -373,13 +373,18 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     for r in res.get("spi") or []:
         bus, cs = f"SPI_BUS{r['instance'][-1]}", f"GPIO_CS_{r['instance']}_{r['name']}"
         rows["spi"].append(f"    {{ {bus}_INST, {cs}_PORT, {cs}_CS_PIN }}, /* {r['name']} {r['instance']} CS {r['cs']} mode {r.get('mode', 0)}（模式/速率在 .syscfg） */")
-    if gpio_enc:
-        isr.append("void GROUP1_IRQHandler(void) { dz_m0_gpio_enc_isr(); }   /* GPIOA/GPIOB 中断组 */")
+    for r in res.get("adc") or []:
+        inst = r["instance"]   # ADC0 / ADC1 -> SysConfig 实例 ADC12_0 / ADC12_1
+        rows["adc"].append(f"    {{ ADC12_{inst[-1]}_INST, DL_ADC12_INPUT_CHAN_{int(r['channel'])},\n"
+                           f"      {{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }} }}, /* {r['name']} {inst} CH{r['channel']} {r.get('pin', '')} */")
+    if gpio_enc or any(r.get("dir") == "in" for r in res["gpio"]):
+        # 输入脚可能被 pal_gpio_irq_attach 挂边沿中断（PAL 1.2.0），与 GPIO 编码器共用 GROUP1
+        isr.append("void GROUP1_IRQHandler(void) { dz_m0_gpio_enc_isr(); dz_m0_gpio_irq_isr(); }   /* GPIOA/GPIOB 中断组 */")
     c += bufs + [""]
     for key, typ, name in (("gpio", "m0_gpio_t", "g_m0_gpio"), ("pwm", "m0_pwm_t", "g_m0_pwm"),
                            ("encoder", "m0_enc_t", "g_m0_enc"), ("uart", "m0_uart_t", "g_m0_uart"),
                            ("timer", "m0_timer_t", "g_m0_timer"), ("i2c", "m0_i2c_t", "g_m0_i2c"),
-                           ("spi", "m0_spi_t", "g_m0_spi")):
+                           ("spi", "m0_spi_t", "g_m0_spi"), ("adc", "m0_adc_t", "g_m0_adc")):
         c += _table(typ, name, rows[key])
     c += ["/* 中断入口：向量名来自 SysConfig 的 <实例>_INST_IRQHandler 宏 */"] + isr + [""]
     c.append("const char *const g_board_name = BOARD_NAME;\n")

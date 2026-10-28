@@ -194,6 +194,20 @@ extern "C" {
 
 
 
+/* Defines for ADC12_0 */
+#define ADC12_0_INST                                                        ADC0
+#define ADC12_0_INST_IRQHandler                                  ADC0_IRQHandler
+#define ADC12_0_INST_INT_IRQN                                    (ADC0_INT_IRQn)
+#define ADC12_0_ADCMEM_0                                      DL_ADC12_MEM_IDX_0
+#define ADC12_0_ADCMEM_0_REF                     DL_ADC12_REFERENCE_VOLTAGE_VDDA
+#define ADC12_0_ADCMEM_0_REF_VOLTAGE_V                                       3.3
+#define GPIO_ADC12_0_C2_PORT                                               GPIOA
+#define GPIO_ADC12_0_C2_PIN                                       DL_GPIO_PIN_25
+#define GPIO_ADC12_0_IOMUX_C2                                    (IOMUX_PINCM55)
+#define GPIO_ADC12_0_IOMUX_C2_FUNC                (IOMUX_PINCM55_PF_UNCONNECTED)
+
+
+
 /* Port definition for Pin Group GPIO_MOTOR_A_IN1 */
 #define GPIO_MOTOR_A_IN1_PORT                                            (GPIOB)
 
@@ -224,6 +238,18 @@ extern "C" {
 /* Defines for CS: GPIOB.20 with pinCMx 48 on package pin 19 */
 #define GPIO_CS_SPI1_DEV_CS_PIN                                 (DL_GPIO_PIN_20)
 #define GPIO_CS_SPI1_DEV_CS_IOMUX                                (IOMUX_PINCM48)
+/* Port definition for Pin Group GPIO_US_TRIG */
+#define GPIO_US_TRIG_PORT                                                (GPIOB)
+
+/* Defines for US_TRIG: GPIOB.8 with pinCMx 25 on package pin 60 */
+#define GPIO_US_TRIG_US_TRIG_PIN                                 (DL_GPIO_PIN_8)
+#define GPIO_US_TRIG_US_TRIG_IOMUX                               (IOMUX_PINCM25)
+/* Port definition for Pin Group GPIO_US_ECHO */
+#define GPIO_US_ECHO_PORT                                                (GPIOB)
+
+/* Defines for US_ECHO: GPIOB.9 with pinCMx 26 on package pin 61 */
+#define GPIO_US_ECHO_US_ECHO_PIN                                 (DL_GPIO_PIN_9)
+#define GPIO_US_ECHO_US_ECHO_IOMUX                               (IOMUX_PINCM26)
 /* Port definition for Pin Group ENC_MOTOR_B */
 #define ENC_MOTOR_B_PORT                                                 (GPIOB)
 
@@ -253,6 +279,7 @@ void SYSCFG_DL_I2C_IMU_init(void);
 void SYSCFG_DL_UART_LINK_init(void);
 void SYSCFG_DL_UART_IMU_init(void);
 void SYSCFG_DL_SPI_BUS1_init(void);
+void SYSCFG_DL_ADC12_0_init(void);
 
 
 bool SYSCFG_DL_saveConfiguration(void);

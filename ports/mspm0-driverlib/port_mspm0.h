@@ -22,6 +22,8 @@ typedef struct { GPTIMER_Regs *inst; IRQn_Type irq; uint32_t clk_hz; uint32_t ma
 typedef struct { I2C_Regs *inst; } m0_i2c_t;
 /** 一个 SPI 设备 = 总线实例 + 软件片选 GPIO（低有效；模式/速率在 SysConfig 的总线实例里，同总线设备共用） */
 typedef struct { SPI_Regs *inst; GPIO_Regs *cs_port; uint32_t cs_pin; } m0_spi_t;
+/** ADC 通道：SysConfig 实例 ADC12_<n> + 通道号（DL_ADC12_INPUT_CHAN_x）+ 换算信息 */
+typedef struct { ADC12_Regs *inst; uint32_t chansel; pal_adc_info_t info; } m0_adc_t;
 
 /* 由 board_gen.c 提供 */
 extern const m0_gpio_t  g_m0_gpio[];
@@ -31,14 +33,16 @@ extern const m0_uart_t  g_m0_uart[];
 extern const m0_timer_t g_m0_timer[];
 extern const m0_i2c_t   g_m0_i2c[];
 extern const m0_spi_t   g_m0_spi[];
+extern const m0_adc_t   g_m0_adc[];
 extern const char *const g_board_name;
 
 /* 中断入口：board_gen.c 生成 <实例>_IRQHandler 并转到这里（SysConfig 的 IRQHandler 宏给出真实向量名） */
 void dz_m0_uart_isr(unsigned idx);
 void dz_m0_timer_isr(unsigned idx);
 void dz_m0_gpio_enc_isr(void);
+void dz_m0_gpio_irq_isr(void);   /* PAL 1.2.0 GPIO 边沿中断 */
 
-typedef struct { uint32_t uart_err; uint32_t enc_glitch; uint32_t i2c_err; uint32_t i2c_timeout; uint32_t spi_timeout; } m0_diag_t;
+typedef struct { uint32_t uart_err; uint32_t enc_glitch; uint32_t i2c_err; uint32_t i2c_timeout; uint32_t spi_timeout; uint32_t adc_timeout; } m0_diag_t;
 const m0_diag_t *m0_diag(void);
 
 #endif

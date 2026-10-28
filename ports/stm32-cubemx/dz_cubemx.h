@@ -16,6 +16,10 @@ void dz_cubemx_start(void);
 /** 调用一次 app_loop()。裸机放 main.c USER CODE 3（while 内）；FreeRTOS 放 StartDefaultTask 的 for 循环（后面 osDelay(1)）。 */
 void dz_cubemx_loop(void);
 
+#include <stdint.h>
+/** PAL GPIO 边沿中断分发（PAL 1.2.0）。只在定义了 DZ_CM_NO_EXTI_CALLBACK、自己写 HAL_GPIO_EXTI_Callback 时需要手动调用。 */
+void dz_cm_gpio_exti(uint16_t GPIO_Pin);
+
 #ifdef DZ_CM_TIM_TIMEBASE
 #include "main.h"
 /** 仅 HAL 时基 = TIMx 的工程：在 main.c 的 HAL_TIM_PeriodElapsedCallback 里 USER CODE Callback 1 调用。 */

@@ -20,7 +20,7 @@ dz_err_t hcsr04_init(hcsr04_t *h, const hcsr04_cfg_t *c)
     if (c->period_ms < 60u || c->timeout_us < 1000u || c->timeout_us > 60000u || c->min_mm >= c->max_mm) return DZ_EINVAL;
     h->cfg = *c;
     h->phase = HCSR04_IDLE; h->t_trig = h->t_rise = h->width_us = 0;
-    h->last_level = false; h->last_start_ms = 0; h->dist_mm = 0.0f; h->valid = false; h->started = false;
+    h->last_level = false; h->last_start_ms = 0; h->dist_mm = 0.0f; h->valid = false; h->started = false; h->irq = false;
     (void)hcsr04_set_temp(h, 20.0f);
     if (c->trig != PAL_ID_NONE) {
         dz_err_t e = pal_gpio_write(c->trig, false);
@@ -58,6 +58,22 @@ void hcsr04_echo_edge(hcsr04_t *h, bool level, uint32_t now_us)
     else if (!level && h->phase == HCSR04_WAIT_FALL) { h->width_us = now_us - h->t_rise; h->phase = HCSR04_DONE; }
 }
 
+static void on_edge(void *ctx, bool level, uint32_t t_us) { hcsr04_echo_edge((hcsr04_t *)ctx, level, t_us); }
+
+dz_err_t hcsr04_attach_irq(hcsr04_t *h)
+{
+    if (!h || !h->ready) return DZ_ESTATE;
+    dz_err_t e = pal_gpio_irq_attach(h->cfg.echo, PAL_EDGE_BOTH, on_edge, h);
+    if (e == DZ_OK) h->irq = true;
+    return e;
+}
+dz_err_t hcsr04_detach_irq(hcsr04_t *h)
+{
+    if (!h || !h->irq) return DZ_ESTATE;
+    h->irq = false;
+    return pal_gpio_irq_detach(h->cfg.echo);
+}
+
 static void finish(hcsr04_t *h)
 {
     float mm = hcsr04_width_to_mm(h, h->width_us);
@@ -68,6 +84,7 @@ static void finish(hcsr04_t *h)
 dz_err_t hcsr04_poll(hcsr04_t *h, uint32_t now_us, bool read_pin)
 {
     if (!h || !h->ready) return DZ_ESTATE;
+    if (h->irq) read_pin = false;   /* 中断模式：边沿由 on_edge 记录，这里只管超时 */
     if (read_pin && (h->phase == HCSR04_WAIT_RISE || h->phase == HCSR04_WAIT_FALL)) {
         bool lv = false;
         dz_err_t e = pal_gpio_read(h->cfg.echo, &lv);

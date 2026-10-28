@@ -382,11 +382,14 @@
    "hcsr04.h: float c_mm_per_us;",
    "hcsr04.h: float dist_mm;",
    "hcsr04.h: bool valid, ready, started;",
+   "hcsr04.h: bool irq;",
    "hcsr04.h: } hcsr04_t;",
    "hcsr04.h: hcsr04_cfg_t hcsr04_cfg_default(pal_id_t trig, pal_id_t echo);",
    "hcsr04.h: dz_err_t hcsr04_init(hcsr04_t *h, const hcsr04_cfg_t *cfg);",
    "hcsr04.h: dz_err_t hcsr04_set_temp(hcsr04_t *h, float temp_c);",
    "hcsr04.h: dz_err_t hcsr04_trigger(hcsr04_t *h, uint32_t now_us);",
+   "hcsr04.h: dz_err_t hcsr04_attach_irq(hcsr04_t *h);",
+   "hcsr04.h: dz_err_t hcsr04_detach_irq(hcsr04_t *h);",
    "hcsr04.h: void hcsr04_echo_edge(hcsr04_t *h, bool level, uint32_t now_us);",
    "hcsr04.h: dz_err_t hcsr04_poll(hcsr04_t *h, uint32_t now_us, bool read_pin);",
    "hcsr04.h: bool hcsr04_update(hcsr04_t *h, uint32_t now_ms, uint32_t now_us, bool read_pin);",
@@ -395,8 +398,8 @@
    "hcsr04.h: float hcsr04_mm(const hcsr04_t *h);",
    "hcsr04.h: dz_err_t hcsr04_selftest(void);"
   ],
-  "hash": "a3b576a4b92f62ab",
-  "version": "1.0.0"
+  "hash": "70803f5bcde9f07e",
+  "version": "1.1.0"
  },
  "firmware/drivers/key": {
   "decls": [
@@ -828,6 +831,10 @@
    "pal.h: dz_err_t pal_gpio_write(pal_id_t id, bool active);",
    "pal.h: dz_err_t pal_gpio_read(pal_id_t id, bool *active);",
    "pal.h: dz_err_t pal_gpio_toggle(pal_id_t id);",
+   "pal.h: typedef enum { PAL_EDGE_RISING = 1, PAL_EDGE_FALLING = 2, PAL_EDGE_BOTH = 3 } pal_edge_t;",
+   "pal.h: typedef void (*pal_gpio_irq_cb_t)(void *ctx, bool level, uint32_t t_us);",
+   "pal.h: dz_err_t pal_gpio_irq_attach(pal_id_t id, pal_edge_t edge, pal_gpio_irq_cb_t cb, void *ctx);",
+   "pal.h: dz_err_t pal_gpio_irq_detach(pal_id_t id);",
    "pal.h: dz_err_t pal_pwm_set_duty(pal_id_t id, uint16_t duty);",
    "pal.h: dz_err_t pal_pwm_set_pulse_us(pal_id_t id, uint32_t pulse_us);",
    "pal.h: dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *freq_hz);",
@@ -851,8 +858,8 @@
    "pal.h: dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n);",
    "pal.h: dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);"
   ],
-  "hash": "6f3299d06a138cbe",
-  "version": "1.1.0"
+  "hash": "f75f9f0807e8aee7",
+  "version": "1.2.0"
  },
  "firmware/proto/dzctl": {
   "decls": [
@@ -1022,6 +1029,10 @@
    "port_mspm0.h: GPIO_Regs *cs_port;",
    "port_mspm0.h: uint32_t cs_pin;",
    "port_mspm0.h: } m0_spi_t;",
+   "port_mspm0.h: typedef struct { ADC12_Regs *inst;",
+   "port_mspm0.h: uint32_t chansel;",
+   "port_mspm0.h: pal_adc_info_t info;",
+   "port_mspm0.h: } m0_adc_t;",
    "port_mspm0.h: extern const m0_gpio_t g_m0_gpio[];",
    "port_mspm0.h: extern const m0_pwm_t g_m0_pwm[];",
    "port_mspm0.h: extern const m0_enc_t g_m0_enc[];",
@@ -1029,25 +1040,29 @@
    "port_mspm0.h: extern const m0_timer_t g_m0_timer[];",
    "port_mspm0.h: extern const m0_i2c_t g_m0_i2c[];",
    "port_mspm0.h: extern const m0_spi_t g_m0_spi[];",
+   "port_mspm0.h: extern const m0_adc_t g_m0_adc[];",
    "port_mspm0.h: extern const char *const g_board_name;",
    "port_mspm0.h: void dz_m0_uart_isr(unsigned idx);",
    "port_mspm0.h: void dz_m0_timer_isr(unsigned idx);",
    "port_mspm0.h: void dz_m0_gpio_enc_isr(void);",
+   "port_mspm0.h: void dz_m0_gpio_irq_isr(void);",
    "port_mspm0.h: typedef struct { uint32_t uart_err;",
    "port_mspm0.h: uint32_t enc_glitch;",
    "port_mspm0.h: uint32_t i2c_err;",
    "port_mspm0.h: uint32_t i2c_timeout;",
    "port_mspm0.h: uint32_t spi_timeout;",
+   "port_mspm0.h: uint32_t adc_timeout;",
    "port_mspm0.h: } m0_diag_t;",
    "port_mspm0.h: const m0_diag_t *m0_diag(void);"
   ],
-  "hash": "98a7c199af6d00f9",
-  "version": "0.3.0"
+  "hash": "8edc107043fa7cda",
+  "version": "0.4.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
    "dz_cubemx.h: void dz_cubemx_start(void);",
    "dz_cubemx.h: void dz_cubemx_loop(void);",
+   "dz_cubemx.h: void dz_cm_gpio_exti(uint16_t GPIO_Pin);",
    "dz_cubemx.h: void dz_cubemx_tim_callback(TIM_HandleTypeDef *htim);",
    "port_cubemx.h: typedef struct { GPIO_TypeDef *port;",
    "port_cubemx.h: uint16_t pin;",
@@ -1101,8 +1116,8 @@
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "29065ff542bb23f1",
-  "version": "1.2.0"
+  "hash": "3b81ac5412d20fda",
+  "version": "1.3.0"
  },
  "ports/stm32f4-hal": {
   "decls": [

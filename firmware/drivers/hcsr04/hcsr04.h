@@ -3,7 +3,8 @@
  * @brief HC-SR04 超声波测距：10 us 触发 + 回波脉宽计时，非阻塞。只依赖 pal.h。
  *
  * 两种回波采集方式：
- *  - 外部中断：ECHO 引脚双边沿中断里调用 hcsr04_echo_edge(level, pal_micros())（精度 ~1 us）；
+ *  - 外部中断：hcsr04_attach_irq() 用 PAL 1.2.0 的 pal_gpio_irq_attach 挂 ECHO 双边沿（推荐，精度 ~1 us）；
+ *    也可在自己的 ISR 里调用 hcsr04_echo_edge(level, pal_micros())；
  *  - 轮询：周期调用 hcsr04_poll()，它读 ECHO 电平自己找边沿（精度 = 轮询周期，100 us 轮询 ≈ 17 mm）。
  * 距离 = 脉宽 × 声速 / 2，声速 c = 331.3 + 0.606·T(°C) m/s（干燥空气近似）。
  * 两次测量间隔 ≥ 60 ms（模块手册建议，防上一次回波串扰）。无回波（> timeout）报 HCSR04_TIMEOUT。
@@ -15,7 +16,7 @@
 #include <stdint.h>
 #include "dz_err.h"
 #include "pal.h"
-#define HCSR04_VERSION "1.0.0"
+#define HCSR04_VERSION "1.1.0"
 
 typedef enum { HCSR04_IDLE = 0, HCSR04_WAIT_RISE, HCSR04_WAIT_FALL, HCSR04_DONE, HCSR04_TIMEOUT } hcsr04_phase_t;
 
@@ -35,6 +36,7 @@ typedef struct {
     float c_mm_per_us;
     float dist_mm;
     bool valid, ready, started;
+    bool irq;                 /**< 已挂 PAL 边沿中断：update/poll 不再读引脚 */
 } hcsr04_t;
 
 hcsr04_cfg_t hcsr04_cfg_default(pal_id_t trig, pal_id_t echo);
@@ -43,6 +45,9 @@ dz_err_t hcsr04_init(hcsr04_t *h, const hcsr04_cfg_t *cfg);
 dz_err_t hcsr04_set_temp(hcsr04_t *h, float temp_c);
 /** 立即发 10 us 触发脉冲（阻塞 10 us）。上一次还没结束返回 DZ_EBUSY。 */
 dz_err_t hcsr04_trigger(hcsr04_t *h, uint32_t now_us);
+/** 挂 ECHO 双边沿中断（pal_gpio_irq_attach）。端口不支持返回 DZ_ENOTSUP，此时继续用轮询。 */
+dz_err_t hcsr04_attach_irq(hcsr04_t *h);
+dz_err_t hcsr04_detach_irq(hcsr04_t *h);
 /** 回波边沿（ISR 里调用）。[ISR-safe] */
 void hcsr04_echo_edge(hcsr04_t *h, bool level, uint32_t now_us);
 /** 轮询：读 ECHO 电平找边沿 + 处理超时。中断模式也要调它（只做超时处理）。 */

@@ -218,6 +218,61 @@ dz_err_t pal_gpio_read(pal_id_t id, bool *active)
     (void)id; (void)active; return DZ_ENODEV;
 #endif
 }
+/* ---------- GPIO 边沿中断（PAL 1.2.0）----------
+ * CubeMX 是配置来源：引脚要在 .ioc 里设成 GPIO_EXTIx（建议 Rising/Falling edge 都选），NVIC 里勾上 EXTIx 中断；
+ * stm32xxxx_it.c 里的 EXTIx_IRQHandler 由 CubeMX 生成，调 HAL_GPIO_EXTI_IRQHandler → 本文件的 HAL_GPIO_EXTI_Callback。
+ * 工程里已有自己的 HAL_GPIO_EXTI_Callback：编译时加 -DDZ_CM_NO_EXTI_CALLBACK，并在你的回调里调用 dz_cm_gpio_exti(GPIO_Pin)。
+ * 边沿按逻辑电平在软件里过滤（硬件可以配双边沿，active_low 也就自然正确）。【编译】未上板。 */
+#if BOARD_GPIO_COUNT > 0
+static struct { pal_gpio_irq_cb_t cb; void *ctx; uint8_t edge; pal_id_t id; } s_exti[16];
+static unsigned pin_line(uint16_t pin) { unsigned n = 0; while (n < 15u && !(pin & (1u << n))) n++; return n; }
+#endif
+void dz_cm_gpio_exti(uint16_t pin)
+{
+#if BOARD_GPIO_COUNT > 0
+    uint32_t t = pal_micros();
+    unsigned n = pin_line(pin);
+    if (!s_exti[n].cb) return;
+    bool lv = false;
+    if (pal_gpio_read(s_exti[n].id, &lv) != DZ_OK) return;
+    if (s_exti[n].edge & (lv ? PAL_EDGE_RISING : PAL_EDGE_FALLING)) s_exti[n].cb(s_exti[n].ctx, lv, t);
+#else
+    (void)pin;
+#endif
+}
+#ifndef DZ_CM_NO_EXTI_CALLBACK
+#if defined(STM32G0) || defined(STM32C0) || defined(STM32L5) || defined(STM32U5) || defined(STM32H5) || defined(STM32MP1)
+/* 这些系列的 HAL 把 EXTI 回调拆成上升/下降两个 */
+void HAL_GPIO_EXTI_Rising_Callback(uint16_t GPIO_Pin)  { dz_cm_gpio_exti(GPIO_Pin); }
+void HAL_GPIO_EXTI_Falling_Callback(uint16_t GPIO_Pin) { dz_cm_gpio_exti(GPIO_Pin); }
+#else
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) { dz_cm_gpio_exti(GPIO_Pin); }
+#endif
+#endif
+dz_err_t pal_gpio_irq_attach(pal_id_t id, pal_edge_t edge, pal_gpio_irq_cb_t cb, void *ctx)
+{
+#if BOARD_GPIO_COUNT > 0
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    if (!cb || edge < PAL_EDGE_RISING || edge > PAL_EDGE_BOTH) return DZ_EINVAL;
+    unsigned n = pin_line(g_cm_gpio[id].pin);
+    if (s_exti[n].cb && s_exti[n].id != id) return DZ_EBUSY;   /* 同号引脚共用一条 EXTI 线 */
+    s_exti[n].cb = 0; s_exti[n].id = id; s_exti[n].ctx = ctx; s_exti[n].edge = (uint8_t)edge; s_exti[n].cb = cb;
+    return DZ_OK;
+#else
+    (void)id; (void)edge; (void)cb; (void)ctx; return DZ_ENODEV;
+#endif
+}
+dz_err_t pal_gpio_irq_detach(pal_id_t id)
+{
+#if BOARD_GPIO_COUNT > 0
+    if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
+    unsigned n = pin_line(g_cm_gpio[id].pin);
+    if (s_exti[n].id == id) s_exti[n].cb = 0;
+    return DZ_OK;
+#else
+    (void)id; return DZ_ENODEV;
+#endif
+}
 dz_err_t pal_gpio_toggle(pal_id_t id)
 {
 #if BOARD_GPIO_COUNT > 0
