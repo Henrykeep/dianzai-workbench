@@ -7,13 +7,13 @@ import "./style.css";
 import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
 import { matchNames } from "./names";
+import { Param, clampLocal, pendingOf, rangeLabel } from "./params";
 import { AGENT_IDLE, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
 import { initSend } from "./send";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[] };
-type Param = { name: string; type: string; min: number; max: number; unit?: string; desc?: string; default: number };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -155,9 +155,8 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
 }, 100);
 
 // ---------------------------------------------------------------- 参数
-function clampLocal(p: Param, v: number) { let c = Math.min(Math.max(v, p.min), p.max); if (p.type !== "f32") c = Math.round(c); return c; }
 function pending() {
-  return (S.schema?.params ?? []).filter(p => p.name in S.edit && S.edit[p.name] !== "" && +S.edit[p.name] !== S.applied[p.name]);
+  return pendingOf(S.schema?.params ?? [], S.edit, S.applied);
 }
 function renderParams() {
   const ps = S.schema?.params ?? [];
@@ -200,7 +199,7 @@ function markParams() {
     document.getElementById(`pi-${p.name}`)?.classList.toggle("chg", pend.has(p.name));
     // 草稿 ≠ 板上真值时，范围位置改显示板子回报的生效值（ACK/读回），避免把草稿当成已生效
     const r = document.getElementById(`pr-${p.name}`);
-    if (r) { r.classList.toggle("brd", pend.has(p.name)); r.textContent = pend.has(p.name) ? `板上 ${fmt(S.applied[p.name], p)}` : r.dataset.r!; }
+    if (r) { r.classList.toggle("brd", pend.has(p.name)); r.textContent = pend.has(p.name) ? rangeLabel(p, true, S.applied[p.name]) : r.dataset.r!; }
   });
   $("pend").textContent = pend.size ? `${pend.size} 项待下发` : "";
   $<HTMLButtonElement>("p-send").disabled = !pend.size;

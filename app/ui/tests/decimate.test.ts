@@ -12,3 +12,14 @@ const m = matchNames("bb_* err", ["bb_x", "bb_v", "err", "u", "x"]);
 if (m.join() !== "true,true,true,false,false") throw "names " + m;
 if (matchNames("", ["a","b","c","d","e"]).join() !== "true,true,true,true,false") throw "names default";
 console.log("names ok");
+// 回归：截图里输入框显示“2”不是 bug——先填 9.5 被限幅到 max=2，草稿 2 ≠ 板上 0.08
+import { clampLocal, pendingOf, rangeLabel } from "../src/params.ts";
+const kp = { name: "kp", type: "f32", min: 0, max: 2, default: 0.08 };
+if (clampLocal(kp, 9.5) !== 2 || clampLocal(kp, 3.1) !== 2 || clampLocal(kp, -1) !== 0) throw "clamp";
+if (clampLocal({ ...kp, type: "u16", max: 100 }, 7.6) !== 8) throw "int round";
+const pend = pendingOf([kp], { kp: "2" }, { kp: 0.08 });
+if (pend.length !== 1 || rangeLabel(kp, true, 0.08) !== "板上 0.08") throw "pending label";
+if (pendingOf([kp], { kp: "0.08" }, { kp: 0.08 }).length !== 0) throw "same value not pending";
+if (pendingOf([kp], { kp: "" }, { kp: 0.08 }).length !== 0) throw "empty not pending";
+if (rangeLabel({ ...kp, unit: "rps" }, false, 0.08) !== "0…2 rps") throw "range";
+console.log("params ok");
