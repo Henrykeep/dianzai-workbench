@@ -105,3 +105,28 @@ def test_websocket_server(home):
         task.cancel()
 
     asyncio.run(asyncio.wait_for(run(), 30))
+
+
+def test_tune_analyze_on_sim_step(home, tmp_path):
+    """真实固件闭环（host-sim car_2wd）上做阶跃 → 离线规则分析 → 写回 yaml 的 diff（不落盘）。"""
+    import struct
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    s = Session()
+    s.connect("sim:car_2wd")
+    try:
+        assert wait(lambda: s.schema and len(s.params) == 5)
+        t_end = time.monotonic() + 2.0
+        while time.monotonic() < t_end:            # 0.6 s 静止后阶跃到 3 r/s，持续发（cmd_timeout 200 ms）
+            v = 0.0 if t_end - time.monotonic() > 1.4 else 3.0
+            s.send_data(1, struct.pack("<ff", v, v))
+            time.sleep(0.05)
+        ev = []
+        svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path)
+        r = svc.step_analysis(seconds=2.0)
+        assert (r["y"], r["sp"]) == ("spd_a", "sp_a") and r["gains"]["kp"] == "kp"
+        m = r["metrics"]
+        assert m["ok"] and m["target"] > 0.5, m
+        assert r["hints"] and all("text" in h for h in r["hints"])
+    finally:
+        s.disconnect()

@@ -13,6 +13,9 @@ import pathlib
 import websockets
 
 from . import snapshots
+from .agent import llm as agent_llm
+from .agent.gateway import GatewayError
+from .agent.service import AgentService
 from .agent_api import TOOLS, AgentTools
 from .downsample import minmax
 from .logfile import read_log
@@ -29,6 +32,7 @@ class Server:
         self.loop: asyncio.AbstractEventLoop | None = None
         self.session = Session(emit=self.emit)
         self.agent = AgentTools(self.session, self.emit)
+        self.svc = AgentService(self.session, self.agent, self.emit)
 
     # 线程安全的广播
     def emit(self, msg: dict) -> None:
@@ -100,6 +104,26 @@ class Server:
             return await run(None, self.agent.decide, int(m["id"]), bool(m["accept"]))
         if op == "agent_tool":
             return await run(None, self.agent.call, m["tool"], m.get("args", {}))
+        # ---- 内置 Agent（docs/18）
+        if op == "tune_analyze":
+            return await run(None, lambda: self.svc.step_analysis(m.get("y"), m.get("sp"), float(m.get("seconds", 5)),
+                                                                   m.get("kp"), m.get("ki"), m.get("kd")))
+        if op == "tune_propose":
+            return self.svc.propose_hint(m["changes"], m.get("reason", "阶跃分析规则建议"))
+        if op == "agent_ask":
+            return await run(None, self.svc.ask, m["text"])
+        if op == "agent_reset":
+            return self.svc.loop.reset()
+        if op == "agent_config":
+            return agent_llm.save_config(m["set"]) if m.get("set") else agent_llm.public_config()
+        if op == "yaml_writeback":
+            return await run(None, lambda: self.svc.yaml_writeback(m.get("path"), m.get("values")))
+        if op == "change_decide":
+            return await run(None, self.svc.gw.decide, int(m["id"]), bool(m["accept"]))
+        if op == "change_list":
+            return {"pending": self.svc.gw.pending(), "history": await run(None, self.svc.gw.history)}
+        if op == "rollback":
+            return await run(None, self.svc.gw.rollback, m["commit"])
         raise LinkError("bad_op", f"未知操作 {op}")
 
     async def handler(self, ws) -> None:
@@ -114,7 +138,7 @@ class Server:
                 try:
                     data = await self._op(m)
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": True, "data": data}
-                except LinkError as e:
+                except (LinkError, GatewayError) as e:
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False, "error": e.as_dict()}
                 except Exception as e:  # noqa: BLE001
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
