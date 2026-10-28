@@ -18,6 +18,8 @@ def main() -> None:
     import signal
 
     def _term(*_):
+        from . import lastsession
+        lastsession.clear()            # 先删记录：后面退得慢也不会误报崩溃
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, _term)       # 正常结束（kill/任务管理器“结束任务”以外）也算干净退出
     try:

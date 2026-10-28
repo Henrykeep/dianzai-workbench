@@ -162,7 +162,7 @@ def test_sidecar_killed_and_restarted(board, home):
         ui.ok("disconnect")
         ui.close()
         p.send_signal(signal.SIGTERM)                             # 正常关掉：下次不报“意外退出”
-        assert until(lambda: not (home / "last_session.json").exists(), 20)
+        assert until(lambda: not (home / "last_session.json").exists(), 3), "收到 SIGTERM 要先删记录"
     finally:
         p.kill()
 
