@@ -6,7 +6,7 @@ MSPM0（嘉立创天猛星 MSPM0G3507）统一用 SysConfig + DriverLib：SysCon
 
 命名约定（SysConfig 里每个实例的 Name 字段）：GPIO_<名> / PWM_<名> / ENC_<名> / UART_<名> / ADC_<名> / TIMER_<名>。
 
-目前支持：GPIO（多引脚组）、PWM（ccp0..3）、UART、ENC（QEI 或 GPIO A/B）、TIMER；ADC 只报 TODO。
+目前支持：GPIO（多引脚组）、PWM（ccp0..3）、UART、ENC（QEI 或 GPIO A/B）、TIMER、I2C、SPI、ADC（ADC12_<n> 的 MEM0 通道）。
 【部分验证】字段名（已用 SDK 2.11 官方例程 PWM/TIMER/QEI/GPIO 的 .syscfg 核对（tools/fixtures/syscfg/ti_*.syscfg）；
 未用你本机 SysConfig 导出的文件核对。
 用法：
@@ -109,8 +109,13 @@ def extract(inst: dict) -> tuple[dict, list[str]]:
             buses[i] = {"instance": i, "sck": kv.get("peripheral.sclkPin.$assign", "TODO"),
                         "mosi": kv.get("peripheral.mosiPin.$assign", "TODO"), "miso": kv.get("peripheral.misoPin.$assign", "TODO"),
                         "mode": int(kv.get("polarity", "0")) * 2 + int(kv.get("phase", "0"))}
+        elif pre == "ADC12":                                    # ADC12_<n>：MEM0 的通道（运行时由 pal_adc_read 切换，多路要在 board.yaml 补）
+            m = re.search(r"CHAN_(\d+)", kv.get("adcMem0chansel", "DL_ADC12_INPUT_CHAN_0"))
+            ch = int(m.group(1)) if m else 0
+            res.setdefault("adc", []).append({"name": f"ADC{logical}_CH{ch}", "instance": kv.get("peripheral.$assign", "TODO"),
+                                              "channel": ch, "pin": kv.get(f"peripheral.adcPin{ch}.$assign", "TODO")})
         elif pre == "ADC":
-            todo.append(f"{name}: ADC 导入未实现（需真实 .syscfg 样本）")
+            todo.append(f"{name}: ADC 实例请命名为 ADC12_<n>（见 ports/mspm0-driverlib/README.md）")
     for bus, dev, pin in cs:
         if bus not in buses:
             todo.append(f"GPIO_CS_{bus}_{dev}: 找不到 SPI 实例 {bus}"); continue
@@ -144,8 +149,9 @@ def selftest() -> int:
         r4, t4 = extract(parse(tm.read_text(encoding="utf-8")))
         ok = ok and not t4 and r4.get("i2c") == [{"name": "IMU", "instance": "I2C0", "scl": "PA1", "sda": "PA0"}] and \
             r4.get("spi") == [{"name": "DEV", "instance": "SPI1", "sck": "PB23", "mosi": "PB22", "miso": "PB21", "mode": 3, "cs": "PB20"}] and \
-            not any(g["name"].startswith("CS_") for g in r4.get("gpio", []))
-    print(f"{'✓' if ok else '✗'} syscfg_synthetic+TI例程: {(res, todo) if not ok else 'GPIO/PWM/UART/ENC(QEI+GPIO)/TIMER/I2C/SPI 解析正确'}")
+            not any(g["name"].startswith("CS_") for g in r4.get("gpio", [])) and \
+            r4.get("adc") == [{"name": "ADC0_CH2", "instance": "ADC0", "channel": 2, "pin": "PA25"}]
+    print(f"{'✓' if ok else '✗'} syscfg_synthetic+TI例程: {(res, todo) if not ok else 'GPIO/PWM/UART/ENC(QEI+GPIO)/TIMER/I2C/SPI/ADC 解析正确'}")
     return 0 if ok else 1
 
 
@@ -165,7 +171,7 @@ def main() -> int:
     if a.check:
         have = (yaml.safe_load(a.check.read_text(encoding="utf-8")).get("resources") or {})
         def same(t, r, h):
-            return all(h.get(k) == v for k, v in r.items() if not (t == "pwm" and k == "name"))
+            return all(h.get(k) == v for k, v in r.items() if not (t in ("pwm", "adc") and k == "name"))
         bad = [f"{t}.{r['name']}" for t, rs in res.items() for r in rs
                if not any(same(t, r, h) for h in have.get(t) or [])]
         for b in bad:

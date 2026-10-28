@@ -118,6 +118,7 @@
         <file path="../../../firmware/drivers/ssd1306/ssd1306_tr.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/st77xx/st77xx.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/stepper/stepper.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../apps/car_2wd/car_aux.c" targetDirectory="dz/apps" action="link"/>
         <file path="../../../apps/car_2wd/app_main.c" targetDirectory="dz/apps" action="link"/>
         <file path="../../../apps/car_2wd/drive_plan.c" targetDirectory="dz/apps" action="link"/>
         <file path="../../../build/mspm0g3507-launchpad/car_2wd/linkgen/link_gen.c" targetDirectory="dz/build" action="link"/>

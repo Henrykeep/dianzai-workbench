@@ -12,6 +12,7 @@
  *   板 -> 上位机  HEARTBEAT  每 500 ms（带 schema 哈希）
  *   参数读写 / 急停 / 命令：dzctl（firmware/proto/dzctl），字段与参数表见 app.yaml 的 link: 段（自动生成 link_gen.h）。
  *   急停锁存：电机刹车、忽略速度指令，直到收到命令 'R'。
+ *   可选外设（car_aux.c）：板子有 VBAT 就监测电池（过放 → 急停），有 US_TRIG/US_ECHO 就测前方距离（太近 → 不许前进）。
  */
 #include "board_gen.h"
 #include "app.h"
@@ -23,6 +24,7 @@
 #include "link_gen.h"
 #include "subsys.h"
 #include "drive_plan.h"
+#include "car_aux.h"
 
 /* ---- 机械参数：换电机/轮子改这里 ---- */
 #define CTRL_PERIOD_US   1000u
@@ -102,6 +104,7 @@ dz_err_t app_init(void)
     subsys_sched_set_mode(&s_sched, SUBSYS_MODE_RUN);
     dzframe_parser_init(&s_rx);
     dzctl_wd_init(&s_wd, 1000u);   /* 侧车每 250 ms 发一次心跳 */
+    if ((e = car_aux_init()) != DZ_OK) return e;
     return pal_timer_start(RES_TIMER_CTRL, CTRL_PERIOD_US, ctrl_isr, 0);
 }
 
@@ -130,7 +133,7 @@ static void handle_rx(uint32_t now)
         } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'R') {
             s_estop = false;
         } else if (!s_estop && f.kind == DZF_DATA && f.id == ID_CMD && f.len == 8u) {
-            s_state.cmd_v_mps = dzframe_get_f32(&f, 0);
+            s_state.cmd_v_mps = car_aux_limit_v(dzframe_get_f32(&f, 0));
             s_state.cmd_w_rps = dzframe_get_f32(&f, 4);
             s_state.cmd_ms = now;
         }
@@ -144,6 +147,8 @@ void app_loop(void)
     uint32_t now = pal_millis();
     handle_rx(now);
     if (dzctl_wd_expired(&s_wd, now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
+    if (car_aux_poll(now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }   /* 只置不清 */
+    s_state.cmd_v_mps = car_aux_limit_v(s_state.cmd_v_mps);
     subsys_sched_poll(&s_sched, now);
     uint32_t st = pal_irq_save();
     s_sp[0] = s_state.sp_a_rps; s_sp[1] = s_state.sp_b_rps;

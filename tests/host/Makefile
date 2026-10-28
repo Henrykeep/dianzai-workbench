@@ -27,7 +27,7 @@ CFLAGS += -DPY_CRC_L=0x$(shell echo $(PYFRAME) | cut -c23-24) -DPY_CRC_H=0x$(she
 
 # 应用级闭环测试：car_2wd（多板验收用例）的真实 app 代码 + host-sim 电机模型
 CAR := $(ROOT)/apps/car_2wd
-CAR_SRC := $(CAR)/tests/test_car.c $(CAR)/app_main.c $(CAR)/drive_plan.c $(CAR)/sim_setup.c \
+CAR_SRC := $(CAR)/tests/test_car.c $(CAR)/app_main.c $(CAR)/drive_plan.c $(CAR)/car_aux.c $(CAR)/sim_setup.c \
            $(filter-out $(wildcard $(ROOT)/firmware/*/*/*selftest*.c),$(wildcard $(ROOT)/firmware/algo/*/*.c $(ROOT)/firmware/drivers/*/*.c)) \
            $(ROOT)/ports/host-sim/pal_host.c $(GEN)/board_gen.c $(OUT)/car_link/link_gen.c \
            $(wildcard $(ROOT)/firmware/framework/*/*.c) $(wildcard $(ROOT)/firmware/proto/*/*.c)

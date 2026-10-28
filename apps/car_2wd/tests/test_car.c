@@ -63,6 +63,25 @@ int main(void)
     CHECK(t[0] == 0.0f && t[2] == 0.0f && fabsf(t[1]) < 0.1f && fabsf(t[3]) < 0.1f);
     printf("  断线: A=%.3f B=%.3f\n", t[1], t[3]);
 
+    /* car_aux 超声波（PAL 边沿中断）：前方 ~100 mm（回波 600 us）→ 前进指令被钳到 0；障碍移走 → 恢复 */
+    float sp = -1.0f;
+    for (uint32_t i = 0; i < 1500; i++) {
+        if (i % 50u == 0) send_cmd(0.3f, 0.0f);
+        host_sim_gpio_set_input(RES_GPIO_US_ECHO, true);  host_sim_run_us(600);
+        host_sim_gpio_set_input(RES_GPIO_US_ECHO, false); host_sim_run_us(400);
+        app_loop();
+        uint8_t b[256]; uint16_t n = host_sim_uart_take_tx(RES_UART_LINK, b, sizeof b);
+        static dzframe_parser_t p2; static bool p2i; if (!p2i) { dzframe_parser_init(&p2); p2i = true; }
+        dzframe_t f;
+        for (uint16_t k = 0; k < n; k++)
+            if (dzframe_feed(&p2, b[k], &f) && f.kind == DZF_DATA && f.id == 2 && f.len == 24) sp = dzframe_get_f32(&f, 4);
+    }
+    CHECK(sp == 0.0f);
+    printf("  障碍 100 mm: sp_a=%.3f\n", sp);
+    run(1500, true, 0.3f, 0.0f, t);   /* 回波没了 → 超时、无效 → 不再限制 */
+    CHECK(t[0] > 1.0f);
+    printf("  障碍移走: sp_a=%.3f\n", t[0]);
+
     printf(fails ? "car_2wd: %d 项失败\n" : "car_2wd: 全部通过\n", fails);
     return fails != 0;
 }
