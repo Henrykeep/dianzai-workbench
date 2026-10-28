@@ -6,6 +6,7 @@
 
 ## [未发布]
 ### 新增
+- 内置 Agent（docs/18）：分层写权限网关（secret/frozen/config/app/docs；diff 确认 → 门禁 make check/test → git 提交，失败自动还原，带尾注才可回滚）、急停不可调用、可插拔 OpenAI 兼容大模型（DeepSeek/通义千问/Ollama 等，Key 只存本机）、离线阶跃分析与整定建议、参数写回 yaml [仿真]（假 LLM + 临时 git 仓库测试，playwright 截图）；真实大模型服务商 [未测]；安装版工程仓库设置 [未测]
 - 桌面工作台 `app/`（docs/17）：Python 侧车 dzbench（串口/仿真/回放、自动波特率、按心跳哈希自动识别 schema、参数限幅+ACK 重发、急停 3 连发、原始 .dzlog、快照、Agent 只提议接缝）[仿真]；Vite+TS+uPlot 界面 [仿真]（playwright 截图）；真实串口 [未测]；Tauri 外壳与 Windows CI [未测]
 - `firmware/proto/dzctl` 0.1.0：参数表读写（限幅、拒 NaN）、急停锁存、命令、心跳带 schema 哈希 [仿真]
 - `tools/gen_link.py`：由 yaml `link:` 生成遥测打包/参数表/link_schema.json [仿真]
