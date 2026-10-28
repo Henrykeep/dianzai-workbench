@@ -6,6 +6,21 @@
 
 ## [未发布]
 
+### 模块库（可移植驱动）
+每个都有 README（含 board.yaml 片段）、VERSION、selftest，以及 host-sim 上的假芯片单测（tests/host/test_modlib.c）；host-sim 板新增对应测试资源。全部 **[仿真]**（主机单测），**上板 [未测]**。
+- servo 1.0.0：角度→脉宽、trim、反向、软件限位、速率限制。
+- buzzer 1.0.0：开/关节奏 + 重复 + 优先级，有源（GPIO）/无源（PWM 50%）。
+- battery 1.0.0：分压换算、滤波、OK/LOW/CRIT/NONE（滞回 + 保持时间，防电机启动误报）、粗略百分比。MSPM0 端口 ADC 仍 ENOTSUP。
+- ssd1306 1.1.0：自带 PAL I2C（控制字节作 reg，16 B 分块）和 4 线 SPI（D/C，64 B 分块）传输 + 硬复位。
+- hcsr04 1.0.0：非阻塞触发/回波计时，轮询或 EXTI 边沿两种，温补声速、超时、量程。
+- line_sensor 1.0.0：1..8 路数字/模拟灰度，标定、加权位置、丢线记边、路口检测。
+- stepper 1.0.0：STEP/DIR 梯形加减速（Q32 相位累加，ISR 内无浮点/除法），运动中不换向、平滑停止、急停、EN。
+- st77xx 1.0.0：ST7735/ST7789 RGB565，开窗直写（无帧缓冲）、旋转/偏移/BGR/反色、放大文字。
+- bt_serial 1.0.0：HC-05/JDY-31 按行收发、非阻塞 AT 改名/改波特率、STATE/EN 脚。
+- motor_2pwm 1.0.0：DRV8833 双 PWM（慢/快衰减、刹车/滑行）；motor_dc 不变（QUESTIONS 36）。
+- key 已满足要求（消抖/长按/连发），未改。
+- docs/19 覆盖矩阵更新。
+
 ### MSPM0：I2C / SPI（DriverLib）
 - ports/mspm0-driverlib 0.3.0：`pal_i2c_mem_read/write`、`pal_spi_xfer` 用 DriverLib 轮询实现（原来返回 ENOTSUP），带超时与诊断计数。**[编译]**
 - 天猛星 `.syscfg` 新增 I2C0（PA0/PA1，400 kHz）、SPI1（PB23/22/21，mode 3，1 MHz）+ 软件片选 PB20、UART1 IMU 口（PA8/PA9，460800），并用 SysConfig CLI 重新生成；board.yaml 同步，`syscfg_import --check` 能识别 I2C/SPI。**[编译]**，引脚未对照原理图。
