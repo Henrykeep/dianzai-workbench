@@ -282,7 +282,7 @@ function renderStatus(st: Msg) {
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
   $("st-log").textContent = st.replay ? `回放 ${(st.replay_progress * 100).toFixed(0)}%` : st.log ? `记录到 ${st.log}` : "未记录";
-  $("st-hint").textContent = st.hint ?? "";
+  $("st-hint").textContent = [st.hint, st.clients > 1 ? `另有 ${st.clients - 1} 个窗口也连着侧车：参数以最后一次下发为准，急停哪个窗口按都有效` : ""].filter(Boolean).join("  ·  ");
   $("rp").hidden = !st.replay;
   if (st.replay) {
     if (!rpDrag) rpPos.value = String(Math.round(st.replay_progress * 1000));
@@ -337,16 +337,21 @@ link.on(m => {
     case "error": toast(m as unknown as Err); break;
     case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
+    case "port_moved": toast(m.message, "warn", 8000); break;
     case "estop": toast(m.message, m.sent ? "info" : "crit", m.sent ? 2500 : 15000); break;
   }
 });
 link.onState = async open => {
   $("st-ws").textContent = open ? "侧车 已连接" : "侧车 未连接";
   $("banner").hidden = open;
-  $("banner").innerHTML = "侧车（dzbench）没有响应，正在重连…  开发模式请先运行 <code>python -m dzbench</code>";
+  $("banner").innerHTML = "侧车（dzbench）没有响应：程序会自动把它重启，界面自动重连。板子 1 秒收不到心跳会自己急停。开发模式请先运行 <code>python -m dzbench</code>";
   if (!open) return;
   const h = await link.rpc("hello");
   S.ports = h.ports; renderPorts(false);
+  if (h.recovered && !h.status.connected) {   // 侧车刚崩过：说清楚，预选上次的口，但不自动连（第一个动作交给人）
+    toast({ code: "recovered", message: h.recovered.message, fix: "" }, "warn", 30000);
+    if (S.ports.some(p => p.port === h.recovered.port)) $<HTMLSelectElement>("port").value = h.recovered.port;
+  }
   if (h.schema) { applySchema(h.schema); S.applied = h.params; syncParams(); }
   renderStatus(h.status); loadLogs();
 };
