@@ -39,12 +39,15 @@
             -I${PROJECT_LOC}/../../../firmware/drivers/bmi088
             -I${PROJECT_LOC}/../../../firmware/drivers/buzzer
             -I${PROJECT_LOC}/../../../firmware/drivers/encoder
+            -I${PROJECT_LOC}/../../../firmware/drivers/hcsr04
             -I${PROJECT_LOC}/../../../firmware/drivers/key
+            -I${PROJECT_LOC}/../../../firmware/drivers/line_sensor
             -I${PROJECT_LOC}/../../../firmware/drivers/motor_dc
             -I${PROJECT_LOC}/../../../firmware/drivers/mpu6050
             -I${PROJECT_LOC}/../../../firmware/drivers/qd4310
             -I${PROJECT_LOC}/../../../firmware/drivers/servo
             -I${PROJECT_LOC}/../../../firmware/drivers/ssd1306
+            -I${PROJECT_LOC}/../../../firmware/drivers/stepper
             -I${PROJECT_LOC}/../../../apps/include
             -I${PROJECT_LOC}/../../../build/mspm0g3507-tianmengxing/car_2wd/linkgen
             -I${PROJECT_LOC}/../../../ports/mspm0-driverlib
@@ -98,13 +101,17 @@
         <file path="../../../firmware/drivers/bmi088/bmi088.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/buzzer/buzzer.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/encoder/encoder.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/hcsr04/hcsr04.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/key/key.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/line_sensor/line_sensor.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/motor_dc/motor_dc.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/mpu6050/mpu6050.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/qd4310/qd4310.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/servo/servo.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/ssd1306/font8x8.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/ssd1306/ssd1306.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/ssd1306/ssd1306_tr.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/stepper/stepper.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../apps/car_2wd/app_main.c" targetDirectory="dz/apps" action="link"/>
         <file path="../../../apps/car_2wd/drive_plan.c" targetDirectory="dz/apps" action="link"/>
         <file path="../../../build/mspm0g3507-tianmengxing/car_2wd/linkgen/link_gen.c" targetDirectory="dz/build" action="link"/>
