@@ -6,6 +6,27 @@
 
 ## [未发布]
 
+## [0.6.0] - 2026-10-29 PAL 边沿中断/MSPM0 ADC + 协处理器发送库 + 快速上手
+
+### PAL / 移植层
+- PAL 1.2.0：GPIO 边沿中断 `pal_gpio_irq_attach/detach`（RISING/FALLING/BOTH，按逻辑电平判断，active_low 自动换算；回调带 t_us）。host-sim 2.1.0 [仿真]；stm32f4-hal 1.2.0（运行时配 IT_RISING_FALLING、NVIC 6、EXTI 各向量）[编译]；stm32-cubemx 1.3.0（提供 HAL_GPIO_EXTI_Callback，G0/C0/L5/U5/H5/MP1 用 Rising/Falling 回调；`DZ_CM_NO_EXTI_CALLBACK` 可让出，自己调 `dz_cm_gpio_exti(pin)`）[编译]；同一引脚号不同端口返回 DZ_EBUSY。
+- mspm0-driverlib 0.4.0：ADC12 单次转换（SysConfig 实例名 `ADC12_<n>`，1 ms 超时计入 diag adc_timeout）+ GPIO 边沿中断（GROUP1_IRQHandler 由 gen_board 生成）[编译]。syscfg_import 识别 ADC12_<n> [仿真]。天猛星板加 US_TRIG PB8 / US_ECHO PB9、VBAT ADC0 CH2 PA25（分压 11:1【未验证】）。
+
+### 模块 / 应用
+- hcsr04 1.1.0：`hcsr04_attach_irq/detach_irq` 用 PAL 边沿中断计回波 [仿真]。
+- attitude 1.1.0：`attitude_linear_acc` 去重力，MPU6050 直连路径也能拿线加速度 [仿真]。
+- car_2wd：car_aux（电池：先见过 OK 再掉到 CRIT 才急停，只置不清；超声：<150 mm 前进速度限 0）[仿真]，电池急停在 host-sim 只编译未跑通 [编译]。
+
+### 工具
+- tools/test_module_ide.py（进 make check）：28 个模块逐个 keil_inject（含依赖闭包）+ 仅用注入的 include 做 gcc -fsyntax-only；CCS projectspec 含全部 .c 与 -I [仿真]。
+
+### 协处理器
+- dzlink 1.1.0：`Sender`（按通道打包、seq、整数截断、限速、心跳；MaixCAM 自动用 maix.uart）、`autodetect`（Jetson/树莓派/RDK/MaixCAM 平台识别 + 监听 MCU 心跳选串口，`DZ_SERIAL` 覆盖）[仿真]；K230 MicroPython 单文件 host/k230/dzsend.py，与 dzlink 逐字节一致 [仿真]。各平台实机串口 [未测]。docs/22。
+
+### 工作台 / 文档
+- 修 PytestUnhandledThreadExceptionWarning：识别 schema 后的后台读参线程吞掉断开时的异常并上报 `param_read_aborted`；pytest 把该警告升为错误 [仿真]。
+- docs/00 快速上手（装 exe → CubeMX → Keil → ST-Link/DAPLink 烧录 → 连接 → Agent 调参 → 急停），4 张仿真板截图；Windows/Keil/烧录步骤 [未测]。
+
 ## [0.5.0] - 2026-10-29 模块库 + MSPM0 I2C/SPI + IMU 去重力 + 2026H 评测
 
 ### 模块库（可移植驱动）
