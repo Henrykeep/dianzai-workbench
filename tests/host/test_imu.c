@@ -54,6 +54,31 @@ TEST(mpu6050_ok)
     host_sim_i2c_attach(RES_I2C_IMU, NULL, NULL);
 }
 
+/* MPU6050 直连路径去重力：假 MPU 俯仰 10° 静止 → 互补滤波收敛 → attitude_linear_acc ≈ 0；再叠加前向 0.5 m/s² 一拍 → x ≈ 0.5 */
+#include <math.h>
+TEST(mpu6050_gravity_removal)
+{
+    fake_mpu_t m; memset(&m, 0, sizeof m); m.addr = 0x68; m.reg[0x75] = 0x68;
+    host_sim_i2c_attach(RES_I2C_IMU, mpu_cb, &m);
+    mpu6050_t d; mpu6050_cfg_t c = mpu6050_cfg_default(RES_I2C_IMU);
+    CHECK(mpu6050_init(&d, &c) == DZ_OK);
+    const float p = 10.0f * 0.0174533f;
+    const int16_t a[3] = { (int16_t)lrintf(-8192.0f * sinf(p)), 0, (int16_t)lrintf(8192.0f * cosf(p)) }, g[3] = { 0, 0, 0 };
+    mpu_set(&m, a, 0, g);
+    attitude_t att; CHECK(attitude_init(&att, 0.5f, 0.15f) == DZ_OK);
+    mpu6050_data_t o; float lin[3];
+    for (int i = 0; i < 500; i++) { CHECK(mpu6050_read(&d, &o) == DZ_OK); CHECK(attitude_update(&att, o.acc, o.gyr, 0.002f) == DZ_OK); }
+    CHECK_NEAR(att.pitch, p, 2e-3);
+    CHECK(attitude_linear_acc(&att, o.acc, lin));
+    for (int i = 0; i < 3; i++) CHECK_NEAR(lin[i], 0.0, 0.02);    /* 16 位量化 ~1 mg */
+    float acc2[3] = { o.acc[0] + 0.5f, o.acc[1], o.acc[2] };
+    CHECK(attitude_linear_acc(&att, acc2, lin));
+    CHECK_NEAR(lin[0], 0.5, 0.02);
+    attitude_t fresh_att; CHECK(attitude_init(&fresh_att, 0.5f, 0.15f) == DZ_OK);
+    CHECK(!attitude_linear_acc(&fresh_att, acc2, lin) && lin[0] == acc2[0]);   /* 没 inited：原样 */
+    host_sim_i2c_attach(RES_I2C_IMU, NULL, NULL);
+}
+
 TEST(mpu6050_errors)
 {
     fake_mpu_t m; memset(&m, 0, sizeof m); m.addr = 0x69; m.reg[0x75] = 0x68;
@@ -156,5 +181,5 @@ TEST(attitude_and_dzimu)
 
 void suite_imu(void)
 {
-    RUN(mpu6050_ok); RUN(mpu6050_errors); RUN(bmi088_ok); RUN(bmi088_errors); RUN(attitude_and_dzimu);
+    RUN(mpu6050_ok); RUN(mpu6050_gravity_removal); RUN(mpu6050_errors); RUN(bmi088_ok); RUN(bmi088_errors); RUN(attitude_and_dzimu);
 }

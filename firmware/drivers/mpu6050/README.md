@@ -17,3 +17,14 @@
 
 ## 参考来源
 - InvenSense《MPU-6000/MPU-6050 Register Map and Descriptions》Rev 4.2，以及《Product Specification》Rev 3.4（量程和 LSB 取自这两份）。自写，没有参考 i2cdevlib 等代码。
+
+## 直连路径：姿态 + 去重力（v0.6.0）
+主控自己读 MPU6050（不经 imu_module/dzimu）时，用 `firmware/algo/attitude`（1.1.0）补上姿态和去重力：
+```c
+mpu6050_data_t d; float lin[3];
+if (mpu6050_read(&imu, &d) == DZ_OK) {
+    attitude_update(&att, d.acc, d.gyr, 0.001f);          /* 1 kHz */
+    if (attitude_linear_acc(&att, d.acc, lin)) { /* lin = 运动加速度，m/s²，本体系 */ }
+}
+```
+公式与 `dzimu_linear_acc` 相同。【仿真】host 单测：假 MPU6050 俯仰 10° 静止，去重力后三轴 < 0.02 m/s²；叠加 0.5 m/s² 前向加速度能分离出来。未上板。

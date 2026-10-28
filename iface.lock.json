@@ -30,10 +30,11 @@
    "attitude.h: } attitude_t;",
    "attitude.h: dz_err_t attitude_init(attitude_t *a, float tau_s, float acc_gate);",
    "attitude.h: dz_err_t attitude_update(attitude_t *a, const float acc[3], const float gyr[3], float dt);",
+   "attitude.h: bool attitude_linear_acc(const attitude_t *a, const float acc[3], float out[3]);",
    "attitude.h: dz_err_t attitude_selftest(void);"
   ],
-  "hash": "9e5388c5b4fc00ea",
-  "version": "1.0.0"
+  "hash": "dc3c4e12fcc4f914",
+  "version": "1.1.0"
  },
  "firmware/algo/ball_beam": {
   "decls": [

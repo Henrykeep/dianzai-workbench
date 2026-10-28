@@ -40,6 +40,18 @@ dz_err_t attitude_update(attitude_t *a, const float acc[3], const float gyr[3], 
     return DZ_OK;
 }
 
+bool attitude_linear_acc(const attitude_t *a, const float acc[3], float out[3])
+{
+    if (!a || !acc || !out) return false;
+    for (int i = 0; i < 3; i++) out[i] = acc[i];
+    if (!a->inited) return false;
+    float sr = sinf(a->roll), cr = cosf(a->roll), sp = sinf(a->pitch), cp = cosf(a->pitch);
+    out[0] -= G_MPS2 * -sp;
+    out[1] -= G_MPS2 * sr * cp;
+    out[2] -= G_MPS2 * cr * cp;
+    return true;
+}
+
 dz_err_t attitude_selftest(void)
 {
     attitude_t a;
