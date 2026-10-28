@@ -191,7 +191,8 @@ def test_agent_loop_only_proposes_and_cannot_estop(repo):
     out = svc.ask("车子太慢")
     assert out.startswith("已提议")
     prop = [e for e in ev if e["type"] == "proposal"]
-    assert prop and prop[0]["value"] == 2.0 and prop[0]["clamped"] and s.params["kp"] == 0.08
+    # 调参护栏（非仿真 = 实机档）：0.08 一步最多 ×1.5 → 0.12，而不是直接到上限 2；且还没生效
+    assert prop and prop[0]["value"] == 0.12 and "护栏" in prop[0]["reason"] and s.params["kp"] == 0.08
     tool_msgs = [json.loads(m["content"]) for m in fake.seen[-1][0] if m["role"] == "tool"]
     assert tool_msgs[2]["ok"] is False and "estop" in tool_msgs[2]["error"]
     assert tool_msgs[3]["ok"] is False and "frozen" in tool_msgs[3]["error"]

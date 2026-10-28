@@ -220,11 +220,20 @@ class Session:
 
     def _on_text(self, data: bytes, now: float) -> None:
         rows, grew = self.kv.feed(data)
-        if grew:
-            sch = Schema(self.kv.schema_dict())
+        self.inject(rows, self.kv.schema_dict() if grew else None, "TEXT", now)
+
+    def inject(self, rows: list[dict], schema: dict | None, tag: str, now: float | None = None) -> None:
+        """虚拟通道入口（文本 key=value、ELF 变量轮询）：换 schema 时推送，样本走与 DATA 相同的管线。"""
+        if self.schema_hash is not None:
+            raise LinkError("busy_schema", "当前串口已绑定固件 schema，虚拟通道不能混入", "先断开串口，或改用固件遥测")
+        now = time.monotonic() if now is None else now
+        if not self.t_connect:
+            self.t_connect = now
+        if schema:
+            sch = Schema(schema)
             with self.lock:
                 self.schema = sch
-            self.emit({"type": "schema", "schema": sch.summary() | {"hash": "TEXT", "virtual": True}})
+            self.emit({"type": "schema", "schema": sch.summary() | {"hash": tag, "virtual": True}})
         if rows:
             with self.lock:
                 for v in rows:

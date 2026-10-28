@@ -15,6 +15,10 @@ import websockets
 from . import snapshots
 from .agent import llm as agent_llm
 from .agent.gateway import GatewayError
+from .agent.guard import GuardError
+from .config import ConfigError
+from .elfsym import ElfError
+from .flash import FlashError
 from .agent.service import AgentService
 from .agent_api import TOOLS, AgentTools
 from .downsample import minmax
@@ -173,6 +177,20 @@ class Server:
             return await run(None, self.svc.ask, m["text"])
         if op == "agent_reset":
             return self.svc.loop.reset()
+        if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”
+            return self.svc.action_decide(int(m["id"]), bool(m["accept"]))
+        if op == "tune_reset":
+            return self.svc.reset_guard()
+        if op == "tune_rule_round":                # 无 LLM 模式：规则给一项建议（仍是待确认提议）
+            return self.svc.rule_round()
+        if op == "tune_step_test":                 # 用户自己点 = 已是人工确认
+            return self.svc.run_step_test()
+        if op == "flash":
+            return self.svc.flasher.flash(m.get("dry_run", True))
+        if op == "flash_rollback":
+            return self.svc.flasher.rollback(m.get("dry_run", True))
+        if op == "hardfault_decode":
+            return self.svc.decode_hardfault(m["frame"], m.get("exc_return"), m.get("regs"))
         if op == "agent_config":
             return self.svc.configure(m["set"]) if m.get("set") else agent_llm.public_config() | {"repo": str(self.svc.gw.root)}
         if op == "yaml_writeback":
@@ -199,6 +217,10 @@ class Server:
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": True, "data": data}
                 except (LinkError, GatewayError) as e:
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False, "error": e.as_dict()}
+                except (FlashError, GuardError, ElfError, ConfigError) as e:
+                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
+                           "error": {"type": "error", "code": getattr(e, "code", type(e).__name__),
+                                     "message": getattr(e, "message", str(e)), "fix": getattr(e, "fix", "")}}
                 except Exception as e:  # noqa: BLE001
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
                            "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",

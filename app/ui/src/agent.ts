@@ -73,6 +73,27 @@ export function initAgent(call: Call) {
       await call("rollback", { commit: c.commit }).then(() => renderChange({ ...c, status: "reverted" }), () => {});
     });
   }
+  // 风险等级 human 的动作卡（烧录 / 实机阶跃 / 实机回滚）：人点了才执行
+  const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", rollback_best: "回滚到最好参数" };
+  function renderAction(a: Msg) {
+    const pv = a.preview ? `<pre class="log">${esc(JSON.stringify(a.preview, null, 1))}</pre>` : "";
+    const d = add(`<div class="hd"><span class="dotk file"></span><span class="t">需要你确认：${esc(TOOL_CN[a.tool] ?? a.tool)}</span><span class="lbl">风险 human${a.sim ? " · 仿真" : " · 实机"}</span></div>
+      ${pv}<div class="act"><button class="btn pri" data-a="1">执行</button><button class="btn" data-a="0">拒绝</button></div>`, "card change pending");
+    d.querySelectorAll<HTMLButtonElement>("button[data-a]").forEach(b => b.onclick = () => {
+      d.querySelectorAll("button").forEach(x => (x as HTMLButtonElement).disabled = true);
+      call("agent_action_decide", { id: a.id, accept: b.dataset.a === "1" })
+        .then(r => { d.querySelector(".act")!.innerHTML = `<span class="lbl ok-t">${r.status === "done" ? "已执行" : "已拒绝"}</span>`; },
+              () => { d.querySelector(".act")!.innerHTML = `<span class="lbl">执行失败（见提示）</span>`; });
+    });
+  }
+  const VERDICT: Record<string, string> = { continue: "继续", done: "达标，结束", rollback: "变差，建议回滚到最好一轮", stop: "停止" };
+  function renderRound(m: Msg) {
+    const v = m.verdict, k = m.metrics;
+    add(`<div class="hd"><span class="dotk"></span><span class="t">第 ${v.round} 轮阶跃：${esc(VERDICT[v.action] ?? v.action)}</span><span class="lbl">程序判定</span></div>
+      <p>超调 ${n(k.overshoot_pct, 1, "%")} · 调节 ${n(k.settling_s, 3, " s")} · 稳态误差 ${n(k.sse_pct, 1, "%")} · 振荡 ${k.oscillations} · 评分 ${v.score}</p>
+      ${v.best ? `<div class="lbl">最好：第 ${v.best.round} 轮 ${esc(JSON.stringify(v.best.gains))}${v.rolled_back ? "（仿真已自动回滚）" : ""}</div>` : ""}
+      ${v.reason ? `<div class="lbl">${esc(v.reason)}</div>` : ""}`);
+  }
   $("ag-yaml").onclick = () => call("yaml_writeback").then(renderChange, () => {});
 
   // ---------------------------------------------------------------- 对话
@@ -110,6 +131,8 @@ export function initAgent(call: Call) {
   return {
     onMsg(m: Msg) {
       if (m.type === "change") renderChange(m);
+      if (m.type === "agent_action") renderAction(m);
+      if (m.type === "tune_round") renderRound(m);
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
     },
     add,

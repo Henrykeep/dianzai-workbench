@@ -1,0 +1,8 @@
+{
+  "_doc": "工作台工程配置（进 git，团队共享；不要放密钥）。本机差异放 ~/.dzbench/machine.json。见 docs/17。",
+  "flash": {"tool": "pyocd", "target": "mspm0g3507", "dry_run": true},
+  "build": {"elf": "build/car_2wd_mspm0g3507/car_2wd.elf"},
+  "tune": {"vbat_min": null, "temp_max": null, "max_rounds_hw": 8},
+  "step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0], "high": [0.4, 0], "pre_s": 0.6, "hold_s": 1.5,
+                "y": "spd_a", "sp": "sp_a", "_doc": "car_2wd：DATA id=1 = (v m/s, w rad/s)；0 → 0.4 m/s ≈ 1.96 r/s"}
+}

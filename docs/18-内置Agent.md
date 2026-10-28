@@ -69,3 +69,34 @@
 ## 6. 截图
 
 `python3 app/tools/shot.py` 生成 `app-tune.png`（阶跃分析）、`app-agent.png`（对话，假 LLM）、`app-diff.png`（写回 yaml 的 diff）、`app-commit.png`（门禁通过已提交）、`app-llm.png`（设置）。Agent 截图改的是临时克隆，门禁 `make check` 是真跑的。
+
+## 风险分级（agent/risk.py）
+
+| 等级 | 工具 | 行为 |
+|---|---|---|
+| auto | read_telemetry list_params step_analysis list_files read_file tune_context read_symbol decode_hardfault build_log | 直接执行 |
+| log | build reset propose_param_change propose_edit observe；仿真里的 run_step_test rollback_best | 执行并写 `~/.dzbench/agent_audit.jsonl`（提议本身仍要人确认才落地） |
+| human | flash erase mem_write；实机的 run_step_test rollback_best | 变成“需要你确认”动作卡，人点“执行”才跑；烧录卡片里先给 dry-run 预览 |
+| forbid | raw_cmd disable_estop unlock_rdp estop，以及**任何没登记的工具** | 永远拒绝 |
+
+## 调参护栏（agent/guard.py，思路参考 llm-pid-tuner，MIT）
+
+- **LLM（或规则）只提议，程序判定**：每轮 `run_step_test` 做标准阶跃（按 `dzbench.json` 的 `step_test` 通过 dzctl/DATA 下发），程序给出 continue / done / rollback / stop；模型说 DONE 只是建议。
+- **指标全是相对量**：超调、稳态误差按阶跃幅度 |sp−y0| 归一化（目标为 0 的平衡角/球位置也成立），过零检测带滞回死区；评分 = 归一化 IAE + 超调比 + 稳态误差比 + 0.1×振荡次数，不稳定 +1。
+- **单步限制**（实机 / 仿真）：增幅 ≤×1.5 / ×3，降幅 ≥×0.7 / ×0.4，绝对变化 ≤ 量程×10% / 25%，参数为 0 时第一步 ≤ 量程×2% / 5%；再叠加板上 dzctl 限幅。
+- **每轮只改一个参数**；上一轮变差的（参数, 方向）下一轮禁止；证据不足用 `observe`。
+- **停止**：连续 2 轮 good-enough（超调 ≤10%、|稳态误差| ≤2%、进 2% 带、振荡 ≤1）；实机最多 8 轮（配置上限 10）、仿真 20 轮；遥测里有 vbat / temp 字段且配置了 `tune.vbat_min` / `tune.temp_max` 时越限即停。
+- **回滚到最好**：仿真自动；**实机要人点**（docs/QUESTIONS.md 第 19 条）。
+- **上下文压缩** `tune_context`：指标 + ≤20 个关键样本（极值、设定跳变点、分桶极值）+ best / last_rejected / 最近 5 轮历史表 + 护栏规则原文。
+- **严格解析** `parse_reply`：只认 JSON 对象，action ∈ PROPOSE/OBSERVE/DONE，拒绝 bool/NaN/溢出，不从散文里猜参数。
+- **无 LLM 模式** `tune_rule_round`：规则给一项建议，同样经护栏和人工确认。
+- **基准** `python -m dzbench.agent.bench`：固定种子，baseline / rules /（可注入）llm，三种起点（car 默认、过激、迟钝），统计达标轮数、最终归一化 IAE、越界次数（必须 0），进 `make test`。
+  当前结果：car 默认 2 轮达标；迟钝起点规则 4 轮达标；**过激起点（kp 0.6 ki 15）规则 8 轮内未达标**——规则只会小步降 kp，被“变差方向禁止”卡住，留作后续改进（LLM 路径或更好的规则）。
+
+## 烧录 / 编译 / 调试（全部 ⚠ 未上真机，假探针单测）
+
+- `flash.py`：pyOCD 优先。前置条件：最近一次编译成功且镜像 sha256 未变、急停已锁存、配置了 target；探针 DP IDCODE 必须与目标内核一致；**默认 dry_run**；烧前备份同大小区域到 `~/.dzbench/flash_backup/`；烧后等心跳且 schema 哈希等于本次编译的 link_schema；不符可一键回滚到备份。
+- `keil.py`：`UV4 -b proj -t target -j0 -o log` 无界面编译，解析 ARMCC/ARMCLANG 诊断、Error/Warning 汇总、Program Size（flash = Code+RO+RW，ram = RW+ZI）；退出码 ≥2 判失败。
+- `hardfault.py`：栈帧 + EXC_RETURN + （v7-M 才有的）CFSR/HFSR/MMFAR/BFAR；**M0/M0+ 没有这些寄存器**，只靠 PC/LR 和对齐提示；有 ELF 时把 PC/LR 翻成 `函数+偏移`。
+- `elfsym.py`：纯 Python 读 ELF32 符号表；`SymbolWatch` 按变量名经探针轮询画曲线（虚拟 schema `ELF`，仅串口未绑定固件 schema 时可用）。
+- `config.py` 分层：内置默认 < `~/.dzbench/machine.json`（UV4 路径、探针序列号）< 仓库 `dzbench.json`（芯片、ELF、阶跃实验、门限；**出现 api_key/password/token 直接报错**）< 环境变量。

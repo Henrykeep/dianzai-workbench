@@ -1,15 +1,22 @@
 """把 tuning / gateway / llm / loop 组装到一个会话上，供 server 调用（也方便测试时注入假 LLM）。"""
 from __future__ import annotations
 
+import itertools
 import os
-
 import re
+import pathlib
+import struct
+import time
 
+from .. import config as cfg_mod
+from .. import elfsym, hardfault, keil
 from ..agent_api import AgentTools
+from ..flash import FlashError, Flasher
 from ..session import LinkError, Session
 from ..transport import ROOT
 from . import llm as llm_mod
-from . import yamlpar
+from . import risk, yamlpar
+from .guard import GuardError, TuneGuard, key_samples
 from .gateway import Gateway, GatewayError
 from .loop import AgentLoop
 from .tuning import step_metrics, tuning_hints
@@ -43,15 +50,188 @@ class AgentService:
         self.gw = Gateway(root, emit, **({"runner": runner} if runner else {}))
         self._llm = llm
         rules = self.gw.root / "AGENTS.md"
+        self.cfg = cfg_mod.load(self.gw.root)
+        self.flasher = Flasher(session, self.cfg)
+        self.guard: TuneGuard | None = None
+        self.actions: dict[int, dict] = {}
+        self._aid = itertools.count(1)
+        self.syms: dict | None = None
         self.loop = AgentLoop(None, {
             "read_telemetry": tools.read_telemetry,
             "list_params": tools.list_params,
             "step_analysis": self.step_analysis,
-            "propose_param_change": lambda name, value, reason: tools.propose_param_change(name, value, reason, "agent"),
+            "propose_param_change": self.agent_propose_param,
+            "tune_context": self.tune_context,
+            "observe": lambda reason="": {"status": "observing", "reason": reason},
+            "run_step_test": self.run_step_test,
+            "rollback_best": self.rollback_best,
+            "flash": lambda dry_run=True: self.flasher.flash(dry_run),
+            "build_log": self.build_log,
+            "decode_hardfault": self.decode_hardfault,
+            "read_symbol": self.read_symbol,
             "list_files": lambda glob="**/*": self.gw.list_files(glob),
             "read_file": lambda path: self.gw.read_file(path),
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
-        }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "")
+        }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
+            gate=self.gate)
+
+    # -------------------------------------------------------------- 风险分级
+    @property
+    def sim(self) -> bool:
+        return (self.s.port or "").startswith("sim:") or bool(getattr(self.s, "replay", None))
+
+    def gate(self, tool: str, args: dict, run):
+        """loop 每次调工具都经过这里：auto 直接跑；log 跑完记审计；human 变成待点击的动作卡；forbid 拒绝。"""
+        t = risk.tier(tool, self.sim)
+        if t == risk.FORBID:
+            risk.audit(tool, args, t, "denied")
+            raise GatewayError("forbidden", f"{tool} 是禁止操作，Agent 永远不能执行")
+        if t == risk.HUMAN:
+            aid = next(self._aid)
+            preview = None
+            if tool == "flash":
+                try:
+                    preview = self.flasher.flash(dry_run=True)
+                except FlashError as e:
+                    preview = {"error": e.message}
+            self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run}
+            self.emit({"type": "agent_action", "id": aid, "tool": tool, "args": args, "preview": preview, "sim": self.sim})
+            risk.audit(tool, args, t, "pending_human")
+            return {"status": "pending_human_click", "action_id": aid, "note": "需要用户在界面上点“执行”"}
+        r = run()
+        if t == risk.LOG:
+            risk.audit(tool, args, t, "ok")
+        return r
+
+    def action_decide(self, aid: int, accept: bool) -> dict:
+        a = self.actions.pop(aid, None)
+        if not a:
+            raise LinkError("no_action", f"动作 {aid} 不存在或已处理")
+        risk.audit(a["tool"], a["args"], risk.HUMAN, "accepted" if accept else "rejected")
+        if not accept:
+            return {"id": aid, "status": "rejected"}
+        args = dict(a["args"])
+        if a["tool"] in ("flash",):
+            args["dry_run"] = False                      # 人点了“确认烧录”才真烧
+        try:
+            return {"id": aid, "status": "done", "result": self.loop.handlers[a["tool"]](**args)}
+        except (FlashError, GuardError, LinkError) as e:
+            raise LinkError(getattr(e, "code", "action"), e.message, getattr(e, "fix", "")) from e
+
+    # -------------------------------------------------------------- 调参护栏
+    def _guard(self) -> TuneGuard:
+        if self.guard is None or self.guard.sim != self.sim:
+            b = {p["name"]: (p["min"], p["max"]) for p in (self.s.schema.params if self.s.schema else [])}
+            t = self.cfg["tune"]
+            self.guard = TuneGuard(b, self.sim, limits={"vbat_min": t["vbat_min"], "temp_max": t["temp_max"]},
+                                   max_rounds=t["max_rounds_sim"] if self.sim else min(int(t["max_rounds_hw"]), 10))
+        return self.guard
+
+    def reset_guard(self) -> dict:
+        self.guard = None
+        return {"status": "reset"}
+
+    def agent_propose_param(self, name: str, value: float, reason: str) -> dict:
+        g = self._guard()
+        try:
+            v, notes = g.check(name, self.s.params.get(name), value)
+        except GuardError as e:
+            raise GatewayError(e.code, e.message) from e
+        r = self.tools.propose_param_change(name, v, reason + ("（护栏：" + "；".join(notes) + "）" if notes else ""), "agent")
+        return r | {"value": v, "guard": notes}
+
+    def _gains(self) -> dict:
+        names = [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
+        ks = [k for k in (guess_gain(names, x) for x in ("kp", "ki", "kd")) if k]
+        return {k: self.s.params.get(k, 0.0) for k in ks}
+
+    def tune_context(self) -> dict:
+        """给 LLM 的紧凑上下文：指标 + 约 20 个关键样本 + 带标签的历史表 + 护栏规则（思路参考 llm-pid-tuner，MIT）。"""
+        g = self._guard()
+        st = self.cfg.get("step_test") or {}
+        w = self.s.window(float(st.get("hold_s", 3)) + 1)
+        out = {"rules": g.prompt_rules(), "history": g.history_table(), "gains": self._gains(), "stopped": g.stopped,
+               "reply_format": '{"action":"PROPOSE|OBSERVE|DONE","param":"kp","value":0.1,"reason":"..."}'}
+        if w and st.get("y") and st.get("sp"):
+            t = [a for a, _ in w]
+            y, sp = [float(v.get(st["y"], 0)) for _, v in w], [float(v.get(st["sp"], 0)) for _, v in w]
+            out["samples_t_y_sp"] = key_samples(t, y, sp)
+            out["metrics"] = step_metrics(t, y, sp).as_dict()
+        return out
+
+    def run_step_test(self) -> dict:
+        """按 dzbench.json 的 step_test 通过链路做一次标准阶跃实验，交给护栏判定。实机是 human 级。"""
+        st = self.cfg.get("step_test")
+        if not st:
+            raise LinkError("no_step_test", "没配置阶跃实验", '在 dzbench.json 写 step_test，如 {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}')
+        lo, hi, hold = st["low"], st["high"], float(st.get("hold_s", 1.5))
+        pre = float(st.get("pre_s", 0.6))
+        t_end = time.monotonic() + pre + hold
+        while time.monotonic() < t_end:
+            vals = lo if time.monotonic() < t_end - hold else hi
+            self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *vals))
+            time.sleep(0.1)
+        w = self.s.window(hold + pre * 0.5)
+        t = [a for a, _ in w]
+        m = step_metrics(t, [float(v[st["y"]]) for _, v in w], [float(v[st["sp"]]) for _, v in w])
+        g = self._guard()
+        verdict = g.record(m, self._gains(), w[-1][1] if w else {})
+        if verdict["action"] == "rollback" and verdict.get("auto"):
+            verdict["rolled_back"] = self.rollback_best(_auto=True)
+        self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
+        return {"verdict": verdict, "metrics": m.as_dict()}
+
+    def rollback_best(self, _auto: bool = False) -> dict:
+        g = self._guard()
+        b = g.best()
+        if not b:
+            raise LinkError("no_best", "还没有稳定的一轮可回滚")
+        applied = {k: self.s.set_param(k, v) for k, v in b.gains.items() if self.s.params.get(k) != v}
+        g.proposed_this_round = None
+        return {"round": b.n, "gains": b.gains, "applied": list(applied), "auto": _auto}
+
+    def rule_round(self) -> dict:
+        """无 LLM 模式：规则给出一个增益的建议，同样经过护栏与人工确认。"""
+        g = self._guard()
+        a = self.step_analysis()
+        for h in a["hints"]:
+            for k, v in (h.get("changes") or {}).items():
+                d = 1 if v > (self.s.params.get(k) or 0) else -1
+                if (k, d) not in g.blocked:
+                    return self.agent_propose_param(k, v, "规则：" + h["text"])
+        return {"action": "OBSERVE", "reason": "规则没有可用的单项建议"}
+
+    # -------------------------------------------------------------- 编译 / 故障 / 变量
+    def build_log(self, path: str | None = None) -> dict:
+        b = self.cfg["build"]
+        p = pathlib.Path(path) if path else None
+        if p is None and b.get("keil_project"):
+            p = (self.gw.root / b["keil_project"]).with_suffix(".dzbench_build.log")
+        if not p or not p.exists():
+            raise LinkError("no_log", "没有 Keil 编译日志", "先在 Keil 编一次，或配置 build.keil_uv4 + keil_project")
+        return keil.parse_log(p.read_text(encoding="utf-8", errors="replace"))
+
+    def _symbols(self) -> dict:
+        if self.syms is None:
+            elf = self.cfg["build"].get("elf")
+            if not elf:
+                raise LinkError("no_elf", "没配置 ELF", "dzbench.json 写 build.elf（如 build/car_2wd.elf 或 Objects/xx.axf）")
+            self.syms = elfsym.load_symbols(self.gw.root / elf)
+        return self.syms
+
+    def decode_hardfault(self, frame: list[int], exc_return: int | None = None, regs: dict | None = None) -> dict:
+        core = self.cfg.get("core") or hardfault.guess_core(self.cfg["flash"].get("target"))
+        try:
+            syms = self._symbols()
+        except (LinkError, elfsym.ElfError):
+            syms = None
+        return hardfault.decode(frame, exc_return, core, regs, syms)
+
+    def read_symbol(self, name: str) -> dict:
+        s = self._symbols().get(name)
+        if not s:
+            raise LinkError("no_symbol", f"ELF 里没有 {name}")
+        return {"name": s.name, "addr": f"0x{s.addr:08x}", "size": s.size, "kind": s.kind}
 
     # -------------------------------------------------------------- 离线调参
     def step_analysis(self, y: str | None = None, sp: str | None = None, seconds: float = 5.0,

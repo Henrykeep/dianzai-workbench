@@ -97,6 +97,12 @@ try:
         pg.click("#view span[data-v=fft]"); pg.select_option("#fft-ch", "spd_a"); pg.wait_for_timeout(1500)
         pg.screenshot(path=str(OUT / "app-fft.png"))
         pg.click("#view span[data-v=plot]")
+        # 调参护栏：仿真里做一次标准阶跃实验，程序判定（app-tune-round.png）
+        pg.evaluate("""() => new Promise(r => { const ws = new WebSocket('ws://127.0.0.1:18901');
+            ws.onopen = () => ws.send(JSON.stringify({op:'tune_step_test', rid:1}));
+            ws.onmessage = e => { if (JSON.parse(e.data).rid === 1) r(); }; })""")
+        pg.wait_for_timeout(500)
+        pg.screenshot(path=str(OUT / "app-tune-round.png"))
         pg.click("#estop")
         pg.wait_for_timeout(1500)
         pg.screenshot(path=str(OUT / "app-estop.png"))
