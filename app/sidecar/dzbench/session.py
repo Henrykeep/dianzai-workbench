@@ -11,11 +11,11 @@ import threading
 import time
 from typing import Callable
 
-from . import snapshots
+from . import lastsession, snapshots
 from ._dzlink import DATA, HEARTBEAT, PARAM_ACK, PARAM_SET, Parser, encode
 from .textparse import KvParser
 from .logfile import RX, TX, LogWriter
-from .ports import probe_baud
+from .ports import PortOpenError, explain_open_error, find_identity, identity, probe_baud
 from .replay import ReplayTransport
 from .schema import Schema, find_by_hash
 from .transport import SIM_PREFIX, Transport, open_transport
@@ -82,17 +82,22 @@ class Session:
         self.disconnect()
         note = ""
         if not port.startswith((SIM_PREFIX, "replay:")) and not baud:
-            baud, note = probe_baud(port)
+            try:
+                baud, note = probe_baud(port)
+            except PortOpenError as e:
+                raise LinkError("open_failed", e.what, e.fix) from e
             if not baud:
-                if note.startswith("打不开"):
-                    raise LinkError("open_failed", note)
                 raise LinkError("no_frames", note, "也可以在波特率下拉框手动选一个再连；不是工作台固件的设备"
                                 "（视觉模块 printf、蓝牙 AT…）手动选波特率连上后，切到“原始”视图看收发")
         try:
             tr = ReplayTransport(port[7:]) if port.startswith("replay:") else self._open(port, baud or 0)
         except Exception as e:  # noqa: BLE001
-            raise LinkError("open_failed", f"打不开 {port}：{e}",
-                            "确认没有别的程序（串口助手、Keil/CCS 调试）占着这个口，拔插 USB 再试") from e
+            if port.startswith(SIM_PREFIX):
+                raise LinkError("open_failed", f"仿真板起不来：{e}", "在仓库根目录跑一次 make BOARD=host-sim APP=car_2wd 看报错") from e
+            what, fix = explain_open_error(port, e)
+            raise LinkError("open_failed", what, fix) from e
+        self.ident = identity(port) if not port.startswith((SIM_PREFIX, "replay:")) else None
+        lastsession.mark(port, baud or 0)
         with self.lock:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
@@ -125,6 +130,7 @@ class Session:
                     pass
 
     def disconnect(self) -> None:
+        lastsession.clear()                   # 用户主动断开 = 正常结束（侧车崩了不会走到这里）
         with self.lock:
             self._gen += 1                    # 主动断开：取消自动重连
             tr, log = self.tr, self.log
@@ -171,7 +177,17 @@ class Session:
             try:
                 tr = self._open(port, baud)
             except Exception:  # noqa: BLE001
-                continue
+                moved = find_identity(getattr(self, "ident", None))   # 同一块板插到别的口 / 换了 COM 号
+                if not moved or moved == port:
+                    continue
+                try:
+                    tr = self._open(moved, baud)
+                except Exception:  # noqa: BLE001
+                    continue
+                self.emit({"type": "port_moved", "old": port, "new": moved,
+                           "message": f"板子的串口从 {port} 变成了 {moved}（换了 USB 口？），已经跟过去"})
+                with self.lock:
+                    self.port = port = moved
             with self.lock:
                 if gen != self._gen:
                     tr.close()
@@ -485,7 +501,10 @@ class Session:
                 st.update(replay_pos=round(self.tr.position(), 2), replay_len=round(self.tr.duration, 2),
                           replay_speed=self.tr.speed, replay_paused=self.tr.paused)
         if self.reconnecting:
-            st["hint"] = "连接断开，正在自动重连…（线插回去即可；急停此时送不到板子）"
+            st["hint"] = "连接断开，正在自动重连…（线插回去即可；急停此时送不到板子，板子 1 秒没收到心跳会自己急停）"
+        elif connected and self.parser.good >= 20 and self.parser.bad * 10 > self.parser.good:
+            st["hint"] = (f"坏帧偏多（{self.parser.bad} 坏 / {self.parser.good} 好）：线上有干扰或乱码。"
+                          "检查共地、杜邦线长度、电机线是否和串口线捆在一起；数据仍按校验通过的帧显示")
         elif connected and not alive and now - self.t_connect > HB_TIMEOUT_S:
             st["hint"] = ("收到字节但没有合法帧：波特率可能不对" if self.rx_bytes and not self.parser.good
                           else "超过 1.6 s 没有心跳：板子没上电/没跑工作台固件/线松了")

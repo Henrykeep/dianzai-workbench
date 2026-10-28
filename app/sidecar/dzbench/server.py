@@ -12,7 +12,7 @@ import pathlib
 
 import websockets
 
-from . import snapshots
+from . import lastsession, snapshots
 from .agent import llm as agent_llm
 from .agent.gateway import GatewayError
 from .agent.guard import GuardError
@@ -41,6 +41,7 @@ class Server:
         self.agent = AgentTools(self.session, self.emit)
         self.svc = AgentService(self.session, self.agent, self.emit)
         self.sender = Sender(self.session, self.emit)
+        self.recovered = lastsession.take_unclean()      # 上次侧车是不是崩了
 
     # 线程安全的广播
     def emit(self, msg: dict) -> None:
@@ -69,13 +70,14 @@ class Server:
                     await self._broadcast({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
             n += 1
             if n % (UI_HZ // 4) == 0:
-                await self._broadcast(self.session.status())
+                await self._broadcast(self.session.status() | {"clients": len(self.clients)})
 
     async def _op(self, m: dict):
         s, op = self.session, m.get("op")
         run = asyncio.get_running_loop().run_in_executor
         if op == "hello":
-            return {"ports": list_ports(), "tools": TOOLS, "status": s.status(),
+            return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients)},
+                    "recovered": self.recovered,
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
         if op == "list_ports":

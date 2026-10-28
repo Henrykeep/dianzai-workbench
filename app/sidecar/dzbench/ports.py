@@ -30,16 +30,66 @@ def list_ports() -> list[dict]:
     return out
 
 
-def probe_baud(device: str, bauds=BAUDS, listen_s: float = 0.25) -> tuple[int | None, str]:
-    """返回 (波特率, 说明)。找不到时说明里给出排查建议。"""
+def explain_open_error(device: str, e: Exception) -> tuple[str, str]:
+    """pyserial 的英文报错 → 给用户看的中文 (说明, 怎么办)。"""
+    msg = str(e)
+    low = msg.lower()
+    if any(k in low for k in ("permission", "access is denied", "exclusively lock", "resource busy", "拒绝访问")):
+        return (f"打不开 {device}：被别的程序占着",
+                "关掉串口助手 / Keil·CCS 调试 / 另一个工作台窗口再连；Linux 还要把用户加入 dialout 组")
+    if any(k in low for k in ("no such file", "could not find", "cannot find", "filenotfound", "系统找不到")):
+        names = [p["port"] for p in list_ports() if p["kind"] == "serial"]
+        return (f"找不到 {device}：线拔了，或者插到别的 USB 口后编号变了",
+                "现在能看到的串口：" + ("、".join(names) if names else "（一个都没有，检查 USB 线和 CH340/CP210x 驱动）"))
+    return f"打不开 {device}：{msg}", "拔插 USB 线；确认驱动（CH340/CP210x）已装"
+
+
+def open_serial(device: str, baud: int, **kw):
+    """POSIX 上独占打开（Windows 本来就独占）：两个窗口/程序抢同一个口时第二个直接报“被占用”，而不是两边都收到半截数据。"""
     import serial
+    if os.name != "nt":
+        kw.setdefault("exclusive", True)
+    return serial.Serial(device, baud, **kw)
+
+
+def identity(device: str) -> tuple | None:
+    """USB 身份（VID, PID, 序列号）：线拔了插到别的口、Windows 换了 COM 号时，靠它找回同一块板。"""
     try:
-        s = serial.Serial(device, bauds[0], timeout=0.02)
-    except serial.SerialException as e:
-        msg = str(e)
-        if "Permission" in msg or "Access is denied" in msg or "拒绝访问" in msg:
-            return None, f"打不开 {device}：被占用或没权限。关掉串口助手/Keil 调试/另一个工作台窗口再试；Linux 把用户加入 dialout 组。"
-        return None, f"打不开 {device}：{msg}。拔插 USB 线、确认驱动（CH340/CP210x）已装。"
+        from serial.tools import list_ports as lp
+        for p in lp.comports():
+            if p.device == device and p.vid is not None:
+                return (p.vid, p.pid, p.serial_number)
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+def find_identity(ident: tuple | None) -> str | None:
+    if not ident:
+        return None
+    try:
+        from serial.tools import list_ports as lp
+        for p in lp.comports():
+            if (p.vid, p.pid, p.serial_number) == ident:
+                return p.device
+    except Exception:  # noqa: BLE001
+        pass
+    return None
+
+
+class PortOpenError(Exception):
+    """口根本打不开（不存在 / 被占用）：和“打开了但没有 dzframe”是两类问题，给用户的建议不同。"""
+    def __init__(self, what: str, fix: str):
+        super().__init__(what)
+        self.what, self.fix = what, fix
+
+
+def probe_baud(device: str, bauds=BAUDS, listen_s: float = 0.25) -> tuple[int | None, str]:
+    """返回 (波特率, 说明)；没收到 dzframe 时波特率为 None、说明里给排查建议。口打不开抛 PortOpenError。"""
+    try:
+        s = open_serial(device, bauds[0], timeout=0.02)
+    except Exception as e:  # noqa: BLE001
+        raise PortOpenError(*explain_open_error(device, e)) from e
     try:
         for b in bauds:
             s.baudrate = b

@@ -43,9 +43,9 @@ class Transport:
 
 class SerialTransport(Transport):
     def __init__(self, device: str, baud: int):
-        import serial  # 延迟导入：仿真/回放不需要 pyserial
+        from .ports import open_serial  # 延迟导入：仿真/回放不需要 pyserial
         self.name = device
-        self.ser = serial.Serial(device, baud, timeout=0.02, write_timeout=0.2)
+        self.ser = open_serial(device, baud, timeout=0.02, write_timeout=0.2)
 
     def read(self) -> bytes:
         return self.ser.read(self.ser.in_waiting or 1)
