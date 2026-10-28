@@ -48,6 +48,14 @@
             <label class="lbl"><input type="checkbox" id="raw-ts" checked> 时间戳</label>
             <div class="sp"></div><span class="lbl" id="raw-stat"></span><button class="btn ghost sm" id="raw-clr">清空</button></div>
           <div id="raw-list" class="rawlist"></div>
+          <div class="rawbar" id="snd" title="侧车发送；急停后全部锁定，按“解除急停”(R)才恢复">
+            <select id="snd-k" class="in"><option value="text">文本</option><option value="hex">HEX</option></select>
+            <select id="snd-eol" class="in"><option value="">无换行</option><option value="\n">\n</option><option value="\r\n" selected>\r\n</option></select>
+            <input id="snd-in" class="in" style="flex:1" placeholder="要发的内容，回车发送">
+            <button class="btn sm" id="snd-go">发送</button><button class="btn ghost sm" id="snd-save" title="存为预设">存</button>
+            <input id="snd-ms" class="in" style="width:5em" type="number" min="10" value="100" title="定时周期 ms">
+          </div>
+          <div class="rawbar" id="snd-presets"></div>
         </div>
         <div id="fft" class="raw" hidden>
           <div class="rawbar"><select id="fft-ch" class="in"></select>

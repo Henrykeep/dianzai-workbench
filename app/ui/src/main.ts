@@ -9,6 +9,7 @@ import { Plot, chColor } from "./plot";
 import { AGENT_IDLE, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
+import { initSend } from "./send";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[] };
 type Param = { name: string; type: string; min: number; max: number; unit?: string; desc?: string; default: number };
@@ -274,6 +275,7 @@ function applyNone() {
 
 const agent = initAgent(call);
 const fft = initFFT((op, a) => link.rpc(op, a ?? {}));
+const send = initSend((op, a) => link.rpc(op, a ?? {}), e => toast(e as Err));
 const raw = initRaw((op, a) => link.rpc(op, a ?? {}), v => fft.setView(v === "fft"));
 // 回放时间轴：拖动 = 跳转（旧样本清掉，曲线从新位置画）
 let rpDrag = false;
@@ -290,7 +292,7 @@ $("export").onclick = async () => {
 };
 $("props").innerHTML = AGENT_IDLE;
 link.on(m => {
-  agent.onMsg(m); raw.onMsg(m);
+  agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   switch (m.type) {
     case "telem": {
       plot.push(m.t, m.y);

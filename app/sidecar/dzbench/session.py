@@ -13,6 +13,7 @@ from typing import Callable
 
 from . import snapshots
 from ._dzlink import DATA, HEARTBEAT, PARAM_ACK, PARAM_SET, Parser, encode
+from .textparse import KvParser
 from .logfile import RX, TX, LogWriter
 from .ports import probe_baud
 from .replay import ReplayTransport
@@ -45,6 +46,7 @@ class Session:
         self._open = open_transport          # 测试可注入
         self._gen = 0                        # 每次 connect/disconnect +1，用来取消旧的自动重连
         self.auto_reconnect = True
+        self.on_sample: Callable[[dict], None] | None = None   # 触发发送用
         self.raw_on = False                  # 原始监视器（文本/HEX）开着才收集，省内存
         self._reset()
 
@@ -71,6 +73,8 @@ class Session:
         self._raw: collections.deque = collections.deque()
         self._raw_bytes = 0
         self.raw_dropped = 0
+        self.kv = KvParser()
+        self.tx_locked = False               # 急停后锁住侧车的一切主动发送（预设/定时/触发/原始），R 或重新连接才解
 
     # ------------------------------------------------------------------ 连接
     def connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
@@ -180,6 +184,9 @@ class Session:
             if self.raw_on:
                 self._push_raw(now, RX, data)
             frames = self.parser.feed(data)
+            text_mode = self.schema_hash is None and (self.schema is None or self.schema.d.get("virtual"))
+        if text_mode:
+            self._on_text(data, now)
         for kind, id_, seq, payload in frames:
             if kind == HEARTBEAT:
                 self.last_hb = now
@@ -196,6 +203,8 @@ class Session:
                         self._new.append((t, v))
                         while self.samples and self.samples[-1][0] - self.samples[0][0] > self.history_s:
                             self.samples.popleft()
+                    if self.on_sample:
+                        self.on_sample(v)
             elif kind == PARAM_ACK and len(payload) >= 5:
                 st, val = struct.unpack_from("<Bf", payload)
                 with self.lock:
@@ -208,6 +217,25 @@ class Session:
                 if w:
                     w[1][:] = [st, val]
                     w[0].set()
+
+    def _on_text(self, data: bytes, now: float) -> None:
+        rows, grew = self.kv.feed(data)
+        if grew:
+            sch = Schema(self.kv.schema_dict())
+            with self.lock:
+                self.schema = sch
+            self.emit({"type": "schema", "schema": sch.summary() | {"hash": "TEXT", "virtual": True}})
+        if rows:
+            with self.lock:
+                for v in rows:
+                    t = now - self.t_connect
+                    self.samples.append((t, v))
+                    self._new.append((t, v))
+                while self.samples and self.samples[-1][0] - self.samples[0][0] > self.history_s:
+                    self.samples.popleft()
+            if self.on_sample:
+                for v in rows:
+                    self.on_sample(v)
 
     def _bind_schema(self, h: int) -> None:
         self.schema_hash = h
@@ -302,6 +330,8 @@ class Session:
             except Exception:  # noqa: BLE001
                 pass
         self.estop_count += 1
+        self.tx_locked = True
+        self.emit({"type": "tx_locked", "on": True})
         if isinstance(self.tr, ReplayTransport):
             return {"type": "estop", "sent": False, "message": "回放中：急停没有发给任何板子"}
         return {"type": "estop", "sent": ok,
@@ -309,12 +339,37 @@ class Session:
 
     def send_data(self, id_: int, payload: bytes) -> bool:
         """发任意 DATA 帧（应用自定义命令，如 car_2wd 的 id=1 轮速设定）。0x7E/0x7F 走专用接口。"""
+        self._check_tx()
         if id_ in (ID_CMD, ID_ESTOP) or not 0 <= id_ <= 0xFF or len(payload) > 64:
             raise LinkError("bad_frame", f"DATA id={id_} 长度={len(payload)} 不允许", "急停/命令请用专用按钮；payload ≤ 64 字节")
         return self._send(DATA, id_, payload)
 
     def cmd(self, c: str, n: int | None = None) -> bool:
-        return self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
+        ok = self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
+        if ok and c == "R" and self.tx_locked:        # 人按了“解除急停 R”：侧车发送一起解锁
+            self.tx_locked = False
+            self.emit({"type": "tx_locked", "on": False})
+        return ok
+
+    def _check_tx(self) -> None:
+        if self.tx_locked:
+            raise LinkError("tx_locked", "急停后侧车的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停 R”")
+
+    def send_raw(self, data: bytes) -> bool:
+        """原样发字节（给非工作台固件的设备，如 AT 指令）。急停后拒绝。"""
+        self._check_tx()
+        if len(data) > 1024:
+            raise LinkError("bad_frame", "一次最多发 1024 字节")
+        with self.lock:
+            tr = self.tr
+            if self.log:
+                self.log.write(TX, data)
+            if self.raw_on and tr:
+                self._push_raw(time.monotonic(), TX, data)
+        if not tr:
+            return False
+        tr.write(data)
+        return True
 
     def _param_rpc(self, name: str, payload: bytes, retries: int = 3, timeout: float = 0.25) -> tuple[float, str]:
         if not self.schema:
@@ -385,7 +440,7 @@ class Session:
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
                   "schema_ok": self.schema is not None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
-                  "reconnecting": self.reconnecting, "reconnects": self.reconnects, "raw_dropped": self.raw_dropped,
+                  "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}
             if isinstance(self.tr, ReplayTransport):
                 st.update(replay_pos=round(self.tr.position(), 2), replay_len=round(self.tr.duration, 2),

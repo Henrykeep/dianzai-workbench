@@ -20,6 +20,7 @@ from .agent_api import TOOLS, AgentTools
 from .downsample import minmax
 from .logfile import read_log
 from .ports import list_ports
+from .sender import Sender
 from .spectrum import spectrum
 from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
@@ -35,6 +36,7 @@ class Server:
         self.session = Session(emit=self.emit)
         self.agent = AgentTools(self.session, self.emit)
         self.svc = AgentService(self.session, self.agent, self.emit)
+        self.sender = Sender(self.session, self.emit)
 
     # 线程安全的广播
     def emit(self, msg: dict) -> None:
@@ -121,6 +123,27 @@ class Server:
             sch = self.session.schema
             per = (sch.d["telemetry"].get("period_ms") or 0) / 1000 if sch else 0
             return await run(None, lambda: spectrum(t, y, per or None) | {"field": name})
+        if op == "send_raw":
+            data = bytes.fromhex(m["hex"]) if "hex" in m else m["text"].encode("utf-8")
+            return self.session.send_raw(data)
+        if op == "preset_list":
+            return self.sender.list()
+        if op == "preset_save":
+            return self.sender.save_preset(m["preset"])
+        if op == "preset_delete":
+            return self.sender.delete_preset(m["name"])
+        if op == "preset_send":
+            return self.sender.send(m["name"])
+        if op == "preset_timer":
+            if m.get("on", True):
+                return self.sender.start_timer(m["name"], int(m["period_ms"]), int(m.get("count", 0)))
+            self.sender.stop_timer(m["name"])
+            return self.sender.list()
+        if op == "preset_trigger":
+            if m.get("on", True):
+                return self.sender.add_trigger(m["name"], m["field"], m["op_"], m["value"], int(m.get("cooldown_ms", 200)))
+            self.sender.remove_trigger(m["name"])
+            return self.sender.list()
         if op == "raw_monitor":
             self.session.raw_on = bool(m.get("on", True))
             return {"on": self.session.raw_on}

@@ -22,12 +22,6 @@ def wait(cond, t=5.0):
     return False
 
 
-@pytest.fixture
-def home(tmp_path, monkeypatch):
-    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path))
-    return tmp_path
-
-
 def test_car_2wd_params(home):
     s = Session()
     s.connect("sim:car_2wd")
