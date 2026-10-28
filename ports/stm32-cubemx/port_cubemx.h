@@ -24,12 +24,24 @@ typedef struct { void *h; uint32_t channel; pal_adc_info_t info; } cm_adc_t;
 #endif
 
 /* 由 board_gen.c 提供（gen_board.py 按 board.yaml 生成，句柄名遵循 CubeMX 命名：TIM3 -> htim3，USART1 -> huart1） */
+#ifdef HAL_I2C_MODULE_ENABLED
+typedef struct { I2C_HandleTypeDef *h; } cm_i2c_t;
+#else
+typedef struct { void *h; } cm_i2c_t;
+#endif
+#ifdef HAL_SPI_MODULE_ENABLED
+typedef struct { SPI_HandleTypeDef *h; GPIO_TypeDef *cs_port; uint16_t cs_pin; } cm_spi_t;
+#else
+typedef struct { void *h; GPIO_TypeDef *cs_port; uint16_t cs_pin; } cm_spi_t;
+#endif
 extern const cm_gpio_t  g_cm_gpio[];
 extern const cm_pwm_t   g_cm_pwm[];
 extern const cm_enc_t   g_cm_enc[];
 extern const cm_uart_t  g_cm_uart[];
 extern const cm_timer_t g_cm_timer[];
 extern const cm_adc_t   g_cm_adc[];
+extern const cm_i2c_t   g_cm_i2c[];
+extern const cm_spi_t   g_cm_spi[];
 extern const char *const g_board_name;
 
 /* 诊断计数（调试器里看） */

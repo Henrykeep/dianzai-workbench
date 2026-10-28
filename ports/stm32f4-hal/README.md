@@ -12,3 +12,9 @@
 
 ## 参考来源
 - STM32CubeF4 HAL 官方 API 与参考手册 RM0090
+
+## I2C / SPI（1.1.0）
+- I2C：HAL_I2C_Mem_Read/Write 阻塞调用，超时 PAL_I2C_TIMEOUT_MS。引脚配成开漏 AF4，**不开内部上拉**，要有外部上拉。
+- SPI：HAL_SPI_TransmitReceive 阻塞调用，片选由软件控制（推挽，空闲高）。分频取“不超过 board.yaml 里 hz 的最快一档”。
+  两个条目共用总线但 mode 或 hz 不同时，传输前会重新 HAL_SPI_Init。
+- 不能在中断里调用。**[编译]**，未上板。

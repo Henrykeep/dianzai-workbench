@@ -330,6 +330,89 @@
           "linux"
         ]
       }
+    },
+    "i2c": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        }
+      ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": [
+        "name",
+        "instance",
+        "scl",
+        "sda"
+      ],
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "scl": {
+          "$ref": "#/$defs/pin"
+        },
+        "sda": {
+          "$ref": "#/$defs/pin"
+        },
+        "speed_hz": {
+          "enum": [
+            100000,
+            400000
+          ],
+          "default": 400000
+        }
+      }
+    },
+    "spi": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        }
+      ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": [
+        "name",
+        "instance",
+        "sck",
+        "mosi",
+        "miso",
+        "cs"
+      ],
+      "description": "一条 = 一个 SPI 设备（总线+片选）；同一总线多个芯片写多条、instance/sck/mosi/miso 相同",
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "sck": {
+          "$ref": "#/$defs/pin"
+        },
+        "mosi": {
+          "$ref": "#/$defs/pin"
+        },
+        "miso": {
+          "$ref": "#/$defs/pin"
+        },
+        "cs": {
+          "$ref": "#/$defs/pin"
+        },
+        "mode": {
+          "enum": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "default": 0
+        },
+        "hz": {
+          "type": "integer",
+          "minimum": 100000,
+          "maximum": 42000000,
+          "default": 1000000
+        }
+      }
     }
   },
   "properties": {
@@ -563,6 +646,18 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/adc"
+          }
+        },
+        "i2c": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/i2c"
+          }
+        },
+        "spi": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/spi"
           }
         }
       }

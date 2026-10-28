@@ -14,7 +14,7 @@ import jsonschema
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / "schema" / "board.schema.json"
-RES_TYPES = ["gpio", "pwm", "encoder", "uart", "timer", "adc"]
+RES_TYPES = ["gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi"]
 
 
 @dataclass
@@ -113,6 +113,25 @@ def generic_check(board: dict, rep: Report) -> None:
         use(r.get("rx"), f"uart.{r.get('name')}.RX")
     for r in res.get("adc", []) or []:
         use(r.get("pin"), f"adc.{r.get('name')}")
+    i2c_inst: dict[str, str] = {}
+    for r in res.get("i2c", []) or []:                 # 一条 = 一条总线；同一总线上的多个传感器靠 7 位地址区分
+        if r.get("instance") in i2c_inst:
+            rep.err(f"[重复总线] i2c.{r.get('name')} 与 i2c.{i2c_inst[r['instance']]} 都是 {r['instance']}：一条总线只写一条，传感器按地址区分")
+        i2c_inst[r.get("instance")] = r.get("name")
+        use(r.get("scl"), f"i2c.{r.get('name')}.SCL")
+        use(r.get("sda"), f"i2c.{r.get('name')}.SDA")
+    spi_bus: dict[str, tuple] = {}
+    for r in res.get("spi", []) or []:                 # 一条 = 一个设备；同 instance 的总线脚只占一次，但必须一致
+        bus = (r.get("sck"), r.get("mosi"), r.get("miso"))
+        inst = r.get("instance")
+        if inst in spi_bus:
+            if spi_bus[inst] != bus:
+                rep.err(f"[SPI] spi.{r.get('name')}: {inst} 的 SCK/MOSI/MISO 与同总线其他设备不一致")
+        else:
+            spi_bus[inst] = bus
+            for k, pin in zip(("SCK", "MOSI", "MISO"), bus):
+                use(pin, f"spi.{inst}.{k}")
+        use(r.get("cs"), f"spi.{r.get('name')}.CS")
     for pin, who in used.items():
         if len(who) > 1:
             rep.err(f"[引脚冲突] {pin} 同时被 {', '.join(who)} 使用")
@@ -222,6 +241,25 @@ def stm32f4_check(board: dict, rep: Report) -> None:
                     break
             if not ok:
                 rep.err(f"[DMA 冲突] {inst}_{kind} 的所有可选数据流都已被占用：{table[inst]}")
+    for r in res.get("i2c", []) or []:
+        where = f"i2c.{r['name']}"
+        if r["instance"] not in F.I2CS:
+            rep.err(f"[I2C] {where}: 未知 I2C {r['instance']}，可选 {list(F.I2CS)}")
+            continue
+        _, scls, sdas = F.I2CS[r["instance"]]
+        for key, pins in (("scl", scls), ("sda", sdas)):
+            if pin_ok(r[key], f"{where}.{key}") and r[key] not in pins:
+                rep.err(f"[复用错误] {where}.{key}: {r[key]} 不能作为 {r['instance']}_{key.upper()}，可选 {pins}")
+    for r in res.get("spi", []) or []:
+        where = f"spi.{r['name']}"
+        if r["instance"] not in F.SPIS:
+            rep.err(f"[SPI] {where}: 未知 SPI {r['instance']}，可选 {list(F.SPIS)}")
+            continue
+        _, _, scks, misos, mosis = F.SPIS[r["instance"]]
+        for key, pins in (("sck", scks), ("miso", misos), ("mosi", mosis)):
+            if pin_ok(r[key], f"{where}.{key}") and r[key] not in pins:
+                rep.err(f"[复用错误] {where}.{key}: {r[key]} 不能作为 {r['instance']}_{key.upper()}，可选 {pins}")
+        pin_ok(r["cs"], f"{where}.cs")
     for r in res.get("timer", []) or []:
         if r["instance"] not in F.TIMERS:
             rep.err(f"[定时器] timer.{r['name']}: 未知定时器 {r['instance']}")
@@ -239,6 +277,9 @@ def stm32f4_check(board: dict, rep: Report) -> None:
 def mspm0_check(board: dict, rep: Report) -> None:
     """MSPM0G350x：复用表从 SDK 头自动生成；QEI 仅 TIMG8；坑脚警告；UART0(PA10/11) 与 I2C1 冲突；PWM 分频可行性。"""
     from families import mspm0 as M
+    for t in ("i2c", "spi"):
+        for r in ((board.get("resources", {}) or {}).get(t) or []):
+            rep.warn(f"[移植层能力] {t}.{r['name']}: mspm0-driverlib 端口还没实现 {t.upper()}（调用返回 ENOTSUP）；IMU 请走 UART 姿态模块")
     io = M.load_iomux()
     if not io:
         rep.warn("[知识库] 未找到 mspm0-sdk 头文件（tools/fetch_third_party.sh mspm0），跳过复用检查")

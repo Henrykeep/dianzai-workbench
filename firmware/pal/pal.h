@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.0.0"
+#define PAL_VERSION "1.1.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -172,6 +172,32 @@ typedef struct {
 /** 单次阻塞采样（典型几微秒）。不得在高频中断里循环调用。 */
 dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw);
 dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info);
+
+
+/* ------------------------------------------------------------------------- */
+/* I2C（主机，阻塞；PAL 1.1.0 新增）                                          */
+/* ------------------------------------------------------------------------- */
+
+/** 单次传输超时（ms）。传感器寄存器读写典型 < 1 ms；超时返回 DZ_ETIMEOUT，无应答（NACK）返回 DZ_EIO。 */
+#define PAL_I2C_TIMEOUT_MS 5u
+/**
+ * 寄存器读：START addr7+W reg RESTART addr7+R buf[n] STOP（8 位寄存器地址，绝大多数传感器如此）。
+ * 阻塞，不得在中断里调用；n ≤ 255。
+ */
+dz_err_t pal_i2c_mem_read(pal_id_t id, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n);
+/** 寄存器写：START addr7+W reg buf[n] STOP。阻塞，不得在中断里调用；n ≤ 32。 */
+dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n);
+
+/* ------------------------------------------------------------------------- */
+/* SPI（主机，阻塞；PAL 1.1.0 新增）                                          */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * 一个 id = 一个“SPI 设备”（总线 + 片选），同一总线上的多个芯片在 board.yaml 里写多条、共用 instance。
+ * 全双工收发 n 字节：拉低片选 → 交换 → 拉高片选。tx 为 NULL 时发 0xFF；rx 为 NULL 时丢弃收到的字节。
+ * 阻塞，不得在中断里调用；n ≤ 64。超时 PAL_I2C_TIMEOUT_MS。
+ */
+dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);
 
 #ifdef __cplusplus
 }

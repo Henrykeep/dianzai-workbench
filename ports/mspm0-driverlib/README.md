@@ -12,6 +12,7 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 | uart | UART 实例 `UART_<名>` | RX/TX 中断 + 环形缓冲（无 DMA） |
 | timer | Timer 实例 `TIMER_<名>`，Periodic + ZERO 中断，`_CLK_FREQ` 整 MHz | 运行时改装载值 |
 | adc | — | 未实现（返回 DZ_ENOTSUP，有 adc 资源时编译报错） |
+| i2c / spi | — | 未实现（返回 DZ_ENOTSUP，board check 警告）；IMU 请用 UART 姿态模块（apps/imu_module + proto/dzimu） |
 
 时基：SysTick 1 ms（本层配置）。`main()` 在 `main_mspm0.c`（SysConfig 不生成 main）。
 

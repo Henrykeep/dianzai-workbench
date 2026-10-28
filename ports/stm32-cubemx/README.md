@@ -12,3 +12,7 @@ CubeMX 是唯一配置源，本层只包装 CubeMX 生成的句柄（htimX/huart
 
 ## 参考来源
 - ST 官方 HAL 用户手册 UM1725（F4）；CubeMX USER CODE 保留规则
+
+## I2C / SPI（1.2.0）
+- 使用 CubeMX 生成的 `hi2cN` / `hspiN` 句柄，阻塞调用。SPI 片选由本层软件控制：CubeMX 里要把 CS 引脚配成 GPIO_Output，初始电平为高。
+- CubeMX 没启用 I2C/SPI 模块（hal_conf 里没有对应的 `HAL_xxx_MODULE_ENABLED`）时，调用返回 ENOTSUP。**[编译]**，未上板。

@@ -46,13 +46,21 @@ uint16_t host_sim_uart_take_tx(pal_id_t id, uint8_t *buf, uint16_t max);
 void     host_sim_uart_inject_rx(pal_id_t id, const uint8_t *buf, uint16_t len);
 void     host_sim_uart_set_busy(pal_id_t id, bool busy);
 
+/** 仿真外设：给某条 I2C 总线 / 某个 SPI 设备挂一个“假芯片”回调（例如 tests 里的假 MPU6050、假 BMI088）。
+ *  I2C 回调：write=true 时 buf 是主机写入的数据；false 时由回调填 buf。返回 DZ_EIO 表示该地址无应答。
+ *  host_sim_reset 会清掉所有挂载。 */
+typedef dz_err_t (*host_sim_i2c_fn)(void *ctx, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n, bool write);
+typedef dz_err_t (*host_sim_spi_fn)(void *ctx, const uint8_t *tx, uint8_t *rx, uint16_t n);
+void host_sim_i2c_attach(pal_id_t id, host_sim_i2c_fn fn, void *ctx);
+void host_sim_spi_attach(pal_id_t id, host_sim_spi_fn fn, void *ctx);
+
 /** 事件日志：记录 GPIO/PWM 写操作的顺序，用于验证"换向前先关 PWM"之类的时序。 */
 typedef enum { HS_EV_GPIO = 1, HS_EV_PWM = 2 } host_sim_ev_type_t;
 typedef struct { host_sim_ev_type_t type; pal_id_t id; uint32_t value; } host_sim_ev_t;
 unsigned host_sim_events(host_sim_ev_t *out, unsigned max);  /**< 取出并清空日志 */
 
 /** 故障注入：之后 n 次对该类资源的调用返回 DZ_EIO。 */
-typedef enum { HS_FAIL_GPIO, HS_FAIL_PWM, HS_FAIL_ENC, HS_FAIL_UART, HS_FAIL_ADC, HS_FAIL_COUNT } host_sim_fail_t;
+typedef enum { HS_FAIL_GPIO, HS_FAIL_PWM, HS_FAIL_ENC, HS_FAIL_UART, HS_FAIL_ADC, HS_FAIL_I2C, HS_FAIL_SPI, HS_FAIL_COUNT } host_sim_fail_t;
 void host_sim_fail_next(host_sim_fail_t what, unsigned n);
 
 /** 仿真侧的周期事件（模拟外部设备，例如协处理器定时发帧）。与 PAL 定时器无关，最多 4 个。 */

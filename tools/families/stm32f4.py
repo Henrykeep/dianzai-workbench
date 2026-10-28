@@ -85,3 +85,16 @@ RESERVED_PINS = {
 
 import re
 PIN_RE = re.compile(r"^P([A-I])(1[0-5]|[0-9])$")
+
+# I2C（AF4）：总线、SCL 可选、SDA 可选（STM32F407 数据手册 DS8626 表 9 复用功能映射）
+I2CS = {
+    "I2C1": ("APB1", ["PB6", "PB8"], ["PB7", "PB9"]),
+    "I2C2": ("APB1", ["PB10", "PF1", "PH4"], ["PB11", "PF0", "PH5"]),
+    "I2C3": ("APB1", ["PA8", "PH7"], ["PC9", "PH8"]),
+}
+# SPI：AF 号、总线、SCK / MISO / MOSI 可选（同上表；SPI1/2 为 AF5，SPI3 为 AF6）
+SPIS = {
+    "SPI1": (5, "APB2", ["PA5", "PB3"], ["PA6", "PB4"], ["PA7", "PB5"]),
+    "SPI2": (5, "APB1", ["PB10", "PB13", "PI1"], ["PB14", "PC2", "PI2"], ["PB15", "PC3", "PI3"]),
+    "SPI3": (6, "APB1", ["PB3", "PC10"], ["PB4", "PC11"], ["PB5", "PC12"]),
+}

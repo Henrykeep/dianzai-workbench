@@ -150,6 +150,28 @@ def gen_stm32f4(board: dict, src: str, sha: str) -> tuple[str, dict]:
                     f"{{ {r.get('bits', 12)}u, {r.get('vref_mv', 3300)}u, {r.get('scale_num', 1)}u, {r.get('scale_den', 1)}u }} }}, /* {r['name']} */")
     c += _table("p4_adc_t", "g_p4_adc", rows)
 
+    # I2C（阻塞式，HAL_I2C_Mem_*）
+    rows, i2cs = [], []
+    for r in res.get("i2c", []) or []:
+        inst = r["instance"]
+        need_port(r["scl"]); need_port(r["sda"])
+        sp, sn = _pin(r["scl"]); dp, dn = _pin(r["sda"])
+        rows.append(f"    {{ {inst}, {sp}, {sn}, {dp}, {dn}, GPIO_AF4_{inst}, {int(r.get('speed_hz', 400000))}u }}, /* {r['name']} */")
+        if inst not in i2cs: i2cs.append(inst)
+    c += _table("p4_i2c_t", "g_p4_i2c", rows)
+
+    # SPI（阻塞式，软件片选；一个条目 = 一颗芯片）
+    rows, spis = [], []
+    for r in res.get("spi", []) or []:
+        inst = r["instance"]
+        af, bus = F.SPIS[inst][0], F.SPIS[inst][1]
+        for k in ("sck", "miso", "mosi", "cs"): need_port(r[k])
+        (kp, kn), (ip, inn), (op, on), (cp, cn) = (_pin(r[k]) for k in ("sck", "miso", "mosi", "cs"))
+        rows.append(f"    {{ {inst}, {kp}, {kn}, {ip}, {inn}, {op}, {on}, {cp}, {cn}, GPIO_AF{af}_{inst}, "
+                    f"{2 if bus == 'APB2' else 1}, {int(r.get('mode', 0))}, {int(r.get('hz', 1000000))}u }}, /* {r['name']} */")
+        if inst not in spis: spis.append(inst)
+    c += _table("p4_spi_t", "g_p4_spi", rows)
+
     # 时钟使能
     for p in sorted(ports):
         rcc.append(f"__HAL_RCC_GPIO{p}_CLK_ENABLE();")
@@ -157,6 +179,8 @@ def gen_stm32f4(board: dict, src: str, sha: str) -> tuple[str, dict]:
         rcc.append(f"__HAL_RCC_{t}_CLK_ENABLE();")
     for u in uarts:
         rcc.append(f"__HAL_RCC_{u}_CLK_ENABLE();")
+    for x in i2cs + spis:
+        rcc.append(f"__HAL_RCC_{x}_CLK_ENABLE();")
     for d in sorted(dmas):
         rcc.append(f"__HAL_RCC_DMA{d}_CLK_ENABLE();")
     for a in sorted(adcs):
@@ -205,10 +229,10 @@ CPU_FLAGS = {
 
 def _cube_handle(inst: str) -> str:
     """CubeMX 句柄命名：TIM3 -> htim3，USART1/UART4/LPUART1 -> huart1/huart4/hlpuart1，ADC1 -> hadc1。"""
-    m = re.fullmatch(r"(TIM|USART|UART|LPUART|ADC)(\d+)", inst)
+    m = re.fullmatch(r"(TIM|USART|UART|LPUART|ADC|I2C|SPI)(\d+)", inst)
     if not m:
         raise SystemExit(f"✗ 无法推出 CubeMX 句柄名：{inst}")
-    pre = {"TIM": "htim", "USART": "huart", "UART": "huart", "LPUART": "hlpuart", "ADC": "hadc"}[m[1]]
+    pre = {"TIM": "htim", "USART": "huart", "UART": "huart", "LPUART": "hlpuart", "ADC": "hadc", "I2C": "hi2c", "SPI": "hspi"}[m[1]]
     return f"{pre}{m[2]}"
 
 
@@ -240,7 +264,12 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
         if h not in [x for x, _ in handles]:
             handles.append((h, typ))
         return h
-    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "adc")}
+    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi")}
+    for r in res.get("i2c", []) or []:
+        rows["i2c"].append(f"    {{ &{need(r['instance'], 'I2C')} }}, /* {r['name']} */")
+    for r in res.get("spi", []) or []:
+        cp, cn = _pin(r["cs"])
+        rows["spi"].append(f"    {{ &{need(r['instance'], 'SPI')}, {cp}, {cn} }}, /* {r['name']}（CS 由移植层软件控制；CubeMX 里把 {r['cs']} 配成 GPIO_Output、初始高电平） */")
     for r in res["gpio"]:
         port, pin = _pin(r["pin"])
         rows["gpio"].append(f"    {{ {port}, {pin}, {int(bool(r.get('active_low')))}u }}, /* {r['name']} {r['pin']} */")
@@ -263,7 +292,8 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
     c += bufs + [""]
     for key, typ, name in (("gpio", "cm_gpio_t", "g_cm_gpio"), ("pwm", "cm_pwm_t", "g_cm_pwm"),
                            ("encoder", "cm_enc_t", "g_cm_enc"), ("uart", "cm_uart_t", "g_cm_uart"),
-                           ("timer", "cm_timer_t", "g_cm_timer"), ("adc", "cm_adc_t", "g_cm_adc")):
+                           ("timer", "cm_timer_t", "g_cm_timer"), ("adc", "cm_adc_t", "g_cm_adc"),
+                           ("i2c", "cm_i2c_t", "g_cm_i2c"), ("spi", "cm_spi_t", "g_cm_spi")):
         c += _table(typ, name, rows[key])
     c.append("const char *const g_board_name = BOARD_NAME;\n")
     cs = board["config_source"]

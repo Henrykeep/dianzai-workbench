@@ -520,3 +520,48 @@ dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info)
     (void)id; (void)info; return DZ_ENODEV;
 #endif
 }
+
+/* ---------- I2C / SPI（阻塞式，用 CubeMX 生成的 hi2cN / hspiN 句柄；SPI 片选由这里软件控制） ---------- */
+static dz_err_t cm_hal_rc(HAL_StatusTypeDef r) { return r == HAL_OK ? DZ_OK : r == HAL_TIMEOUT ? DZ_ETIMEOUT : r == HAL_BUSY ? DZ_EBUSY : DZ_EIO; }
+
+dz_err_t pal_i2c_mem_read(pal_id_t id, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n)
+{
+#if BOARD_I2C_COUNT > 0 && defined(HAL_I2C_MODULE_ENABLED)
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if (!buf || !n || addr7 > 0x7Fu) return DZ_EINVAL;
+    return cm_hal_rc(HAL_I2C_Mem_Read(g_cm_i2c[id].h, (uint16_t)(addr7 << 1), reg, I2C_MEMADD_SIZE_8BIT, buf, n, PAL_I2C_TIMEOUT_MS));
+#else
+    (void)id; (void)addr7; (void)reg; (void)buf; (void)n; (void)cm_hal_rc;
+    return BOARD_I2C_COUNT > 0 ? DZ_ENOTSUP : DZ_ENODEV;   /* 有资源但 CubeMX 没启用 I2C 模块 */
+#endif
+}
+
+dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n)
+{
+#if BOARD_I2C_COUNT > 0 && defined(HAL_I2C_MODULE_ENABLED)
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if ((!buf && n) || addr7 > 0x7Fu) return DZ_EINVAL;
+    return cm_hal_rc(HAL_I2C_Mem_Write(g_cm_i2c[id].h, (uint16_t)(addr7 << 1), reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)buf, n, PAL_I2C_TIMEOUT_MS));
+#else
+    (void)id; (void)addr7; (void)reg; (void)buf; (void)n;
+    return BOARD_I2C_COUNT > 0 ? DZ_ENOTSUP : DZ_ENODEV;
+#endif
+}
+
+dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
+{
+#if BOARD_SPI_COUNT > 0 && defined(HAL_SPI_MODULE_ENABLED)
+    static uint8_t ff[64], sink[64];
+    if (id >= BOARD_SPI_COUNT) return DZ_ENODEV;
+    if (!n || n > sizeof ff) return DZ_EINVAL;
+    if (!tx) { memset(ff, 0xFF, n); tx = ff; }
+    const cm_spi_t *c = &g_cm_spi[id];
+    HAL_GPIO_WritePin(c->cs_port, c->cs_pin, GPIO_PIN_RESET);
+    HAL_StatusTypeDef r = HAL_SPI_TransmitReceive(c->h, (uint8_t *)tx, rx ? rx : sink, n, PAL_I2C_TIMEOUT_MS);
+    HAL_GPIO_WritePin(c->cs_port, c->cs_pin, GPIO_PIN_SET);
+    return cm_hal_rc(r);
+#else
+    (void)id; (void)tx; (void)rx; (void)n;
+    return BOARD_SPI_COUNT > 0 ? DZ_ENOTSUP : DZ_ENODEV;
+#endif
+}

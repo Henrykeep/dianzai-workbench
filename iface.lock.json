@@ -21,6 +21,20 @@
   "hash": "1b440a8c998a868a",
   "version": "1.0.0"
  },
+ "firmware/algo/attitude": {
+  "decls": [
+   "attitude.h: typedef struct { float tau_s;",
+   "attitude.h: float acc_gate;",
+   "attitude.h: float roll, pitch;",
+   "attitude.h: bool inited;",
+   "attitude.h: } attitude_t;",
+   "attitude.h: dz_err_t attitude_init(attitude_t *a, float tau_s, float acc_gate);",
+   "attitude.h: dz_err_t attitude_update(attitude_t *a, const float acc[3], const float gyr[3], float dt);",
+   "attitude.h: dz_err_t attitude_selftest(void);"
+  ],
+  "hash": "9e5388c5b4fc00ea",
+  "version": "1.0.0"
+ },
  "firmware/algo/ball_beam": {
   "decls": [
    "ball_beam.h: #define BB_BAL_MAX 5u",
@@ -187,6 +201,37 @@
   "hash": "de1f93202fb16e9c",
   "version": "1.0.0"
  },
+ "firmware/drivers/bmi088": {
+  "decls": [
+   "bmi088.h: typedef enum { BMI088_ACC_3G = 0, BMI088_ACC_6G, BMI088_ACC_12G, BMI088_ACC_24G } bmi088_acc_range_t;",
+   "bmi088.h: typedef enum { BMI088_GYR_2000 = 0, BMI088_GYR_1000, BMI088_GYR_500, BMI088_GYR_250, BMI088_GYR_125 } bmi088_gyr_range_t;",
+   "bmi088.h: typedef struct { pal_id_t spi_acc, spi_gyr;",
+   "bmi088.h: bmi088_acc_range_t acc_range;",
+   "bmi088.h: bmi088_gyr_range_t gyr_range;",
+   "bmi088.h: uint8_t acc_conf;",
+   "bmi088.h: uint8_t gyr_bw;",
+   "bmi088.h: } bmi088_cfg_t;",
+   "bmi088.h: typedef struct { bmi088_cfg_t cfg;",
+   "bmi088.h: float acc_scale, gyr_scale;",
+   "bmi088.h: float gyr_bias[3];",
+   "bmi088.h: bool ok;",
+   "bmi088.h: uint32_t errors;",
+   "bmi088.h: } bmi088_t;",
+   "bmi088.h: typedef struct { float acc[3];",
+   "bmi088.h: float gyr[3];",
+   "bmi088.h: float temp_c;",
+   "bmi088.h: bool acc_sat;",
+   "bmi088.h: } bmi088_data_t;",
+   "bmi088.h: bmi088_cfg_t bmi088_cfg_default(pal_id_t spi_acc, pal_id_t spi_gyr);",
+   "bmi088.h: dz_err_t bmi088_init(bmi088_t *d, const bmi088_cfg_t *cfg);",
+   "bmi088.h: dz_err_t bmi088_read(bmi088_t *d, bmi088_data_t *out);",
+   "bmi088.h: dz_err_t bmi088_read_temp(bmi088_t *d, float *temp_c);",
+   "bmi088.h: dz_err_t bmi088_calib_gyro(bmi088_t *d, uint16_t n, uint32_t period_ms);",
+   "bmi088.h: dz_err_t bmi088_selftest(void);"
+  ],
+  "hash": "79dab4873b5f42a6",
+  "version": "1.0.0"
+ },
  "firmware/drivers/encoder": {
   "decls": [
    "encoder.h: #define ENCODER_WINDOW_MAX 32u",
@@ -269,6 +314,40 @@
    "motor_dc.h: dz_err_t motor_dc_selftest(motor_dc_t *m, float test_duty, uint32_t hold_ms);"
   ],
   "hash": "65f17efe2649dbed",
+  "version": "1.0.0"
+ },
+ "firmware/drivers/mpu6050": {
+  "decls": [
+   "mpu6050.h: #define MPU6050_ADDR_LO 0x68u",
+   "mpu6050.h: #define MPU6050_ADDR_HI 0x69u",
+   "mpu6050.h: typedef enum { MPU6050_ACC_2G = 0, MPU6050_ACC_4G, MPU6050_ACC_8G, MPU6050_ACC_16G } mpu6050_acc_fs_t;",
+   "mpu6050.h: typedef enum { MPU6050_GYR_250 = 0, MPU6050_GYR_500, MPU6050_GYR_1000, MPU6050_GYR_2000 } mpu6050_gyr_fs_t;",
+   "mpu6050.h: typedef struct { pal_id_t i2c;",
+   "mpu6050.h: uint8_t addr;",
+   "mpu6050.h: mpu6050_acc_fs_t acc_fs;",
+   "mpu6050.h: mpu6050_gyr_fs_t gyr_fs;",
+   "mpu6050.h: uint8_t dlpf;",
+   "mpu6050.h: uint8_t smplrt_div;",
+   "mpu6050.h: } mpu6050_cfg_t;",
+   "mpu6050.h: typedef struct { mpu6050_cfg_t cfg;",
+   "mpu6050.h: float acc_lsb, gyr_lsb;",
+   "mpu6050.h: float gyr_bias[3];",
+   "mpu6050.h: uint8_t who;",
+   "mpu6050.h: bool ok;",
+   "mpu6050.h: uint32_t errors;",
+   "mpu6050.h: } mpu6050_t;",
+   "mpu6050.h: typedef struct { float acc[3];",
+   "mpu6050.h: float gyr[3];",
+   "mpu6050.h: float temp_c;",
+   "mpu6050.h: bool acc_sat;",
+   "mpu6050.h: } mpu6050_data_t;",
+   "mpu6050.h: mpu6050_cfg_t mpu6050_cfg_default(pal_id_t i2c);",
+   "mpu6050.h: dz_err_t mpu6050_init(mpu6050_t *d, const mpu6050_cfg_t *cfg);",
+   "mpu6050.h: dz_err_t mpu6050_read(mpu6050_t *d, mpu6050_data_t *out);",
+   "mpu6050.h: dz_err_t mpu6050_calib_gyro(mpu6050_t *d, uint16_t n, uint32_t period_ms);",
+   "mpu6050.h: dz_err_t mpu6050_selftest(void);"
+  ],
+  "hash": "a435f71db996706e",
   "version": "1.0.0"
  },
  "firmware/drivers/qd4310": {
@@ -423,6 +502,7 @@
   "decls": [
    "pal.h: #define PAL_ID_NONE ((pal_id_t)0xFFu)",
    "pal.h: #define PAL_DUTY_MAX 10000u",
+   "pal.h: #define PAL_I2C_TIMEOUT_MS 5u",
    "pal.h: typedef uint8_t pal_id_t;",
    "pal.h: typedef enum { PAL_RESET_UNKNOWN = 0, PAL_RESET_POWER_ON, PAL_RESET_PIN, PAL_RESET_BROWNOUT, PAL_RESET_WATCHDOG, PAL_RESET_SOFTWARE, PAL_RESET_LOCKUP } pal_reset_cause_t;",
    "pal.h: dz_err_t pal_init(void);",
@@ -455,10 +535,13 @@
    "pal.h: uint32_t scale_den;",
    "pal.h: } pal_adc_info_t;",
    "pal.h: dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw);",
-   "pal.h: dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info);"
+   "pal.h: dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info);",
+   "pal.h: dz_err_t pal_i2c_mem_read(pal_id_t id, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n);",
+   "pal.h: dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n);",
+   "pal.h: dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);"
   ],
-  "hash": "84859ccf17f6ab69",
-  "version": "1.0.0"
+  "hash": "6f3299d06a138cbe",
+  "version": "1.1.0"
  },
  "firmware/proto/dzctl": {
   "decls": [
@@ -527,6 +610,29 @@
   "hash": "d27f82859ed5d485",
   "version": "1.1.0"
  },
+ "firmware/proto/dzimu": {
+  "decls": [
+   "dzimu.h: #define DZIMU_CH 0x20u",
+   "dzimu.h: #define DZIMU_SIZE 37u",
+   "dzimu.h: #define DZIMU_ST_ACC_OK 0x01u",
+   "dzimu.h: #define DZIMU_ST_GYR_OK 0x02u",
+   "dzimu.h: #define DZIMU_ST_ATT_OK 0x04u",
+   "dzimu.h: #define DZIMU_ST_BIAS_OK 0x08u",
+   "dzimu.h: #define DZIMU_ST_ACC_SAT 0x10u",
+   "dzimu.h: typedef struct { uint32_t t_ms;",
+   "dzimu.h: float acc[3];",
+   "dzimu.h: float gyr[3];",
+   "dzimu.h: float roll_deg, pitch_deg;",
+   "dzimu.h: uint8_t status;",
+   "dzimu.h: } dzimu_sample_t;",
+   "dzimu.h: bool dzimu_encode(const dzimu_sample_t *s, uint8_t seq, dzframe_t *f);",
+   "dzimu.h: bool dzimu_decode(const dzframe_t *f, dzimu_sample_t *out);",
+   "dzimu.h: float dzimu_axis(const float v[3], uint8_t axis);",
+   "dzimu.h: dz_err_t dzimu_selftest(void);"
+  ],
+  "hash": "f18078a8bca08aa7",
+  "version": "1.0.0"
+ },
  "ports/host-sim": {
   "decls": [
    "host_sim.h: #define HOST_SIM_STEP_US 100u",
@@ -551,19 +657,23 @@
    "host_sim.h: uint16_t host_sim_uart_take_tx(pal_id_t id, uint8_t *buf, uint16_t max);",
    "host_sim.h: void host_sim_uart_inject_rx(pal_id_t id, const uint8_t *buf, uint16_t len);",
    "host_sim.h: void host_sim_uart_set_busy(pal_id_t id, bool busy);",
+   "host_sim.h: typedef dz_err_t (*host_sim_i2c_fn)(void *ctx, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n, bool write);",
+   "host_sim.h: typedef dz_err_t (*host_sim_spi_fn)(void *ctx, const uint8_t *tx, uint8_t *rx, uint16_t n);",
+   "host_sim.h: void host_sim_i2c_attach(pal_id_t id, host_sim_i2c_fn fn, void *ctx);",
+   "host_sim.h: void host_sim_spi_attach(pal_id_t id, host_sim_spi_fn fn, void *ctx);",
    "host_sim.h: typedef enum { HS_EV_GPIO = 1, HS_EV_PWM = 2 } host_sim_ev_type_t;",
    "host_sim.h: typedef struct { host_sim_ev_type_t type;",
    "host_sim.h: pal_id_t id;",
    "host_sim.h: uint32_t value;",
    "host_sim.h: } host_sim_ev_t;",
    "host_sim.h: unsigned host_sim_events(host_sim_ev_t *out, unsigned max);",
-   "host_sim.h: typedef enum { HS_FAIL_GPIO, HS_FAIL_PWM, HS_FAIL_ENC, HS_FAIL_UART, HS_FAIL_ADC, HS_FAIL_COUNT } host_sim_fail_t;",
+   "host_sim.h: typedef enum { HS_FAIL_GPIO, HS_FAIL_PWM, HS_FAIL_ENC, HS_FAIL_UART, HS_FAIL_ADC, HS_FAIL_I2C, HS_FAIL_SPI, HS_FAIL_COUNT } host_sim_fail_t;",
    "host_sim.h: void host_sim_fail_next(host_sim_fail_t what, unsigned n);",
    "host_sim.h: int host_sim_add_periodic(uint32_t period_us, void (*fn)(void *), void *ctx);",
    "host_sim.h: void host_sim_set_reset_cause(pal_reset_cause_t c);"
   ],
-  "hash": "2162541c3defdfc7",
-  "version": "1.0.0"
+  "hash": "0a570e43b3b1de17",
+  "version": "2.0.0"
  },
  "ports/mspm0-driverlib": {
   "decls": [
@@ -608,7 +718,7 @@
    "port_mspm0.h: const m0_diag_t *m0_diag(void);"
   ],
   "hash": "3b75cfae4a03598b",
-  "version": "0.1.0"
+  "version": "0.2.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -641,20 +751,34 @@
    "port_cubemx.h: uint32_t channel;",
    "port_cubemx.h: pal_adc_info_t info;",
    "port_cubemx.h: } cm_adc_t;",
+   "port_cubemx.h: typedef struct { I2C_HandleTypeDef *h;",
+   "port_cubemx.h: } cm_i2c_t;",
+   "port_cubemx.h: typedef struct { void *h;",
+   "port_cubemx.h: } cm_i2c_t;",
+   "port_cubemx.h: typedef struct { SPI_HandleTypeDef *h;",
+   "port_cubemx.h: GPIO_TypeDef *cs_port;",
+   "port_cubemx.h: uint16_t cs_pin;",
+   "port_cubemx.h: } cm_spi_t;",
+   "port_cubemx.h: typedef struct { void *h;",
+   "port_cubemx.h: GPIO_TypeDef *cs_port;",
+   "port_cubemx.h: uint16_t cs_pin;",
+   "port_cubemx.h: } cm_spi_t;",
    "port_cubemx.h: extern const cm_gpio_t g_cm_gpio[];",
    "port_cubemx.h: extern const cm_pwm_t g_cm_pwm[];",
    "port_cubemx.h: extern const cm_enc_t g_cm_enc[];",
    "port_cubemx.h: extern const cm_uart_t g_cm_uart[];",
    "port_cubemx.h: extern const cm_timer_t g_cm_timer[];",
    "port_cubemx.h: extern const cm_adc_t g_cm_adc[];",
+   "port_cubemx.h: extern const cm_i2c_t g_cm_i2c[];",
+   "port_cubemx.h: extern const cm_spi_t g_cm_spi[];",
    "port_cubemx.h: extern const char *const g_board_name;",
    "port_cubemx.h: typedef struct { uint32_t uart_err;",
    "port_cubemx.h: uint32_t tim_cb_unknown;",
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "44b9ba43eb55f0f4",
-  "version": "1.1.0"
+  "hash": "29065ff542bb23f1",
+  "version": "1.2.0"
  },
  "ports/stm32f4-hal": {
   "decls": [
@@ -714,12 +838,36 @@
    "port_stm32f4.h: uint16_t pin;",
    "port_stm32f4.h: pal_adc_info_t info;",
    "port_stm32f4.h: } p4_adc_t;",
+   "port_stm32f4.h: typedef struct { I2C_TypeDef *inst;",
+   "port_stm32f4.h: GPIO_TypeDef *scl_port;",
+   "port_stm32f4.h: uint16_t scl_pin;",
+   "port_stm32f4.h: GPIO_TypeDef *sda_port;",
+   "port_stm32f4.h: uint16_t sda_pin;",
+   "port_stm32f4.h: uint8_t af;",
+   "port_stm32f4.h: uint32_t speed_hz;",
+   "port_stm32f4.h: } p4_i2c_t;",
+   "port_stm32f4.h: typedef struct { SPI_TypeDef *inst;",
+   "port_stm32f4.h: GPIO_TypeDef *sck_port;",
+   "port_stm32f4.h: uint16_t sck_pin;",
+   "port_stm32f4.h: GPIO_TypeDef *miso_port;",
+   "port_stm32f4.h: uint16_t miso_pin;",
+   "port_stm32f4.h: GPIO_TypeDef *mosi_port;",
+   "port_stm32f4.h: uint16_t mosi_pin;",
+   "port_stm32f4.h: GPIO_TypeDef *cs_port;",
+   "port_stm32f4.h: uint16_t cs_pin;",
+   "port_stm32f4.h: uint8_t af;",
+   "port_stm32f4.h: uint8_t apb;",
+   "port_stm32f4.h: uint8_t mode;",
+   "port_stm32f4.h: uint32_t hz;",
+   "port_stm32f4.h: } p4_spi_t;",
    "port_stm32f4.h: extern const p4_gpio_t g_p4_gpio[];",
    "port_stm32f4.h: extern const p4_pwm_t g_p4_pwm[];",
    "port_stm32f4.h: extern const p4_enc_t g_p4_enc[];",
    "port_stm32f4.h: extern const p4_uart_t g_p4_uart[];",
    "port_stm32f4.h: extern const p4_timer_t g_p4_timer[];",
    "port_stm32f4.h: extern const p4_adc_t g_p4_adc[];",
+   "port_stm32f4.h: extern const p4_i2c_t g_p4_i2c[];",
+   "port_stm32f4.h: extern const p4_spi_t g_p4_spi[];",
    "port_stm32f4.h: extern const char *const g_board_name;",
    "port_stm32f4.h: void board_gen_clock_enable(void);",
    "port_stm32f4.h: void p4_uart_rx_dma_irq(unsigned idx);",
@@ -736,8 +884,10 @@
    "stm32f4xx_hal_conf.h: #define HAL_FLASH_MODULE_ENABLED",
    "stm32f4xx_hal_conf.h: #define HAL_GPIO_MODULE_ENABLED",
    "stm32f4xx_hal_conf.h: #define HAL_EXTI_MODULE_ENABLED",
+   "stm32f4xx_hal_conf.h: #define HAL_I2C_MODULE_ENABLED",
    "stm32f4xx_hal_conf.h: #define HAL_PWR_MODULE_ENABLED",
    "stm32f4xx_hal_conf.h: #define HAL_RCC_MODULE_ENABLED",
+   "stm32f4xx_hal_conf.h: #define HAL_SPI_MODULE_ENABLED",
    "stm32f4xx_hal_conf.h: #define HAL_TIM_MODULE_ENABLED",
    "stm32f4xx_hal_conf.h: #define HAL_UART_MODULE_ENABLED",
    "stm32f4xx_hal_conf.h: #define HAL_CORTEX_MODULE_ENABLED",
@@ -838,7 +988,7 @@
    "stm32f4xx_hal_conf.h: #define assert_param(expr) ((void)0U)",
    "stm32f4xx_hal_conf.h: void assert_failed(uint8_t* file, uint32_t line);"
   ],
-  "hash": "321e8be813d73558",
-  "version": "1.0.0"
+  "hash": "b0214c49a56898f4",
+  "version": "1.1.0"
  }
 }

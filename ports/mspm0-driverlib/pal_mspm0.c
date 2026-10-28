@@ -397,3 +397,12 @@ void dz_m0_timer_isr(unsigned i)
 /* ---------- ADC：未实现 ---------- */
 dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw) { (void)id; (void)raw; return DZ_ENOTSUP; }
 dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info) { (void)id; (void)info; return DZ_ENOTSUP; }
+
+/* I2C / SPI：MSPM0 移植层尚未实现（需要 SysConfig 里配 I2C/SPI 外设，再用 DL_I2C_* / DL_SPI_* 写，没上板之前不写）。
+ * MSPM0 主控要用 IMU 的话：走 UART 姿态模块（apps/imu_module + proto/dzimu），这条路径不依赖 I2C/SPI。 */
+dz_err_t pal_i2c_mem_read(pal_id_t id, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n)
+{ (void)id; (void)addr7; (void)reg; (void)buf; (void)n; return DZ_ENOTSUP; }
+dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n)
+{ (void)id; (void)addr7; (void)reg; (void)buf; (void)n; return DZ_ENOTSUP; }
+dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
+{ (void)id; (void)tx; (void)rx; (void)n; return DZ_ENOTSUP; }

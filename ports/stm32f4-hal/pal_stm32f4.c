@@ -281,6 +281,146 @@ static dz_err_t init_adc_one(unsigned i)
 }
 #endif
 
+/* ---------------------------------------------------------- I2C / SPI（阻塞式）
+ * I2C：HAL_I2C_Mem_Read/Write，超时 PAL_I2C_TIMEOUT_MS。同一实例只初始化一次。
+ * SPI：HAL_SPI_TransmitReceive + 软件片选（CS 推挽输出，空闲高）。共用总线的多个条目若 mode/速率不同，
+ *      传输前按需重新 HAL_SPI_Init。中断里不要调用（阻塞）。 */
+#if BOARD_I2C_COUNT > 0
+static uint32_t s_fail_i2c;   /* 初始化失败位图（不放进 p4_diag_t，免得改动已发布的结构体） */
+static I2C_HandleTypeDef s_i2c[BOARD_I2C_COUNT];
+static I2C_HandleTypeDef *s_i2c_h[BOARD_I2C_COUNT];
+static dz_err_t init_i2c_one(unsigned i)
+{
+    const p4_i2c_t *c = &g_p4_i2c[i];
+    for (unsigned j = 0; j < i; j++)
+        if (g_p4_i2c[j].inst == c->inst) { s_i2c_h[i] = s_i2c_h[j]; return DZ_OK; }
+    GPIO_InitTypeDef g = {0};
+    g.Mode = GPIO_MODE_AF_OD; g.Pull = GPIO_NOPULL; g.Speed = GPIO_SPEED_FREQ_HIGH; g.Alternate = c->af;
+    g.Pin = c->scl_pin; HAL_GPIO_Init(c->scl_port, &g);
+    g.Pin = c->sda_pin; HAL_GPIO_Init(c->sda_port, &g);
+    I2C_HandleTypeDef *h = &s_i2c[i];
+    memset(h, 0, sizeof *h);
+    h->Instance = c->inst;
+    h->Init.ClockSpeed = c->speed_hz;
+    h->Init.DutyCycle = I2C_DUTYCYCLE_2;
+    h->Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+    h->Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    h->Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    h->Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+    s_i2c_h[i] = h;
+    return HAL_I2C_Init(h) == HAL_OK ? DZ_OK : DZ_EIO;
+}
+static dz_err_t hal_rc(HAL_StatusTypeDef r) { return r == HAL_OK ? DZ_OK : r == HAL_TIMEOUT ? DZ_ETIMEOUT : r == HAL_BUSY ? DZ_EBUSY : DZ_EIO; }
+#endif
+
+dz_err_t pal_i2c_mem_read(pal_id_t id, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n)
+{
+#if BOARD_I2C_COUNT > 0
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if (!buf || !n || addr7 > 0x7Fu) return DZ_EINVAL;
+    if (!s_inited) return DZ_ESTATE;
+    if (s_fail_i2c & (1u << id)) return DZ_EIO;
+    return hal_rc(HAL_I2C_Mem_Read(s_i2c_h[id], (uint16_t)(addr7 << 1), reg, I2C_MEMADD_SIZE_8BIT, buf, n, PAL_I2C_TIMEOUT_MS));
+#else
+    (void)id; (void)addr7; (void)reg; (void)buf; (void)n; return DZ_ENODEV;
+#endif
+}
+
+dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n)
+{
+#if BOARD_I2C_COUNT > 0
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if ((!buf && n) || addr7 > 0x7Fu) return DZ_EINVAL;
+    if (!s_inited) return DZ_ESTATE;
+    if (s_fail_i2c & (1u << id)) return DZ_EIO;
+    return hal_rc(HAL_I2C_Mem_Write(s_i2c_h[id], (uint16_t)(addr7 << 1), reg, I2C_MEMADD_SIZE_8BIT, (uint8_t *)buf, n, PAL_I2C_TIMEOUT_MS));
+#else
+    (void)id; (void)addr7; (void)reg; (void)buf; (void)n; return DZ_ENODEV;
+#endif
+}
+
+#if BOARD_SPI_COUNT > 0
+static uint32_t s_fail_spi;
+static SPI_HandleTypeDef s_spi[BOARD_SPI_COUNT];
+static SPI_HandleTypeDef *s_spi_h[BOARD_SPI_COUNT];
+static int8_t s_spi_cfg_of[BOARD_SPI_COUNT];      /* 该句柄当前按哪个条目配置；-1 未配置 */
+
+static uint32_t spi_prescaler(const p4_spi_t *c)
+{
+    static const uint32_t pre[8] = { SPI_BAUDRATEPRESCALER_2, SPI_BAUDRATEPRESCALER_4, SPI_BAUDRATEPRESCALER_8,
+        SPI_BAUDRATEPRESCALER_16, SPI_BAUDRATEPRESCALER_32, SPI_BAUDRATEPRESCALER_64, SPI_BAUDRATEPRESCALER_128,
+        SPI_BAUDRATEPRESCALER_256 };
+    uint32_t pclk = c->apb == 2 ? HAL_RCC_GetPCLK2Freq() : HAL_RCC_GetPCLK1Freq();
+    for (unsigned k = 0; k < 8; k++) if ((pclk >> (k + 1u)) <= c->hz) return pre[k];
+    return SPI_BAUDRATEPRESCALER_256;            /* 不超过 hz 的最快分频；最慢 256 */
+}
+static dz_err_t spi_config(unsigned i)
+{
+    const p4_spi_t *c = &g_p4_spi[i];
+    SPI_HandleTypeDef *h = s_spi_h[i];
+    unsigned owner = (unsigned)(h - s_spi);
+    if (s_spi_cfg_of[owner] >= 0) {
+        const p4_spi_t *o = &g_p4_spi[s_spi_cfg_of[owner]];
+        if (o->mode == c->mode && o->hz == c->hz) return DZ_OK;
+        (void)HAL_SPI_DeInit(h);
+    }
+    h->Instance = c->inst;
+    h->Init.Mode = SPI_MODE_MASTER;
+    h->Init.Direction = SPI_DIRECTION_2LINES;
+    h->Init.DataSize = SPI_DATASIZE_8BIT;
+    h->Init.CLKPolarity = (c->mode & 2u) ? SPI_POLARITY_HIGH : SPI_POLARITY_LOW;
+    h->Init.CLKPhase = (c->mode & 1u) ? SPI_PHASE_2EDGE : SPI_PHASE_1EDGE;
+    h->Init.NSS = SPI_NSS_SOFT;
+    h->Init.BaudRatePrescaler = spi_prescaler(c);
+    h->Init.FirstBit = SPI_FIRSTBIT_MSB;
+    h->Init.TIMode = SPI_TIMODE_DISABLE;
+    h->Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+    h->Init.CRCPolynomial = 7;
+    if (HAL_SPI_Init(h) != HAL_OK) { s_spi_cfg_of[owner] = -1; return DZ_EIO; }
+    s_spi_cfg_of[owner] = (int8_t)i;
+    return DZ_OK;
+}
+static dz_err_t init_spi_one(unsigned i)
+{
+    const p4_spi_t *c = &g_p4_spi[i];
+    GPIO_InitTypeDef g = {0};
+    g.Mode = GPIO_MODE_OUTPUT_PP; g.Pull = GPIO_NOPULL; g.Speed = GPIO_SPEED_FREQ_HIGH; g.Pin = c->cs_pin;
+    HAL_GPIO_WritePin(c->cs_port, c->cs_pin, GPIO_PIN_SET);
+    HAL_GPIO_Init(c->cs_port, &g);
+    s_spi_cfg_of[i] = -1;
+    for (unsigned j = 0; j < i; j++)
+        if (g_p4_spi[j].inst == c->inst) { s_spi_h[i] = s_spi_h[j]; return DZ_OK; }
+    g.Mode = GPIO_MODE_AF_PP; g.Speed = GPIO_SPEED_FREQ_VERY_HIGH; g.Alternate = c->af;
+    g.Pin = c->sck_pin; HAL_GPIO_Init(c->sck_port, &g);
+    g.Pin = c->miso_pin; HAL_GPIO_Init(c->miso_port, &g);
+    g.Pin = c->mosi_pin; HAL_GPIO_Init(c->mosi_port, &g);
+    memset(&s_spi[i], 0, sizeof s_spi[i]);
+    s_spi_h[i] = &s_spi[i];
+    return spi_config(i);
+}
+#endif
+
+dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
+{
+#if BOARD_SPI_COUNT > 0
+    static uint8_t ff[64], sink[64];
+    if (id >= BOARD_SPI_COUNT) return DZ_ENODEV;
+    if (!n || n > sizeof ff) return DZ_EINVAL;
+    if (!s_inited) return DZ_ESTATE;
+    if (s_fail_spi & (1u << id)) return DZ_EIO;
+    const p4_spi_t *c = &g_p4_spi[id];
+    dz_err_t e = spi_config(id);
+    if (e) return e;
+    if (!tx) { memset(ff, 0xFF, n); tx = ff; }
+    HAL_GPIO_WritePin(c->cs_port, c->cs_pin, GPIO_PIN_RESET);
+    HAL_StatusTypeDef r = HAL_SPI_TransmitReceive(s_spi_h[id], (uint8_t *)tx, rx ? rx : sink, n, PAL_I2C_TIMEOUT_MS);
+    HAL_GPIO_WritePin(c->cs_port, c->cs_pin, GPIO_PIN_SET);
+    return r == HAL_OK ? DZ_OK : r == HAL_TIMEOUT ? DZ_ETIMEOUT : DZ_EIO;
+#else
+    (void)id; (void)tx; (void)rx; (void)n; return DZ_ENODEV;
+#endif
+}
+
 #define TRY_EACH(count, fn, mask)                                   \
     for (unsigned i_ = 0; i_ < (count); i_++)                       \
         if (fn(i_) != DZ_OK) { (mask) |= (1u << i_); rc = DZ_EIO; }
@@ -309,6 +449,12 @@ dz_err_t pal_init(void)
 #endif
 #if BOARD_ADC_COUNT > 0
     TRY_EACH(BOARD_ADC_COUNT, init_adc_one, s_diag.fail_adc);
+#endif
+#if BOARD_I2C_COUNT > 0
+    TRY_EACH(BOARD_I2C_COUNT, init_i2c_one, s_fail_i2c);
+#endif
+#if BOARD_SPI_COUNT > 0
+    TRY_EACH(BOARD_SPI_COUNT, init_spi_one, s_fail_spi);
 #endif
     s_inited = true;   /* 部分失败也标记已初始化：失败的资源会在使用时报错，其余照常可用 */
     return rc;

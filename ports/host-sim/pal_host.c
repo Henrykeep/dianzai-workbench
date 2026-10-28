@@ -30,6 +30,8 @@ static struct {
     unsigned ev_n;
     unsigned fail[HS_FAIL_COUNT];
     struct { void (*fn)(void *); void *ctx; uint32_t period_us; uint64_t next_us; } per[4];
+    struct { host_sim_i2c_fn fn; void *ctx; } i2c[BOARD_I2C_COUNT + 1];
+    struct { host_sim_spi_fn fn; void *ctx; } spi[BOARD_SPI_COUNT + 1];
 } S;
 
 static bool take_fail(host_sim_fail_t w) { if (S.fail[w]) { S.fail[w]--; return true; } return false; }
@@ -275,4 +277,34 @@ dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info)
     if (!info) return DZ_EINVAL;
     *info = (pal_adc_info_t){ 12u, 3300u, 1u, 1u };
     return DZ_OK;
+}
+
+/* ---- I2C / SPI：转发给 tests 挂载的假芯片；没挂 = 总线上没人应答 */
+void host_sim_i2c_attach(pal_id_t id, host_sim_i2c_fn fn, void *ctx) { if (id < BOARD_I2C_COUNT) { S.i2c[id].fn = fn; S.i2c[id].ctx = ctx; } }
+void host_sim_spi_attach(pal_id_t id, host_sim_spi_fn fn, void *ctx) { if (id < BOARD_SPI_COUNT) { S.spi[id].fn = fn; S.spi[id].ctx = ctx; } }
+dz_err_t pal_i2c_mem_read(pal_id_t id, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n)
+{
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if (!buf || !n || n > 255u || addr7 > 0x7Fu) return DZ_EINVAL;
+    if (take_fail(HS_FAIL_I2C)) return DZ_ETIMEOUT;
+    return S.i2c[id].fn ? S.i2c[id].fn(S.i2c[id].ctx, addr7, reg, buf, n, false) : DZ_EIO;
+}
+dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n)
+{
+    uint8_t tmp[32];
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if ((!buf && n) || n > sizeof tmp || addr7 > 0x7Fu) return DZ_EINVAL;
+    if (take_fail(HS_FAIL_I2C)) return DZ_ETIMEOUT;
+    if (n) memcpy(tmp, buf, n);
+    return S.i2c[id].fn ? S.i2c[id].fn(S.i2c[id].ctx, addr7, reg, tmp, n, true) : DZ_EIO;
+}
+dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
+{
+    uint8_t ff[64], sink[64];
+    if (id >= BOARD_SPI_COUNT) return DZ_ENODEV;
+    if (!n || n > sizeof ff) return DZ_EINVAL;
+    if (take_fail(HS_FAIL_SPI)) return DZ_ETIMEOUT;
+    if (!tx) { memset(ff, 0xFF, n); tx = ff; }
+    if (!S.spi[id].fn) { memset(rx ? rx : sink, 0xFF, n); return DZ_OK; }   /* MISO 悬空读到 0xFF，和真板一样 */
+    return S.spi[id].fn(S.spi[id].ctx, tx, rx ? rx : sink, n);
 }

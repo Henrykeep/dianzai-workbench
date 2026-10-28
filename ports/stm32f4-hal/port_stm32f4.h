@@ -49,6 +49,22 @@ typedef struct {
     pal_adc_info_t info;
 } p4_adc_t;
 
+typedef struct {
+    I2C_TypeDef *inst;
+    GPIO_TypeDef *scl_port; uint16_t scl_pin;
+    GPIO_TypeDef *sda_port; uint16_t sda_pin;
+    uint8_t af; uint32_t speed_hz;
+} p4_i2c_t;
+
+typedef struct {
+    SPI_TypeDef *inst;
+    GPIO_TypeDef *sck_port; uint16_t sck_pin;
+    GPIO_TypeDef *miso_port; uint16_t miso_pin;
+    GPIO_TypeDef *mosi_port; uint16_t mosi_pin;
+    GPIO_TypeDef *cs_port; uint16_t cs_pin;
+    uint8_t af; uint8_t apb; uint8_t mode; uint32_t hz;
+} p4_spi_t;
+
 /* 由 board_gen.c 提供 */
 extern const p4_gpio_t  g_p4_gpio[];
 extern const p4_pwm_t   g_p4_pwm[];
@@ -56,6 +72,8 @@ extern const p4_enc_t   g_p4_enc[];
 extern const p4_uart_t  g_p4_uart[];
 extern const p4_timer_t g_p4_timer[];
 extern const p4_adc_t   g_p4_adc[];
+extern const p4_i2c_t   g_p4_i2c[];
+extern const p4_spi_t   g_p4_spi[];
 extern const char *const g_board_name;
 void board_gen_clock_enable(void);
 
