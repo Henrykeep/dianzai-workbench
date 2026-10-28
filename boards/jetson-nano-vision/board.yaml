@@ -1,0 +1,28 @@
+# NVIDIA Jetson Nano 视觉协处理板（kind: coprocessor）
+# 它不运行本框架的 C 代码；这里只描述它和主控之间的 dzframe/1 通道与参数。
+# Jetson 侧发送：tools/dzframe.py 的 encode(DATA, 1, seq, pack_fields(fields, {...}))，例子见 docs/08-协处理板与软核.md。
+schema_version: 1
+name: jetson-nano-vision
+kind: coprocessor
+vendor: NVIDIA
+description: Jetson Nano 做摄像头识别，通过串口把结果发给主控（2026H_ball 示例使用）
+
+coprocessor:
+  device: NVIDIA Jetson Nano
+  link:
+    transport: uart
+    protocol: dzframe/1
+    baud: 115200
+    logic_level_v: 3.3          # Jetson Nano 40-pin 排针 UART 为 3.3V，与 STM32 直连前请再核对你的载板
+    host_resource: VISION       # 主控 board.yaml 中的 uart 逻辑名
+  channels:
+    - id: 1
+      name: ball
+      dir: to_host
+      rate_hz: TODO             # 取决于相机帧率与算法耗时，实测后填写
+      fields:
+        - { name: x_px,  type: i16, unit: px }
+        - { name: y_px,  type: i16, unit: px }
+        - { name: found, type: u8,  note: 1=识别到 0=未识别 }
+  params:
+    - { id: 1, name: thresh, type: u8, min: 0, max: 255, default: 128, note: 示例：二值化阈值，按你的算法替换 }

@@ -250,6 +250,40 @@
   "hash": "84859ccf17f6ab69",
   "version": "1.0.0"
  },
+ "firmware/proto/dzframe": {
+  "decls": [
+   "dzframe.h: #define DZFRAME_PROTO_VER 1u",
+   "dzframe.h: #define DZFRAME_MAX_PAYLOAD 64u",
+   "dzframe.h: #define DZFRAME_OVERHEAD 9u",
+   "dzframe.h: #define DZFRAME_MAX_FRAME (DZFRAME_MAX_PAYLOAD + DZFRAME_OVERHEAD)",
+   "dzframe.h: typedef enum { DZF_DATA = 0, DZF_PARAM_SET = 1, DZF_PARAM_ACK = 2, DZF_HEARTBEAT = 3 } dzframe_kind_t;",
+   "dzframe.h: typedef struct { uint8_t kind;",
+   "dzframe.h: uint8_t id;",
+   "dzframe.h: uint8_t seq;",
+   "dzframe.h: uint8_t len;",
+   "dzframe.h: uint8_t payload[DZFRAME_MAX_PAYLOAD];",
+   "dzframe.h: } dzframe_t;",
+   "dzframe.h: typedef struct { uint8_t buf[DZFRAME_MAX_FRAME];",
+   "dzframe.h: uint16_t n;",
+   "dzframe.h: uint32_t good;",
+   "dzframe.h: uint32_t bad;",
+   "dzframe.h: } dzframe_parser_t;",
+   "dzframe.h: uint16_t dzframe_crc16(const uint8_t *data, size_t len);",
+   "dzframe.h: size_t dzframe_encode(uint8_t *out, size_t cap, const dzframe_t *f);",
+   "dzframe.h: void dzframe_parser_init(dzframe_parser_t *p);",
+   "dzframe.h: bool dzframe_feed(dzframe_parser_t *p, uint8_t byte, dzframe_t *out);",
+   "dzframe.h: bool dzframe_put_u8 (dzframe_t *f, uint8_t v);",
+   "dzframe.h: bool dzframe_put_u16(dzframe_t *f, uint16_t v);",
+   "dzframe.h: bool dzframe_put_u32(dzframe_t *f, uint32_t v);",
+   "dzframe.h: bool dzframe_put_f32(dzframe_t *f, float v);",
+   "dzframe.h: uint8_t dzframe_get_u8 (const dzframe_t *f, size_t off);",
+   "dzframe.h: uint16_t dzframe_get_u16(const dzframe_t *f, size_t off);",
+   "dzframe.h: uint32_t dzframe_get_u32(const dzframe_t *f, size_t off);",
+   "dzframe.h: float dzframe_get_f32(const dzframe_t *f, size_t off);"
+  ],
+  "hash": "3cdc304c3be1dcb2",
+  "version": "1.0.0"
+ },
  "ports/host-sim": {
   "decls": [
    "host_sim.h: #define HOST_SIM_STEP_US 100u",

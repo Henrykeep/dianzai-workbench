@@ -2,32 +2,25 @@
 #include <string.h>
 #include "tt.h"
 #include "project_gen.h"
-#include "vision_link.h"
+#include "dzframe.h"
+#include "cp_vision_cpu.h"
 
 int tt_fail, tt_pass;
 
-static int feed(vision_link_t *v, const char *s, vision_frame_t *f)
+TEST(vision_channel_codec)
 {
-    int n = 0;
-    for (; *s; s++) n += vision_link_feed(v, (uint8_t)*s, f);
-    return n;
-}
-
-TEST(vision_link_parser)
-{
-    vision_link_t v; vision_frame_t f = {0}; char b[40];
-    vision_link_init(&v);
-    vision_frame_t in = { -12, 480, true };
-    vision_link_format(b, sizeof b, &in);
-    CHECK(feed(&v, b, &f) == 1 && f.x == -12 && f.y == 480 && f.found);
-    CHECK(feed(&v, "$B,1,2,1*00\n", &f) == 0 && v.bad == 1);               /* 校验错 */
-    CHECK(feed(&v, "garbage$B,1,2", &f) == 0);
-    CHECK(feed(&v, b, &f) == 1 && v.bad == 2);                              /* 半帧被新的 $ 打断 */
-    CHECK(feed(&v, "$B,99999999,1,1*00\n", &f) == 0);                        /* 超长数字 */
-    CHECK(feed(&v, "$B,1,2,7*00\n", &f) == 0);                               /* found 只能 0/1 */
-    char longl[64]; memset(longl, '1', sizeof longl); longl[0] = '$'; longl[63] = 0;
-    CHECK(feed(&v, longl, &f) == 0 && feed(&v, b, &f) == 1);                 /* 超长后能恢复 */
-    CHECK(v.good == 3);
+    /* 生成的通道编解码：主控与 Jetson 两端字段顺序由同一份 board.yaml 决定 */
+    cp_vision_cpu_ball_t in = { -12, 480, 1 }, out = { 0, 0, 0 };
+    dzframe_t f;
+    CHECK(cp_vision_cpu_ball_encode(&in, 7, &f) && f.len == CP_VISION_CPU_BALL_SIZE);
+    uint8_t raw[DZFRAME_MAX_FRAME]; size_t n = dzframe_encode(raw, sizeof raw, &f);
+    dzframe_parser_t p; dzframe_parser_init(&p); dzframe_t g; int k = 0;
+    for (size_t i = 0; i < n; i++) k += dzframe_feed(&p, raw[i], &g);
+    CHECK(k == 1 && cp_vision_cpu_ball_decode(&g, &out));
+    CHECK(out.x_px == -12 && out.y_px == 480 && out.found == 1);
+    g.id = 9;  CHECK(!cp_vision_cpu_ball_decode(&g, &out));            /* 别的通道 */
+    g.id = CP_VISION_CPU_CH_BALL; g.len = 4; CHECK(!cp_vision_cpu_ball_decode(&g, &out));   /* 长度不符 */
+    CHECK(cp_vision_cpu_params[0].id == CP_VISION_CPU_PARAM_THRESH);
 }
 
 TEST(vision_subsys_mock)
@@ -88,7 +81,7 @@ TEST(generated_tables_consistent)
 
 int main(void)
 {
-    RUN(vision_link_parser); RUN(vision_subsys_mock); RUN(ball_subsys_mock); RUN(generated_tables_consistent);
+    RUN(vision_channel_codec); RUN(vision_subsys_mock); RUN(ball_subsys_mock); RUN(generated_tables_consistent);
     printf("\n通过 %d，失败 %d\n", tt_pass, tt_fail);
     return tt_fail ? 1 : 0;
 }

@@ -7,7 +7,7 @@
   python3 tools/check_deps.py --selftest # 跑 tools/fixtures/deps_* 违规样例，证明每条规则都能拦住
 
 规则（详见 docs/02-分层与依赖.md）：
-  L1  分层 #include 白名单：common ← pal ← algo ← framework ← drivers ← apps/examples，只能向下依赖。
+  L1  分层 #include 白名单：common ← pal ← algo/proto ← framework ← drivers ← apps/examples，只能向下依赖。
   L2  芯片/厂商 API（HAL_xxx、DL_xxx、LL_xxx、stm32*.h、ti_msp_dl_config.h 等）只能出现在 ports/。
   L3  host_sim.h 只能在 ports/host-sim、tests/ 和 sim_setup.c 里出现。
   S1  子系统（examples/*/subsys/<n>/）不得 include pal.h / board_gen.h / 驱动 / io/ / 其它子系统目录的文件。
@@ -36,8 +36,9 @@ LAYER_ALLOW = {
     "common":    {"common"},
     "pal":       {"common", "pal"},
     "algo":      {"common", "algo"},
-    "framework": {"common", "algo", "framework"},
-    "drivers":   {"common", "pal", "algo", "drivers"},
+    "proto":     {"common", "proto"},
+    "framework": {"common", "algo", "proto", "framework"},
+    "drivers":   {"common", "pal", "algo", "proto", "drivers"},
 }
 
 

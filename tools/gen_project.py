@@ -19,11 +19,27 @@ import re
 import sys
 
 import yaml
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 TYPES = {"float": "float", "int32": "int32_t", "uint32": "uint32_t", "uint16": "uint16_t",
          "int16": "int16_t", "uint8": "uint8_t", "bool": "bool"}
 IDENT = re.compile(r"^[a-z][a-z0-9_]*$")
 RESERVED_OWNERS = {"io", "coord"}
+
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def board_kinds(p: dict) -> dict:
+    """角色 -> kind（mcu/coprocessor）；找不到 board.yaml 或写 TODO 的角色视为 mcu。"""
+    out = {}
+    for role, name in (p.get("boards") or {"main": None}).items():
+        kind = "mcu"
+        f = ROOT / "boards" / str(name) / "board.yaml"
+        if name and f.exists():
+            kind = (yaml.safe_load(f.read_text(encoding="utf-8")) or {}).get("kind", "mcu")
+        out[role] = (kind, f if name and f.exists() else None)
+    return out
 
 
 def check(p: dict) -> list[str]:
@@ -64,6 +80,8 @@ def check(p: dict) -> list[str]:
             err.append(f"子系统 {n} 的 period_ms 必须是正整数")
         if s.get("board", "main") not in roles:
             err.append(f"子系统 {n} 的 board 角色 {s.get('board')} 不在 boards: {sorted(roles)}")
+        elif board_kinds(p)[s.get("board", "main")][0] == "coprocessor":
+            err.append(f"子系统 {n} 被分配到协处理板角色 {s.get('board')}：协处理板不运行本框架代码，子系统只能放在 MCU/软核板上")
         for sec in s.get("owns", []) or []:
             if sec not in sections:
                 err.append(f"子系统 {n} owns 不存在的段 {sec}")
@@ -187,6 +205,17 @@ def main() -> int:
     (a.out / "project_gen.h").write_text(h, encoding="utf-8")
     (a.out / "project_gen.c").write_text(c, encoding="utf-8")
     print(f"✓ 已生成 {a.out}/project_gen.{{h,c}}")
+    # 协处理板：为每个 kind: coprocessor 的角色生成 cp_<角色>.{h,c} 通道编解码
+    import gen_coproc
+    extra = []
+    for role, (kind, f) in board_kinds(p).items():
+        if kind == "coprocessor":
+            if gen_coproc.run(f, a.out, f"cp_{role}") != 0:
+                return 1
+            extra.append(f"cp_{role}.c")
+    # 给 Makefile 的源文件清单（make 会自动重新读入）
+    srcs = " ".join(f"$(PROJ_GEN)/{x}" for x in ["project_gen.c"] + extra)
+    (a.out / "project_gen.mk").write_text(f"# 自动生成\nPROJ_SRC := {srcs}\n", encoding="utf-8")
     return 0
 
 

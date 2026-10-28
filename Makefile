@@ -13,6 +13,8 @@ BOARD ?= host-sim
 APP   ?= motor_speed_demo
 PY    ?= python3
 
+# V=1 显示完整编译命令
+Q := $(if $(filter 1,$(V)),,@)
 .DEFAULT_GOAL := all
 ROOT      := $(CURDIR)
 BOARD_YML := boards/$(BOARD)/board.yaml
@@ -37,14 +39,15 @@ $(GEN)/board_gen.h $(GEN)/board_gen.c: $(GEN)/board_gen.mk
 PROJECT_YML := $(wildcard $(APP_DIR)/project.yaml)
 PROJ_GEN    := $(OUT)/projgen
 ifneq ($(PROJECT_YML),)
-$(PROJ_GEN)/project_gen.h $(PROJ_GEN)/project_gen.c: $(PROJECT_YML) tools/gen_project.py
+$(PROJ_GEN)/project_gen.mk: $(PROJECT_YML) tools/gen_project.py tools/gen_coproc.py $(wildcard boards/*/board.yaml)
 	$(PY) tools/gen_project.py $(PROJECT_YML) -o $(PROJ_GEN) --role $(or $(ROLE),main)
-PROJ_SRC := $(PROJ_GEN)/project_gen.c
-PROJ_INC := $(PROJ_GEN) $(APP_DIR)/lib $(APP_DIR)/io
+$(PROJ_GEN)/project_gen.h $(PROJ_GEN)/project_gen.c: $(PROJ_GEN)/project_gen.mk
+-include $(PROJ_GEN)/project_gen.mk
+PROJ_INC := $(PROJ_GEN) $(wildcard $(APP_DIR)/lib) $(APP_DIR)/io
 endif
 
-FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard firmware/framework/*) $(wildcard firmware/drivers/*) apps/include
-LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/drivers/*/*.c)
+FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard firmware/framework/*) $(wildcard firmware/proto/*) $(wildcard firmware/drivers/*) apps/include
+LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/proto/*/*.c firmware/drivers/*/*.c)
 APP_ALL := $(shell find $(APP_DIR) -name '*.c' -not -path '*/tests/*')
 SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
 APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC)
@@ -95,16 +98,20 @@ all: $(TARGET)
 
 $(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
+	@echo "  CC  $<"
+	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
 $(OUT)/hal/%.c.o: %.c $(GEN)/board_gen.h
 	@mkdir -p $(dir $@)
-	$(CC) $(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$(CFLAGS)) $(INC) -w -c $< -o $@
+	@echo "  CC  $< (第三方，关闭警告)"
+	$(Q)$(CC) $(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$(CFLAGS)) $(INC) -w -c $< -o $@
 $(OUT)/hal/%.s.o: %.s
 	@mkdir -p $(dir $@)
-	$(CC) $(MCU) -c $< -o $@
+	@echo "  AS  $<"
+	$(Q)$(CC) $(MCU) -c $< -o $@
 
 $(TARGET): $(OBJS) $(HAL_OBJS)
-	$(CC) $^ $(LDFLAGS) -o $@
+	@echo "  LD  $@"
+	$(Q)$(CC) $^ $(LDFLAGS) -o $@
 ifeq ($(BOARD_FAMILY),stm32f4)
 	$(TC)objcopy -O binary $@ $(OUT)/$(APP).bin
 	$(TC)objcopy -O ihex $@ $(OUT)/$(APP).hex

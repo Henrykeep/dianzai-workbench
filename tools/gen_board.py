@@ -216,6 +216,9 @@ def main() -> int:
             print(f"错误  {e}", file=sys.stderr)
         print(f"✗ {a.board} 校验未通过，未生成任何文件", file=sys.stderr)
         return 1
+    if board.get("kind") == "coprocessor":
+        print(f"✗ {a.board}: 协处理板（kind: coprocessor）不运行本框架代码，不生成固件；它的通道描述供 gen_coproc.py 使用")
+        return 1
     fam = board["mcu"]["family"]
     if fam not in GENERATORS:
         print(f"✗ 还没有 {fam} 系列的代码生成器（见 docs/06-add-board.md）", file=sys.stderr)

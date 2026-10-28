@@ -11,14 +11,15 @@
 #include "hooks.h"
 #include "motor_dc.h"
 #include "encoder.h"
-#include "vision_link.h"
+#include "dzframe.h"
+#include "cp_vision_cpu.h"   /* 由 boards/jetson-nano-vision/board.yaml 自动生成 */
 
 static shared_state_t S;
 static subsys_sched_t SCHED;
 static coord_t COORD;
 static motor_dc_t MOTOR;
 static encoder_t ENC;
-static vision_link_t VL;
+static dzframe_parser_t VL;
 
 shared_state_t *io_state(void) { return &S; }
 coord_t *io_coord(void) { return &COORD; }
@@ -33,7 +34,7 @@ dz_err_t app_init(void)
     ec.enc = RES_ENCODER_MOTOR_A; ec.counts_per_rev = 1560.0f;   /* TODO(用户)：实际电机参数 */
     ec.dt_s = 0.001f; ec.speed_lpf_hz = 50.0f;
     if ((e = encoder_init(&ENC, &ec)) != DZ_OK) return e;
-    vision_link_init(&VL);
+    dzframe_parser_init(&VL);
     if ((e = subsys_sched_init(&SCHED, g_project_subsys, PROJECT_N_SUBSYS, &S, &g_project_params[0])) != DZ_OK) return e;
     return coord_init(&COORD, &SCHED, g_project_tests, PROJECT_N_TESTS, g_project_profiles, PROJECT_N_PROFILES, &g_project_hooks);
 }
@@ -58,10 +59,10 @@ static void read_inputs(uint32_t now)
     else coord_event(&COORD, COORD_EV_FAULT);
     uint8_t buf[64]; uint16_t got = 0;
     if (pal_uart_read(RES_UART_VISION, buf, sizeof buf, &got) == DZ_OK) {
-        vision_frame_t f;
+        dzframe_t f; cp_vision_cpu_ball_t b;
         for (uint16_t i = 0; i < got; i++)
-            if (vision_link_feed(&VL, buf[i], &f)) {
-                S.io_in.cam_x_px = f.x; S.io_in.cam_y_px = f.y; S.io_in.cam_found = f.found;
+            if (dzframe_feed(&VL, buf[i], &f) && cp_vision_cpu_ball_decode(&f, &b)) {
+                S.io_in.cam_x_px = b.x_px; S.io_in.cam_y_px = b.y_px; S.io_in.cam_found = b.found != 0;
                 S.io_in.cam_seq++; S.io_in.cam_rx_ms = now;
             }
     }

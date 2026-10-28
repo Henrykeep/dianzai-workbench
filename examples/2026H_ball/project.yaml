@@ -7,7 +7,7 @@ description: 底盘 + 钢珠控制 + 视觉（Jetson Nano 识别，经 UART 发�
 
 boards:
   main: stm32f407-skystar     # 主控；子系统都跑在 main 上
-  # vision_cpu: jetson-nano   # 协处理器，不跑本框架，只通过 VISION 串口发帧（协议见 lib/vision_link.h）
+  vision_cpu: jetson-nano-vision   # 协处理板（kind: coprocessor）：不跑本框架，经 VISION 串口发 dzframe 帧；自动生成 cp_vision_cpu.{h,c}
 
 state:
   io_in:                       # 传感器原始输入，由 io 胶水层写（读硬件），子系统只读

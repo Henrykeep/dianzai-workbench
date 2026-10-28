@@ -207,6 +207,36 @@ def stm32f4_check(board: dict, rep: Report) -> None:
 
 FAMILY_CHECKS = {"stm32f4": stm32f4_check}
 
+TYPE_SIZE = {"u8": 1, "i8": 1, "u16": 2, "i16": 2, "u32": 4, "i32": 4, "f32": 4}
+DZFRAME_MAX_PAYLOAD = 64   # 与 firmware/proto/dzframe/dzframe.h 的 DZFRAME_MAX_PAYLOAD 一致
+
+
+def coprocessor_check(board: dict, rep: Report) -> None:
+    """协处理板（kind: coprocessor）：通道/参数编号唯一、负载不超过 dzframe 上限、参数范围自洽。"""
+    cp = board["coprocessor"]
+    for key in ("channels", "params"):
+        items = cp.get(key) or []
+        for attr in ("id", "name"):
+            vals = [x[attr] for x in items]
+            for v in set(vals):
+                if vals.count(v) > 1:
+                    rep.err(f"[协处理板] {key} 的 {attr}={v} 重复")
+    for ch in cp["channels"]:
+        names = [f["name"] for f in ch["fields"]]
+        if len(set(names)) != len(names):
+            rep.err(f"[协处理板] 通道 {ch['name']} 字段名重复")
+        size = sum(TYPE_SIZE[f["type"]] for f in ch["fields"])
+        if size > DZFRAME_MAX_PAYLOAD:
+            rep.err(f"[协处理板] 通道 {ch['name']} 负载 {size} 字节，超过 dzframe 上限 {DZFRAME_MAX_PAYLOAD}")
+    for p in cp.get("params") or []:
+        lo, hi, d = p.get("min"), p.get("max"), p.get("default")
+        if lo is not None and hi is not None and lo > hi:
+            rep.err(f"[协处理板] 参数 {p['name']} min>max")
+        if d is not None and ((lo is not None and d < lo) or (hi is not None and d > hi)):
+            rep.err(f"[协处理板] 参数 {p['name']} 默认值不在范围内")
+    if cp["link"]["transport"] == "uart" and "baud" not in cp["link"]:
+        rep.err("[协处理板] uart 链路必须写 baud（不知道就写 TODO）")
+
 
 def check_board(board: dict) -> Report:
     rep = Report()
@@ -214,6 +244,9 @@ def check_board(board: dict) -> Report:
     if rep.errors:
         return rep  # 结构都不对，语义检查没有意义
     _walk_todos(board, "", rep.todos)
+    if board.get("kind") == "coprocessor":
+        coprocessor_check(board, rep)
+        return rep
     generic_check(board, rep)
     fam = board["mcu"]["family"]
     if fam in FAMILY_CHECKS:
