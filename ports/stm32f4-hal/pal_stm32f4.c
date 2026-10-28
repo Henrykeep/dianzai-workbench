@@ -12,6 +12,7 @@
 #include <string.h>
 #include "board_gen.h"
 #include "port_stm32f4.h"
+#include "dz_wrap.h"
 
 /* ------------------------------------------------------------------ 状态 */
 static bool s_inited;
@@ -435,8 +436,8 @@ dz_err_t pal_enc_get_count(pal_id_t id, int32_t *count)
     if (s_diag.fail_enc & (1u << id)) return DZ_EIO;
     uint32_t st = pal_irq_save();
     uint32_t raw = __HAL_TIM_GET_COUNTER(&s_enc_htim[id]);
-    int32_t d = g_p4_enc[id].bits == 32 ? (int32_t)(raw - s_enc_last_raw[id])
-                                        : (int32_t)(int16_t)(uint16_t)(raw - s_enc_last_raw[id]);
+    int32_t d = g_p4_enc[id].bits == 32 ? dz_wrap32_delta(raw, s_enc_last_raw[id])
+                                        : dz_wrap16_delta((uint16_t)raw, (uint16_t)s_enc_last_raw[id]);
     s_enc_last_raw[id] = raw;
     s_enc_acc[id] = (int32_t)((uint32_t)s_enc_acc[id] + (uint32_t)(g_p4_enc[id].invert ? -d : d));
     *count = s_enc_acc[id];
