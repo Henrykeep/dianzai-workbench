@@ -65,6 +65,11 @@ try:
                if (m.rid === 2) { ws.close(); r(); } }; })""")
         pg.wait_for_timeout(600)
         pg.screenshot(path=str(OUT / "app-live.png"))
+        # ---- 参数面板：改了没下发 → 范围位置显示“板上 x”（草稿 ≠ 板上真值）
+        first = pg.locator("input[id^=pi-]").first
+        first.fill(str(float(first.input_value() or 0) * 1.5 + 0.1)); first.blur(); pg.wait_for_timeout(200)
+        pg.locator("section.panel.params").screenshot(path=str(OUT / "app-params-board.png"))
+        pg.click("#p-revert"); pg.wait_for_timeout(100)
         # ---- Agent：离线阶跃分析 → 对话（假 LLM）→ 写回 yaml 的 diff → 确认（真跑 make check）→ 已提交
         pg.evaluate("""() => new Promise(r => { const ws = new WebSocket('ws://127.0.0.1:18901');
             ws.onopen = () => ws.send(JSON.stringify({op:'param_set', rid:1, name:'ki', value:1.95}));
