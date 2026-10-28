@@ -332,10 +332,10 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     """port: mspm0-driverlib —— 生成“逻辑 ID -> SysConfig 实例宏”表与中断入口；外设配置全在 ti_msp_dl_config.c。
 
     实例名约定（SysConfig 每个实例的 Name）：GPIO_<名>（组内引脚 PIN）、PWM_<定时器>、ENC_<名>（QEI，或 GPIO 组的 A/B 脚）、
-    UART_<名>、TIMER_<名>。宏名按 SysConfig 的派生规则（<Name>_INST、<Name>_INST_IRQHandler…）。"""
+    UART_<名>、TIMER_<名>、I2C_<名>、SPI_BUS<n>（SPIn 总线）+ GPIO_CS_SPIn_<名>（软件片选，引脚名 CS）。宏名按 SysConfig 的派生规则（<Name>_INST、<Name>_INST_IRQHandler…）。"""
     res = usable(board)
     c = [HEADER.format(src=src, sha=sha[:12]), '#include "port_mspm0.h"', '#include "board_gen.h"', ""]
-    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer")}
+    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "i2c", "spi")}
     isr = []
     for r in res["gpio"]:
         n = f"GPIO_{r['name']}"
@@ -368,12 +368,18 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
             c.append(f"#ifndef {n}_INST_CLK_FREQ\n#define {n}_INST_CLK_FREQ {int(r['clk_hz'])}u\n#endif")
         rows["timer"].append(f"    {{ {n}_INST, {n}_INST_INT_IRQN, {n}_INST_CLK_FREQ, {'0xFFFFFFFFu' if wide else '0xFFFFu'} }}, /* {r['name']} {r['instance']} */")
         isr.append(f"void {n}_INST_IRQHandler(void) {{ dz_m0_timer_isr({i}u); }}")
+    for r in res.get("i2c") or []:
+        rows["i2c"].append(f"    {{ I2C_{r['name']}_INST }}, /* {r['name']} {r['instance']} SCL {r['scl']} SDA {r['sda']} */")
+    for r in res.get("spi") or []:
+        bus, cs = f"SPI_BUS{r['instance'][-1]}", f"GPIO_CS_{r['instance']}_{r['name']}"
+        rows["spi"].append(f"    {{ {bus}_INST, {cs}_PORT, {cs}_CS_PIN }}, /* {r['name']} {r['instance']} CS {r['cs']} mode {r.get('mode', 0)}（模式/速率在 .syscfg） */")
     if gpio_enc:
         isr.append("void GROUP1_IRQHandler(void) { dz_m0_gpio_enc_isr(); }   /* GPIOA/GPIOB 中断组 */")
     c += bufs + [""]
     for key, typ, name in (("gpio", "m0_gpio_t", "g_m0_gpio"), ("pwm", "m0_pwm_t", "g_m0_pwm"),
                            ("encoder", "m0_enc_t", "g_m0_enc"), ("uart", "m0_uart_t", "g_m0_uart"),
-                           ("timer", "m0_timer_t", "g_m0_timer")):
+                           ("timer", "m0_timer_t", "g_m0_timer"), ("i2c", "m0_i2c_t", "g_m0_i2c"),
+                           ("spi", "m0_spi_t", "g_m0_spi")):
         c += _table(typ, name, rows[key])
     c += ["/* 中断入口：向量名来自 SysConfig 的 <实例>_INST_IRQHandler 宏 */"] + isr + [""]
     c.append("const char *const g_board_name = BOARD_NAME;\n")

@@ -275,11 +275,8 @@ def stm32f4_check(board: dict, rep: Report) -> None:
 
 
 def mspm0_check(board: dict, rep: Report) -> None:
-    """MSPM0G350x：复用表从 SDK 头自动生成；QEI 仅 TIMG8；坑脚警告；UART0(PA10/11) 与 I2C1 冲突；PWM 分频可行性。"""
+    """MSPM0G350x：复用表从 SDK 头自动生成；QEI 仅 TIMG8；坑脚警告；UART0(PA10/11) 与 I2C1 冲突；PWM 分频可行性；I2C/SPI 复用脚（SPI 片选为普通 GPIO）。"""
     from families import mspm0 as M
-    for t in ("i2c", "spi"):
-        for r in ((board.get("resources", {}) or {}).get(t) or []):
-            rep.warn(f"[移植层能力] {t}.{r['name']}: mspm0-driverlib 端口还没实现 {t.upper()}（调用返回 ENOTSUP）；IMU 请走 UART 姿态模块")
     io = M.load_iomux()
     if not io:
         rep.warn("[知识库] 未找到 mspm0-sdk 头文件（tools/fetch_third_party.sh mspm0），跳过复用检查")
@@ -335,6 +332,13 @@ def mspm0_check(board: dict, rep: Report) -> None:
     for i2 in res.get("i2c") or []:
         w, i = f"i2c.{i2.get('name')}", i2.get("instance")
         pin(i2.get("scl"), w, f"{i}_SCL"); pin(i2.get("sda"), w, f"{i}_SDA")
+    seen_bus: set[str] = set()
+    for sp in res.get("spi") or []:
+        w, i = f"spi.{sp.get('name')}", sp.get("instance")
+        if i not in seen_bus:      # 同一总线的多个设备共用 SCK/MOSI/MISO，只登记一次
+            seen_bus.add(i)
+            pin(sp.get("sck"), w, f"{i}_SCLK"); pin(sp.get("mosi"), w, f"{i}_PICO"); pin(sp.get("miso"), w, f"{i}_POCI")
+        pin(sp.get("cs"), w)
     for t in res.get("timer") or []:
         tim(t.get("instance"), f"timer.{t.get('name')}")
 
@@ -410,8 +414,18 @@ def check_board(board: dict) -> Report:
 
 
 def check_requires(board: dict, app: dict, rep: Report) -> None:
-    """检查板卡是否提供应用 app.yaml 里 requires 声明的全部逻辑资源，且这些资源没有 TODO。"""
+    """检查板卡是否提供应用 app.yaml 里 requires 声明的全部逻辑资源，且这些资源没有 TODO。
+    requires_any: [ {spi: [A, B]}, {i2c: [C]} ] —— 多选一：至少一组全部存在（例如 IMU 走 SPI 的 BMI088 或 I2C 的 MPU6050）。"""
     res = board.get("resources", {}) or {}
+    alts = app.get("requires_any") or []
+    if alts:
+        ok = [a for a in alts if all(n in {r["name"] for r in res.get(t, []) or []} for t, ns in a.items() for n in ns)]
+        if not ok:
+            rep.err(f"[缺资源] 应用需要以下任一组资源：{alts}，板卡 {board['name']} 一组都不全")
+        else:
+            app = {**app, "requires": {**(app.get("requires") or {})}}
+            for t, ns in ok[0].items():
+                app["requires"][t] = list(app["requires"].get(t, [])) + list(ns)
     for t, names in (app.get("requires") or {}).items():
         have = {r["name"]: r for r in res.get(t, []) or []}
         for n in names:

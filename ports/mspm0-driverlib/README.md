@@ -1,4 +1,4 @@
-# ports/mspm0-driverlib（0.1.0）
+# ports/mspm0-driverlib（0.3.0）
 
 MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysConfig 生成的 `ti_msp_dl_config.{c,h}` 是唯一配置源，
 本层只包装其中的实例宏，只调 DriverLib。
@@ -12,8 +12,9 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 | uart | UART 实例 `UART_<名>` | RX/TX 中断 + 环形缓冲（无 DMA） |
 | timer | Timer 实例 `TIMER_<名>`，Periodic + ZERO 中断，`_CLK_FREQ` 整 MHz | 运行时改装载值 |
 | adc | — | 未实现（返回 DZ_ENOTSUP，有 adc 资源时编译报错） |
-| i2c / spi | — | 未实现（返回 DZ_ENOTSUP，board check 警告）；IMU 请用 UART 姿态模块（apps/imu_module + proto/dzimu） |
+| i2c | I2C 实例 `I2C_<名>`，Controller，速率/上拉/滤波在 SysConfig | 轮询（参照 TI 例程 i2c_controller_rw_multibyte_fifo_poll）：写寄存器号不发 STOP + 重复起始读；写时边发边补 8 字节 FIFO；每步 5 ms 超时，出错/超时复位控制器状态机，计数进 `m0_diag()` |
+| spi | 总线实例 `SPI_BUS<n>`（SPIn，MOTO3 三线，模式/速率在 SysConfig）+ 片选 GPIO 组 `GPIO_CS_SPI<n>_<名>`、引脚 `CS`（初值 SET） | 轮询逐字节收发配对，等 BUSY 清零再拉高片选；同一总线多个设备 = 多个片选组；n ≤ 64 |
 
 时基：SysTick 1 ms（本层配置）。`main()` 在 `main_mspm0.c`（SysConfig 不生成 main）。
 
-**验证状态**：【已实测】car_2wd 交叉编译通过。【未验证】全部上板行为；`boards/mspm0g3507-tianmengxing/syscfg/` 下的配置是合成样例。
+**验证状态**：【已实测】car_2wd、imu_module（MPU6050 走 I2C）交叉编译通过；`.syscfg` 由 SysConfig CLI 1.28 生成。I2C/SPI **【编译】未上板**：NACK、时钟拉伸、长度 > 8 的写都没在真芯片上测过。【未验证】全部上板行为；`boards/mspm0g3507-tianmengxing/syscfg/` 下的配置是合成样例。

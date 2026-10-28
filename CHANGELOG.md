@@ -6,6 +6,11 @@
 
 ## [未发布]
 
+### MSPM0：I2C / SPI（DriverLib）
+- ports/mspm0-driverlib 0.3.0：`pal_i2c_mem_read/write`、`pal_spi_xfer` 用 DriverLib 轮询实现（原来返回 ENOTSUP），带超时与诊断计数。**[编译]**
+- 天猛星 `.syscfg` 新增 I2C0（PA0/PA1，400 kHz）、SPI1（PB23/22/21，mode 3，1 MHz）+ 软件片选 PB20、UART1 IMU 口（PA8/PA9，460800），并用 SysConfig CLI 重新生成；board.yaml 同步，`syscfg_import --check` 能识别 I2C/SPI。**[编译]**，引脚未对照原理图。
+- apps/imu_module 1.1.0：`requires_any` 支持二选一，板上有 SPI BMI088 就用它，否则用 I2C MPU6050；`mspm0g3507-tianmengxing:imu_module` 加入 make cross。**[编译]**，未上板。
+
 ### IMU 前向加速度去重力
 - dzimu 1.1.0：新增 `dzimu_linear_acc`，用模块给的 roll/pitch 减掉重力分量。**[仿真]**
 - 2026H：新参数 `imu_grav_comp`（默认 1），只作用于 uart 姿态模块路径，姿态未收敛的帧不用；MPU6050 直连路径仍含重力。仿真里的模块装歪 3°，e2e 测试验证去重力后接近 0、关掉后约 −0.51 m/s²。**[仿真]** 实车 **[未测]**。

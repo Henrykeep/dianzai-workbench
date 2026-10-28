@@ -400,9 +400,129 @@ dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info) { (void)id; (void)info;
 
 /* I2C / SPI：MSPM0 移植层尚未实现（需要 SysConfig 里配 I2C/SPI 外设，再用 DL_I2C_* / DL_SPI_* 写，没上板之前不写）。
  * MSPM0 主控要用 IMU 的话：走 UART 姿态模块（apps/imu_module + proto/dzimu），这条路径不依赖 I2C/SPI。 */
+/* ---------- I2C（主机，轮询；PAL 1.1.0）----------
+ * 流程按 TI 例程 i2c_controller_rw_multibyte_fifo_poll：等 IDLE → 填 TX FIFO → startControllerTransferAdvanced →
+ * 轮询 FIFO / BUSY → 查 ERROR（地址或数据 NACK）/ ARBITRATION_LOST。读寄存器 = 写 1 字节寄存器号（不发 STOP）+ 重复起始读 n 字节。
+ * 每一步都有 PAL_I2C_TIMEOUT_MS 超时，超时后 resetControllerTransfer 复位状态机。【编译】未上板验证。 */
+#if BOARD_I2C_COUNT > 0
+static bool m0_late(uint32_t t0) { return (uint32_t)(s_ms - t0) > PAL_I2C_TIMEOUT_MS; }
+
+static dz_err_t i2c_wait_idle(I2C_Regs *i2c, uint32_t t0)
+{
+    while (!(DL_I2C_getControllerStatus(i2c) & DL_I2C_CONTROLLER_STATUS_IDLE))
+        if (m0_late(t0)) return DZ_ETIMEOUT;
+    return DZ_OK;
+}
+
+static dz_err_t i2c_wait_done(I2C_Regs *i2c, uint32_t t0)
+{
+    while (DL_I2C_getControllerStatus(i2c) & DL_I2C_CONTROLLER_STATUS_BUSY)
+        if (m0_late(t0)) return DZ_ETIMEOUT;
+    uint32_t st = DL_I2C_getControllerStatus(i2c);
+    if (st & (DL_I2C_CONTROLLER_STATUS_ERROR | DL_I2C_CONTROLLER_STATUS_ARBITRATION_LOST)) return DZ_EIO;
+    return DZ_OK;
+}
+
+static dz_err_t i2c_fail(I2C_Regs *i2c, dz_err_t e)
+{
+    if (e == DZ_ETIMEOUT) s_diag.i2c_timeout++; else s_diag.i2c_err++;
+    DL_I2C_flushControllerTXFIFO(i2c);
+    DL_I2C_flushControllerRXFIFO(i2c);
+    DL_I2C_resetControllerTransfer(i2c);
+    return e;
+}
+#endif
+
 dz_err_t pal_i2c_mem_read(pal_id_t id, uint8_t addr7, uint8_t reg, uint8_t *buf, uint16_t n)
-{ (void)id; (void)addr7; (void)reg; (void)buf; (void)n; return DZ_ENOTSUP; }
+{
+#if BOARD_I2C_COUNT > 0
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if (!buf || !n || n > 0x0FFFu || addr7 > 0x7Fu) return DZ_EINVAL;
+    I2C_Regs *i2c = g_m0_i2c[id].inst;
+    uint32_t t0 = s_ms;
+    dz_err_t e = i2c_wait_idle(i2c, t0);
+    if (e != DZ_OK) return i2c_fail(i2c, e);
+    DL_I2C_flushControllerTXFIFO(i2c);
+    DL_I2C_flushControllerRXFIFO(i2c);
+    DL_I2C_fillControllerTXFIFO(i2c, &reg, 1u);
+    DL_I2C_startControllerTransferAdvanced(i2c, addr7, DL_I2C_CONTROLLER_DIRECTION_TX, 1u,
+        DL_I2C_CONTROLLER_START_ENABLE, DL_I2C_CONTROLLER_STOP_DISABLE, DL_I2C_CONTROLLER_ACK_ENABLE);
+    if ((e = i2c_wait_done(i2c, t0)) != DZ_OK) return i2c_fail(i2c, e);
+    DL_I2C_startControllerTransferAdvanced(i2c, addr7, DL_I2C_CONTROLLER_DIRECTION_RX, n,
+        DL_I2C_CONTROLLER_START_ENABLE, DL_I2C_CONTROLLER_STOP_ENABLE, DL_I2C_CONTROLLER_ACK_DISABLE);
+    for (uint16_t i = 0; i < n; i++) {
+        while (DL_I2C_isControllerRXFIFOEmpty(i2c)) {
+            if (DL_I2C_getControllerStatus(i2c) & DL_I2C_CONTROLLER_STATUS_ERROR) return i2c_fail(i2c, DZ_EIO);
+            if (m0_late(t0)) return i2c_fail(i2c, DZ_ETIMEOUT);
+        }
+        buf[i] = DL_I2C_receiveControllerData(i2c);
+    }
+    if ((e = i2c_wait_done(i2c, t0)) != DZ_OK) return i2c_fail(i2c, e);
+    return DZ_OK;
+#else
+    (void)id; (void)addr7; (void)reg; (void)buf; (void)n;
+    return DZ_ENODEV;
+#endif
+}
+
 dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n)
-{ (void)id; (void)addr7; (void)reg; (void)buf; (void)n; return DZ_ENOTSUP; }
+{
+#if BOARD_I2C_COUNT > 0
+    if (id >= BOARD_I2C_COUNT) return DZ_ENODEV;
+    if ((!buf && n) || n > 0x0FFEu || addr7 > 0x7Fu) return DZ_EINVAL;
+    I2C_Regs *i2c = g_m0_i2c[id].inst;
+    uint32_t t0 = s_ms;
+    dz_err_t e = i2c_wait_idle(i2c, t0);
+    if (e != DZ_OK) return i2c_fail(i2c, e);
+    DL_I2C_flushControllerTXFIFO(i2c);
+    DL_I2C_fillControllerTXFIFO(i2c, &reg, 1u);
+    uint16_t i = 0;
+    while (i < n && !DL_I2C_isControllerTXFIFOFull(i2c)) DL_I2C_transmitControllerData(i2c, buf[i++]);   /* 先填满 8 字节 FIFO */
+    DL_I2C_startControllerTransferAdvanced(i2c, addr7, DL_I2C_CONTROLLER_DIRECTION_TX, (uint16_t)(n + 1u),
+        DL_I2C_CONTROLLER_START_ENABLE, DL_I2C_CONTROLLER_STOP_ENABLE, DL_I2C_CONTROLLER_ACK_ENABLE);
+    while (i < n) {                                                                                         /* 边发边补 */
+        if (!DL_I2C_isControllerTXFIFOFull(i2c)) { DL_I2C_transmitControllerData(i2c, buf[i++]); continue; }
+        if (DL_I2C_getControllerStatus(i2c) & DL_I2C_CONTROLLER_STATUS_ERROR) return i2c_fail(i2c, DZ_EIO);
+        if (m0_late(t0)) return i2c_fail(i2c, DZ_ETIMEOUT);
+    }
+    if ((e = i2c_wait_done(i2c, t0)) != DZ_OK) return i2c_fail(i2c, e);
+    return DZ_OK;
+#else
+    (void)id; (void)addr7; (void)reg; (void)buf; (void)n;
+    return DZ_ENODEV;
+#endif
+}
+
+/* ---------- SPI（主机，轮询，软件片选；PAL 1.1.0）----------
+ * 逐字节：等 TX FIFO 不满 → 发 → 等 RX 非空 → 收（收发严格配对，FIFO 不会溢出）。最后等 BUSY 清零再拉高片选。【编译】未上板验证。 */
 dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
-{ (void)id; (void)tx; (void)rx; (void)n; return DZ_ENOTSUP; }
+{
+#if BOARD_SPI_COUNT > 0
+    if (id >= BOARD_SPI_COUNT) return DZ_ENODEV;
+    if (!n || n > 64u) return DZ_EINVAL;
+    const m0_spi_t *c = &g_m0_spi[id];
+    uint32_t t0 = s_ms;
+    dz_err_t e = DZ_OK;
+    while (!DL_SPI_isRXFIFOEmpty(c->inst)) (void)DL_SPI_receiveData8(c->inst);   /* 丢掉上次残留 */
+    DL_GPIO_clearPins(c->cs_port, c->cs_pin);
+    for (uint16_t i = 0; i < n && e == DZ_OK; i++) {
+        while (DL_SPI_isTXFIFOFull(c->inst))
+            if ((uint32_t)(s_ms - t0) > PAL_I2C_TIMEOUT_MS) { e = DZ_ETIMEOUT; break; }
+        if (e != DZ_OK) break;
+        DL_SPI_transmitData8(c->inst, tx ? tx[i] : 0xFFu);
+        while (DL_SPI_isRXFIFOEmpty(c->inst))
+            if ((uint32_t)(s_ms - t0) > PAL_I2C_TIMEOUT_MS) { e = DZ_ETIMEOUT; break; }
+        if (e != DZ_OK) break;
+        uint8_t b = DL_SPI_receiveData8(c->inst);
+        if (rx) rx[i] = b;
+    }
+    while (e == DZ_OK && DL_SPI_isBusy(c->inst))
+        if ((uint32_t)(s_ms - t0) > PAL_I2C_TIMEOUT_MS) e = DZ_ETIMEOUT;
+    DL_GPIO_setPins(c->cs_port, c->cs_pin);
+    if (e != DZ_OK) s_diag.spi_timeout++;
+    return e;
+#else
+    (void)id; (void)tx; (void)rx; (void)n;
+    return DZ_ENODEV;
+#endif
+}

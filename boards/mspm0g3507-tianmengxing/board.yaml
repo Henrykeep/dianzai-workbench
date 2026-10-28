@@ -66,6 +66,29 @@ resources:
     rx: PA11
     baud: 115200
     dma: false            # 本移植层用 RX/TX 中断 + 软件环形缓冲（未用 DMA）
+  - name: IMU             # SysConfig 实例 UART_IMU：姿态模块口（dzimu），波特率与 apps/imu_module 一致
+    instance: UART1
+    tx: PA8
+    rx: PA9
+    baud: 460800
+    dma: false
+  i2c:                    # SysConfig 实例 I2C_IMU（I2C0 主机 400 kHz）；PA0/PA1 为开漏脚，需外部上拉（MPU6050 模块一般自带）
+  - name: IMU
+    instance: I2C0
+    scl: PA1
+    sda: PA0
+    speed_hz: 400000
+    note: 板外 MPU6050 等；【编译】未上板
+  spi:                    # SysConfig 实例 SPI_BUS1（mode 3、1 MHz）+ 软件片选 GPIO_CS_SPI1_<名>
+  - name: DEV
+    instance: SPI1
+    sck: PB23
+    mosi: PB22
+    miso: PB21
+    cs: PB20
+    mode: 3
+    hz: 1000000
+    note: 板外 SPI 器件（BMI088 / TFT 等，一个设备一根片选）；【编译】未上板
   timer:
   - name: CTRL
     instance: TIMG7

@@ -61,10 +61,15 @@ def extract(inst: dict) -> tuple[dict, list[str]]:
     TIMER_<名> → timer 资源（周期 timerPeriod）。旧约定（GPIO_LED 单引脚、PWM_MOTOR_A 单通道）向下兼容。"""
     res: dict[str, list] = {}
     todo: list[str] = []
+    buses: dict[str, dict] = {}
+    cs: list[tuple[str, str, str]] = []
     for var, kv in inst.items():
         name = kv.get("$name", "")
         pre, _, logical = name.partition("_")
-        if pre == "GPIO":
+        if pre == "GPIO" and logical.startswith("CS_"):        # GPIO_CS_<SPI实例>_<设备>：SPI 软件片选，归到 spi 资源
+            _, bus, dev = logical.split("_", 2)
+            cs.append((bus, dev, (_pins(kv) or [("", {})])[0][1].get("pin.$assign", "TODO")))
+        elif pre == "GPIO":
             for pn, d in _pins(kv):
                 full = logical if pn in ("PIN", f"PIN_{logical}", logical) else f"{logical}_{pn}"
                 res.setdefault("gpio", []).append({"name": full, "pin": d.get("pin.$assign", "TODO"),
@@ -95,8 +100,21 @@ def extract(inst: dict) -> tuple[dict, list[str]]:
                 res.setdefault("encoder", []).append({"name": logical, "mode": "gpio_isr", "pin_a": ab["A"], "pin_b": ab["B"]})
         elif pre == "TIMER":
             res.setdefault("timer", []).append({"name": logical, "instance": kv.get("peripheral.$assign", "TODO")})
+        elif pre == "I2C":
+            res.setdefault("i2c", []).append({
+                "name": logical, "instance": kv.get("peripheral.$assign", "TODO"),
+                "scl": kv.get("peripheral.sclPin.$assign", "TODO"), "sda": kv.get("peripheral.sdaPin.$assign", "TODO")})
+        elif pre == "SPI":
+            i = kv.get("peripheral.$assign", "TODO")
+            buses[i] = {"instance": i, "sck": kv.get("peripheral.sclkPin.$assign", "TODO"),
+                        "mosi": kv.get("peripheral.mosiPin.$assign", "TODO"), "miso": kv.get("peripheral.misoPin.$assign", "TODO"),
+                        "mode": int(kv.get("polarity", "0")) * 2 + int(kv.get("phase", "0"))}
         elif pre == "ADC":
             todo.append(f"{name}: ADC 导入未实现（需真实 .syscfg 样本）")
+    for bus, dev, pin in cs:
+        if bus not in buses:
+            todo.append(f"GPIO_CS_{bus}_{dev}: 找不到 SPI 实例 {bus}"); continue
+        res.setdefault("spi", []).append({"name": dev, **buses[bus], "cs": pin})
     return res, todo
 
 
@@ -120,7 +138,14 @@ def selftest() -> int:
         [g["pin"] for g in r2.get("gpio", [])] == ["PA0", "PA15"]
     r3, _ = extract(parse((FIXTURE.parent / "ti_qei_mode.syscfg").read_text(encoding="utf-8")))
     ok = ok and r3.get("encoder") == [{"name": "0", "timer": "TIMG8", "pin_a": "PA29", "pin_b": "PA30"}]
-    print(f"{'✓' if ok else '✗'} syscfg_synthetic+TI例程: {(res, todo) if not ok else 'GPIO/PWM/UART/ENC(QEI+GPIO)/TIMER 解析正确'}")
+    # 天猛星入库 .syscfg：I2C 主机 + SPI 总线 + 软件片选（GPIO_CS_<SPI>_<名>）归并成 spi 设备
+    tm = ROOT / "boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg"
+    if tm.exists():
+        r4, t4 = extract(parse(tm.read_text(encoding="utf-8")))
+        ok = ok and not t4 and r4.get("i2c") == [{"name": "IMU", "instance": "I2C0", "scl": "PA1", "sda": "PA0"}] and \
+            r4.get("spi") == [{"name": "DEV", "instance": "SPI1", "sck": "PB23", "mosi": "PB22", "miso": "PB21", "mode": 3, "cs": "PB20"}] and \
+            not any(g["name"].startswith("CS_") for g in r4.get("gpio", []))
+    print(f"{'✓' if ok else '✗'} syscfg_synthetic+TI例程: {(res, todo) if not ok else 'GPIO/PWM/UART/ENC(QEI+GPIO)/TIMER/I2C/SPI 解析正确'}")
     return 0 if ok else 1
 
 

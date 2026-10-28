@@ -1,8 +1,10 @@
-# 把带 BMI088 的板子（RoboMaster C 型板）变成“姿态模块”：读 IMU → 互补滤波 → 经 IMU 串口以 200 Hz 发 dzimu 帧。
+# 把带 BMI088 的板子（RoboMaster C 型板），或接了 MPU6050 的任意板（如天猛星），变成“姿态模块”：读 IMU → 互补滤波 → 经 IMU 串口以 200 Hz 发 dzimu 帧。
 # 主控（任何板，含 MSPM0）只要一路 UART 就能拿到加速度/角速度/横滚俯仰，给前馈或姿态环用。
 name: imu_module
-version: 1.0.0
-description: BMI088 姿态模块：SPI 读 IMU + 开机零偏标定 + 互补滤波，UART 200 Hz 发 dzimu（proto/dzimu）
+version: 1.1.0
+description: 姿态模块：BMI088（SPI）或 MPU6050（I2C）+ 开机零偏标定 + 互补滤波，UART 200 Hz 发 dzimu（proto/dzimu）
 requires:
-  spi: [IMU_ACC, IMU_GYR]
   uart: [IMU]
+requires_any:            # 板上有 spi IMU_ACC/IMU_GYR 就用 BMI088，否则用 i2c IMU 上的 MPU6050（编译期按 RES_* 宏选）
+  - spi: [IMU_ACC, IMU_GYR]
+  - i2c: [IMU]

@@ -13,6 +13,11 @@ const GPIO2  = GPIO.addInstance();
 const GPIO3  = GPIO.addInstance();
 const GPIO4  = GPIO.addInstance();
 const GPIO5  = GPIO.addInstance();
+const GPIO6  = GPIO.addInstance();
+const I2C    = scripting.addModule("/ti/driverlib/I2C", {}, false);
+const I2C1   = I2C.addInstance();
+const SPI    = scripting.addModule("/ti/driverlib/SPI", {}, false);
+const SPI1   = SPI.addInstance();
 const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
 const PWM1   = PWM.addInstance();
 const QEI    = scripting.addModule("/ti/driverlib/QEI", {}, false);
@@ -22,6 +27,7 @@ const TIMER  = scripting.addModule("/ti/driverlib/TIMER", {}, false);
 const TIMER1 = TIMER.addInstance();
 const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1  = UART.addInstance();
+const UART2  = UART.addInstance();
 
 GPIO1.$name                         = "GPIO_MOTOR_A_IN1";
 GPIO1.associatedPins[0].$name       = "MOTOR_A_IN1";
@@ -75,3 +81,35 @@ UART1.enabledInterrupts        = ["RX"];
 UART1.peripheral.$assign       = "UART0";
 UART1.peripheral.rxPin.$assign = "PA11";
 UART1.peripheral.txPin.$assign = "PA10";
+
+/* I2C0 主机 400 kHz：板外 MPU6050 等（PA0/PA1 是开漏脚，需外部上拉；【未验证】未上板） */
+I2C1.$name                           = "I2C_IMU";
+I2C1.basicEnableController           = true;
+I2C1.basicControllerStandardBusSpeed = "Fast";
+I2C1.peripheral.$assign              = "I2C0";
+I2C1.peripheral.sdaPin.$assign       = "PA0";
+I2C1.peripheral.sclPin.$assign       = "PA1";
+
+/* SPI1 主机 mode 3、1 MHz，3 线 + 软件片选（GPIO_CS_<SPI实例>_<设备名>，引脚名 CS）；【未验证】未上板 */
+SPI1.$name                      = "SPI_BUS1";
+SPI1.frameFormat                = "MOTO3";
+SPI1.polarity                   = "1";
+SPI1.phase                      = "1";
+SPI1.targetBitRate              = 1000000;
+SPI1.peripheral.$assign         = "SPI1";
+SPI1.peripheral.sclkPin.$assign = "PB23";
+SPI1.peripheral.mosiPin.$assign = "PB22";
+SPI1.peripheral.misoPin.$assign = "PB21";
+
+GPIO6.$name                         = "GPIO_CS_SPI1_DEV";
+GPIO6.associatedPins[0].$name       = "CS";
+GPIO6.associatedPins[0].initialValue = "SET";
+GPIO6.associatedPins[0].pin.$assign = "PB20";
+
+/* UART1：IMU 姿态模块口（本板当主控时接收 dzimu；跑 apps/imu_module 时发送）；【未验证】未上板 */
+UART2.$name                    = "UART_IMU";
+UART2.targetBaudRate           = 460800;
+UART2.enabledInterrupts        = ["RX"];
+UART2.peripheral.$assign       = "UART1";
+UART2.peripheral.rxPin.$assign = "PA9";
+UART2.peripheral.txPin.$assign = "PA8";

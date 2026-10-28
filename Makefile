@@ -159,7 +159,7 @@ MCU     := $(BOARD_CPU)
 CFLAGS  := -std=c11 -Os -g3 $(MCU) $(WARN) -ffunction-sections -fdata-sections $(BOARD_DEFS)
 HAL_INC := $(SYSCFG_DIR) $(M0_SDK) $(firstword $(wildcard $(M0_SDK)/third_party/CMSIS/Core/Include) third_party/CMSIS_5/CMSIS/Core/Include)
 # DriverLib 只编用到的源文件（其余外设在部分型号上不存在）；系统控制按器件族选
-HAL_SRC := $(addprefix $(M0_SDK)/ti/driverlib/,dl_common.c dl_timer.c dl_uart.c m0p/dl_interrupt.c \
+HAL_SRC := $(addprefix $(M0_SDK)/ti/driverlib/,dl_common.c dl_timer.c dl_uart.c dl_i2c.c dl_spi.c m0p/dl_interrupt.c \
            m0p/sysctl/dl_sysctl_mspm0g1x0x_g3x0x.c) $(SYSCFG_DIR)/ti_msp_dl_config.c \
            $(M0_DEV)/startup_system_files/gcc/startup_$(patsubst %07,%0x,$(BOARD_PART_LC))_gcc.c
 LDSCRIPT = $(M0_DEV)/linker_files/gcc/$(BOARD_PART_LC).lds
@@ -186,7 +186,8 @@ all: $(TARGET)
 # 交叉编译矩阵：每个 板×应用 组合都编一遍（需要 arm-none-eabi-gcc 和 third_party/）。CI firmware-cross 跑它。
 CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm32f103c8t6-car-cubemx:car_2wd \
          stm32f407-bldc-freertos-cubemx:2026H_ball mspm0g3507-tianmengxing:car_2wd mspm0g3507-launchpad:car_2wd \
-         host-sim:car_2wd host-sim:2026H_ball dji-rm-c:imu_module host-sim:imu_module
+         host-sim:car_2wd host-sim:2026H_ball dji-rm-c:imu_module host-sim:imu_module \
+         mspm0g3507-tianmengxing:imu_module
 cross:
 	@for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done
 
