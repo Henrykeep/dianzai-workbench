@@ -162,8 +162,7 @@ def test_sidecar_killed_and_restarted(board, home):
         ui.ok("disconnect")
         ui.close()
         p.send_signal(signal.SIGTERM)                             # 正常关掉：下次不报“意外退出”
-        p.wait(10)
-        assert not (home / "last_session.json").exists()
+        assert until(lambda: not (home / "last_session.json").exists(), 20)
     finally:
         p.kill()
 
@@ -174,6 +173,7 @@ def test_two_windows(board, side):
     a.ok("connect", port=str(board.path), baud="auto")
     a.wait(lambda e: e["type"] == "schema")
     assert until(lambda: b.ok("hello")["status"]["clients"] == 2)
+    assert until(lambda: "cmd_timeout_ms" in st.srv.session.params)   # 等连接后的后台读参数做完
     m = b.mark()
     a.ok("param_set", name="max_rps", value=4.0)
     b.wait(lambda e: e["type"] == "param" and e["name"] == "max_rps" and abs(e["value"] - 4.0) < 1e-6, start=m)
@@ -234,6 +234,7 @@ def test_garbage_on_line(board, side):
     ui = mk()
     ui.ok("connect", port=str(board.path), baud="auto")
     ui.wait(lambda e: e["type"] == "schema")
+    assert until(lambda: "cmd_timeout_ms" in st.srv.session.params)
     rnd = random.Random(1)
     for _ in range(400):
         board.inject(bytes(rnd.randrange(256) for _ in range(rnd.randrange(1, 40))))

@@ -109,6 +109,10 @@ export function initAgent(call: Call) {
       ${v.best ? `<div class="lbl">最好：第 ${v.best.round} 轮 ${esc(JSON.stringify(v.best.gains))}${v.rolled_back ? "（仿真已自动回滚）" : ""}</div>` : ""}
       ${v.reason ? `<div class="lbl">${esc(v.reason)}</div>` : ""}`);
   }
+  $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
+  $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
+  $("ag-guard").onclick = () => call("tune_reset").then(() => add(`<span class="lbl">调参护栏已重置：之前的轮次和“最好一轮”不再参考</span>`, "msg bot"), () => {});
+  $("ag-new").onclick = () => call("agent_reset").then(() => { feed.innerHTML = AGENT_IDLE; }, () => {});
   $("ag-yaml").onclick = () => call("yaml_writeback").then(renderChange, () => {});
 
   // ---------------------------------------------------------------- 对话

@@ -200,16 +200,12 @@ class Server:
             return await run(None, lambda: self.svc.watch_start(m["vars"], int(m.get("period_ms", 20))))
         if op == "watch_stop":
             return self.svc.watch_stop()
-        if op == "hardfault_decode":
-            return self.svc.decode_hardfault(m["frame"], m.get("exc_return"), m.get("regs"))
         if op == "agent_config":
             return self.svc.configure(m["set"]) if m.get("set") else agent_llm.public_config() | {"repo": str(self.svc.gw.root)}
         if op == "yaml_writeback":
             return await run(None, lambda: self.svc.yaml_writeback(m.get("path"), m.get("values")))
         if op == "change_decide":
             return await run(None, self.svc.gw.decide, int(m["id"]), bool(m["accept"]))
-        if op == "change_list":
-            return {"pending": self.svc.gw.pending(), "history": await run(None, self.svc.gw.history)}
         if op == "rollback":
             return await run(None, self.svc.gw.rollback, m["commit"])
         raise LinkError("bad_op", f"未知操作 {op}")

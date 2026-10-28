@@ -348,6 +348,7 @@ link.onState = async open => {
   if (!open) return;
   const h = await link.rpc("hello");
   S.ports = h.ports; renderPorts(false);
+  $<HTMLInputElement>("auto-rc").onchange = e => { call("auto_reconnect", { on: (e.target as HTMLInputElement).checked }).catch(() => {}); };
   if (h.recovered && !h.status.connected) {   // 侧车刚崩过：说清楚，预选上次的口，但不自动连（第一个动作交给人）
     toast({ code: "recovered", message: h.recovered.message, fix: "" }, "warn", 30000);
     if (S.ports.some(p => p.port === h.recovered.port)) $<HTMLSelectElement>("port").value = h.recovered.port;

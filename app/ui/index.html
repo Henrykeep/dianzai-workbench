@@ -15,6 +15,7 @@
         <option value="auto">自动</option><option>115200</option><option>230400</option><option>460800</option>
         <option>921600</option><option>1000000</option><option>57600</option><option>9600</option>
       </select>
+      <label class="lbl" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
       <button id="connect" class="btn pri">连接 <kbd>⌃O</kbd></button>
     </div>
     <div class="ro"><span class="lbl"><span id="led" class="led"></span>链路</span><span class="v" id="ro-link">未连接</span></div>
@@ -91,6 +92,10 @@
       <section class="panel agent">
         <div class="ph"><h3>Agent <span class="serif">suggests</span></h3><div class="sp"></div>
           <button class="btn ghost sm" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
+          <button class="btn ghost sm" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）">阶跃实验</button>
+          <button class="btn ghost sm" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳">规则建议</button>
+          <button class="btn ghost sm" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）">重置护栏</button>
+          <button class="btn ghost sm" id="ag-new" title="清空和 Agent 的对话上下文">新对话</button>
           <button class="btn ghost sm" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交">写回 yaml</button>
           <button class="btn ghost sm" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）">⚙</button></div>
         <div class="row fw" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">
