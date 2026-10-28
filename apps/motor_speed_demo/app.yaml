@@ -1,0 +1,11 @@
+# 应用声明自己需要哪些逻辑资源。validate_board.py --app 会检查目标板卡是否全部提供且没有 TODO。
+# 换板子时这里不用改：只要新板的 board.yaml 提供同名资源即可。
+name: motor_speed_demo
+version: 1.0.0
+description: 单电机速度闭环演示（PID + 直流电机 + 编码器 + 串口遥测）
+requires:
+  gpio: [LED, MOTOR_A_IN1, MOTOR_A_IN2]
+  pwm: [MOTOR_A]
+  encoder: [MOTOR_A]
+  uart: [LINK]
+  timer: [CTRL]
