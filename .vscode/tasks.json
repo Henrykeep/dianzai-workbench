@@ -8,6 +8,13 @@
     { "id": "app", "type": "promptString", "description": "APP", "default": "car_2wd" }
   ],
   "tasks": [
+    {
+      "label": "dz: compdb",
+      "detail": "生成 build/compile_commands.json 供 IntelliSense（c_cpp_properties 第 1 个配置）",
+      "type": "shell",
+      "command": "make BOARD=${input:board} APP=${input:app} compdb",
+      "problemMatcher": []
+    },
     { "label": "dz: build", "type": "shell", "command": "make BOARD=${input:board} APP=${input:app}",
       "group": { "kind": "build", "isDefault": true }, "problemMatcher": ["$gcc"] },
     { "label": "dz: check", "type": "shell", "command": "make check", "problemMatcher": [] },

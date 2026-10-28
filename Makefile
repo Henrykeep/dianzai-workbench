@@ -175,13 +175,18 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
 	@for f in $(COMPAT_SRC); do gcc -std=c99 -pedantic-errors -Wall -Wextra -Werror -Wno-unused-parameter \
 	  $(addprefix -I,$(FW_INC)) -fsyntax-only $$f || exit 1; done; echo "✓ compat: $(words $(COMPAT_SRC)) 个模块源文件按 C99 -pedantic-errors 通过"
 all: $(TARGET)
+
+# VS Code / clangd：写 build/compile_commands.json（当前 BOARD+APP 的真实编译参数；切换板子后重跑）
+compdb: $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
+	@$(PY) -c 'import json,os,sys; d=os.getcwd(); a=sys.argv[1:]; i=a.index("--"); fl,src=a[:i],a[i+1:]; json.dump([{"directory":d,"file":f,"arguments":["$(CC)"]+fl+["-c",f]} for f in src],open("build/compile_commands.json","w"),indent=1); print("✓ build/compile_commands.json:",len(src),"个文件")' \
+	  $(CFLAGS) $(INC) -- $(SRCS)
 
 $(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
 	@mkdir -p $(dir $@)
