@@ -26,6 +26,7 @@
 - [内置 Agent](docs/18-内置Agent.md)
 - [赛题覆盖矩阵](docs/19-赛题覆盖矩阵.md)
 - [MSPM0 速查](docs/20-MSPM0速查.md)
+- [结构与 3D 打印清单](docs/21-结构与3D打印.md)
 
 ## Optional
 - [协处理板与软核](docs/08-协处理板与软核.md)

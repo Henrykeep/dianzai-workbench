@@ -21,6 +21,9 @@
 - key 已满足要求（消抖/长按/连发），未改。
 - docs/19 覆盖矩阵更新。
 
+### 文档
+- 新增 docs/21-结构与3D打印：SolidWorks → Bambu Studio 检查清单（公差、导出、切片、材料）和电机/编码器/摄像头/PCB 安装座要点，只有思路与清单，无 CAD。经验值 **[未测]**。
+
 ### MSPM0：I2C / SPI（DriverLib）
 - ports/mspm0-driverlib 0.3.0：`pal_i2c_mem_read/write`、`pal_spi_xfer` 用 DriverLib 轮询实现（原来返回 ENOTSUP），带超时与诊断计数。**[编译]**
 - 天猛星 `.syscfg` 新增 I2C0（PA0/PA1，400 kHz）、SPI1（PB23/22/21，mode 3，1 MHz）+ 软件片选 PB20、UART1 IMU 口（PA8/PA9，460800），并用 SysConfig CLI 重新生成；board.yaml 同步，`syscfg_import --check` 能识别 I2C/SPI。**[编译]**，引脚未对照原理图。
