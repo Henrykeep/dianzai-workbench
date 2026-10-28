@@ -16,11 +16,34 @@ resources:
     - { name: MOTOR_A_IN2, pin: SIM3, dir: out }
     - { name: MOTOR_B_IN1, pin: SIM14, dir: out }
     - { name: MOTOR_B_IN2, pin: SIM15, dir: out }
+    # —— 通用模块库（firmware/drivers/*）的主机测试用引脚；真板照 README 的 board.yaml 片段写 ——
+    - { name: US_TRIG, pin: SIM30, dir: out, note: HC-SR04 Trig }
+    - { name: US_ECHO, pin: SIM31, dir: in, note: HC-SR04 Echo（5 V 模块需分压到 3.3 V） }
+    - { name: BUZZER, pin: SIM32, dir: out, note: 有源蜂鸣器（三极管驱动） }
+    - { name: STEP, pin: SIM33, dir: out, note: A4988/DRV8825/TMC2209 STEP }
+    - { name: STEP_DIR, pin: SIM34, dir: out }
+    - { name: STEP_EN, pin: SIM35, dir: out, active_low: true, note: 驱动器 EN 低有效 }
+    - { name: LINE0, pin: SIM36, dir: in }
+    - { name: LINE1, pin: SIM37, dir: in }
+    - { name: LINE2, pin: SIM38, dir: in }
+    - { name: LINE3, pin: SIM39, dir: in }
+    - { name: LINE4, pin: SIM40, dir: in }
+    - { name: LINE5, pin: SIM41, dir: in }
+    - { name: LINE6, pin: SIM42, dir: in }
+    - { name: LINE7, pin: SIM43, dir: in }
+    - { name: BT_STATE, pin: SIM44, dir: in, note: HC-05 STATE（连上为高） }
+    - { name: BT_EN, pin: SIM45, dir: out, note: HC-05 EN/KEY（高 = 上电进 AT 模式） }
+    - { name: TFT_DC, pin: SIM46, dir: out }
+    - { name: TFT_RST, pin: SIM47, dir: out, active_low: true }
+    - { name: OLED_DC, pin: SIM48, dir: out }
   pwm:
     - { name: MOTOR_A, timer: SIMTIM0, channel: 1, pin: SIM4, freq_hz: 20000 }
     - { name: MOTOR_B, timer: SIMTIM0, channel: 2, pin: SIM16, freq_hz: 20000 }
     - { name: SERVO_X, timer: SIMTIM3, channel: 1, pin: SIM10, freq_hz: 50 }
     - { name: SERVO_Y, timer: SIMTIM3, channel: 2, pin: SIM11, freq_hz: 50 }
+    - { name: BUZZER_PWM, timer: SIMTIM5, channel: 1, pin: SIM49, freq_hz: 2700, note: 无源蜂鸣器（2.7 kHz 谐振） }
+    - { name: MOTOR_C_IN1, timer: SIMTIM6, channel: 1, pin: SIM50, freq_hz: 20000, note: DRV8833 双 PWM 接法 }
+    - { name: MOTOR_C_IN2, timer: SIMTIM6, channel: 2, pin: SIM51, freq_hz: 20000 }
   encoder:
     - { name: MOTOR_A, timer: SIMTIM1, pin_a: SIM5, pin_b: SIM6 }
     - { name: MOTOR_B, timer: SIMTIM4, pin_a: SIM17, pin_b: SIM18 }
@@ -29,12 +52,20 @@ resources:
     - { name: VISION, instance: SIMUART1, tx: SIM12, rx: SIM13, baud: 115200 }
     - { name: BEAM, instance: SIMUART2, tx: SIM19, rx: SIM20, baud: 921600 }
     - { name: IMU, instance: SIMUART3, tx: SIM28, rx: SIM29, baud: 460800, note: RoboMaster C 型板姿态模块（dzframe） }
+    - { name: BT, instance: SIMUART4, tx: SIM52, rx: SIM53, baud: 9600, note: HC-05 / JDY-31 透传 }
   timer:
     - { name: CTRL, instance: SIMTIM2 }
   adc:
     - { name: VBAT, instance: SIMADC0, channel: 0, pin: SIM9 }
+    - { name: LINE_A0, instance: SIMADC0, channel: 1, pin: SIM54 }
+    - { name: LINE_A1, instance: SIMADC0, channel: 2, pin: SIM55 }
+    - { name: LINE_A2, instance: SIMADC0, channel: 3, pin: SIM56 }
+    - { name: LINE_A3, instance: SIMADC0, channel: 4, pin: SIM57 }
   i2c:
     - { name: IMU, instance: SIMI2C0, scl: SIM21, sda: SIM22, speed_hz: 400000, note: 仿真 MPU6050 挂这里（tests 里 host_sim_i2c_attach） }
+    - { name: OLED, instance: SIMI2C1, scl: SIM63, sda: SIM64, speed_hz: 400000, note: SSD1306 I2C（0x3C） }
   spi:
     - { name: IMU_ACC, instance: SIMSPI0, sck: SIM23, mosi: SIM24, miso: SIM25, cs: SIM26, mode: 3, hz: 10000000, note: 仿真 BMI088 加速度计 }
     - { name: IMU_GYR, instance: SIMSPI0, sck: SIM23, mosi: SIM24, miso: SIM25, cs: SIM27, mode: 3, hz: 10000000, note: 仿真 BMI088 陀螺仪 }
+    - { name: TFT, instance: SIMSPI1, sck: SIM58, mosi: SIM59, miso: SIM60, cs: SIM61, mode: 0, hz: 20000000, note: ST7735/ST7789 }
+    - { name: OLED_SPI, instance: SIMSPI1, sck: SIM58, mosi: SIM59, miso: SIM60, cs: SIM62, mode: 0, hz: 8000000, note: SSD1306 4 线 SPI }

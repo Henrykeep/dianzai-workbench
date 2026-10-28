@@ -201,6 +201,38 @@
   "hash": "de1f93202fb16e9c",
   "version": "1.0.0"
  },
+ "firmware/drivers/battery": {
+  "decls": [
+   "battery.h: typedef enum { BAT_NONE = 0, BAT_OK, BAT_LOW, BAT_CRIT } battery_state_t;",
+   "battery.h: typedef struct { pal_id_t adc;",
+   "battery.h: uint16_t div_num, div_den;",
+   "battery.h: uint8_t cells;",
+   "battery.h: uint16_t low_mv, crit_mv;",
+   "battery.h: uint16_t hyst_mv;",
+   "battery.h: uint16_t hold_ms;",
+   "battery.h: uint16_t absent_mv;",
+   "battery.h: float lpf_tau_s;",
+   "battery.h: } battery_cfg_t;",
+   "battery.h: typedef struct { battery_cfg_t cfg;",
+   "battery.h: uint32_t num, den, full_code, vref_mv;",
+   "battery.h: float mv;",
+   "battery.h: battery_state_t state, cand;",
+   "battery.h: uint32_t cand_since, last_ms;",
+   "battery.h: uint8_t primed, ready;",
+   "battery.h: } battery_t;",
+   "battery.h: battery_cfg_t battery_cfg_default(pal_id_t adc);",
+   "battery.h: dz_err_t battery_init(battery_t *b, const battery_cfg_t *cfg);",
+   "battery.h: dz_err_t battery_update(battery_t *b, uint32_t now_ms);",
+   "battery.h: dz_err_t battery_feed_raw(battery_t *b, uint16_t raw, uint32_t now_ms);",
+   "battery.h: float battery_mv(const battery_t *b);",
+   "battery.h: battery_state_t battery_state(const battery_t *b);",
+   "battery.h: int battery_percent(const battery_t *b);",
+   "battery.h: const char *battery_state_name(battery_state_t s);",
+   "battery.h: dz_err_t battery_selftest(void);"
+  ],
+  "hash": "40ce149a2cb5ca9c",
+  "version": "1.0.0"
+ },
  "firmware/drivers/bmi088": {
   "decls": [
    "bmi088.h: typedef enum { BMI088_ACC_3G = 0, BMI088_ACC_6G, BMI088_ACC_12G, BMI088_ACC_24G } bmi088_acc_range_t;",
@@ -230,6 +262,36 @@
    "bmi088.h: dz_err_t bmi088_selftest(void);"
   ],
   "hash": "79dab4873b5f42a6",
+  "version": "1.0.0"
+ },
+ "firmware/drivers/buzzer": {
+  "decls": [
+   "buzzer.h: #define BUZZER_MAX_STEPS 16u",
+   "buzzer.h: typedef struct { const uint16_t *steps;",
+   "buzzer.h: uint8_t n;",
+   "buzzer.h: uint8_t repeat;",
+   "buzzer.h: uint8_t prio;",
+   "buzzer.h: } buzzer_pattern_t;",
+   "buzzer.h: extern const buzzer_pattern_t BUZZER_BEEP;",
+   "buzzer.h: extern const buzzer_pattern_t BUZZER_OK;",
+   "buzzer.h: extern const buzzer_pattern_t BUZZER_ERROR;",
+   "buzzer.h: extern const buzzer_pattern_t BUZZER_LOWBAT;",
+   "buzzer.h: extern const buzzer_pattern_t BUZZER_ALARM;",
+   "buzzer.h: typedef struct { pal_id_t gpio, pwm;",
+   "buzzer.h: const buzzer_pattern_t *cur;",
+   "buzzer.h: uint8_t step, rep_done;",
+   "buzzer.h: uint32_t step_at;",
+   "buzzer.h: bool on, ready;",
+   "buzzer.h: } buzzer_t;",
+   "buzzer.h: dz_err_t buzzer_init(buzzer_t *b, pal_id_t gpio, pal_id_t pwm);",
+   "buzzer.h: dz_err_t buzzer_play(buzzer_t *b, const buzzer_pattern_t *p, uint32_t now_ms);",
+   "buzzer.h: dz_err_t buzzer_stop(buzzer_t *b);",
+   "buzzer.h: dz_err_t buzzer_tick(buzzer_t *b, uint32_t now_ms);",
+   "buzzer.h: bool buzzer_busy(const buzzer_t *b);",
+   "buzzer.h: bool buzzer_is_on(const buzzer_t *b);",
+   "buzzer.h: dz_err_t buzzer_selftest(void);"
+  ],
+  "hash": "65908fc220fb9cd4",
   "version": "1.0.0"
  },
  "firmware/drivers/encoder": {
@@ -382,6 +444,34 @@
    "qd4310.h: dz_err_t qd4310_selftest(void);"
   ],
   "hash": "3bcf9fad16329ac6",
+  "version": "1.0.0"
+ },
+ "firmware/drivers/servo": {
+  "decls": [
+   "servo.h: typedef struct { pal_id_t pwm;",
+   "servo.h: uint16_t min_us;",
+   "servo.h: uint16_t max_us;",
+   "servo.h: uint16_t center_us;",
+   "servo.h: int16_t trim_us;",
+   "servo.h: float half_range_deg;",
+   "servo.h: float lim_lo_deg, lim_hi_deg;",
+   "servo.h: float slew_dps;",
+   "servo.h: bool invert;",
+   "servo.h: } servo_cfg_t;",
+   "servo.h: typedef struct { servo_cfg_t cfg;",
+   "servo.h: float target, angle;",
+   "servo.h: uint16_t pulse_us;",
+   "servo.h: bool ready;",
+   "servo.h: } servo_t;",
+   "servo.h: servo_cfg_t servo_cfg_default(pal_id_t pwm);",
+   "servo.h: dz_err_t servo_init(servo_t *s, const servo_cfg_t *cfg);",
+   "servo.h: dz_err_t servo_set_deg(servo_t *s, float deg);",
+   "servo.h: dz_err_t servo_set_us(servo_t *s, uint16_t us);",
+   "servo.h: dz_err_t servo_tick(servo_t *s, float dt_s);",
+   "servo.h: uint16_t servo_deg_to_us(const servo_cfg_t *c, float deg);",
+   "servo.h: dz_err_t servo_selftest(void);"
+  ],
+  "hash": "674175f7af1726f2",
   "version": "1.0.0"
  },
  "firmware/drivers/ssd1306": {
