@@ -292,6 +292,7 @@ dz_err_t pal_init(void)
     HAL_Init();                                  /* SysTick 1 kHz，优先级见 hal_conf TICK_INT_PRIORITY */
     if (clock_init() != DZ_OK) return DZ_EIO;
     HAL_InitTick(TICK_INT_PRIORITY);             /* 时钟变了，重新配置 SysTick */
+    /* DZ-REG-OK: CMSIS 内核寄存器，HAL 无打开 DWT/跟踪单元的接口 */
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
 
     board_gen_clock_enable();
@@ -328,13 +329,15 @@ uint32_t pal_micros(void)
     /* 毫秒计数 + SysTick 当前值插值。处理两种竞争：
      *  1) 读取过程中毫秒中断到来 —— 前后两次毫秒不一致则重读
      *  2) 在关中断上下文中调用，SysTick 已回绕但中断挂起 —— 检查 PENDSTSET 补 1 ms */
+    /* DZ-REG-OK: HAL 只提供 1 ms 节拍，微秒时间必须读 SysTick 计数（CMSIS 内核寄存器） */
     uint32_t ms, val, load = SysTick->LOAD + 1u;
     uint32_t ms2;
     do {
         ms = HAL_GetTick();
-        val = SysTick->VAL;
+        val = SysTick->VAL;              /* DZ-REG-OK: 同上，读 SysTick 当前计数 */
         ms2 = HAL_GetTick();
     } while (ms != ms2);
+    /* DZ-REG-OK: 判断 SysTick 中断是否挂起，HAL 无对应接口 */
     if ((SCB->ICSR & SCB_ICSR_PENDSTSET_Msk) && val > (load / 2u)) ms++;
     return ms * 1000u + ((load - 1u - val) * 1000u) / load;
 }
@@ -400,7 +403,7 @@ dz_err_t pal_pwm_set_pulse_us(pal_id_t id, uint32_t pulse_us)
     if (id >= BOARD_PWM_COUNT) return DZ_ENODEV;
     if (s_diag.fail_pwm & (1u << id)) return DZ_EIO;
     TIM_HandleTypeDef *h = &s_pwm_htim[id];
-    uint32_t tick_hz = timer_clock_hz(g_p4_pwm[id].apb) / (h->Instance->PSC + 1u);
+    uint32_t tick_hz = timer_clock_hz(g_p4_pwm[id].apb) / (h->Init.Prescaler + 1u);
     uint64_t ccr = ((uint64_t)pulse_us * tick_hz) / 1000000u;
     if (ccr > (uint64_t)__HAL_TIM_GET_AUTORELOAD(h) + 1u) return DZ_EINVAL;
     __HAL_TIM_SET_COMPARE(h, g_p4_pwm[id].channel, (uint32_t)ccr);
@@ -416,7 +419,7 @@ dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *freq_hz)
     if (id >= BOARD_PWM_COUNT) return DZ_ENODEV;
     if (freq_hz == 0) return DZ_EINVAL;
     TIM_HandleTypeDef *h = &s_pwm_htim[id];
-    *freq_hz = timer_clock_hz(g_p4_pwm[id].apb) / ((h->Instance->PSC + 1u) * (__HAL_TIM_GET_AUTORELOAD(h) + 1u));
+    *freq_hz = timer_clock_hz(g_p4_pwm[id].apb) / ((h->Init.Prescaler + 1u) * (__HAL_TIM_GET_AUTORELOAD(h) + 1u));
     return DZ_OK;
 #else
     (void)id; (void)freq_hz; return DZ_ENODEV;

@@ -128,7 +128,10 @@ check:
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
 	$(PY) tools/check_deps.py
+	$(PY) tools/check_deps.py --selftest
 	$(PY) tools/iface_hash.py --check
+	$(PY) tools/iface_hash.py --selftest
+	$(MAKE) -C examples/2026H_ball/tests
 
 fetch:
 	tools/fetch_stm32f4.sh

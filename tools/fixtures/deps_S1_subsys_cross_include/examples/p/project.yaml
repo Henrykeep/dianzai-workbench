@@ -1,0 +1,4 @@
+state: {a_out: {owner: a, fields: {v: float}}, b_out: {owner: b, fields: {v: float}}}
+subsystems:
+  - {name: a, owns: [a_out]}
+  - {name: b, owns: [b_out]}
