@@ -2,7 +2,7 @@
 
 部署：把本文件和 host/python/dzlink/ 目录一起拷到相机上（相机上不需要 PyYAML，通道定义内置并由测试核对与 board.yaml 一致）。
     python3 ball_sender.py --device /dev/ttyS1      # 设备名以 MaixPy 文档为准【未验证】
-识别算法 find_ball() 是占位：请换成你的实现（P1/P2 的 MaixCAM 脚本不在本仓库）。
+识别用自写跟踪器 ball_tracker.py（颜色阈值 find_blobs + ROI + α-β 外推）；阈值 BALL_LAB 要现场标。
 【已实测】PC 上：编码 → dzlink.Link 解码、C 端生成的 cp_vision_cpu_ball_decode 解码（examples/2026H_ball/tests）。
 【未验证】在 MaixCAM2 上运行（maix.camera / maix.uart 接口按 MaixPy 文档编写，未在实机跑过）。
 """
@@ -38,9 +38,15 @@ class BallSender:
         self.write(self.frame(x_px, cam_ms, detected=x_px is not None, **kw))
 
 
-def find_ball(img):
-    """占位：返回钢珠中心相对画面中心的 x 像素，没找到返回 None。换成你的算法。"""
-    return None
+# LAB 阈值 [L_min, L_max, A_min, A_max, B_min, B_max]：钢珠高光偏亮、低饱和。占位值，必须现场用 MaixVision 阈值工具标【未验证】
+BALL_LAB = [[60, 100, -15, 15, -15, 15]]
+
+
+def find_ball(img, tracker):
+    """返回 TrackResult（x 相对画面中心）。"""
+    from ball_tracker import blobs_from_maix
+    blobs = img.find_blobs(BALL_LAB, roi=tracker.roi(), pixels_threshold=tracker.min_pixels, merge=True)
+    return tracker.update(blobs_from_maix(blobs))
 
 
 def main():
@@ -51,12 +57,16 @@ def main():
     from maix import camera, uart, app  # MaixPy，只在相机上有
     cam = camera.Camera(320, 240)
     ser = uart.UART(a.device, a.baud)
+    from ball_tracker import BallTracker
     tx = BallSender(ser.write)
+    trk = BallTracker(320, 240)
     t0 = time.monotonic()
     while not app.need_exit():
         img = cam.read()
-        t_ms = int((time.monotonic() - t0) * 1000)
-        tx.send(find_ball(img), t_ms)
+        t_ms = int((time.monotonic() - t0) * 1000)          # 读到帧的时刻 ≈ 曝光结束（未计相机内部缓冲）
+        r = find_ball(img, trk)
+        x = r.x if (r.detected or r.predicted) else None
+        tx.write(tx.frame(x, t_ms, detected=r.detected, predicted=r.predicted))
 
 
 if __name__ == "__main__":

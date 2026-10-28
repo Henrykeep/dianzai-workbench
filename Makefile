@@ -275,6 +275,8 @@ check:
 	$(MAKE) -C examples/2026H_ball/tests
 	cd host/python && $(PY) -m dzlink.test_dzlink
 	$(PY) host/maixcam/test_ball_sender.py
+	$(PY) host/maixcam/test_ball_tracker.py
+	cd host/python && $(PY) -m dzlink.test_latency
 
 fetch:
 	tools/fetch_stm32f4.sh
