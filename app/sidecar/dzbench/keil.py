@@ -43,7 +43,7 @@ def build(uv4: str, project: str, target: str | None = None, timeout: int = 600,
     proj = pathlib.Path(project)
     log = proj.with_suffix(".dzbench_build.log")
     cmd = [uv4, "-b", str(proj), "-j0", "-o", str(log)] + (["-t", target] if target else [])
-    r = runner(cmd, capture_output=True, text=True, timeout=timeout)
+    r = runner(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout)
     text = log.read_text(encoding="utf-8", errors="replace") if log.exists() else (r.stdout or "")
     res = parse_log(text) | {"exit_code": r.returncode, "cmd": cmd}
     if r.returncode >= 2:

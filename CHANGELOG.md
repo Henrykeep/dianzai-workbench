@@ -35,6 +35,7 @@
 - pid / motor_dc README 补参考来源（PX4、SparkFun），未使用 P1 代码
 
 ### 修复
+- 侧车在 Windows 上读写 UTF-8 文件/子进程输出：全部显式 `encoding="utf-8"`（CI app-v0.3.0 在 cp1252 下失败）[编译]；安装包版本号 0.3.1（之前文件名误为 0.1.0）
 - 工作台：参数面板聚焦中的格子不跟随其他客户端/Agent 改的值 → 未在编辑的格子一律跟随 [仿真]
 - 截图脚本：car_2wd DATA id=1 是 (v m/s, w rad/s)，原先按两轮 r/s 发 2/3 被 max_rps=5 限幅成 sp_a=5；固件无误，只改脚本与注释 [仿真]
 

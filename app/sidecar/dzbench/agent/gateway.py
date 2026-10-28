@@ -68,7 +68,7 @@ class Change:
 
 
 def _run(cmd: list[str], cwd: pathlib.Path) -> tuple[int, str]:
-    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=900)
+    r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     return r.returncode, (r.stdout + r.stderr)
 
 

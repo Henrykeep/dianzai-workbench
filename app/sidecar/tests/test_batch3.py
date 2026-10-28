@@ -44,7 +44,7 @@ def test_presets_timer_trigger_and_estop_lock(sess, home):
     sd = Sender(s, ev.append)
     sd.save_preset({"name": "at", "kind": "text", "payload": "AT", "eol": "\r\n"})
     sd.save_preset({"name": "go", "kind": "hex", "payload": "A5 5A 01"})
-    assert {p["name"] for p in __import__("json").loads((home / "presets.json").read_text())} == {"at", "go"}   # 存盘了
+    assert {p["name"] for p in __import__("json").loads((home / "presets.json").read_text(encoding="utf-8"))} == {"at", "go"}   # 存盘了
     assert sd.send("at") and tx[-1] == b"AT\r\n"
     sd.start_timer("go", 20, count=3)
     assert wait(lambda: tx.count(b"\xa5\x5a\x01") == 3)

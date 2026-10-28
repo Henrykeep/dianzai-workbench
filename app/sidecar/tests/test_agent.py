@@ -84,10 +84,10 @@ def repo(tmp_path):
     r = tmp_path / "repo"
     (r / "apps/x").mkdir(parents=True)
     (r / "firmware").mkdir()
-    (r / "apps/x/app.yaml").write_text("  - { name: kp, type: float, default: 0.08, min: 0, max: 2 }\n")
-    (r / "apps/x/main.c").write_text("int gain = 1;\nint other = 2;\n")
-    (r / "firmware/a.c").write_text("x\n")
-    (r / "secret.env").write_text("K=1\n")
+    (r / "apps/x/app.yaml").write_text("  - { name: kp, type: float, default: 0.08, min: 0, max: 2 }\n", encoding="utf-8")
+    (r / "apps/x/main.c").write_text("int gain = 1;\nint other = 2;\n", encoding="utf-8")
+    (r / "firmware/a.c").write_text("x\n", encoding="utf-8")
+    (r / "secret.env").write_text("K=1\n", encoding="utf-8")
     git(r, "init", "-q"); git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qam", "init", "--allow-empty")
     git(r, "add", "."); git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "files")
     return r
@@ -126,13 +126,13 @@ def test_gateway_accept_runs_gates_and_commits_then_rollback(repo):
     g = Gateway(repo, ev.append, runner=run)
     c = g.propose_edit("apps/x/main.c", "int gain = 1;", "int gain = 3;", "加大增益")
     assert c["status"] == "pending" and "+int gain = 3;" in c["diff"] and "make check" in c["gates"]
-    assert "gain = 1" in (repo / "apps/x/main.c").read_text(), "确认前不能落盘"
+    assert "gain = 1" in (repo / "apps/x/main.c").read_text(encoding="utf-8"), "确认前不能落盘"
     r = g.decide(c["id"], True)
     assert r["status"] == "committed" and run.cmds == ["make check", "make test"]
     assert f"{TRAILER}: {c['id']}" in git(repo, "log", "-1", "--format=%B")
     assert g.history()[0]["commit"] == r["commit"]
     g.rollback(r["commit"])
-    assert "gain = 1" in (repo / "apps/x/main.c").read_text()
+    assert "gain = 1" in (repo / "apps/x/main.c").read_text(encoding="utf-8")
     with pytest.raises(GatewayError) as e:
         g.rollback(git(repo, "rev-list", "--max-parents=0", "HEAD").strip()[:7])
     assert e.value.code == "not_agent_commit"
@@ -145,13 +145,13 @@ def test_gateway_gate_failure_restores(repo):
     assert c["layer"] == "config" and c["gates"] == ["make check"]
     r = g.decide(c["id"], True)
     assert r["status"] == "failed" and "boom" in r["log"]
-    assert "default: 0.08" in (repo / "apps/x/app.yaml").read_text() and git(repo, "rev-parse", "HEAD") == head
+    assert "default: 0.08" in (repo / "apps/x/app.yaml").read_text(encoding="utf-8") and git(repo, "rev-parse", "HEAD") == head
 
 
 def test_gateway_refuses_dirty_or_stale(repo):
     g = Gateway(repo, runner=Runner())
     c = g.propose_edit("apps/x/main.c", "int gain = 1;", "int gain = 2;", "r")
-    (repo / "apps/x/main.c").write_text("int gain = 1;\nint other = 9;\n")      # 人手改了没提交
+    (repo / "apps/x/main.c").write_text("int gain = 1;\nint other = 9;\n", encoding="utf-8")      # 人手改了没提交
     r = g.decide(c["id"], True)
     assert r["status"] == "failed" and "未提交" in r["log"]
     with pytest.raises(GatewayError):
@@ -254,6 +254,6 @@ def test_yaml_rewrite_keeps_numerically_equal():
 
 
 def test_agents_md_goes_into_system_prompt(repo):
-    (repo / "AGENTS.md").write_text("规则：不写寄存器\n")
+    (repo / "AGENTS.md").write_text("规则：不写寄存器\n", encoding="utf-8")
     svc = AgentService(Session(), AgentTools(Session(), lambda e: None), lambda e: None, root=repo, llm=FakeLLM([]), runner=Runner())
     assert "不写寄存器" in svc.loop.messages[0]["content"]

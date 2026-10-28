@@ -34,7 +34,7 @@ class FakeLLM(BaseHTTPRequestHandler):
 llm = HTTPServer(("127.0.0.1", 0), FakeLLM)
 threading.Thread(target=llm.serve_forever, daemon=True).start()
 (HOME / "config.json").write_text(json.dumps({"provider": "custom", "base_url": f"http://127.0.0.1:{llm.server_port}/v1",
-                                              "model": "mock", "api_key": "sk-mock-0000"}))
+                                              "model": "mock", "api_key": "sk-mock-0000"}), encoding="utf-8")
 env = dict(os.environ, DZBENCH_HOME=str(HOME), DZBENCH_REPO=str(REPO), PYTHONPATH=str(APP / "sidecar"))
 srv = subprocess.Popen([sys.executable, "-m", "dzbench", "--port", "18901", "--ui", str(APP / "ui" / "dist")], env=env)
 time.sleep(1.0)

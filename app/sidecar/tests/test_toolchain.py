@@ -31,11 +31,11 @@ def test_keil_log_parse_and_build_runner(tmp_path):
     assert d["error"]["file"].endswith("pid.c") and d["error"]["line"] == 42 and d["warning"]["line"] == 131
     ok = keil.parse_log('Program Size: Code=100 RO-data=0 RW-data=0 ZI-data=0\n"a.axf" - 0 Error(s), 0 Warning(s).')
     assert ok["ok"]
-    proj = tmp_path / "p.uvprojx"; proj.write_text("")
+    proj = tmp_path / "p.uvprojx"; proj.write_text("", encoding="utf-8")
 
     def fake_run(cmd, **kw):
         assert cmd[:2] == ["UV4.exe", "-b"] and "-t" in cmd
-        proj.with_suffix(".dzbench_build.log").write_text(KEIL_LOG)
+        proj.with_suffix(".dzbench_build.log").write_text(KEIL_LOG, encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 2, "", "")
     assert keil.build("UV4.exe", str(proj), "car_2wd", runner=fake_run)["ok"] is False
 
@@ -58,7 +58,7 @@ def elf(tmp_path_factory):
     if not gcc:
         pytest.skip("没有 arm-none-eabi-gcc")
     d = tmp_path_factory.mktemp("elf")
-    (d / "a.c").write_text("float g_speed = 1.5f; volatile int g_count; int twice(int x){return 2*x;}\nvoid _start(void){for(;;) g_count=twice(g_count);}\n")
+    (d / "a.c").write_text("float g_speed = 1.5f; volatile int g_count; int twice(int x){return 2*x;}\nvoid _start(void){for(;;) g_count=twice(g_count);}\n", encoding="utf-8")
     subprocess.run([gcc, "-mcpu=cortex-m0plus", "-mthumb", "-O1", "-nostdlib", "-Wl,-Ttext=0x0,-Tdata=0x20200000",
                     "-o", str(d / "a.elf"), str(d / "a.c")], check=True)
     return d / "a.elf"
@@ -87,13 +87,13 @@ def test_elf_symbols_and_live_watch(elf, home):
 
 
 def test_layered_config_and_secret_guard(tmp_path, home, monkeypatch):
-    (home / "machine.json").write_text(json.dumps({"build": {"keil_uv4": "C:/Keil_v5/UV4/UV4.exe"}, "flash": {"probe": "ABC"}}))
-    (tmp_path / "dzbench.json").write_text(json.dumps({"flash": {"target": "mspm0g3507", "probe": "PROJ"}, "core": "cm0plus"}))
+    (home / "machine.json").write_text(json.dumps({"build": {"keil_uv4": "C:/Keil_v5/UV4/UV4.exe"}, "flash": {"probe": "ABC"}}), encoding="utf-8")
+    (tmp_path / "dzbench.json").write_text(json.dumps({"flash": {"target": "mspm0g3507", "probe": "PROJ"}, "core": "cm0plus"}), encoding="utf-8")
     monkeypatch.setenv("DZBENCH_PROBE", "ENV")
     c = config.load(tmp_path)
     assert c["build"]["keil_uv4"].endswith("UV4.exe") and c["flash"]["target"] == "mspm0g3507"
     assert c["flash"]["probe"] == "ENV" and c["flash"]["dry_run"] is True and c["core"] == "cm0plus"
-    (tmp_path / "dzbench.json").write_text(json.dumps({"llm": {"api_key": "sk-x"}}))
+    (tmp_path / "dzbench.json").write_text(json.dumps({"llm": {"api_key": "sk-x"}}), encoding="utf-8")
     with pytest.raises(config.ConfigError):
         config.load(tmp_path)
 
@@ -144,7 +144,7 @@ def test_service_gate_human_card_and_sim_step_test(sim, tmp_path, home):
     from dzbench.agent.gateway import GatewayError
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
-        "high": [0.4, 0], "hold_s": 1.2, "pre_s": 0.4, "y": "spd_a", "sp": "sp_a"}, "flash": {"target": "mspm0g3507"}}))
+        "high": [0.4, 0], "hold_s": 1.2, "pre_s": 0.4, "y": "spd_a", "sp": "sp_a"}, "flash": {"target": "mspm0g3507"}}), encoding="utf-8")
     ev = []
     svc = AgentService(sim, AgentTools(sim, ev.append), ev.append, root=tmp_path)
     assert svc.sim
@@ -158,6 +158,6 @@ def test_service_gate_human_card_and_sim_step_test(sim, tmp_path, home):
     # 仿真里阶跃实验是 log 级：直接跑，程序给出判定
     out = svc.gate("run_step_test", {}, svc.run_step_test)
     assert out["metrics"]["ok"] and out["verdict"]["action"] in ("continue", "done", "rollback")
-    assert (home / "agent_audit.jsonl").read_text().count("run_step_test") == 1
+    assert (home / "agent_audit.jsonl").read_text(encoding="utf-8").count("run_step_test") == 1
     ctx = svc.tune_context()
     assert ctx["history"] and len(ctx["samples_t_y_sp"]) <= 20 and "每轮只改一个参数" in ctx["rules"]

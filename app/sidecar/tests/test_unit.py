@@ -57,7 +57,7 @@ def test_snapshots(tmp_path, monkeypatch):
 def test_session_loopback(tmp_path, monkeypatch):
     sdir = tmp_path / "build" / "x" / "linkgen"
     sdir.mkdir(parents=True)
-    (sdir / "link_schema.json").write_text(json.dumps(SCHEMA))
+    (sdir / "link_schema.json").write_text(json.dumps(SCHEMA), encoding="utf-8")
     monkeypatch.setenv("DZBENCH_SCHEMA_DIRS", str(tmp_path / "build"))
     ev = []
     s = Session(emit=ev.append, log_dir=tmp_path / "logs")
