@@ -282,6 +282,23 @@
           "default": 1
         }
       }
+    },
+    "coproc_class_rule": {
+      "if": {
+        "properties": {
+          "class": {
+            "const": "linux_vision"
+          }
+        },
+        "required": [
+          "class"
+        ]
+      },
+      "then": {
+        "required": [
+          "linux"
+        ]
+      }
     }
   },
   "properties": {
@@ -470,7 +487,6 @@
     },
     "coprocessor": {
       "type": "object",
-      "additionalProperties": false,
       "required": [
         "device",
         "link",
@@ -496,6 +512,7 @@
                 "spi",
                 "i2c",
                 "udp",
+                "tcp",
                 "usb-cdc"
               ]
             },
@@ -519,6 +536,19 @@
             "host_resource": {
               "type": "string",
               "description": "主控板 board.yaml 里对应的 uart 逻辑名，例如 VISION"
+            },
+            "port": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                {
+                  "const": "TODO"
+                }
+              ],
+              "description": "udp/tcp 端口"
             }
           }
         },
@@ -647,8 +677,86 @@
               }
             }
           }
+        },
+        "class": {
+          "enum": [
+            "linux_vision",
+            "fpga_logic",
+            "other"
+          ],
+          "default": "other",
+          "description": "linux_vision：跑 Linux/Python 的视觉/计算协处理器（NVIDIA Jetson Nano、树莓派、地瓜派 RDK、MaixCAM2 等），用 host/python/dzlink 收发 dzframe；fpga_logic：FPGA 纯逻辑实现 dzframe；other：其它。"
+        },
+        "linux": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "class=linux_vision 时的工作台集成信息（本阶段只预留：连接收数据、看日志、部署程序）。",
+          "properties": {
+            "device_path": {
+              "type": "string",
+              "description": "协处理器上的串口设备，例如 /dev/ttyTHS1（Jetson Nano）、/dev/ttyAMA0（树莓派）；不确定写 TODO"
+            },
+            "python": {
+              "type": "string",
+              "description": "例如 python3.8"
+            },
+            "host": {
+              "type": "string",
+              "description": "SSH 主机名/IP；TODO 表示待填"
+            },
+            "user": {
+              "type": "string"
+            },
+            "deploy": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "enum": [
+                    "ssh",
+                    "adb",
+                    "manual"
+                  ]
+                },
+                "remote_dir": {
+                  "type": "string"
+                },
+                "entry": {
+                  "type": "string",
+                  "description": "入口脚本，例如 main.py"
+                },
+                "service": {
+                  "type": "string",
+                  "description": "systemd 服务名（开机自启时）"
+                }
+              }
+            },
+            "log": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "enum": [
+                    "journalctl",
+                    "file",
+                    "stdout",
+                    "dzframe"
+                  ]
+                },
+                "path": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
-      }
+      },
+      "allOf": [
+        {
+          "$ref": "#/$defs/coproc_class_rule"
+        }
+      ],
+      "unevaluatedProperties": false
     }
   },
   "allOf": [

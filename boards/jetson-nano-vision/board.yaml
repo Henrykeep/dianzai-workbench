@@ -1,6 +1,6 @@
 # NVIDIA Jetson Nano 视觉协处理板（kind: coprocessor）
 # 它不运行本框架的 C 代码；这里只描述它和主控之间的 dzframe/1 通道与参数。
-# Jetson 侧发送：tools/dzframe.py 的 encode(DATA, 1, seq, pack_fields(fields, {...}))，例子见 docs/08-协处理板与软核.md。
+# Jetson 侧发送：host/python/dzlink 的 encode(DATA, 1, seq, pack_fields(fields, {...}))，例子见 docs/08-协处理板与软核.md。
 schema_version: 1
 name: jetson-nano-vision
 kind: coprocessor
@@ -9,6 +9,7 @@ description: Jetson Nano 做摄像头识别，通过串口把结果发给主控�
 
 coprocessor:
   device: NVIDIA Jetson Nano
+  class: linux_vision
   link:
     transport: uart
     protocol: dzframe/1
@@ -26,3 +27,10 @@ coprocessor:
         - { name: found, type: u8,  note: 1=识别到 0=未识别 }
   params:
     - { id: 1, name: thresh, type: u8, min: 0, max: 255, default: 128, note: 示例：二值化阈值，按你的算法替换 }
+  linux:                        # 工作台集成（本阶段只预留，见 docs/08）
+    device_path: TODO           # Jetson Nano 40-pin 排针 UART 一般为 /dev/ttyTHS1，以你的系统为准
+    python: python3
+    host: TODO                  # SSH 地址
+    user: TODO
+    deploy: { method: ssh, remote_dir: ~/dz_vision, entry: main.py }
+    log: { method: journalctl }

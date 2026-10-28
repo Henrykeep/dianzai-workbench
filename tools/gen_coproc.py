@@ -8,7 +8,7 @@
   * <prefix>_<ch>_decode(const dzframe_t *, <prefix>_<ch>_t *)  —— 类型/编号/长度不符返回 false
   * <prefix>_<ch>_encode(const <prefix>_<ch>_t *, uint8_t seq, dzframe_t *)
   * 参数编号宏 <PREFIX>_PARAM_<NAME> 与取值范围表
-协处理板一侧（Jetson Nano 的 Python、FPGA 的测试脚本）用 tools/dzframe.py 的 pack_fields/unpack_fields
+协处理板一侧（Jetson Nano 的 Python、FPGA 的测试脚本）用 host/python/dzlink 的 pack_fields/unpack_fields
 按同一份 board.yaml 打包，两端字段顺序因此永远一致。
 """
 import argparse, pathlib, sys

@@ -139,6 +139,7 @@ check:
 	$(PY) tools/iface_hash.py --check
 	$(PY) tools/iface_hash.py --selftest
 	$(MAKE) -C examples/2026H_ball/tests
+	cd host/python && $(PY) -m dzlink.test_dzlink
 
 fetch:
 	tools/fetch_stm32f4.sh

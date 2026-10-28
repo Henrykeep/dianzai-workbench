@@ -58,7 +58,7 @@ TEST(dzframe_resync_after_corruption)
     CHECK(feed_all(&p, s, kb, g, 4) == 1);
 }
 
-/* 与 tools/dzframe.py 的互通：Python 生成的这帧（kind=0 id=5 seq=9 payload=01020304）必须能解析 */
+/* 与 host/python/dzlink 的互通：Python 生成的这帧（kind=0 id=5 seq=9 payload=01020304）必须能解析 */
 TEST(dzframe_python_interop)
 {
     static const uint8_t py[] = { 0xA5, 0x5A, 0x01, 0x00, 0x05, 0x09, 0x04, 0x01, 0x02, 0x03, 0x04, PY_CRC_L, PY_CRC_H };

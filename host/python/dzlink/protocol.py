@@ -1,12 +1,11 @@
-#!/usr/bin/env python3
-"""dzframe/1 的 Python 实现（给 Jetson Nano / PC 上位机 / FPGA 测试脚本用）。
+"""dzframe/1 协议的 Python 实现（运行在 Linux/视觉协处理器上：NVIDIA Jetson Nano、树莓派、地瓜派 RDK、MaixCAM2 …，以及 PC 工作台）。
 
 与 firmware/proto/dzframe/dzframe.c 逐字节一致；tests/host 里有 C↔Python 互通测试。
-  python3 tools/dzframe.py encode KIND ID SEQ HEXPAYLOAD   -> 打印帧的十六进制
-  python3 tools/dzframe.py decode HEX                       -> 打印解析出的帧
+  python3 -m dzlink.protocol encode KIND ID SEQ HEXPAYLOAD   -> 打印帧的十六进制
+  python3 -m dzlink.protocol decode HEX                       -> 打印解析出的帧
+只依赖 Python 3.6+ 标准库。
 """
 import struct, sys
-
 SOF = b"\xA5\x5A"
 VER = 1
 MAX_PAYLOAD = 64

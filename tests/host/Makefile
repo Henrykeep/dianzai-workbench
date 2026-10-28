@@ -20,6 +20,6 @@ $(OUT)/unit_tests: $(SRC) $(GEN)/board_gen.h $(wildcard *.h) $(wildcard $(ROOT)/
 	@echo "  CC+LD  $@"
 	@gcc $(CFLAGS) $(INC) $(SRC) -lm -o $@
 
-# C↔Python 互通：用 tools/dzframe.py 现场编码一帧，把它算出的 CRC 传给 C 测试
-PYFRAME := $(shell python3 $(ROOT)/tools/dzframe.py encode 0 5 9 01020304)
+# C↔Python 互通：用 host/python/dzlink 现场编码一帧，把它算出的 CRC 传给 C 测试
+PYFRAME := $(shell cd $(ROOT)/host/python && python3 -c "from dzlink.protocol import encode; print(encode(0, 5, 9, bytes.fromhex('01020304')).hex())")
 CFLAGS += -DPY_CRC_L=0x$(shell echo $(PYFRAME) | cut -c23-24) -DPY_CRC_H=0x$(shell echo $(PYFRAME) | cut -c25-26)

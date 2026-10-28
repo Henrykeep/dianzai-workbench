@@ -12,7 +12,7 @@
  *   CRC16：CRC-16/CCITT-FALSE（多项式 0x1021，初值 0xFFFF），覆盖 VER..PAYLOAD。
  *   LEN ≤ DZFRAME_MAX_PAYLOAD。
  *
- * 纯 C、无硬件依赖、无动态内存、可重入（每个链路一个解析器实例），Python 端实现见 tools/dzframe.py。
+ * 纯 C、无硬件依赖、无动态内存、可重入（每个链路一个解析器实例），Python 端实现见 host/python/dzlink。
  * 版本：DZFRAME_VERSION（与同目录 VERSION 一致）。
  */
 #ifndef DZFRAME_H
