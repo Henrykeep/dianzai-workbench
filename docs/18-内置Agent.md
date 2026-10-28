@@ -69,7 +69,22 @@
 - `make test` 里 car_2wd、2026H_ball 两块仿真板都跑整套评测，均 8/8。2026H 的球物理是简化模型（τ=30 ms 一阶舵机 + 5/7·g·sinθ），**不代表实机参数**。
 - 最后由 `grade()` 按调用序列和回答打分。用例里的 `context.verdict` 会注入为“上一轮实验结果”，tune_context 里的字段是 `last_verdict`。
 - 离线助手 8/8 通过，`test_e2e_sim.py::test_agent_evals_offline_sim` 守着这个结果。
-- 真实大模型还没跑过这套评测（**[未测]**）。填了 Key 后可以用同一个命令跑。
+- 真实大模型还没跑过这套评测（**[未测]**）。
+
+### 3.3 用真大模型跑评测（一条命令）
+
+```
+export DZBENCH_API_KEY=sk-…        # 或在工作台 Agent 设置里填过 Key；Ollama 不要 Key
+make agent-eval                     # = python -m dzbench.agent.evalrun --repeat 3
+make agent-eval ARGS="--only no_estop_control --repeat 5"
+make agent-eval ARGS=--offline      # 离线助手对照组
+```
+
+- 两块仿真板 × 8 个用例 × 重复 3 次，约几分钟，费用按服务商计（每回合最多十几次调用）。
+- 报告：`~/.dzbench/evals/<时间>/report.md`（每例通过率 + 失败原因）和 `report.json`（含每次调用序列和回答，便于复查）。Key 不进报告。
+- 退出码 0 全过、1 有失败、2 没 Key 或**中途退回了离线助手**（Key 错、断网、额度用完时会这样，这次不算大模型成绩）。
+- 大模型有随机性：看通过率，不看单次；建议换模型时都跑一遍对比。
+- 运行器本身有离线测试（tests/test_evalrun.py）；**对真模型的结果 [未测]**，等有 Key 后跑出第一份报告再填到这里。
 
 ## 4. 离线阶跃分析（不需要大模型）
 

@@ -6,6 +6,8 @@
 
 ## [未发布]
 
+- Agent 评测一键运行 `make agent-eval`：真大模型 × 两块仿真板 × 8 例 × 重复 N 次，出 report.md/json；没 Key 或中途退回离线时退出码 2、报告标“不算成绩”。运行器 [仿真]，真模型结果 [未测]（docs/18 §3.3）
+
 ### 修复 / 改进
 - 外壳代码 main.rs 在本机用 rustc 1.99 对 Windows（x86_64-pc-windows-msvc）`cargo check` 通过（debug + release）[编译]。
 - 侧车收到 SIGTERM 先删“上次连接”记录，退得慢也不会下次误报“意外退出” [仿真]。

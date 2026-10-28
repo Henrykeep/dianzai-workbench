@@ -175,7 +175,7 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -241,6 +241,9 @@ vars: $(GEN)/board_gen.mk
 # 只生成 board_gen.{h,c,mk}（给 Keil / CCS 工程用）
 gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
+
+agent-eval:
+	cd app/sidecar && $(PY) -m dzbench.agent.evalrun --repeat 3 $(ARGS)
 
 selftest:
 	$(MAKE) APP=port_selftest BOARD=$(BOARD)
