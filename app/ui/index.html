@@ -37,10 +37,18 @@
     </aside>
     <section class="panel plot">
       <div class="ph"><h3>实时曲线</h3><span class="lbl" id="plot-sub"></span><div class="sp"></div>
+        <div class="seg" id="view" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备"><span data-v="plot" class="on">曲线</span><span data-v="raw">原始</span></div>
         <div class="seg" id="win"><span data-w="2">2s</span><span data-w="5" class="on">5s</span><span data-w="10">10s</span><span data-w="30">30s</span></div>
         <div class="seg" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
       </div>
-      <div class="plotbox" id="pb"><div id="empty" class="empty"></div></div>
+      <div class="plotbox" id="pb"><div id="empty" class="empty"></div>
+        <div id="raw" class="raw" hidden>
+          <div class="rawbar"><div class="seg" id="raw-fmt"><span data-f="txt" class="on">文本</span><span data-f="hex">HEX</span></div>
+            <label class="lbl"><input type="checkbox" id="raw-tx" checked> 显示发送</label>
+            <label class="lbl"><input type="checkbox" id="raw-ts" checked> 时间戳</label>
+            <div class="sp"></div><span class="lbl" id="raw-stat"></span><button class="btn ghost sm" id="raw-clr">清空</button></div>
+          <div id="raw-list" class="rawlist"></div>
+        </div></div>
     </section>
     <aside class="side">
       <section class="panel params">
@@ -86,6 +94,7 @@
     <span class="sp"></span>
     <select id="logs" title="回放以前记录的 .dzlog"></select>
     <button class="btn ghost sm" id="replay">回放</button>
+    <button class="btn ghost sm" id="export" title="把这份记录导出成 CSV（UTF-8 BOM，Excel 直接打开）">导出 CSV</button>
     <span id="st-ws">侧车 —</span>
   </footer>
   <div id="toasts" class="toasts"></div>

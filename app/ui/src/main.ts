@@ -7,6 +7,7 @@ import "./style.css";
 import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
 import { AGENT_IDLE, initAgent } from "./agent";
+import { initRaw } from "./raw";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[] };
 type Param = { name: string; type: string; min: number; max: number; unit?: string; desc?: string; default: number };
@@ -243,7 +244,7 @@ function renderStatus(st: Msg) {
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");
-  $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.baud || ""}</i>` : "未连接";
+  $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.reconnecting ? "重连中…" : st.baud || ""}</i>` : "未连接";
   $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
@@ -264,9 +265,16 @@ function applyNone() {
 }
 
 const agent = initAgent(call);
+const raw = initRaw((op, a) => link.rpc(op, a ?? {}), () => {});
+$("export").onclick = async () => {
+  const p = $<HTMLSelectElement>("logs").value;
+  if (!p) return toast("还没有记录可导出：连上板子会自动记录", "info");
+  const r = await call("log_export", { path: p }).catch(() => null);
+  if (r) toast(`已导出 ${r.rows} 行 → ${r.path}`, "ok", 12000);
+};
 $("props").innerHTML = AGENT_IDLE;
 link.on(m => {
-  agent.onMsg(m);
+  agent.onMsg(m); raw.onMsg(m);
   switch (m.type) {
     case "telem": {
       plot.push(m.t, m.y);
@@ -278,6 +286,7 @@ link.on(m => {
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
+    case "reconnected": toast(m.message, "ok", 5000); break;
     case "estop": toast(m.message, m.sent ? "info" : "crit", m.sent ? 2500 : 15000); break;
   }
 });

@@ -20,6 +20,7 @@ from .agent_api import TOOLS, AgentTools
 from .downsample import minmax
 from .logfile import read_log
 from .ports import list_ports
+from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
 
 UI_HZ = 60
@@ -55,6 +56,10 @@ class Server:
                 ys = {k: [float(s[1][k]) for s in new] for k in new[0][1] if k != "t_ms"}
                 t, ys = minmax(t, ys, MAX_POINTS)
                 await self._broadcast({"type": "telem", "t": t, "y": ys})
+            if self.session.raw_on:
+                raw = self.session.take_raw()
+                if raw:
+                    await self._broadcast({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
             n += 1
             if n % (UI_HZ // 4) == 0:
                 await self._broadcast(self.session.status())
@@ -104,6 +109,17 @@ class Server:
             return await run(None, self.agent.decide, int(m["id"]), bool(m["accept"]))
         if op == "agent_tool":
             return await run(None, self.agent.call, m["tool"], m.get("args", {}))
+        if op == "raw_monitor":
+            self.session.raw_on = bool(m.get("on", True))
+            return {"on": self.session.raw_on}
+        if op == "auto_reconnect":
+            self.session.auto_reconnect = bool(m.get("on", True))
+            return {"on": self.session.auto_reconnect}
+        if op == "log_export":
+            try:
+                return await run(None, dzlog_to_csv, m["path"])
+            except ExportError as e:
+                raise LinkError("export", e.message, e.fix) from e
         # ---- 内置 Agent（docs/18）
         if op == "tune_analyze":
             return await run(None, lambda: self.svc.step_analysis(m.get("y"), m.get("sp"), float(m.get("seconds", 5)),

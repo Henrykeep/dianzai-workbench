@@ -145,3 +145,11 @@ select:disabled{opacity:.6}
 .dlg form{display:flex;flex-direction:column;gap:10px} .dlg h3{margin:0}
 .dlg label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--dim)}
 .dlg .act{display:flex;gap:6px;justify-content:flex-end}
+
+/* 原始监视器 */
+.raw{position:absolute;inset:0 8px 8px;display:flex;flex-direction:column;background:var(--s1);border-radius:var(--r);z-index:3}
+.rawbar{display:flex;gap:12px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--hair)}
+.rawbar label{display:flex;gap:4px;align-items:center;cursor:pointer}
+.rawlist{flex:1;overflow:auto;padding:6px 10px;font:400 11px/1.6 var(--f-mono);white-space:pre-wrap;word-break:break-all}
+.rawlist div{display:flex;gap:10px} .rawlist i{color:var(--dim);font-style:normal;min-width:64px}
+.rawlist b{font-weight:500;color:var(--info);min-width:18px} .rawlist .tx b{color:var(--acc)} .rawlist .tx{color:var(--muted)}

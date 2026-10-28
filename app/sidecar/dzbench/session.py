@@ -42,6 +42,10 @@ class Session:
         self.log_dir = log_dir or snapshots.base_dir() / "logs"
         self.lock = threading.RLock()
         self.history_s = history_s
+        self._open = open_transport          # 测试可注入
+        self._gen = 0                        # 每次 connect/disconnect +1，用来取消旧的自动重连
+        self.auto_reconnect = True
+        self.raw_on = False                  # 原始监视器（文本/HEX）开着才收集，省内存
         self._reset()
 
     def _reset(self) -> None:
@@ -62,6 +66,11 @@ class Session:
         self.seq = 0
         self.estop_count = 0
         self.t_connect = 0.0
+        self.reconnecting = False
+        self.reconnects = 0
+        self._raw: collections.deque = collections.deque()
+        self._raw_bytes = 0
+        self.raw_dropped = 0
 
     # ------------------------------------------------------------------ 连接
     def connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
@@ -72,9 +81,10 @@ class Session:
             if not baud:
                 if note.startswith("打不开"):
                     raise LinkError("open_failed", note)
-                raise LinkError("no_frames", note, "也可以在波特率下拉框手动选一个再连")
+                raise LinkError("no_frames", note, "也可以在波特率下拉框手动选一个再连；不是工作台固件的设备"
+                                "（视觉模块 printf、蓝牙 AT…）手动选波特率连上后，切到“原始”视图看收发")
         try:
-            tr = ReplayTransport(port[7:]) if port.startswith("replay:") else open_transport(port, baud or 0)
+            tr = ReplayTransport(port[7:]) if port.startswith("replay:") else self._open(port, baud or 0)
         except Exception as e:  # noqa: BLE001
             raise LinkError("open_failed", f"打不开 {port}：{e}",
                             "确认没有别的程序（串口助手、Keil/CCS 调试）占着这个口，拔插 USB 再试") from e
@@ -84,11 +94,15 @@ class Session:
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
                 self.start_log()
-        tr.start(self._on_bytes, self._on_transport_error)
+        with self.lock:
+            self._gen += 1
+            gen = self._gen
+        tr.start(self._on_bytes, lambda msg: self._on_transport_error(msg, gen))
         return {"port": port, "baud": baud, "note": note}
 
     def disconnect(self) -> None:
         with self.lock:
+            self._gen += 1                    # 主动断开：取消自动重连
             tr, log = self.tr, self.log
             self.tr = None
         if tr:
@@ -98,8 +112,62 @@ class Session:
         with self.lock:
             self._reset()
 
-    def _on_transport_error(self, msg: str) -> None:
-        self.emit(LinkError("link_lost", f"连接断开：{msg}", "检查 USB 线/供电；板子复位后点“连接”重连").as_dict())
+    def _on_transport_error(self, msg: str, gen: int | None = None) -> None:
+        with self.lock:
+            stale = gen is not None and gen != self._gen
+            port, baud = self.port, self.baud
+            can = (self.auto_reconnect and not stale and self.tr is not None
+                   and not port.startswith((SIM_PREFIX, "replay:")))
+            if can:
+                old, self.tr, self.reconnecting = self.tr, None, True
+        if stale:
+            return
+        if not can:
+            self.emit(LinkError("link_lost", f"连接断开：{msg}", "检查 USB 线/供电；板子复位后点“连接”重连").as_dict())
+            return
+        try:
+            old.close()
+        except Exception:  # noqa: BLE001
+            pass
+        self.emit(LinkError("link_lost", f"连接断开：{msg}", "正在自动重连（线插回去即可）；不想重连就点“断开”").as_dict())
+        threading.Thread(target=self._reconnect_loop, args=(port, baud, gen), daemon=True).start()
+
+    RECONNECT_BACKOFF = (0.25, 0.5, 1.0, 2.0, 4.0)
+
+    def _reconnect_loop(self, port: str, baud: int, gen: int | None) -> None:
+        """指数退避重开同一个口（同一波特率），直到成功或用户主动断开；成功后重读全部参数。
+        板子在断线期间应已按心跳超时自行进入安全状态（QUESTIONS 决定 1），这里不自动解除急停。"""
+        k = 0
+        while True:
+            time.sleep(self.RECONNECT_BACKOFF[min(k, len(self.RECONNECT_BACKOFF) - 1)])
+            k += 1
+            with self.lock:
+                if gen != self._gen:
+                    return
+            try:
+                tr = self._open(port, baud)
+            except Exception:  # noqa: BLE001
+                continue
+            with self.lock:
+                if gen != self._gen:
+                    tr.close()
+                    return
+                self.tr, self.reconnecting = tr, False
+                self.reconnects += 1
+                self.parser = Parser()
+                t_open = time.monotonic()
+            tr.start(self._on_bytes, lambda msg: self._on_transport_error(msg, gen))
+            self.emit({"type": "reconnected", "port": port, "attempts": k, "message": f"已自动重连 {port}（第 {k} 次尝试），正在重读参数"})
+            for _ in range(40):                       # 等心跳再读参数（最多 2 s）
+                if self.last_hb > t_open:
+                    break
+                time.sleep(0.05)
+            if self.schema:
+                try:
+                    self.read_all_params()
+                except Exception:  # noqa: BLE001
+                    pass
+            return
 
     # ------------------------------------------------------------------ 收
     def _on_bytes(self, data: bytes) -> None:
@@ -109,6 +177,8 @@ class Session:
             self.last_rx = now
             if self.log:
                 self.log.write(RX, data)
+            if self.raw_on:
+                self._push_raw(now, RX, data)
             frames = self.parser.feed(data)
         for kind, id_, seq, payload in frames:
             if kind == HEARTBEAT:
@@ -153,6 +223,27 @@ class Session:
                                 "它会生成 build/.../linkgen/link_schema.json（打包版把它拷到 ~/.dzbench/schemas/ 或设 DZBENCH_SCHEMA_DIRS）；"
                                 "若固件与工程版本不一致，重新编译烧录").as_dict())
 
+    RAW_MAX_BYTES = 256 * 1024
+
+    def _push_raw(self, t: float, d: int, data: bytes) -> None:
+        self._raw.append((t - self.t_connect, d, data))
+        self._raw_bytes += len(data)
+        while self._raw_bytes > self.RAW_MAX_BYTES:      # UI 跟不上就丢最旧的，并计数
+            old = self._raw.popleft()[2]
+            self._raw_bytes -= len(old)
+            self.raw_dropped += len(old)
+
+    def take_raw(self, max_bytes: int = 16384) -> list:
+        """取走待推送的原始块（每次最多 max_bytes，剩下的下次再推）。"""
+        out, n = [], 0
+        with self.lock:
+            while self._raw and n < max_bytes:
+                c = self._raw.popleft()
+                self._raw_bytes -= len(c[2])
+                out.append(c)
+                n += len(c[2])
+        return out
+
     def take_new(self) -> list:
         with self.lock:
             out, self._new = self._new, []
@@ -173,6 +264,8 @@ class Session:
             frame = encode(kind, id_, self.seq, payload)
             if self.log:
                 self.log.write(TX, frame)
+            if self.raw_on and tr:
+                self._push_raw(time.monotonic(), TX, frame)
         if not tr:
             return False
         tr.write(frame)
@@ -263,15 +356,18 @@ class Session:
     def status(self) -> dict:
         now = time.monotonic()
         with self.lock:
-            connected = self.tr is not None
+            connected = self.tr is not None or self.reconnecting
             alive = connected and now - self.last_hb < HB_TIMEOUT_S
             st = {"type": "status", "connected": connected, "port": self.port, "baud": self.baud,
                   "alive": alive, "rx_bytes": self.rx_bytes, "good": self.parser.good, "bad": self.parser.bad,
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
                   "schema_ok": self.schema is not None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
+                  "reconnecting": self.reconnecting, "reconnects": self.reconnects, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}
-        if connected and not alive and now - self.t_connect > HB_TIMEOUT_S:
+        if self.reconnecting:
+            st["hint"] = "连接断开，正在自动重连…（线插回去即可；急停此时送不到板子）"
+        elif connected and not alive and now - self.t_connect > HB_TIMEOUT_S:
             st["hint"] = ("收到字节但没有合法帧：波特率可能不对" if self.rx_bytes and not self.parser.good
                           else "超过 1.6 s 没有心跳：板子没上电/没跑工作台固件/线松了")
         return st
