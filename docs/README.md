@@ -1,5 +1,14 @@
 # 文档索引
 
+**板子名字别搞混**（两块都是立创开发板，名字只差一个字）：
+
+| 叫法 | 芯片 | 仓库里的板卡目录 | IDE |
+|---|---|---|---|
+| **天空星** | STM32F407（VET6 / VGT6） | `boards/stm32f407-skystar`、`boards/stm32f407-skystar-cubemx` | Keil / CubeMX |
+| **天猛星** | TI MSPM0G3507 | `boards/mspm0g3507-tianmengxing` | CCS / SysConfig |
+
+`tools/check_ai_docs.py` 会检查：同一行里“天空星”不能和 MSPM0、“天猛星”不能和 F407/STM32 写在一起。<!-- board-names-ok -->
+
 | 文档 | 内容 |
 |---|---|
 | 00-快速上手.md | **第一次用先看**：装 exe、CubeMX、Keil 加模块、ST-Link/DAPLink 烧录、连接、Agent 调参、急停（带截图） |

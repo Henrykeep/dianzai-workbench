@@ -1,4 +1,4 @@
-# 嘉立创·天猛星 MSPM0G3507 开发板 —— 2 电机小车（car_2wd）
+# 立创·天猛星 MSPM0G3507 开发板 —— 2 电机小车（car_2wd）
 # 配置来源为 SysConfig（ccs/tianmengxing.syscfg -> syscfg/ti_msp_dl_config.{c,h}）。
 # 【已实测】syscfg/ 下文件由 SysConfig CLI 1.28.0 + MSPM0 SDK 2.11 生成（tools/syscfg_gen.sh，CI firmware 工作流比对）；【未验证】未上板。
 # 引脚为我按 mspm0g350x.h 的 IOMUX 表挑的可用组合（复用功能已对照该头文件），**不是天猛星原理图核实的接线**。

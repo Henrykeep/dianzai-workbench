@@ -6,10 +6,10 @@
 
 1. SysConfig 中按 05 的标签约定命名（GPIO_/PWM_/UART_…）。
 2. `python3 tools/syscfg_import.py <工程>.syscfg` 打印 GPIO/PWM/UART/ENC/TIMER（ADC 仍报 TODO）；`--check boards/<板>/board.yaml` 比对。命名：`GPIO_<名>`+引脚名 `PIN`、`PWM_<定时器>`（如 PWM_TIMG0，逻辑名在 board.yaml 起）、`ENC_<名>`（QEI 模块或 GPIO 组，引脚名以 A/B 结尾）、`TIMER_<名>`、`UART_<名>`；TI 例程风格 `QEI_0`/`assignedPort+assignedPin` 也认。
-3. 板卡：`boards/mspm0g3507-tianmengxing`（立创·天猛星 MSPM0G3507）——引脚与 .syscfg 均 TODO，resources 为空，只通过 schema 校验。
+3. 板卡：`boards/mspm0g3507-tianmengxing`（立创·天猛星 MSPM0G3507）——.syscfg 用 SysConfig CLI 生成，car_2wd 可交叉编译；引脚是按 IOMUX 表挑的，【未验证】未对照天猛星原理图、未上板。
 
 - 【已实测】syscfg_import 自检：合成样例 + 3 个 TI SDK 2.11 官方例程 .syscfg（真实导出格式）；`ccs/tianmengxing.syscfg` 与 board.yaml 一致（make check）。
-- 【未验证】合成样例未经真实 SysConfig 打开；移植层未实现；天猛星未上板。
+- 【未验证】合成样例未经真实 SysConfig 打开；天猛星未上板。
 
 ## 参考来源
 - TI SysConfig（https://www.ti.com/tool/SYSCONFIG）、MSPM0-SDK（https://www.ti.com/tool/MSPM0-SDK）。

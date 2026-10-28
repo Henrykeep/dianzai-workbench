@@ -18,6 +18,25 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 PATHLIKE = re.compile(r"`((?:docs|tools|firmware|ports|boards|apps|examples|host|app|third_party)/[^`*<>\s]*)`")
 
 
+BOARD_MIX = [("天空星", re.compile(r"MSPM0|tianmengxing|G3507", re.I)),
+             ("天猛星", re.compile(r"F407|STM32|skystar", re.I))]
+
+
+def board_names(root: pathlib.Path) -> list[str]:
+    """天空星 = STM32F407，天猛星 = MSPM0G3507。同一行写反了就报（“F407(天空星) / MSPM0G3507”这种并列除外：按逗号/斜杠分段看）。"""
+    errs = []
+    files = list(root.glob("*.md")) + list((root / "docs").glob("*.md")) + list(root.glob("boards/*/board.yaml")) + list(root.glob("ports/*/README.md"))
+    for f in files:
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            if "board-names-ok" in line:
+                continue
+            for seg in re.split(r"[，,/、；;|（）()]", line):
+                for name, bad in BOARD_MIX:
+                    if name in seg and bad.search(seg):
+                        errs.append(f"{f.relative_to(root)}:{i} 板名可能写反：{seg.strip()[:60]}（天空星=F407，天猛星=MSPM0）")
+    return errs
+
+
 def check(root: pathlib.Path) -> list[str]:
     errs = []
     agents, llms = root / "AGENTS.md", root / "llms.txt"
@@ -45,7 +64,7 @@ def check(root: pathlib.Path) -> list[str]:
     for t in set(re.findall(r"`make ([a-z][\w-]*)", a)):
         if not re.search(rf"^{re.escape(t)}\s*:", mk, re.M):
             errs.append(f"AGENTS.md 提到 make {t}，Makefile 里没有")
-    return errs
+    return errs + board_names(root)
 
 
 def selftest() -> None:
@@ -54,14 +73,14 @@ def selftest() -> None:
         (r / "docs").mkdir()
         (r / "docs/README.md").write_text("| 01-a.md |", encoding="utf-8")
         (r / "docs/01-a.md").write_text("x", encoding="utf-8")
-        (r / "docs/02-b.md").write_text("x", encoding="utf-8")
+        (r / "docs/02-b.md").write_text("天猛星 STM32F407 核心板\nF407(天空星) / MSPM0G3507 都行", encoding="utf-8")
         (r / "Makefile").write_text("check:\n", encoding="utf-8")
         (r / "AGENTS.md").write_text("`make check` `make nope` `tools/gone.py`", encoding="utf-8")
         (r / "llms.txt").write_text("[a](docs/01-a.md) [x](docs/zz.md)", encoding="utf-8")
         e = "\n".join(check(r))
-        for want in ("索引缺 02-b.md", "llms.txt 缺 docs/02-b.md", "链接不存在：docs/zz.md", "tools/gone.py", "make nope"):
+        for want in ("索引缺 02-b.md", "llms.txt 缺 docs/02-b.md", "链接不存在：docs/zz.md", "tools/gone.py", "make nope", "02-b.md:1 板名可能写反"):
             assert want in e, (want, e)
-        assert "make check" not in e
+        assert "make check" not in e and "02-b.md:2" not in e
     print("✓ check_ai_docs 自检")
 
 

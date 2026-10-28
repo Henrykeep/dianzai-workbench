@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """syscfg_import.py —— TI SysConfig（.syscfg）→ board.yaml resources 的导入接口（第 0 阶段：接口 + 最小解析，未接 mspm0 移植层）。
 
-MSPM0（嘉立创天猛星 MSPM0G3507）统一用 SysConfig + DriverLib：SysConfig 是唯一配置源，生成 ti_msp_dl_config.{c,h}；
+MSPM0（立创·天猛星 MSPM0G3507）统一用 SysConfig + DriverLib：SysConfig 是唯一配置源，生成 ti_msp_dl_config.{c,h}；
 将来的 ports/mspm0-driverlib 只包装其中的实例名（GPIO_LED_PIN_LED_PIN、PWM_MOTOR_A_INST…），与 CubeMX 流程同构。
 
 命名约定（SysConfig 里每个实例的 Name 字段）：GPIO_<名> / PWM_<名> / ENC_<名> / UART_<名> / ADC_<名> / TIMER_<名>。
