@@ -176,26 +176,62 @@ def generic_check(board: dict, rep: Report) -> None:
 
 def stm32f4_check(board: dict, rep: Report) -> None:
     from families import stm32f4 as F
+    stm32_check(F, board, rep, f4=True)
+
+
+def stm32f1_check(board: dict, rep: Report) -> None:
+    from families import stm32f1 as F
+    stm32_check(F, board, rep, f4=False)
+    remap_check(F, board, rep)
+
+
+def remap_check(F, board: dict, rep: Report) -> None:
+    """F1 是整组重映射：同一外设用到的引脚必须落在同一组（RM0008 AFIO）。"""
     res = board.get("resources", {}) or {}
+    by_tim: dict[str, dict[int, str]] = {}
+    for r in res.get("pwm", []) or []:
+        if not _is_todo(r.get("pin")) and not _is_todo(r.get("channel")):
+            by_tim.setdefault(r["timer"], {})[r["channel"]] = r["pin"]
+    for r in res.get("encoder", []) or []:
+        if r.get("timer") and not _is_todo(r.get("pin_a")):
+            by_tim.setdefault(r["timer"], {}).update({1: r["pin_a"], 2: r["pin_b"]})
+    for tim, used in by_tim.items():
+        groups = F.TIMER_REMAP.get(tim, [])
+        if groups and not any(all(g.get(c) == p for c, p in used.items()) for g in groups):
+            rep.err(f"[重映射] {tim} 用了 {', '.join(f'CH{c}={p}' for c, p in sorted(used.items()))}，不属于同一重映射组：可选 {groups}")
+    for kind, table, keys in (("uart", F.UART_REMAP, ("tx", "rx")), ("i2c", F.I2C_REMAP, ("scl", "sda")),
+                              ("spi", F.SPI_REMAP, ("sck", "miso", "mosi"))):
+        for r in res.get(kind, []) or []:
+            got = tuple(r.get(k) for k in keys)
+            if r.get("instance") in table and not any(_is_todo(x) for x in got) and got not in table[r["instance"]]:
+                rep.err(f"[重映射] {kind}.{r['name']}: {r['instance']} 的 {'/'.join(keys)}={'/'.join(got)} 不是一组，可选 {table[r['instance']]}")
+
+
+def stm32_check(F, board: dict, rep: Report, f4: bool) -> None:
+    """STM32 表驱动检查：F 为 families/ 下的知识表模块（stm32f4 / stm32f1 同形状）。"""
+    res = board.get("resources", {}) or {}
+    pkg = getattr(F, "PACKAGE", None)
 
     def pin_ok(pin, where):
         if _is_todo(pin):
             return False
         if not F.PIN_RE.match(pin):
-            rep.err(f"[引脚格式] {where}: {pin} 不是 STM32 引脚名（应形如 PA8）")
+            rep.err(f"[引脚格式] {where}: {pin} " + (f"在 {pkg} 封装上不存在" if pkg else "不是 STM32 引脚名（应形如 PA8）"))
             return False
         if pin in F.RESERVED_PINS:
             rep.warn(f"[保留引脚] {where}: {pin} 是 {F.RESERVED_PINS[pin]}")
+        if pin in getattr(F, "TRAP_PINS", {}):
+            rep.warn(f"[坑脚] {where}: {pin} {F.TRAP_PINS[pin]}")
         return True
 
     clk = board.get("clock", {}) or {}
     cube = board.get("port") == "stm32-cubemx"   # CubeMX 管时钟与 DMA：这里只核对引脚复用，时钟/DMA 由 ioc_import 检查
-    hse = 0 if cube else clk.get("hse_hz", 0)
+    hse = 0 if (cube or not f4) else clk.get("hse_hz", 0)
     if hse == "TODO":
         hse = 0   # 已作为 TODO 记录；gen_board.py 生成固件时会拒绝
     if hse and (hse % 1_000_000 or not 2 <= hse // 1_000_000 <= 26):
         rep.err(f"[时钟] hse_hz={hse}：移植层要求 HSE 为 2~26 MHz 的整 MHz")
-    if not cube and clk.get("sysclk_hz", 168_000_000) != 168_000_000:
+    if f4 and not cube and clk.get("sysclk_hz", 168_000_000) != 168_000_000:
         rep.err("[时钟] stm32f4-hal 移植层目前只实现 168 MHz（PLL N=336, P=2, Q=7）")
 
     for r in res.get("gpio", []) or []:
@@ -219,7 +255,7 @@ def stm32f4_check(board: dict, rep: Report) -> None:
         where = f"encoder.{r['name']}"
         tim = r["timer"]
         if tim not in F.TIMERS or not F.TIMERS[tim][2]:
-            rep.err(f"[定时器] {where}: {tim} 不支持正交编码器模式（可用 TIM1/2/3/4/5/8）")
+            rep.err(f"[定时器] {where}: {tim} 不支持正交编码器模式（可用 {[t for t, v in F.TIMERS.items() if v[2]]}）")
             continue
         for ch, key in ((1, "pin_a"), (2, "pin_b")):
             if pin_ok(r[key], f"{where}.{key}"):
@@ -230,6 +266,8 @@ def stm32f4_check(board: dict, rep: Report) -> None:
     for r in res.get("uart", []) or []:
         where = f"uart.{r['name']}"
         inst = r["instance"]
+        if _is_todo(inst):
+            continue
         if inst not in F.UARTS:
             rep.err(f"[串口] {where}: 未知串口 {inst}")
             continue
@@ -254,6 +292,8 @@ def stm32f4_check(board: dict, rep: Report) -> None:
                 rep.err(f"[DMA 冲突] {inst}_{kind} 的所有可选数据流都已被占用：{table[inst]}")
     for r in res.get("i2c", []) or []:
         where = f"i2c.{r['name']}"
+        if _is_todo(r["instance"]):
+            continue
         if r["instance"] not in F.I2CS:
             rep.err(f"[I2C] {where}: 未知 I2C {r['instance']}，可选 {list(F.I2CS)}")
             continue
@@ -263,6 +303,8 @@ def stm32f4_check(board: dict, rep: Report) -> None:
                 rep.err(f"[复用错误] {where}.{key}: {r[key]} 不能作为 {r['instance']}_{key.upper()}，可选 {pins}")
     for r in res.get("spi", []) or []:
         where = f"spi.{r['name']}"
+        if _is_todo(r["instance"]):
+            continue
         if r["instance"] not in F.SPIS:
             rep.err(f"[SPI] {where}: 未知 SPI {r['instance']}，可选 {list(F.SPIS)}")
             continue
@@ -356,7 +398,7 @@ def mspm0_check(board: dict, rep: Report) -> None:
         tim(t.get("instance"), f"timer.{t.get('name')}")
 
 
-FAMILY_CHECKS = {"stm32f4": stm32f4_check, "mspm0": mspm0_check}
+FAMILY_CHECKS = {"stm32f4": stm32f4_check, "stm32f1": stm32f1_check, "mspm0": mspm0_check}
 
 
 def cubemx_check(board: dict, rep: Report) -> None:

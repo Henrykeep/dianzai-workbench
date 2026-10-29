@@ -5,8 +5,8 @@
 
   需求：选定件在 tools/catalog/parts.yaml 里的 res（逻辑名按 docs/05 标签约定；scheme.yaml 的 names 可覆盖），
         外加 1 路 LINK 调试串口（scheme.yaml debug_link_uart: false 可关）。offboard 的能力不占主控资源。
-  分配：只对有知识表的系列自动分配（目前 stm32f4，表在 tools/families/stm32f4.py，与 validate_board 同一份）；
-        其他系列（stm32f1 / mspm0）输出需求清单和全 TODO 的草稿，引脚由人在 CubeMX/SysConfig 里定。
+  分配：只对有知识表的系列自动分配（stm32f4 LQFP100、stm32f1 LQFP48，表在 tools/families/，与 validate_board 同一份）；
+        其他系列（mspm0 等）输出需求清单和全 TODO 的草稿，引脚由人在 CubeMX/SysConfig 里定。
   --fixed：已有板子/PCB 的 board.yaml——同类型同名的资源原样沿用（接线已焊死），只给剩下的分配。
   校验：草稿交给 boardlib.check_board（+ --app 时 check_requires），**和 validate_board 是同一个检查**，这里不另写规则。
 
@@ -52,113 +52,144 @@ def demands(s: dict, parts: dict) -> list[dict]:
     return out
 
 
-# ── stm32f4 分配器 ─────────────────────────────────────────────────
-# 偏好顺序：编码器先用通用 16 位定时器，把高级定时器 TIM1/8 留给 PWM；GPIO 先用 PE/PD（少有复用冲突）
+# ── STM32 分配器（表驱动：families/stm32f4.py、stm32f1.py 同形状） ─────────────
+# 偏好顺序：编码器先用通用定时器，把高级定时器 TIM1/8 留给 PWM；不存在的定时器/串口自动跳过
 ENC_ORDER = ["TIM3", "TIM4", "TIM5", "TIM2", "TIM8", "TIM1"]
 PWM_ORDER = ["TIM1", "TIM8", "TIM2", "TIM5", "TIM9", "TIM12", "TIM3", "TIM4", "TIM10", "TIM11", "TIM13", "TIM14"]
 UART_ORDER = ["USART2", "USART3", "UART4", "UART5", "USART6", "USART1"]
-GPIO_ORDER = [f"P{p}{i}" for p in "EDCBA" for i in range(16)]
+F4_GPIO_ORDER = [f"P{p}{i}" for p in "EDCBA" for i in range(16)]   # F4 LQFP100：PE/PD 少有复用冲突
+FAMILIES = ("stm32f4", "stm32f1")
 
 
-class F4:
-    def __init__(self, board: dict):
-        from families import stm32f4 as F
-        self.F, self.pins, self.tims, self.dma = F, set(F.RESERVED_PINS), {}, {}
+class Stm32Alloc:
+    def __init__(self, fam: str, board: dict):
+        import importlib
+        F = self.F = importlib.import_module(f"families.{fam}")
+        self.fam, self.pins, self.tims, self.tgroup, self.dma = fam, set(F.RESERVED_PINS), {}, {}, {}
         self.uarts, self.i2c, self.spi, self.used_ch = set(), set(), set(), set()
-        for p in (board.get("reserved_pins") or {}):
-            self.pins.add(p)
+        self.take(*(board.get("reserved_pins") or {}))
+        if hasattr(F, "GPIO_PINS"):   # 普通 GPIO 先用不带外设复用的脚，坑脚（JTAG/PC13）最后
+            af = {p for ps in F.TIMER_CH_PINS.values() for p in ps} | {p for u in F.UARTS.values() for p in u[2] + u[3]} \
+                 | set(F.ADC_CH_PINS.values())
+            trap = set(getattr(F, "TRAP_PINS", {}))
+            self.gpio_order = sorted(F.GPIO_PINS, key=lambda p: (p in trap, p in af))
+        else:
+            self.gpio_order = F4_GPIO_ORDER
 
+    # 引脚
     def take(self, *ps):
         self.pins.update(p for p in ps if p and p != TODO)
 
     def free(self, p):
-        return p not in self.pins
+        return p not in self.pins and bool(self.F.PIN_RE.match(p)) and (self.fam != "stm32f4" or p[1] in "ABCDE")
+
+    # 定时器重映射组：F1 是整组（TIMER_REMAP），F4 每通道任选 → 一组、每通道多个候选
+    def groups(self, tim):
+        if hasattr(self.F, "TIMER_REMAP"):
+            gs = [{c: [p] for c, p in g.items()} for g in self.F.TIMER_REMAP.get(tim, [])]
+        else:
+            gs = [{c: self.F.TIMER_CH_PINS.get((tim, c), []) for c in (1, 2, 3, 4)}]
+        if tim in self.tgroup:
+            return [gs[self.tgroup[tim]]]
+        return gs
+
+    def pairs(self, remap_attr, inst, *lists):
+        if hasattr(self.F, remap_attr):
+            return list(getattr(self.F, remap_attr)[inst])
+        import itertools
+        return list(itertools.product(*lists))
+
+    def _lock_group(self, tim, used: dict):
+        if hasattr(self.F, "TIMER_REMAP"):
+            for i, g in enumerate(self.F.TIMER_REMAP.get(tim, [])):
+                if all(g.get(c) == p for c, p in used.items()):
+                    self.tgroup[tim] = i
+                    return
 
     def seed(self, t: str, r: dict):
         """--fixed 沿用的资源先占位。"""
         for k in ("pin", "pin_a", "pin_b", "tx", "rx", "scl", "sda", "sck", "mosi", "miso", "cs"):
             self.take(r.get(k))
-        if t == "encoder":
-            self.tims[r["timer"]] = ("enc", None)
-        if t == "pwm":
+        if t == "encoder" and r.get("timer") not in (None, TODO):
+            self.tims[r["timer"]] = ("enc", None); self._lock_group(r["timer"], {1: r["pin_a"], 2: r["pin_b"]})
+        if t == "pwm" and r.get("timer") not in (None, TODO):
             self.tims.setdefault(r["timer"], ("pwm", r["freq_hz"])); self.used_ch.add((r["timer"], r["channel"]))
-        if t == "uart":
-            self.uarts.add(r["instance"])
-        if t == "i2c":
-            self.i2c.add(r["instance"])
-        if t == "spi":
-            self.spi.add(r["instance"])
+            self._lock_group(r["timer"], {r["channel"]: r["pin"]})
+        if t == "timer":
+            self.tims.setdefault(r["instance"], ("base", None))
+        for kind, store in (("uart", self.uarts), ("i2c", self.i2c), ("spi", self.spi)):
+            if t == kind:
+                store.add(r["instance"])
 
     def encoder(self, d):
         for tim in ENC_ORDER:
-            if tim in self.tims:
+            if tim in self.tims or tim not in self.F.TIMERS or not self.F.TIMERS[tim][2]:
                 continue
-            for a in self.F.TIMER_CH_PINS.get((tim, 1), []):
-                for b in self.F.TIMER_CH_PINS.get((tim, 2), []):
-                    if self.free(a) and self.free(b):
-                        self.tims[tim] = ("enc", None); self.take(a, b)
-                        return {"name": d["name"], "timer": tim, "pin_a": a, "pin_b": b}
+            for gi, g in enumerate(self.groups(tim)):
+                for a in g.get(1, []):
+                    for b in g.get(2, []):
+                        if self.free(a) and self.free(b):
+                            self.tims[tim] = ("enc", None); self.take(a, b); self._lock_group(tim, {1: a, 2: b})
+                            return {"name": d["name"], "timer": tim, "pin_a": a, "pin_b": b}
         return None
 
     def pwm_group(self, ds):
-        """同一件的 PWM 放同一个定时器（频率相同、同步更新）。"""
+        """同一件的 PWM 放同一个定时器（频率相同、同步更新），且在同一重映射组内。"""
         f = ds[0]["freq_hz"]
         for tim in PWM_ORDER:
             st = self.tims.get(tim)
-            if st and st != ("pwm", f):
+            if tim not in self.F.TIMERS or (st and st != ("pwm", f)):
                 continue
-            got, taken = [], set()
-            for d in ds:
-                for ch in (1, 2, 3, 4):
-                    if (tim, ch) in self.used_ch or (tim, ch) in taken:
-                        continue
-                    pin = next((p for p in self.F.TIMER_CH_PINS.get((tim, ch), []) if self.free(p) and p not in {g["pin"] for g in got}), None)
-                    if pin:
-                        got.append({"name": d["name"], "timer": tim, "channel": ch, "pin": pin, "freq_hz": f}); taken.add((tim, ch))
-                        break
-            if len(got) == len(ds):
-                self.tims[tim] = ("pwm", f); self.used_ch |= taken
-                self.take(*[g["pin"] for g in got])
-                return got
+            for g in self.groups(tim):
+                got, taken = [], set()
+                for d in ds:
+                    for ch in (1, 2, 3, 4):
+                        if (tim, ch) in self.used_ch or (tim, ch) in taken:
+                            continue
+                        pin = next((p for p in g.get(ch, []) if self.free(p) and p not in {x["pin"] for x in got}), None)
+                        if pin:
+                            got.append({"name": d["name"], "timer": tim, "channel": ch, "pin": pin, "freq_hz": f}); taken.add((tim, ch))
+                            break
+                if len(got) == len(ds):
+                    self.tims[tim] = ("pwm", f); self.used_ch |= taken
+                    self.take(*[x["pin"] for x in got]); self._lock_group(tim, {x["channel"]: x["pin"] for x in got})
+                    return got
         return None
 
     def uart(self, d):
         for inst in UART_ORDER:
-            if inst in self.uarts:
+            if inst in self.uarts or inst not in self.F.UARTS:
                 continue
             _, _, txs, rxs, _ = self.F.UARTS[inst]
-            for tx in txs:
-                for rx in rxs:
-                    if self.free(tx) and self.free(rx):
-                        self.uarts.add(inst); self.take(tx, rx)
-                        return {"name": d["name"], "instance": inst, "tx": tx, "rx": rx, "baud": d.get("baud", 115200)}
+            for tx, rx in self.pairs("UART_REMAP", inst, txs, rxs):
+                if self.free(tx) and self.free(rx):
+                    self.uarts.add(inst); self.take(tx, rx)
+                    return {"name": d["name"], "instance": inst, "tx": tx, "rx": rx, "baud": d.get("baud", 115200)}
         return None
 
     def i2c_bus(self, d):
         for inst, (_, scls, sdas) in self.F.I2CS.items():
             if inst in self.i2c:
                 continue
-            for a in scls:
-                for b in sdas:
-                    if self.free(a) and self.free(b) and boardlib_pin(a) and boardlib_pin(b):
-                        self.i2c.add(inst); self.take(a, b)
-                        return {"name": d["name"], "instance": inst, "scl": a, "sda": b, "speed_hz": d.get("speed_hz", 400000)}
+            for a, b in self.pairs("I2C_REMAP", inst, scls, sdas):
+                if self.free(a) and self.free(b):
+                    self.i2c.add(inst); self.take(a, b)
+                    return {"name": d["name"], "instance": inst, "scl": a, "sda": b, "speed_hz": d.get("speed_hz", 400000)}
         return None
 
-    def spi_dev(self, d, bus_cache={}):
+    def spi_dev(self, d):
+        bus = getattr(self, "_spi_bus", {})
+        self._spi_bus = bus
         for inst, (_, _, scks, misos, mosis) in self.F.SPIS.items():
-            if inst in self.spi and inst not in bus_cache:
+            if inst in self.spi and inst not in bus:
                 continue
-            if inst in bus_cache:
-                sck, miso, mosi = bus_cache[inst]
-            else:
-                cand = [(a, b, c) for a in scks for b in misos for c in mosis
-                        if all(self.free(x) and boardlib_pin(x) for x in (a, b, c))]
+            if inst not in bus:
+                cand = [c for c in self.pairs("SPI_REMAP", inst, scks, misos, mosis) if all(self.free(x) for x in c)]
                 if not cand:
                     continue
-                sck, miso, mosi = cand[0]; self.take(sck, miso, mosi); self.spi.add(inst); bus_cache[inst] = (sck, miso, mosi)
-            cs = self.gpio_pin()
-            return {"name": d["name"], "instance": inst, "sck": sck, "miso": miso, "mosi": mosi, "cs": cs}
+                self.take(*cand[0]); self.spi.add(inst); bus[inst] = cand[0]
+            sck, miso, mosi = bus[inst]
+            return {"name": d["name"], "instance": inst, "sck": sck, "miso": miso, "mosi": mosi, "cs": self.gpio_pin()}
         return None
 
     def adc(self, d):
@@ -169,7 +200,7 @@ class F4:
         return None
 
     def gpio_pin(self):
-        for p in GPIO_ORDER:
+        for p in self.gpio_order:
             if self.free(p):
                 self.take(p)
                 return p
@@ -183,11 +214,12 @@ class F4:
         return None
 
     def tim_clk(self, tim):
+        if hasattr(self.F, "TIM_CLK"):
+            return self.F.TIM_CLK[self.F.TIMERS[tim][0]]
         return 168_000_000 if self.F.TIMERS[tim][0] == "APB2" else 84_000_000   # F407 168 MHz：APB2 84→定时器×2，APB1 42→×2
 
-
-def boardlib_pin(p):  # LQFP100 没有 PF/PH/PI 的这几只脚（I2C2 的 PF1/PH4 等），草稿里不用
-    return p[1] in "ABCDE"
+    def sysclk(self):
+        return getattr(self.F, "SYSCLK", 168_000_000)
 
 
 def allocate(s: dict, parts: dict, fixed: dict | None, name: str) -> tuple[dict, list[str], dict]:
@@ -199,7 +231,7 @@ def allocate(s: dict, parts: dict, fixed: dict | None, name: str) -> tuple[dict,
     res: dict[str, list] = {}
     fixed_res = (fixed or {}).get("resources", {}) or {}
     fixed_names = {(t, r["name"]): r for t in boardlib.RES_TYPES for r in fixed_res.get(t, []) or []}
-    alloc = F4(fixed or {}) if fam == "stm32f4" else None
+    alloc = Stm32Alloc(fam, fixed or {}) if fam in FAMILIES else None
     pending = []
     for d in ds:
         hit = fixed_names.get((d["type"], d["name"]))
@@ -264,8 +296,8 @@ def allocate(s: dict, parts: dict, fixed: dict | None, name: str) -> tuple[dict,
              "config_source": {"tool": "sysconfig" if fam == "mspm0" else "cubemx", "file": TODO},
              "mcu": mcu, "todo": ["草稿：按 cubemx.md 在 CubeMX 里配一遍、生成后用 ioc_import 重新导出 board.yaml 覆盖本文件"] + notes,
              "resources": res}
-    if fam == "stm32f4":
-        board["clock"] = {"hse_hz": TODO, "sysclk_hz": 168_000_000}
+    if alloc:
+        board["clock"] = {"hse_hz": 8_000_000 if fam == "stm32f1" else TODO, "sysclk_hz": alloc.sysclk()}
     extra = {"ds": ds, "alloc": alloc}
     return board, notes, extra
 
@@ -281,8 +313,10 @@ def cubemx_md(board: dict, extra: dict, rtos: bool) -> str:
         L += ["**本系列没有自动分配**：下面只列需求，引脚自己定。", "", "| 类型 | 逻辑名 | 参数 |", "|---|---|---|"]
         L += [f"| {d['type']} | {d['name']} | {', '.join(f'{k}={v}' for k, v in d.items() if k not in ('type', 'name', 'part', 'from'))} |" for d in ds]
         return "\n".join(L) + "\n"
-    L += ["## 1. System Core", "", "- RCC：HSE = Crystal/Ceramic Resonator；Clock Configuration 里 HCLK = 168 MHz（APB1 42 MHz / APB2 84 MHz，定时器时钟各 ×2）",
-          "- SYS：Debug = Serial Wire（PA13/PA14 保留给 ST-Link / DAPLink）" + ("；Timebase Source 选一个空闲定时器（用了 FreeRTOS 时不要用 SysTick）" if rtos else ""),
+    clk_txt = ("HCLK = 72 MHz（APB1 36 MHz、定时器 ×2 = 72 MHz；APB2 72 MHz）" if al.fam == "stm32f1"
+               else "HCLK = 168 MHz（APB1 42 MHz / APB2 84 MHz，定时器时钟各 ×2）")
+    L += ["## 1. System Core", "", f"- RCC：HSE = Crystal/Ceramic Resonator；Clock Configuration 里 {clk_txt}",
+          "- SYS：Debug = Serial Wire（PA13/PA14 保留给 ST-Link / DAPLink" + ("；F1 这样还会释放 PA15/PB3/PB4 的 JTAG 功能）" if al.fam == "stm32f1" else "）") + ("；Timebase Source 选一个空闲定时器（用了 FreeRTOS 时不要用 SysTick）" if rtos else ""),
           "- NVIC：Priority Group = 4 bits pre-emption（docs/11）", ""]
     L += ["## 2. 引脚与外设", "", "| 引脚 | 功能 | User Label |", "|---|---|---|"]
     for r in res.get("gpio", []):
