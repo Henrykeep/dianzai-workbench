@@ -163,7 +163,10 @@ class Gateway:
         new, missing = yamlpar.rewrite(old, values)
         if missing:
             raise GatewayError("bad_param", f"{rel} 里找不到参数：{', '.join(missing)}")
-        title = f"写回参数默认值 → {rel}（{len(values)} 项）"
+        changed = sum(a != b for a, b in zip(old.splitlines(), new.splitlines()))
+        if not changed:
+            raise GatewayError("no_change", f"{rel} 里的默认值已经和板上一致，不用写回")
+        title = f"写回参数默认值 → {rel}（改 {changed} 项，共核对 {len(values)} 项）"
         return self._propose(title, reason, source, {rel: (old, new)}).card()
 
     # ---------------------------------------------------------------- 决定

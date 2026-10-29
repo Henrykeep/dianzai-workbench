@@ -286,3 +286,15 @@ def test_rollback_refuses_when_touched_file_dirty(repo):
     with pytest.raises(GatewayError) as e:
         g.rollback(r["commit"])
     assert e.value.code == "dirty" and "用户手改" in f.read_text(encoding="utf-8")
+
+
+def test_yaml_writeback_counts_only_changed_and_refuses_noop(repo):
+    g = Gateway(repo, runner=Runner())
+    c = g.propose_yaml_params("apps/x/app.yaml", {"kp": 0.5}, "写回")
+    assert "改 1 项" in c["title"]
+    g.decide(c["id"], False)
+    import re as _re
+    cur = float(_re.search(r"name:\s*kp\b[^}]*default:\s*([-\d.eE+]+)", (repo / "apps/x/app.yaml").read_text(encoding="utf-8"))[1])
+    with pytest.raises(GatewayError) as e:
+        g.propose_yaml_params("apps/x/app.yaml", {"kp": cur}, "写回")
+    assert e.value.code == "no_change"
