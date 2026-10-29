@@ -15,6 +15,7 @@
  *   可选外设（car_aux.c）：板子有 VBAT 就监测电池（过放 → 急停），有 US_TRIG/US_ECHO 就测前方距离（太近 → 不许前进）。
  */
 #include "board_gen.h"
+#include "link_io.h"
 #include "app.h"
 #include "pid.h"
 #include "motor_dc.h"
@@ -114,13 +115,13 @@ static void send(const dzframe_t *f)
 {
     uint8_t out[DZFRAME_MAX_FRAME];
     size_t n = dzframe_encode(out, sizeof out, f);
-    if (n) (void)pal_uart_write(RES_UART_LINK, out, (uint16_t)n);   /* EBUSY 时丢这一帧，下一帧补上 */
+    if (n) (void)link_write(out, (uint16_t)n);   /* EBUSY 时丢这一帧，下一帧补上 */
 }
 
 static void handle_rx(uint32_t now)
 {
     uint8_t buf[32]; uint16_t got = 0;
-    if (pal_uart_read(RES_UART_LINK, buf, sizeof buf, &got) != DZ_OK) return;
+    if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
     dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_link_params);
     for (uint16_t i = 0; i < got; i++) {

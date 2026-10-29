@@ -23,7 +23,9 @@ Q := $(if $(filter 1,$(V)),,@)
 ROOT      := $(CURDIR)
 BOARD_YML := boards/$(BOARD)/board.yaml
 APP_DIR   ?= $(firstword $(wildcard apps/$(APP) examples/$(APP)))
-BDIR      := build/$(BOARD)$(if $(VARIANT),-$(VARIANT))
+# LINK=rtt：LINK 走调试探针 RTT（firmware/proto/dzrtt），不占串口；默认 uart。换输出目录免得混用目标文件
+LINK      ?= uart
+BDIR      := build/$(BOARD)$(if $(VARIANT),-$(VARIANT))$(if $(filter rtt,$(LINK)),-rtt)
 OUT       := $(BDIR)/$(APP)
 GEN       := $(BDIR)/gen
 
@@ -177,6 +179,7 @@ PORT_SRC = $(PORT_DIR)/pal_mspm0.c $(PORT_DIR)/main_mspm0.c
 TARGET   = $(OUT)/$(APP).elf
 endif
 
+CFLAGS += $(if $(filter rtt,$(LINK)),-DDZ_LINK_RTT=1)
 INC  = $(addprefix -I,$(FW_INC) $(PROJ_INC) $(PORT_DIR) $(GEN) $(HAL_INC))
 SRCS = $(LIB_SRC) $(APP_SRC) $(PORT_SRC) $(GEN)/board_gen.c
 OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))

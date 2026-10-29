@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "board_gen.h"
+#include "link_io.h"
 #include "app.h"
 #include "project_gen.h"
 #include "hooks.h"
@@ -115,7 +116,7 @@ static void link_send(dzframe_t *f)
     size_t n;
     f->seq = link_seq++;
     n = dzframe_encode(out, sizeof out, f);
-    if (n) (void)pal_uart_write(RES_UART_LINK, out, (uint16_t)n);   /* EBUSY 丢帧：遥测下一拍补，ACK 由上位机超时重发 */
+    if (n) (void)link_write(out, (uint16_t)n);   /* EBUSY 丢帧：遥测下一拍补，ACK 由上位机超时重发 */
 }
 
 static void handle_cmd(const dzframe_t *f)
@@ -137,7 +138,7 @@ static void read_link(void)
     dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_project_params[COORD.profile_idx]);
     if (dzctl_wd_expired(&WD, pal_millis())) coord_event(&COORD, COORD_EV_ESTOP);   /* 急停路径负责输出归零 */
-    if (pal_uart_read(RES_UART_LINK, buf, sizeof buf, &got) != DZ_OK) return;
+    if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
     for (i = 0; i < got; i++) {
         if (!dzframe_feed(&LL, buf[i], &f)) continue;
         dzctl_wd_feed(&WD, &f, pal_millis());

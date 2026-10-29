@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "board_gen.h"
+#include "link_io.h"
 #include "app.h"
 #include "pid.h"
 #include "motor_dc.h"
@@ -68,7 +69,7 @@ static void handle_rx(void)
     static char line[32];
     static unsigned n;
     uint8_t buf[32]; uint16_t got = 0;
-    if (pal_uart_read(RES_UART_LINK, buf, sizeof buf, &got) != DZ_OK) return;
+    if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
     for (uint16_t i = 0; i < got; i++) {
         char c = (char)buf[i];
         if (c == '\n' || c == '\r') {
@@ -101,7 +102,7 @@ void app_loop(void)
         int len = snprintf(msg, sizeof msg, "t=%lu sp=%ld spd=%ld out=%ld err=%lu\n",
                            (unsigned long)now, (long)(sp * 1000), (long)(spd * 1000),
                            (long)(out * 1000), (unsigned long)err);
-        if (len > 0) (void)pal_uart_write(RES_UART_LINK, (const uint8_t *)msg, (uint16_t)len);  /* EBUSY 时丢这一帧 */
+        if (len > 0) (void)link_write((const uint8_t *)msg, (uint16_t)len);  /* EBUSY 时丢这一帧 */
     }
     handle_rx();
 }

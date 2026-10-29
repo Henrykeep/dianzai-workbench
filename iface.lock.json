@@ -983,6 +983,32 @@
   "hash": "4f5d6636fbfa1db2",
   "version": "1.1.0"
  },
+ "firmware/proto/dzrtt": {
+  "decls": [
+   "dzrtt.h: #define DZRTT_UP_SIZE 1024u",
+   "dzrtt.h: #define DZRTT_DOWN_SIZE 256u",
+   "dzrtt.h: typedef struct { const char *name;",
+   "dzrtt.h: char *buf;",
+   "dzrtt.h: uint32_t size;",
+   "dzrtt.h: volatile uint32_t wr;",
+   "dzrtt.h: volatile uint32_t rd;",
+   "dzrtt.h: uint32_t flags;",
+   "dzrtt.h: } dzrtt_ring_t;",
+   "dzrtt.h: typedef struct { char id[16];",
+   "dzrtt.h: int32_t max_up;",
+   "dzrtt.h: int32_t max_down;",
+   "dzrtt.h: dzrtt_ring_t up[1];",
+   "dzrtt.h: dzrtt_ring_t down[1];",
+   "dzrtt.h: } dzrtt_cb_t;",
+   "dzrtt.h: extern dzrtt_cb_t g_dzrtt;",
+   "dzrtt.h: void dzrtt_init(void);",
+   "dzrtt.h: dz_err_t dzrtt_write(const uint8_t *buf, uint16_t len);",
+   "dzrtt.h: dz_err_t dzrtt_read(uint8_t *buf, uint16_t max, uint16_t *got);",
+   "dzrtt.h: int dzrtt_selftest(void);"
+  ],
+  "hash": "5a51410adaaadbab",
+  "version": "0.1.0"
+ },
  "ports/host-sim": {
   "decls": [
    "host_sim.h: #define HOST_SIM_STEP_US 100u",

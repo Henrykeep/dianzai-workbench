@@ -14,6 +14,7 @@
 #include "board_gen.h"
 #include "app.h"
 #include "pal.h"
+#include "link_io.h"
 
 static volatile uint32_t s_ticks;
 static void on_ctrl(void *ctx) { (void)ctx; s_ticks++; }
@@ -23,8 +24,8 @@ static void say(const char *s)
     uint16_t n = (uint16_t)strlen(s);
     bool idle = false;
     uint32_t t0 = pal_millis();
-    while (pal_uart_tx_idle(RES_UART_LINK, &idle) == DZ_OK && !idle && pal_millis() - t0 < 50u) { }
-    (void)pal_uart_write(RES_UART_LINK, (const uint8_t *)s, n);
+    while (link_tx_idle(&idle) == DZ_OK && !idle && pal_millis() - t0 < 50u) { }
+    (void)link_write((const uint8_t *)s, n);
 }
 
 static void test_time(char *b, size_t n)
@@ -48,8 +49,8 @@ void app_loop(void)
     char b[128];
     uint8_t rx[32]; uint16_t got = 0;
 
-    if (pal_uart_read(RES_UART_LINK, rx, sizeof rx, &got) == DZ_OK && got)
-        (void)pal_uart_write(RES_UART_LINK, rx, got);       /* 回显 */
+    if (link_read(rx, sizeof rx, &got) == DZ_OK && got)
+        (void)link_write(rx, got);       /* 回显 */
 
     uint32_t now = pal_millis();
     if (now - last < 1000u) return;

@@ -46,7 +46,7 @@ def rtt_ports() -> list[dict]:
     if not f.get("target"):
         return []
     spec = f["target"] + (f"@{f['probe']}" if f.get("probe") else "")
-    return [{"port": "rtt:" + spec, "desc": f"RTT · {f['target']}（调试探针，固件需把 LINK 输出到 RTT 通道 0）", "kind": "rtt", "likely": False}]
+    return [{"port": "rtt:" + spec, "desc": f"RTT · {f['target']}（调试探针；固件要用 make LINK=rtt 编）", "kind": "rtt", "likely": False}]
 
 
 def explain_open_error(device: str, e: Exception) -> tuple[str, str]:
