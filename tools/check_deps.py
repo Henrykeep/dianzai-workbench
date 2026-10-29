@@ -27,6 +27,10 @@
   I1  GPIO 中断回调（传给 pal_gpio_irq_attach 的函数）只做计数 / 记时间戳：函数体里不许出现 printf/sprintf、pal_delay_*、
       串口 / 链路发送、malloc/free、OLED 刷新、浮点数学函数（sinf/sqrtf/atan2f…）和 while/for 循环。
       高速编码器在中断里调重函数会丢脉冲（restudy M4）。只查回调本身那一层函数体。
+  F1  控制频率/周期只有一个来源（用户 p1 教训：CONTROL_FREQUENCY 写 300、实际 100 Hz 调用，速度错 3 倍）：
+      examples/*/subsys、examples/*/io 里不许手写 *_HZ/*FREQ*/*PERIOD*/*_DT 数值宏，用 project.yaml period_ms 生成的 PERIOD_MS_*；
+      apps/ 里不许手写 *_HZ/*FREQ* 数值宏；*PERIOD* 宏必须在同一文件里同时交给调度（pal_timer_start / .period_ms），
+      保证"调度用的数"和"dt 用的数"是同一个。确有必要（如 PWM 载波）在该行注明 `DZ-FREQ-OK: 原因`。
   V1  每个模块目录的 VERSION 必须与头文件里的 XXX_VERSION 宏一致。
 """
 import argparse, os, re, sys
@@ -335,6 +339,27 @@ class Checker:
                         self.err("V1", os.path.join(d, h), lineno(txt, m.start()),
                                  f"{m.group(1)}={m.group(2)} 与 VERSION 文件 {ver} 不一致")
 
+    FREQ_DEF = re.compile(r'^[ \t]*#[ \t]*define[ \t]+(\w*(?:FREQ|_HZ|HZ_|PERIOD|_DT|DT_)\w*)[ \t]+\(?[ \t]*[0-9.]', re.M | re.I)
+
+    def check_freq(self, path):
+        rel = os.path.relpath(path, self.root).replace(os.sep, "/")
+        if not rel.startswith(("apps/", "examples/")) or "/tests/" in rel:
+            return
+        raw = open(path, encoding="utf-8", errors="replace").read()
+        src = strip_comments(raw)
+        raw_lines = raw.splitlines()
+        in_example = rel.startswith("examples/") and re.match(r"examples/[^/]+/(subsys|io)/", rel)
+        for m in self.FREQ_DEF.finditer(src):
+            name, ln = m.group(1), lineno(src, m.start())
+            if "DZ-FREQ-OK:" in raw_lines[ln - 1] if ln - 1 < len(raw_lines) else False:
+                continue
+            if in_example:
+                self.err("F1", path, ln, f"手写周期/频率宏 {name}；改在 project.yaml 的 period_ms，代码用生成的 PERIOD_MS_*")
+            elif re.search(r"FREQ|HZ", name, re.I):
+                self.err("F1", path, ln, f"手写频率宏 {name}；用周期宏并把同一个宏交给调度（pal_timer_start / .period_ms），dt 由它算")
+            elif not re.search(rf"(pal_timer_start\s*\([^;]*\b{name}\b|\.period_ms\s*=\s*{name}\b|period_ms[^;]*\b{name}\b)", src):
+                self.err("F1", path, ln, f"周期宏 {name} 没有在本文件交给调度（pal_timer_start / .period_ms）——调度和 dt 可能用的不是同一个数")
+
     def run(self):
         self.index_headers()
         for top in ("firmware", "apps", "examples", "ports", "boards"):
@@ -347,6 +372,7 @@ class Checker:
                     continue
                 self.check_file(p)
                 self.check_port(p)
+                self.check_freq(p)
                 if not p.startswith(os.path.join(self.root, "ports")) and p.endswith(".c"):
                     self.check_isr(p, strip_comments(open(p, encoding="utf-8", errors="replace").read()))
         ex = os.path.join(self.root, "examples")
