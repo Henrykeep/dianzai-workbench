@@ -87,7 +87,14 @@ def schema_check(board: dict, rep: Report) -> None:
         rep.err(f"[schema] {where}: {e.message}")
 
 
+# STM32 唯一主线是 stm32-cubemx（docs/notes/implemented/2026-10-29-cubemx-only.md）。
+# stm32f4-hal 冻结：只保留这两块存量板，新板用它直接报错。
+F4HAL_FROZEN = {"stm32f407-skystar", "dji-rm-c"}
+
+
 def generic_check(board: dict, rep: Report) -> None:
+    if board.get("port") == "stm32f4-hal" and board.get("name") not in F4HAL_FROZEN:
+        rep.err("[移植层] stm32f4-hal 已冻结，新 STM32 板一律走 stm32-cubemx（docs/05-CubeMX工作流.md、docs/06-新增板卡.md）")
     res = board.get("resources", {}) or {}
     # 1) 同类资源重名
     for t in RES_TYPES:

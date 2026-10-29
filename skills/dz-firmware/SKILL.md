@@ -9,7 +9,7 @@ description: 在 dianzai-workbench 里换板、换引脚、加电赛题目或子
 ## 先做 5 个决定（30 秒）
 | 决定 | 选项 | 怎么选 |
 |---|---|---|
-| 芯片走哪条路 | STM32 → `stm32-cubemx`（唯一主线）；MSPM0 → `mspm0-driverlib`；PC 仿真 → `host-sim` | STM32 新板一律走 CubeMX |
+| 芯片走哪条路 | STM32 → `stm32-cubemx`（唯一主线）；MSPM0 → `mspm0-driverlib`；PC 仿真 → `host-sim` | STM32 新板一律走 CubeMX；`stm32f4-hal` 冻结（`docs/notes/implemented/2026-10-29-cubemx-only.md`） |
 | 引脚从哪来 | CubeMX `.ioc` 的 User Label / SysConfig `.syscfg` | 标签名 = 逻辑资源名（`PWM_MOTOR_A`、`ENC_MOTOR_A_A`…），见 `docs/05-CubeMX工作流.md` |
 | 子系统周期 | `project.yaml` 的 `period_ms` | 视觉 5、底盘/球杆 10 是常用起点；dt 自动同源 |
 | 上位机链路 | LINK 串口（dzframe）还是 RTT | 无多余串口时用 RTT（`firmware/proto/dzrtt`） |

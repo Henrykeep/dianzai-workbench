@@ -3,7 +3,7 @@
 只写不显然的规则和坑。细节以 `docs/` 为准；芯片事实以**数据手册 / 参考手册 / SDK 头文件**为准，本文与它们冲突时听它们的。
 
 ## 硬规则
-- STM32：CubeMX 生成 + HAL，**不写寄存器**（确需时加 `DZ-REG-OK` 注释并说明理由，见 `docs/05-CubeMX工作流.md`）。
+- STM32：**只走 `ports/stm32-cubemx`**（`ports/stm32f4-hal` 冻结，只服务两块存量板）；CubeMX 生成 + HAL，**不写寄存器**（确需时加 `DZ-REG-OK` 注释并说明理由，见 `docs/05-CubeMX工作流.md`）。
 - MSPM0：SysConfig + DriverLib（`docs/10-SysConfig工作流.md`；坑先看 `docs/20-MSPM0速查.md`）。
 - 换板只改引脚：板级差异只进 `boards/<板>/board.yaml`，应用代码不出现引脚号。
 - 分层依赖由 `tools/check_deps.py` 强制（`docs/02-分层与依赖.md`）；改公开接口要同步 `iface.lock.json`（`make check` 会报）。

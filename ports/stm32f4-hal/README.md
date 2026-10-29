@@ -1,5 +1,7 @@
 # STM32F4 HAL 移植层（board.yaml 驱动初始化）  `v1.0.0`
 
+> **已冻结（2026-10-29）**：STM32 唯一主线是 `ports/stm32-cubemx`。本层只维护 `stm32f407-skystar`、`dji-rm-c` 两块存量板，不加新功能、不接新板（`tools/boardlib.py` 拒绝）。迁移计划与理由见 `docs/notes/implemented/2026-10-29-cubemx-only.md`。
+
 由 board.yaml 生成的表在运行时调用 HAL 完成时钟/引脚/DMA 初始化，**不需要 CubeMX**。F4 系列板卡共用：天空星 F407、RoboMaster C 型。正式推荐流程是 stm32-cubemx；本层保留用于快速验证和无 CubeMX 环境。
 
 - 接口：实现 pal.h；`main_stm32f4.c` 提供 main()

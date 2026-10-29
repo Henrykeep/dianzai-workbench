@@ -14,7 +14,7 @@ make selftest BOARD=<板>                    # 移植层自检固件
 | 目录 | 内容 |
 |---|---|
 | firmware/ | 与芯片无关：pal 接口、algo（pid/lpf）、proto（dzframe）、drivers、framework（subsys/coord） |
-| ports/ | 移植层：host-sim、stm32-cubemx（推荐）、stm32f4-hal |
+| ports/ | 移植层：host-sim、stm32-cubemx（STM32 唯一主线）、stm32f4-hal（冻结，仅存量两块板） |
 | boards/ | 每板一个 board.yaml（天空星、RoboMaster C 型、天猛星、Jetson Nano 协处理…） |
 | apps/ examples/ | 通用仿真被控对象（速度环 car_2wd、位置环 motor_pos、旋转倒立摆 pendulum_rot、视觉云台 pan_tilt、循线 line_car），题目实例（examples/2026H_ball 只是其中一个） |
 | host/python/dzlink | 协处理板/PC 端协议库 |
