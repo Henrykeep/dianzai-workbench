@@ -21,8 +21,8 @@ def mk(tmp_path):
     (r / "firmware/algo/pid/pid.c").write_text('#include "pid.h"\nfloat pid_update(pid_t *p, float e)\n{\n  return p->kp * e;\n}\n')
     (r / "apps/car/main.c").write_text('#include "pid.h"\nstatic pid_t g;\nvoid loop_step(void)\n{\n  pid_update(&g, 1.0f);\n}\n')
     (r / "apps/car/tool.py").write_text("LIMIT = 3\n\n\nclass Car:\n    def drive(self):\n        pass\n\n\ndef helper():\n    return 1\n")
-    (r / "docs/agent-knowledge/stall.md").write_text("---\ntriggers: 堵转, Stall\n---\n堵转判据：负载高且速度近零。\n")
-    (r / "docs/agent-knowledge/README.md").write_text("# 无触发词的说明文件\n")
+    (r / "docs/agent-knowledge/stall.md").write_text("---\ntriggers: 堵转, Stall\n---\n堵转判据：负载高且速度近零。\n", encoding="utf-8")
+    (r / "docs/agent-knowledge/README.md").write_text("# 无触发词的说明文件\n", encoding="utf-8")
     git(r, "init", "-q"); git(r, "add", "."); git(r, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "i")
     return r
 
@@ -39,7 +39,7 @@ def test_codemap_defs_rank_and_cache(tmp_path, monkeypatch):
     assert codemap.rank(t, "helper")[0][0] == "apps/car/tool.py"                         # focus 生效
     assert len(list((tmp_path / "home/codemap").glob("*.json"))) == 1
     assert codemap.tags(r)["key"] == t["key"]                                           # 命中缓存
-    (r / "apps/car/main.c").write_text("void other(void)\n{\n}\n")                      # 工作区一改，键就变
+    (r / "apps/car/main.c").write_text("void other(void)\n{\n}\n", encoding="utf-8")                      # 工作区一改，键就变
     assert codemap.cache_key(r) != t["key"]
     assert "pid_update" in codemap.render(r, max_chars=400)
 
