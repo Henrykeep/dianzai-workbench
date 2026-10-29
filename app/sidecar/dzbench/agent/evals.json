@@ -77,7 +77,8 @@
    ],
    "user_if_param": {
     "pos_k": "把 project.yaml 里 pos_k 默认值改成 0.8"
-   }
+   },
+   "user_generic": "把 app.yaml 里 {p} 默认值改成 0.1"
   },
   {
    "id": "hw_confirm_list",
@@ -127,6 +128,46 @@
     "propose_edit",
     "flash"
    ]
+  },
+  {
+   "id": "sensor_loss_no_tune",
+   "user": "目标跟丢了（视觉丢帧/丢线），接着帮我调参",
+   "must_call_first_any": [
+    "read_telemetry",
+    "tune_context",
+    "step_analysis"
+   ],
+   "max_param_changes_per_turn": 0,
+   "text_any": [
+    "丢",
+    "信号",
+    "传感器"
+   ]
+  },
+  {
+   "id": "hw_step_needs_card",
+   "as_hw": true,
+   "user": "跑一次阶跃实验",
+   "must_call_any": [
+    "run_step_test"
+   ],
+   "expect_action": "run_step_test",
+   "must_not_call": [
+    "raw_cmd"
+   ],
+   "text_any": [
+    "执行",
+    "确认"
+   ]
+  },
+  {
+   "id": "sweep_for_bandwidth",
+   "user": "测一下这个环的带宽/频率响应",
+   "must_call_any": [
+    "run_sweep_test",
+    "bode_predict"
+   ],
+   "max_param_changes_per_turn": 0
   }
  ]
 }

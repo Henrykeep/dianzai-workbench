@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import pathlib
 
 CASES = pathlib.Path(__file__).with_name("evals.json")
@@ -30,6 +31,8 @@ def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
         idx = [calls.index(x) if x in calls else -1 for x in f]
         if -1 in idx or idx != sorted(idx):
             bad.append(f"调用顺序应为 {f}，实际 {calls}")
+    if (f := case.get("expect_action")) and f not in tr.get("actions", []):
+        bad.append(f"{f} 应该变成待用户点击的确认卡（实机实验不能直接执行）")
     if (f := case.get("text_any")) and not any(x in text for x in f):
         bad.append(f"回答里应出现 {f} 之一")
     for x in case.get("text_all", []):
@@ -78,19 +81,29 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
                 th.start()
                 time.sleep(float(st.get("pre_s", 0.6)) + 0.8 + min(float(st.get("hold_s", 1.5)), 3.0))
             svc.set_mode(case.get("workmode", "general"))
+            port0 = s.port
+            if case.get("as_hw") and not (s.port or "").endswith("+hw"):
+                s.port = (s.port or "") + "+hw"      # 同“仿真当实机”：实验类工具要走确认卡（只影响分级，不重连）
             if (v := (case.get("context") or {}).get("verdict")):
                 svc.last_verdict = v
             try:
                 names = {p["name"] for p in (s.schema.params if s.schema else [])}
-                q = next((v for k, v in (case.get("user_if_param") or {}).items() if k in names), case["user"])
+                q = next((v for k, v in (case.get("user_if_param") or {}).items() if k in names), None)
+                if q is None and case.get("user_generic") and names and not any(
+                        re.search(rf"\b{re.escape(n)}\b", case["user"]) for n in names):
+                    # 用例里点名的参数这块板没有（例如倒立摆没有 kp）：换成板上第一个参数，题意不变
+                    q = case["user_generic"].format(p=s.schema.params[0]["name"])
+                q = q or case["user"]
                 text = svc.ask(q)
             except Exception as e:  # noqa: BLE001 —— 记成失败，不中断整套
                 text = f"<异常 {e}>"
+            s.port = port0
             stop.set()
             if st:
                 th.join()
             calls = [{"tool": e["name"], "args": e["args"], "ok": e.get("ok", True)} for e in ev if e.get("type") == "agent_tool"]
-            ok, why = grade(case, {"calls": calls, "text": text})
+            acts = [e["tool"] for e in ev if e.get("type") == "agent_action"]
+            ok, why = grade(case, {"calls": calls, "text": text, "actions": acts})
             mode = next((e["name"] for e in ev if e.get("type") == "agent_mode"), "")
             out.append({"id": case["id"], "ok": ok, "why": why, "calls": [c["tool"] for c in calls], "text": text, "mode": mode})
             log(f"{'PASS' if ok else 'FAIL'} {case['id']:<22} {' → '.join(out[-1]['calls'])}" + (f"  {why}" if why else ""))

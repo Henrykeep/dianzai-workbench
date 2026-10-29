@@ -37,3 +37,26 @@ def test_offline_baseline_real_sim(home, tmp_path):
     rc = evalrun.main(["--offline", "--repeat", "1", "--ports", "sim:car_2wd", "--out", str(tmp_path)])
     rep = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert rc in (0, 1) and rep["valid"] and rep["total"] == len(rep["cases"])
+
+
+def test_grade_expect_action_and_generic_cases():
+    from dzbench.agent import evals
+    c = {"id": "x", "expect_action": "run_step_test"}
+    assert not evals.grade(c, {"calls": [], "text": "", "actions": []})[0]
+    assert evals.grade(c, {"calls": [], "text": "", "actions": ["run_step_test"]})[0]
+    ids = [x["id"] for x in evals.load()]
+    assert len(ids) >= 12 and len(set(ids)) == len(ids)
+
+
+def test_step_cfg_prefers_current_sim_app():
+    """好几个对象都有 sp_a/spd_a 时，不能按 dzbench.json 里的顺序抢走（line_car 曾拿到 car_2wd 的配置）。"""
+    from types import SimpleNamespace as NS
+    from dzbench.agent.service import AgentService
+    sch = NS(fields=[{"name": n} for n in ("sp_a", "spd_a", "line_sp_mm", "line_mm")], params=[{"name": "kp"}, {"name": "kp_line"}])
+    svc = AgentService.__new__(AgentService)
+    svc.s = NS(schema=sch, port="sim:line_car")
+    svc.cfg = {"step_tests": {"car_2wd": {"y": "spd_a", "sp": "sp_a", "gains": {"kp": "kp"}},
+                              "line_car": {"y": "line_mm", "sp": "line_sp_mm", "gains": {"kp": "kp_line"}}}}
+    assert svc.step_cfg()["y"] == "line_mm"
+    svc.s.port = "/dev/ttyUSB0"          # 实板：gains 都在板上的两项打平 → 先出现的（可用 step_test 显式指定）
+    assert svc.step_cfg()["y"] == "spd_a"

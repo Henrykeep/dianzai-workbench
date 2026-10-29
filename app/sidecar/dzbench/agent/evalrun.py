@@ -18,7 +18,7 @@ from collections import defaultdict
 from . import evals
 from . import llm as llm_mod
 
-DEFAULT_PORTS = ("sim:car_2wd", "sim:2026H_ball")
+DEFAULT_PORTS = ("sim:car_2wd", "sim:2026H_ball")  # 快速默认；全部仿真对象：--ports all
 
 
 def summarize(runs: list[dict], meta: dict) -> dict:
@@ -54,13 +54,16 @@ def to_markdown(rep: dict) -> str:
 
 def main(argv=None, llm=None, run_sim=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m dzbench.agent.evalrun")
-    ap.add_argument("--ports", default=",".join(DEFAULT_PORTS))
+    ap.add_argument("--ports", default=",".join(DEFAULT_PORTS), help="逗号分隔；all = 所有能仿真的工程（apps/ 与 examples/ 下有 sim_setup.c 的）")
     ap.add_argument("--repeat", type=int, default=3)
     ap.add_argument("--only", default="", help="只跑这些用例 id，逗号分隔")
     ap.add_argument("--out", default="", help="报告目录（默认 ~/.dzbench/evals/<时间>）")
     ap.add_argument("--offline", action="store_true", help="跑离线规则助手当对照组")
     a = ap.parse_args(argv)
     run_sim = run_sim or evals.run_sim
+    if a.ports.strip() == "all":
+        from .. import ports as ports_mod
+        a.ports = ",".join(f"sim:{n}" for n in ports_mod.sim_apps())
 
     cfg = llm_mod.load_config()
     if a.offline:

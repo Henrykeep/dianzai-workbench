@@ -15,11 +15,18 @@ INTENTS = (   # 顺序即优先级
     ("estop", r"急停"),
     ("edit", r"(\.ya?ml|默认值|源码|代码).*(改|换|设)|(改|换|设).*(\.ya?ml|默认值)"),
     ("hw", r"上车|实机|实板|真车|上板"),
+    ("loss", r"跟丢|丢了|丢帧|丢线|掉线|信号断|没信号|传感器断"),
+    ("sweep", r"扫频|带宽|频率响应|频响|bode|波特"),
+    ("exp", r"(跑|做|来)一?(次|轮)?\s*阶跃"),
     ("asym", r"不对称|上下不一样|正负不一样|四段"),
     ("result", r"结果|那轮|下一步|上一轮|这轮"),
     ("why", r"为什么|为啥|怎么回事|原因"),
     ("tune", r"超调|调好|调参|调一下|怎么调|太慢|跟不上|振荡|震荡|抖|稳态|响应|过冲|pid|PID|kp|ki|kd"),
 )
+
+
+# 改默认值时读多少个候选 app.yaml/project.yaml：曾是 12，仿真对象一多当前工程就被截掉（评测 edit_reads_first 失败）
+MAX_READ = 48
 
 
 def intent(text: str) -> str:
@@ -81,7 +88,7 @@ class OfflineAssistant:
                 return [("list_params", {}), ("list_files", {"glob": "apps/*/app.yaml"}), ("list_files", {"glob": "examples/*/project.yaml"})]
             if step == 1:
                 files = [f for r in done.get("list_files", []) if r.get("ok") for f in r["result"]]
-                return [("read_file", {"path": f}) for f in files[:12]] or None
+                return [("read_file", {"path": f}) for f in files[:MAX_READ]] or None
             if step == 2 and (e := self._edit(user, done)):
                 return [("propose_edit", e)]
             return None
@@ -97,6 +104,12 @@ class OfflineAssistant:
             return None
         if it == "why":
             return [("read_telemetry", {"seconds": 3})] if step == 0 else None
+        if it == "loss":
+            return [("read_telemetry", {"seconds": 2})] if step == 0 else None
+        if it == "sweep":       # 少几个频点：离线对照组只验证流程（实机要点确认卡）
+            return [("run_sweep_test", {"n": 5})] if step == 0 else None
+        if it == "exp":
+            return [("run_step_test", {})] if step == 0 else None
         if it == "tune":
             if step == 0:
                 return [("tune_context", {}), ("step_analysis", {})]
@@ -136,7 +149,7 @@ class OfflineAssistant:
         if not best or (board and best[0] < len(board) / 2):
             return None            # 找不到，或找到的文件不是当前板子跑的工程（参数表对不上）：不乱改
         # read_file 结果里没有路径：按读取顺序对回 list_files
-        files = [f for r in done.get("list_files", []) if r.get("ok") for f in r["result"]][:12]
+        files = [f for r in done.get("list_files", []) if r.get("ok") for f in r["result"]][:MAX_READ]
         idx = [c["result"] if c.get("ok") else None for c in done.get("read_file", [])].index(best[1])
         line = best[1][best[2].start():best[1].index("\n", best[2].start())]
         new = line[:best[2].end(1) - best[2].start()] + val + line[best[2].end(2) - best[2].start():]
@@ -157,6 +170,21 @@ class OfflineAssistant:
                 return head + f"【源码】已读当前文件，只改了一行，diff 在右侧卡片：确认后会跑 make check，通过才 git 提交，随时可回滚。"
             return head + "没能定位要改的那一行" + (f"（{e}）" if e else "") + "：要么格式认不出（请写成“把 app.yaml 里 kp 默认值改成 0.1”），" \
                           "要么当前板子跑的工程里没有这个参数（例如 2026H 的球环比例增益叫 pos_k）。"
+        if it == "loss":
+            return head + "【实测】已看最近 2 s 遥测。传感器/视觉信号丢失时的数据不能拿来调参：先把信号找回来" \
+                          "（目标回到视野、线回到传感器下、链路恢复），状态栏里的信号状态恢复正常后再做阶跃。这一轮不改参数。"
+        if it in ("exp", "sweep"):
+            tool = "run_step_test" if it == "exp" else "run_sweep_test"
+            r = self.ok(done, tool)
+            if r and r.get("status") == "pending_human_click":
+                return head + "这是实机实验：确认卡已发到右侧，检查实验前项目后点“执行”才会跑（2 分钟内有效）。跑完再问我结果。"
+            if not r:
+                return head + "实验没跑成" + (f"（{e}）" if e else "") + "。"
+            if it == "sweep":
+                return head + f"【实测】闭环扫频 {len(r.get('points', []))} 个频点：带宽 {(r.get('summary') or {}).get('bandwidth_hz')} Hz，" \
+                              f"谐振峰 {(r.get('summary') or {}).get('peak_db', 0):.1f} dB。点数少，细看用上方“扫频”按钮。这一轮不改参数。"
+            m = r.get("metrics") or {}
+            return head + f"【实测】阶跃：超调 {_pct(m.get('overshoot_pct'))}，稳态误差 {_pct(m.get('sse_pct'))}。"
         if it == "why":
             t = self.ok(done, "read_telemetry") or {}
             if not t.get("n"):
