@@ -7,9 +7,8 @@
 #include <string.h>
 #include "project_gen.h"
 #include "ball_beam.h"
+#include "accel_ff.h"
 
-#define RAD2DEG 57.29578f
-#define G_MPS2  9.80665f
 
 static ball_beam_t s_bb;
 
@@ -32,21 +31,15 @@ static ball_beam_cfg_t cfg_from(const params_t *p)
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-/* 加速度前馈：来源可选（编码器差分 / IMU），带死区和失效保护。任何异常都让前馈变成 0（退回纯反馈），不会锁死。 */
+/* 加速度前馈：来源可选（编码器差分 / IMU）；换算、死区、失效保护在 firmware/algo/accel_ff。任何异常前馈为 0（退回纯反馈）。 */
 static float accel_ff(const shared_state_t *st, const params_t *p, uint32_t now_ms)
 {
-    float a;
-    if (p->ff_gain == 0.0f) return 0.0f;
+    accel_ff_cfg_t c = { p->ff_gain, p->ff_dead_mps2, p->ff_fail_mps2, p->ff_max_deg };
     if (p->ff_src == 1u) {
-        if (!st->io_in.imu_ok || (uint32_t)(now_ms - st->io_in.imu_rx_ms) > p->imu_timeout_ms) return 0.0f;
-        a = st->io_in.imu_ax_mps2;
-    } else {
-        a = st->chassis_out.accel_mps2;
+        bool ok = st->io_in.imu_ok && (uint32_t)(now_ms - st->io_in.imu_rx_ms) <= p->imu_timeout_ms;
+        return accel_ff_deg(&c, st->io_in.imu_ax_mps2, ok);
     }
-    if (!(a == a) || fabsf(a) > p->ff_fail_mps2) return 0.0f;           /* NaN / 读数异常 */
-    if (fabsf(a) < p->ff_dead_mps2) return 0.0f;                        /* 死区 */
-    a -= a > 0.0f ? p->ff_dead_mps2 : -p->ff_dead_mps2;                 /* 死区边沿连续，不跳变 */
-    return clampf(a / G_MPS2 * RAD2DEG * p->ff_gain, -p->ff_max_deg, p->ff_max_deg);   /* 小角近似 θ≈a/g */
+    return accel_ff_deg(&c, st->chassis_out.accel_mps2, true);
 }
 
 static void publish(shared_state_t *st, const params_t *p, float angle)

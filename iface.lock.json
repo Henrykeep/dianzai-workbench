@@ -21,6 +21,19 @@
   "hash": "1b440a8c998a868a",
   "version": "1.0.0"
  },
+ "firmware/algo/accel_ff": {
+  "decls": [
+   "accel_ff.h: typedef struct { float gain;",
+   "accel_ff.h: float dead_mps2;",
+   "accel_ff.h: float fail_mps2;",
+   "accel_ff.h: float max_deg;",
+   "accel_ff.h: } accel_ff_cfg_t;",
+   "accel_ff.h: float accel_ff_deg(const accel_ff_cfg_t *cfg, float accel_mps2, bool valid);",
+   "accel_ff.h: dz_err_t accel_ff_selftest(void);"
+  ],
+  "hash": "27e00a3806eeef9f",
+  "version": "1.0.0"
+ },
  "firmware/algo/attitude": {
   "decls": [
    "attitude.h: typedef struct { float tau_s;",

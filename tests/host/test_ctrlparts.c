@@ -169,9 +169,46 @@ TEST(vis_plane_five_point)
     CHECK(vis_selftest() == DZ_OK);
 }
 
+/* accel_ff：从 2026H ball.c 提取；ref 为提取前的原公式，逐点对比保证行为不变 */
+#include "accel_ff.h"
+static float aff_ref(float a, float gain, float dead, float fail, float mx)
+{
+    float y;
+    if (gain == 0.0f) return 0.0f;
+    if (!(a == a) || fabsf(a) > fail) return 0.0f;
+    if (fabsf(a) < dead) return 0.0f;
+    a -= a > 0.0f ? dead : -dead;
+    y = a / 9.80665f * 57.29578f * gain;
+    return y > mx ? mx : (y < -mx ? -mx : y);
+}
+TEST(accel_ff_basic)
+{
+    accel_ff_cfg_t c = { 1.0f, 0.15f, 8.0f, 5.0f };
+    CHECK(accel_ff_selftest() == DZ_OK);
+    CHECK_NEAR(accel_ff_deg(&c, 0.1f, true), 0.0f, 1e-6);          /* 死区内 */
+    CHECK_NEAR(accel_ff_deg(&c, 0.1500001f, true), 0.0f, 1e-4);    /* 边沿连续 */
+    CHECK_NEAR(accel_ff_deg(&c, 9.0f, true), 0.0f, 1e-6);          /* 超限 → 0 */
+    CHECK_NEAR(accel_ff_deg(&c, NAN, true), 0.0f, 1e-6);
+    CHECK_NEAR(accel_ff_deg(&c, 3.0f, false), 0.0f, 1e-6);         /* 无效 → 0 */
+    CHECK_NEAR(accel_ff_deg(&c, 7.0f, true), 5.0f, 1e-6);          /* 限幅 */
+    CHECK_NEAR(accel_ff_deg(&c, -7.0f, true), -5.0f, 1e-6);
+    c.gain = 0.0f; CHECK_NEAR(accel_ff_deg(&c, 3.0f, true), 0.0f, 1e-6);
+}
+TEST(accel_ff_matches_legacy)
+{
+    const float gains[] = { 0.0f, 0.5f, 1.3f, 3.0f };
+    int gi; float a;
+    for (gi = 0; gi < 4; ++gi)
+        for (a = -12.0f; a <= 12.0f; a += 0.01f) {
+            accel_ff_cfg_t c = { gains[gi], 0.15f, 8.0f, 5.0f };
+            CHECK_NEAR(accel_ff_deg(&c, a, true), aff_ref(a, gains[gi], 0.15f, 8.0f, 5.0f), 1e-6);
+        }
+}
+
 void suite_ctrlparts(void)
 {
     RUN(slew_dir_and_mag); RUN(slew_edge_cases); RUN(slew_with_motor_model);
     RUN(mtspeed_low_speed_vs_m_method); RUN(mtspeed_decel_timeout_reverse_wrap);
     RUN(vis_plane_five_point);
+    RUN(accel_ff_basic); RUN(accel_ff_matches_legacy);
 }

@@ -24,6 +24,7 @@
             -I${PROJECT_LOC}/../../../firmware/common
             -I${PROJECT_LOC}/../../../firmware/pal
             -I${PROJECT_LOC}/../../../firmware/algo/abobs
+            -I${PROJECT_LOC}/../../../firmware/algo/accel_ff
             -I${PROJECT_LOC}/../../../firmware/algo/attitude
             -I${PROJECT_LOC}/../../../firmware/algo/ball_beam
             -I${PROJECT_LOC}/../../../firmware/algo/lpf
@@ -93,6 +94,7 @@
         <file path="launchpad.syscfg" openOnCreation="true" excludeFromBuild="false" action="copy"/>
         <file path="${COM_TI_MSPM0_SDK_INSTALL_DIR}/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c" openOnCreation="false" excludeFromBuild="false" targetDirectory="ticlang" action="copy"/>
         <file path="../../../firmware/algo/abobs/abobs.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/accel_ff/accel_ff.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/attitude/attitude.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/ball_beam/ball_beam.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/lpf/lpf1.c" targetDirectory="dz/firmware" action="link"/>
