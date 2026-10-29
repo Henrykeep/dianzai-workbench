@@ -148,8 +148,8 @@ link:
       - { name: ff_deg,     type: float, unit: "°" }
       - { name: imu_ax_mps2, type: float, unit: m/s² }
       - { name: imu_ok,     type: uint8 }
-      - { name: cpu_pm,     type: uint16, unit: "‰" }      # CPU 负载千分比；0xFFFF = 无数据（裸机 / 没开运行时统计）
-      - { name: stk_min_w,  type: uint16, unit: 字 }      # 所有任务里最小的栈余量（4 字节/字）；0xFFFF = 无数据
+      - { name: cpu_pm,     type: uint16, na: 65535, unit: "‰" }      # CPU 负载千分比；0xFFFF = 无数据（裸机 / 没开运行时统计）
+      - { name: stk_min_w,  type: uint16, na: 65535, unit: 字 }      # 所有任务里最小的栈余量（4 字节/字）；0xFFFF = 无数据
 
 profiles:
   - { name: base, desc: P1 普通档 }

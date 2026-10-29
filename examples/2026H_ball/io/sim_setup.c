@@ -48,6 +48,13 @@ static void fake_beam(void *ctx)     /* 1 kHz */
     }
 }
 
+static uint32_t s_vis_off_until;   /* 'V' 命令：假相机停发到这个时刻（测视觉 HELD → LOST） */
+void io_sim_cmd(uint8_t c, uint8_t n);
+void io_sim_cmd(uint8_t c, uint8_t n)
+{
+    if (c == 'V') s_vis_off_until = pal_millis() + (n ? (uint32_t)n * 100u : 3000u);   /* n×0.1 s，0 = 3 s */
+}
+
 static void fake_camera(void *ctx)
 {
     static uint8_t seq;
@@ -55,6 +62,7 @@ static void fake_camera(void *ctx)
     dzframe_t f; uint8_t raw[DZFRAME_MAX_FRAME];
     size_t n;
     (void)ctx;
+    if ((int32_t)(s_vis_off_until - pal_millis()) > 0) return;
     b.flags = 0x09u; b.x_px = (int16_t)lrintf(s_x * SIM_PX_PER_M); b.cam_ms = pal_millis();
     if (!cp_vision_cpu_ball_encode(&b, seq++, &f)) return;
     n = dzframe_encode(raw, sizeof raw, &f);

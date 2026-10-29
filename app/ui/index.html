@@ -24,6 +24,7 @@
     <div class="ro"><span class="lbl"><span id="led" class="led"></span>链路</span><span class="v" id="ro-link">未连接</span></div>
     <div class="ro"><span class="lbl">数据格式</span><span class="v" id="ro-schema">—</span></div>
     <div class="ro"><span class="lbl">接收</span><span class="v" id="ro-rx">—</span></div>
+    <div class="ro" id="ro-vis-w" hidden title="视觉链路：VALID 正常 / HELD 短时没新帧、沿用上一帧 / LOST 超时。仿真里在“命令”框发 V 30 = 假相机停 3 s，可看 HELD→LOST→VALID"><span class="lbl">视觉</span><span class="v" id="ro-vis">—</span></div>
     <div class="sp"></div>
     <span id="rec" class="rec" hidden>● REC</span>
     <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停 E-STOP<kbd>Space / Esc</kbd></button>

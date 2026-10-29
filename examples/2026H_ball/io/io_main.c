@@ -22,6 +22,7 @@
 #include <string.h>
 #include "board_gen.h"
 #include "link_io.h"
+#include "dz_compiler.h"
 #include "app.h"
 #include "project_gen.h"
 #include "hooks.h"
@@ -119,6 +120,10 @@ static void link_send(dzframe_t *f)
     if (n) (void)link_write(out, (uint16_t)n);   /* EBUSY 丢帧：遥测下一拍补，ACK 由上位机超时重发 */
 }
 
+/* 仿真专用命令的钩子：真板上是空函数；host-sim 的 sim_setup.c 覆盖它（如 'V' = 让假相机停发，测 HELD/LOST） */
+DZ_WEAK void io_sim_cmd(uint8_t c, uint8_t n);
+DZ_WEAK void io_sim_cmd(uint8_t c, uint8_t n) { (void)c; (void)n; }
+
 static void handle_cmd(const dzframe_t *f)
 {
     uint8_t n = f->len > 1u ? f->payload[1] : 0u;
@@ -128,7 +133,7 @@ static void handle_cmd(const dzframe_t *f)
     case 'G': coord_event(&COORD, COORD_EV_START); break;
     case 'S': coord_event(&COORD, COORD_EV_STOP); break;
     case 'R': coord_event(&COORD, COORD_EV_RESET); break;
-    default: break;
+    default: io_sim_cmd(f->payload[0], n); break;
     }
 }
 

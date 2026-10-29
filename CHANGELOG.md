@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 2026H 视觉状态：顶栏加“视觉”块（VALID 绿 / HELD 黄 / LOST 红 · vis_age_ms · 丢帧数）；字段可在 project.yaml 写 `na:`，等于它时显示“—”（cpu_pm / stk_min_w 仿真里没数据，原来显示 65535）；仿真专用命令 `V n`（命令框发 V 40 = 假相机停 4 s，n=0 为 3 s），实测 VALID→HELD→LOST→VALID。真板上 io_sim_cmd 是空的弱函数。
 - [编译] keil_inject `--board <板> --app <应用>`：先 make gen，再按头文件依赖闭包只挑用到的模块、应用源文件、board_gen / link_gen、DZ_ 宏，不用手列 --module（F103 car_2wd 挑 10 个，只用这些目标文件 arm-gcc 链接通过；Keil 里【未测】）。docs/14 改为推荐这个写法。
 - [编译] ioc_import：文档里写的 `-o` 实际不认（只有 --out）→ 加 `-o`；新板没 --base 时 openocd_target 按系列填（stm32f1 → target/stm32f1x.cfg），name 用 .ioc 文件名代替 TODO。链接步骤依赖链接脚本（改 .ld 会重链）。
 - [编译] 固件 LINK 可走 RTT：`make LINK=rtt BOARD=… APP=…`（新模块 firmware/proto/dzrtt 0.1.0，SEGGER RTT 兼容控制块、非阻塞整段丢；应用经 apps/include/link_io.h 收发，默认仍是串口）。输出到 build/<板>-rtt/。主机单测模拟探针读写已过；MSPM0 / F407 交叉编译通过（MSPM0 car_2wd 多 1.3 KB RAM）；真探针【未上板】。

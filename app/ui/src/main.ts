@@ -13,12 +13,12 @@ import { initRaw } from "./raw";
 import { initFFT } from "./fft";
 import { initSend } from "./send";
 
-type Field = { name: string; type: string; unit?: string; enum?: string[] };
+type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isNaN(v) ? "—" : p.type === "f32" ? (Math.abs(v) < 1e-30 ? "0" : (+v.toPrecision(6)).toString()) : String(Math.round(v));
+const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isNaN(v) || ("na" in p && p.na === v) ? "—" : p.type === "f32" ? (Math.abs(v) < 1e-30 ? "0" : (+v.toPrecision(6)).toString()) : String(Math.round(v));
 
 const q = new URLSearchParams(location.search);
 const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
@@ -154,6 +154,13 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
     const el = document.getElementById(`ev-${f.name}`), v = S.enumVal[f.name];
     if (el && v != null) { const name = f.enum![v] ?? String(v); el.textContent = name; el.className = `mono st-${name}`; }
   });
+  const vs = S.enums.find(f => f.name === "vis_state");          // 视觉状态放到顶栏：比赛时一眼看到
+  $("ro-vis-w").hidden = !vs;
+  if (vs && S.enumVal.vis_state != null) {
+    const name = vs.enum![S.enumVal.vis_state] ?? "?", at = (n: string) => S.plotted.findIndex(f => f.name === n);
+    const age = plot.last(at("vis_age_ms")), drops = plot.last(at("vis_drops"));
+    $("ro-vis").innerHTML = `<b class="st-${name}">${name}</b>${age != null ? ` · ${Math.round(age)} ms` : ""}${drops ? ` · 丢 ${drops}` : ""}`;
+  }
 }, 100);
 
 // ---------------------------------------------------------------- 参数
