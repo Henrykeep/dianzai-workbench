@@ -44,6 +44,7 @@
 - [全流程走查（2026H 仿真）](docs/29-全流程走查.md)
 - [验收、单位标定与串级分层](docs/30-验收标定与串级分层.md)
 - [读题拆解、方案选型与资源分配（第 1–3 步）](docs/31-读题拆解与方案选型.md)
+- [验证证据目录规范](docs/verify/README.md)
 - [自检](docs/SELFCHECK.md)
 - [交接](docs/HANDOVER.md)
 - [给用户的待办清单](docs/MORNING.md)

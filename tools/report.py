@@ -196,7 +196,7 @@ def _decimate(xs, ys, n=1500):
 
 # ---------------- 主流程 ----------------
 def build(files, y, sp, u=None, u_limit=None, source="", params=None, reqs=(), title="", band=0.05,
-          out=pathlib.Path("report"), pre_s=0.2, window=None):
+          out=pathlib.Path("report"), pre_s=0.2, window=None, req_file=None, item=None):
     if source not in ("board", "sim"):
         raise ReportError("--source 必须写 board（实物）或 sim（仿真）：报告里不能分不清实测和仿真")
     src_txt = "实物" if source == "board" else "仿真"
@@ -308,8 +308,28 @@ def build(files, y, sp, u=None, u_limit=None, source="", params=None, reqs=(), t
     if series:
         L += ["![阶跃响应叠加](step.svg)", "", "每次单独：" + "、".join(f"[第 {i} 次](run_{i}.svg)" for i, *_r in runs if _r[-1].ok), ""]
     L += ["## 误差分析", "", "（待填：误差来源按大小排序——这一节要人写，工具只给数）", ""]
+    if req_file:
+        L += evidence_section(req_file, item, source, rows, len(runs), bool(reqs), out)
     (out / "results.md").write_text("\n".join(L), encoding="utf-8")
     return {"runs": len(runs), "valid": len(good), "rows": rows, "summary": summary, "out": str(out)}
+
+
+def evidence_section(req_file, item, source, rows, n_runs, has_reqs, out) -> list[str]:
+    """把 requirements.yaml 里该评分项的证据行（与 tools/req.py evidence 同一函数）带进报告，并给出本次录像的 evidence 建议。
+    层只会建议 sim / bench：现场（field）要按题目测法完整走一遍，由人判断后手写，工具不替人宣布。"""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import datetime
+    import req as R
+    d = R.load(pathlib.Path(req_file))
+    its = [i for i in d["items"] if i["id"] == item]
+    if not its:
+        raise ReportError(f"{req_file} 里没有评分项 {item}")
+    n_ok = sum(1 for r in rows if r[-1] == "满足")
+    res = "TODO（没给 --req，判不了）" if not has_reqs else ("pass" if n_ok == n_runs else "partial" if n_ok else "fail")
+    lay = "bench" if source == "board" else "sim"
+    return ["## 评分项证据（requirements.yaml）", "", R.render_evidence(d, its),
+            f"本次 {n_runs} 次录像满足 {n_ok} 次 → 建议追加到 {item}.evidence（路径改成相对 requirements.yaml；目录按 docs/verify/README.md 命名）：", "",
+            f"```yaml\n- {{ path: {out.as_posix()}, layer: {lay}, date: \"{datetime.date.today():%Y-%m-%d}\", result: {res} }}\n```", ""]
 
 
 def main(argv=None):
@@ -326,9 +346,14 @@ def main(argv=None):
     ap.add_argument("--window", type=float, help="曲线画阶跃后多少秒（默认 3×最长调节时间）")
     ap.add_argument("--title", default="")
     ap.add_argument("-o", "--out", default="report")
+    ap.add_argument("--req-file", help="requirements.yaml：把 --item 那一项的合规/计分证据行带进报告")
+    ap.add_argument("--item", help="评分项编号，例 B3（配合 --req-file）")
     a = ap.parse_args(argv)
+    if bool(a.req_file) != bool(a.item):
+        ap.error("--req-file 与 --item 要一起给")
     try:
-        r = build(a.files, a.y, a.sp, a.u, a.u_limit, a.source, a.params, parse_req(a.req), a.title, a.band, pathlib.Path(a.out), window=a.window)
+        r = build(a.files, a.y, a.sp, a.u, a.u_limit, a.source, a.params, parse_req(a.req), a.title, a.band, pathlib.Path(a.out), window=a.window,
+                  req_file=a.req_file, item=a.item)
     except ReportError as e:
         print(f"report: {e}", file=sys.stderr)
         return 2

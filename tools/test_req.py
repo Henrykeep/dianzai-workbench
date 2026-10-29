@@ -109,6 +109,36 @@ def test_2026h_example_consistent_and_renders():
     assert md.index("| B4 |") < md.index("| B3 |"), "同一部分内按分值降序"
 
 
+def test_evidence_rules_and_table():
+    with tempfile.TemporaryDirectory() as t:
+        T = pathlib.Path(t)
+        good = T / "logs/20261029-2140_taskB1_bench"; good.mkdir(parents=True); (good / "notes.md").write_text("x")
+        empty = T / "logs/20261029-2141_taskB2_sim"; empty.mkdir(parents=True)
+        p = _write(t, """schema_version: 1
+problem: {code: X, title: t, source: s, project: project.yaml}
+items:
+  - {id: B1, part: basic, score: 5, text: x, subsystems: [a], accept: 定位, why: 串级,
+     forbidden_claims: [仿真过了就行],
+     evidence: [{path: logs/20261029-2140_taskB1_bench, layer: bench, date: "2026-10-29", result: pass},
+                {path: logs/20261029-2140_taskB1_bench, layer: sim, date: "2026-10-28", result: pass}]}
+  - {id: B2, part: basic, score: 5, text: y, subsystems: [b], accept: 定位,
+     evidence: [{path: logs/20261029-2141_taskB2_sim, layer: sim, date: "2026-10-29", result: pass},
+                {path: logs/nope, layer: sim, date: "2026-10-29", result: fail},
+                {path: logs/20261029-2140_taskB1_bench, layer: bench, date: "2026-10-29", result: pass}]}
+  - {id: B3, part: basic, score: 5, text: z, subsystems: [a], accept: 定位}
+""", PROJ)
+        d = req.load(p)
+        err, warn = req.check_evidence(d, p.parent)
+        j = "\n".join(err)
+        assert "层" in j and "日期" in j, err                 # B1 第二条：layer/date 与目录名不符
+        assert "nope" in j and "空" in j and "B1" in j, err   # 不存在、空目录、编号不符
+        assert any("flash" in w for w in warn) and any("why" in w for w in warn), warn
+        st = {i["id"]: req.status(i) for i in d["items"]}
+        assert st["B1"] == "台架通过" and st["B3"] == "未测", st
+        md = req.render_evidence(d)
+        assert "仿真过了就行" in md and "“B1 已得分”" in md, "非现场通过自动禁止说已得分"
+
+
 if __name__ == "__main__":
     n = 0
     for k, f in list(globals().items()):

@@ -1,0 +1,11 @@
+git fbc9e5e（工作区含未提交改动：第 7 项进行中）
+命令：make -C examples/2026H_ball/tests
+- vision_channel_codec_and_python_interop
+- vision_subsys
+- ball_subsys_closed_loop_toy
+- ball_feedforward_and_profile_switch
+- accel_ff_src_deadzone_failsafe
+- vision_subsys_selftest
+- generated_tables_consistent
+
+通过 35，失败 0

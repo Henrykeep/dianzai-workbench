@@ -43,6 +43,7 @@
 | 29-全流程走查.md | 用 2026H 在仿真里从读题走到定稿：摩擦清单、已修项、下一步优先级 |
 | 30-验收标定与串级分层.md | yaml 里写 cal / accept / loops：物理单位、评委口径的到位判定与最差 N 轮、串级逐层调法 |
 | 31-读题拆解与方案选型.md | 第 1、2 步：题目 PDF → requirements.yaml → 测试清单（tools/req.py）；按能力标签出候选/替代/禁用（tools/scheme.py） |
+| verify/README.md | 验证证据目录规范：`logs/<时间>_task<编号>_<层>/`、必备文件、req.py evidence 合规与计分表 |
 | SELFCHECK.md | 里程碑自检（按宗旨逐条） |
 | HANDOVER.md | 交接：宗旨、用户偏好、现状、未完成项 |
 | MORNING.md | 给你的一页清单：要带什么、要量什么、要拍板什么 |

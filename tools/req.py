@@ -165,6 +165,79 @@ def check(d: dict, base: pathlib.Path) -> tuple[list[str], list[str]]:
     return err, warn
 
 
+# ── 证据（docs/verify/README.md） ─────────────────────────────────
+LOG_RE = re.compile(r"(?:^|/)logs/(\d{8})-(\d{4})_task([BA]\d+|\d+)_(unit|sim|bench|field)/?$")
+LAYER_NAME = {"unit": "单元", "sim": "仿真", "bench": "台架", "field": "现场"}
+STATUS_ORDER = ["field", "bench", "sim", "unit"]
+
+
+def status(it: dict) -> str:
+    """状态只认 pass 的证据，取最高一层。“准备联调”“仿真通过”都不等于“已得分”——只有现场通过才算。"""
+    ev = it.get("evidence", [])
+    for lay in STATUS_ORDER:
+        if any(e["layer"] == lay and e["result"] == "pass" for e in ev):
+            return f"{LAYER_NAME[lay]}通过"
+    for lay in STATUS_ORDER:
+        if any(e["layer"] == lay and e["result"] == "partial" for e in ev):
+            return f"{LAYER_NAME[lay]}部分"
+    return "未过" if ev else "未测"
+
+
+def check_evidence(d: dict, base: pathlib.Path) -> tuple[list[str], list[str]]:
+    err, warn = [], []
+    for it in d["items"]:
+        for e in it.get("evidence", []):
+            p = (base / e["path"]).resolve()
+            tag = f"{it['id']} 证据 {e['path']}"
+            if not p.exists():
+                err.append(f"{tag}：路径不存在"); continue
+            m = LOG_RE.search(e["path"].replace("\\", "/").rstrip("/") + "/")
+            if not m:
+                warn.append(f"{tag}：不是 logs/<YYYYMMDD-HHMM>_task<编号>_<层>/ 目录（docs/verify/README.md）"); continue
+            day, _hm, task, lay = m.groups()
+            if task != it["id"] and str(it.get("test_id")) != task:
+                err.append(f"{tag}：目录写的是 task{task}，不是 {it['id']}")
+            if lay != e["layer"]:
+                err.append(f"{tag}：目录层是 {lay}，evidence.layer 写的 {e['layer']}")
+            if day != e["date"].replace("-", ""):
+                err.append(f"{tag}：目录日期 {day} 与 date {e['date']} 不一致")
+            if p.is_dir():
+                files = {f.name for f in p.iterdir()}
+                if not files:
+                    err.append(f"{tag}：空目录不算证据")
+                if lay in ("bench", "field") and "flash.txt" not in files:
+                    warn.append(f"{tag}：缺 flash.txt（烧录输出 + 固件版本），说不清测的是哪版固件")
+                if lay in ("bench", "field") and not files & {"params.txt", "params_before.txt"}:
+                    warn.append(f"{tag}：缺参数回读 params.txt（dzctl params 导出），说不清测的是哪组参数")
+        if it["part"] != "other" and not it.get("why"):
+            warn.append(f"{it['id']}：没写设计依据 why（答辩会被问“凭什么能达标”）")
+    return err, warn
+
+
+def render_evidence(d: dict, items=None) -> str:
+    """合规/计分证据表：评分五元组（操作→验证位置→预期→依据→分值）+ 状态 + 证据 + 禁止表述。"""
+    items = items if items is not None else d["items"]
+    L = ["| 编号 | 分值 | 操作（怎么测） | 验证位置 | 预期（通过条件） | 设计依据 | 状态 | 证据 | 当前禁止表述 |",
+         "|---|---|---|---|---|---|---|---|---|"]
+    for i in items:
+        how = "；".join(m["how"] for m in i.get("metrics", []) if m.get("how")) or "—"
+        where = "、".join(x for x in [i.get("accept") and f"工作台验收 {i['accept']}",
+                                       i.get("test_id") is not None and f"测试 {i['test_id']}"] if x) or "人工"
+        exp = "；".join(fmt_metric(m) for m in i.get("metrics", [])) or "**缺指标**"
+        ev = "<br>".join(f"{LAYER_NAME[e['layer']]} {e['date']} {e['result']}：`{e['path']}`" for e in i.get("evidence", [])) or "—"
+        forb = list(i.get("forbidden_claims", []))
+        st = status(i)
+        if st != "现场通过":
+            forb.append(f"“{i['id']} 已得分”（当前只到：{st}）")
+        sc = f"{i['score']:g}" if "score" in i else "?"
+        L.append(f"| {i['id']} | {sc} | {how} | {where} | {exp} | {i.get('why') or '**未写**'} | {st} | {ev} | {'；'.join(forb)} |")
+    tot = sum(i.get("score", 0) for i in items)
+    got = {s: sum(i.get("score", 0) for i in items if status(i) == s) for s in ("现场通过", "台架通过", "仿真通过")}
+    L += ["", f"分值：总 {tot:g}；现场通过 {got['现场通过']:g}；台架通过 {got['台架通过']:g}；仿真通过 {got['仿真通过']:g}。"
+          "只有“现场通过”（按题目测法、按次数完整走一遍）才能说已得分；准备联调 ≠ 已得分。"]
+    return "\n".join(L) + "\n"
+
+
 # ── checklist ────────────────────────────────────────────────────
 def fmt_metric(m: dict) -> str:
     v = m["value"]
@@ -226,6 +299,9 @@ def main(argv=None) -> int:
     a = sp.add_parser("init"); a.add_argument("src"); a.add_argument("-o", required=True); a.add_argument("--code", default="待填")
     b = sp.add_parser("check"); b.add_argument("req"); b.add_argument("--strict", action="store_true", help="提醒也算失败（比赛前用）")
     c = sp.add_parser("checklist"); c.add_argument("req"); c.add_argument("-o", required=True)
+    e = sp.add_parser("evidence", help="合规/计分证据表 → <o>/evidence.md"); e.add_argument("req"); e.add_argument("-o", required=True)
+    n = sp.add_parser("newlog", help="按 docs/verify 规范建一个日志目录并打印 evidence 片段")
+    n.add_argument("--root", required=True, help="例 docs/verify/2026H"); n.add_argument("--task", required=True); n.add_argument("--layer", required=True, choices=list(LAYER_NAME))
     ns = ap.parse_args(argv)
     if ns.cmd == "init":
         src = pathlib.Path(ns.src)
@@ -237,12 +313,23 @@ def main(argv=None) -> int:
                        + yaml.safe_dump(d, allow_unicode=True, sort_keys=False, width=200), encoding="utf-8")
         print(f"写入 {out}：评分项 {len(d['items'])} 条、疑似规则约束 {len(d['constraints'])} 条（草稿）")
         return 0
+    if ns.cmd == "newlog":
+        import datetime
+        now = datetime.datetime.now()
+        d = pathlib.Path(ns.root) / "logs" / f"{now:%Y%m%d-%H%M}_task{ns.task}_{ns.layer}"
+        d.mkdir(parents=True, exist_ok=False)
+        (d / "notes.md").write_text(f"# task{ns.task} {LAYER_NAME[ns.layer]} {now:%Y-%m-%d %H:%M}\n\n- 谁测 / 场地 / 电源电压：\n- 现象：\n", encoding="utf-8", newline="\n")
+        print(d)
+        print(f"evidence 片段（路径改成相对 requirements.yaml）：\n  - {{ path: {d.as_posix()}, layer: {ns.layer}, date: {now:%Y-%m-%d}, result: TODO }}")
+        return 0
     p = pathlib.Path(ns.req)
     try:
         d = load(p)
     except jsonschema.ValidationError as e:
         print(f"✗ {p}: {e.message}（位置 {list(e.absolute_path)}）"); return 1
     err, warn = check(d, p.parent)
+    e2, w2 = check_evidence(d, p.parent)
+    err, warn = err + e2, warn + w2
     for e in err:
         print("✗", e)
     for w in warn:
@@ -254,6 +341,12 @@ def main(argv=None) -> int:
     if err:
         return 1
     out = pathlib.Path(ns.o); out.mkdir(parents=True, exist_ok=True)
+    if ns.cmd == "evidence":
+        (out / "evidence.md").write_text(f"# {d['problem']['code']} {d['problem']['title']} —— 合规与计分证据表\n\n"
+                                         "> tools/req.py evidence 生成；证据目录规范见 docs/verify/README.md。\n\n" + render_evidence(d),
+                                         encoding="utf-8", newline="\n")
+        print(f"写入 {out}/evidence.md")
+        return 0
     md, rows = render(d)
     (out / "checklist.md").write_text(md, encoding="utf-8")
     with open(out / "checklist.csv", "w", newline="", encoding="utf-8-sig") as f:

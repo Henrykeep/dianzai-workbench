@@ -108,5 +108,15 @@ write(slow, second_order(0.9, 0.8, 100.0, 0.0, 9, t_end=2.0))
 r6 = report.build([str(slow)], "ball_x", "ball_sp", source="board", reqs=report.parse_req(["settling<=1"]), out=d / "o6")
 check(r6["rows"][0][5] == "未进带" and r6["rows"][0][-1].startswith("不满足"), "没进带 → '未进带'且不满足")
 
+r7 = report.build(files, "ball_x", "ball_sp", source="board", reqs=report.parse_req(["overshoot<=20"]), out=d / "o7",
+                  req_file=str(pathlib.Path(__file__).resolve().parent.parent / "examples/2026H_ball/requirements.yaml"), item="B3")
+md7 = (d / "o7/results.md").read_text(encoding="utf-8")
+check("评分项证据" in md7 and "| B3 |" in md7 and "layer: bench" in md7 and "result: pass" in md7, "--req-file/--item 带入证据行与建议")
+try:
+    report.build(files[:1], "ball_x", "ball_sp", source="sim", out=d / "o8", req_file=str(pathlib.Path(__file__).resolve().parent.parent / "examples/2026H_ball/requirements.yaml"), item="Z9")
+    check(False, "未知评分项应报错")
+except report.ReportError:
+    check(True, "未知评分项报错")
+
 print(f"test_report: {'通过' if not fails else f'{fails} 项失败'}")
 sys.exit(1 if fails else 0)
