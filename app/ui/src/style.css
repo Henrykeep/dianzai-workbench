@@ -322,3 +322,9 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .tl{display:flex;gap:6px;overflow-x:auto;padding:4px 0;font:var(--t-xs) var(--f-sans);white-space:nowrap}
 .tl-e{display:inline-flex;gap:4px;align-items:center;padding:1px 6px;border:1px solid var(--line);border-left:3px solid var(--c);border-radius:var(--r-xs);cursor:pointer}
 .tl-e b{color:var(--c);font-weight:600}.tl-e i{font-style:normal;color:var(--muted);font-family:var(--f-mono)}
+/* 保护阈值表（protect.ts） */
+.ptab table{width:100%;border-collapse:collapse;font:var(--t-xs) var(--f-sans)}
+.ptab th,.ptab td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:left}
+.ptab th{color:var(--muted);font-weight:500}
+.ptab input.in{width:7em}
+.ptab tr.fixed td{color:var(--muted)}

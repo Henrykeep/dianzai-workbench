@@ -108,11 +108,13 @@ def schema(spec: dict, params: list) -> dict:
     for p, src in zip(s["params"], params):
         p["default"] = src.get("default", 0)
         p["desc"] = src.get("desc", "")
+        if src.get("protect"):                 # 保护阈值表的分类（堵转电流/倾倒角/限幅/断线停车…），只给界面
+            p["protect"] = str(src["protect"])
     # 下面都只给上位机看（标定、验收、串级分层），不进哈希：改它们不用重烧固件
     for f, src in zip(s["telemetry"]["fields"], tel.get("fields", [])):
         if src.get("cal"):
             f["cal"] = src["cal"]
-    for k in ("accept", "loops"):
+    for k in ("accept", "loops", "protect_fixed"):
         if spec.get(k):
             s[k] = spec[k]
     return s

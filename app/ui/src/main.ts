@@ -15,9 +15,10 @@ import { Cal, calMap } from "./calib";
 import { AcceptSpec } from "./accept";
 import { initHbStrip } from "./hbstrip";
 import { initTimeline, kindOf } from "./timeline";
+import { Fixed, protectRows, UndoLog } from "./protect";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
-type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[] };
+type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[]; protect_fixed?: Fixed[] };
 let CAL = new Map<string, { f: (x: number) => number; unit: string }>();
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -27,6 +28,7 @@ const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isN
 const q = new URLSearchParams(location.search);
 const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
 const plot = new Plot($("pb"));
+const UNDO = new UndoLog();   // 参数下发前的板上值（保护阈值表的“撤销”）
 // 心跳条点格子：回放按 dzlog 时间跳；实时把曲线停在那一秒（缓冲里还有的话）
 const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
   if (S.status.replay && c.log_t != null) { await call("replay_ctl", { seek: Math.max(c.log_t - 1, 0) }); return; }
@@ -250,13 +252,37 @@ function renderParams() {
     };
   });
   filterParams();
+  renderProtect();
   syncParams();
+}
+// 保护阈值表（protect.ts）：输入框和参数面板共用草稿 S.edit；“撤销”= 把上一次下发前的板上值当草稿再下发一次
+function renderProtect() {
+  const rows = protectRows((S.schema?.params ?? []) as any, S.schema?.protect_fixed ?? []);
+  $("ptab").innerHTML = rows.length ? `<table><thead><tr><th>保护项</th><th>参数</th><th>板上</th><th>改为</th><th>量程</th><th></th></tr></thead><tbody>${rows.map(r => r.p
+    ? `<tr title="${esc(r.p.desc ?? "")}"><td>${esc(r.cat)}</td><td class="mono">${esc(r.p.name)}</td><td class="mono" id="pt-v-${r.p.name}"></td>
+        <td><input class="in" id="pt-${r.p.name}" data-n="${r.p.name}" inputmode="decimal" autocomplete="off"></td><td class="mono">${fmt(r.p.min, r.p)}–${fmt(r.p.max, r.p)} ${esc(r.p.unit ?? "")}</td>
+        <td><button class="btn ghost sm" data-u="${r.p.name}" title="撤销：恢复上一次下发前的板上值">撤销</button></td></tr>`
+    : `<tr class="fixed" title="编译期常量，改要重烧：${esc(r.fixed!.where ?? "")}"><td>${esc(r.cat)}</td><td class="mono">—</td><td class="mono">${esc(String(r.fixed!.value))} ${esc(r.fixed!.unit ?? "")}</td><td colspan="3" class="lbl">固件常量 · ${esc(r.fixed!.where ?? "")}</td></tr>`).join("")}</tbody></table>`
+    : emptyState("sliders", "这个对象没有声明保护阈值：在 app.yaml 的参数上加 protect: 分类（如 倾倒角）");
+  $("ptab").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
+    inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
+    inp.onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); sendPending([inp.dataset.n!]); } };
+  });
+  $("ptab").querySelectorAll<HTMLButtonElement>("button[data-u]").forEach(b => b.onclick = async () => {
+    const n = b.dataset.u!, p = (S.schema?.params ?? []).find(x => x.name === n)!, v = UNDO.pop(n);
+    if (v == null) { toast(`${n} 这次会话里还没下发过，没有可撤销的`, "info", 3000); return; }
+    S.edit[n] = String(v); await sendPending([n], true); toast(`${n} 已撤销为 ${fmt(v, p)}`, "ok", 3000);
+  });
 }
 function syncParams() {
   (S.schema?.params ?? []).forEach(p => {
     const inp = document.getElementById(`pi-${p.name}`) as HTMLInputElement | null;
     // 没在改的格子一律跟随板上值（含其他客户端 / Agent 改的），聚焦也跟随
     if (inp && !(p.name in S.edit)) inp.value = fmt(S.applied[p.name], p);
+    const pt = document.getElementById(`pt-${p.name}`) as HTMLInputElement | null, pv = document.getElementById(`pt-v-${p.name}`);
+    if (pt && document.activeElement !== pt) pt.value = p.name in S.edit ? S.edit[p.name] : fmt(S.applied[p.name], p);
+    if (pv) pv.textContent = fmt(S.applied[p.name], p);
+    document.querySelector<HTMLButtonElement>(`button[data-u="${p.name}"]`)?.toggleAttribute("disabled", UNDO.peek(p.name) == null);
   });
   markParams();
 }
@@ -264,6 +290,7 @@ function markParams() {
   const pend = new Set(pending().map(p => p.name));
   (S.schema?.params ?? []).forEach(p => {
     document.getElementById(`pi-${p.name}`)?.classList.toggle("chg", pend.has(p.name));
+    document.getElementById(`pt-${p.name}`)?.classList.toggle("chg", pend.has(p.name));
     // 草稿 ≠ 板上真值：行变成“待下发”，旧值划掉留在左边，刻度尺上黄铜标出新值和改动范围（板上始终是板子回报的生效值）
     const on = pend.has(p.name), b = document.getElementById(`pb-${p.name}`), v = S.applied[p.name];
     document.getElementById(`row-${p.name}`)?.classList.toggle("dirty", on);
@@ -278,11 +305,13 @@ function markParams() {
   $<HTMLButtonElement>("p-send").disabled = !pend.size;
   $<HTMLButtonElement>("p-revert").disabled = !Object.keys(S.edit).length;
 }
-async function sendPending(only?: string[]) {
+async function sendPending(only?: string[], undoing = false) {
   const list = pending().filter(p => !only || only.includes(p.name));
   for (const p of list) {
     try {
+      const before = S.applied[p.name];
       const r = await call("param_set", { name: p.name, value: clampLocal(p, +S.edit[p.name]) });
+      if (!undoing) UNDO.push(p.name, before);
       delete S.edit[p.name];
       S.applied[p.name] = r.applied;
       if (r.status === "clamped") toast(`${p.name} 被限幅为 ${fmt(r.applied, p)}`, "warn", 4000);
@@ -403,7 +432,7 @@ function renderStatus(st: Msg) {
   if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); tl.clear(); }
 }
 function applyNone() {
-  S.schema = null; S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
+  S.schema = null; UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
   plot.setChannels([], [], []); $("chans").innerHTML = emptyState("activity", "连上后列出通道"); $("chan-n").textContent = ""; $("plot-sub").textContent = "";
   $("snaps").innerHTML = ""; renderParams();
   document.querySelectorAll(".ro.pin").forEach(e => e.remove());   // 断开后不留上一个对象的状态块

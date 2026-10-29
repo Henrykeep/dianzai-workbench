@@ -43,7 +43,8 @@ class Schema:
         return {"hash": f"{self.hash:08X}", "path": self.path, "fields": self.fields, "params": self.params,
                 "period_ms": self.d["telemetry"].get("period_ms"),
                 # 只给界面：验收规格、串级分层（gen_link 从 yaml link: 段原样带过来；字段的 cal 在 fields 里）
-                "accept": self.d.get("accept") or [], "loops": self.d.get("loops") or []}
+                "accept": self.d.get("accept") or [], "loops": self.d.get("loops") or [],
+                "protect_fixed": self.d.get("protect_fixed") or []}
 
 
 def search_dirs() -> list[pathlib.Path]:
