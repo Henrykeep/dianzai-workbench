@@ -9,8 +9,7 @@ import pytest
 
 from dzbench.session import Session
 
-pytestmark = pytest.mark.skipif(os.name == "nt" or not shutil.which("make") or not shutil.which("cc"),
-                                reason="host-sim --stream 需要 POSIX + make + cc")
+pytestmark = pytest.mark.needs_sim  # 原 skipif 条件统一放在 conftest.SIM_OK
 
 
 def wait(cond, t=5.0):

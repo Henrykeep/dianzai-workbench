@@ -69,6 +69,7 @@ def rig(home, tmp_path):
     st.stop()
 
 
+@pytest.mark.needs_sim
 def test_v08_buttons_e2e(rig):
     """v0.8.0 新接上的按钮：自动重连开关、阶跃实验、规则建议、重置护栏、新对话。"""
     st, ui, _ = rig
@@ -88,6 +89,7 @@ def test_v08_buttons_e2e(rig):
     assert len(st.srv.svc.loop.messages) <= 1, "新对话要清掉上下文"
 
 
+@pytest.mark.needs_sim
 def test_agent_tools_via_ui(rig):
     """在 Agent 面板里提问 → 模型调工具 → 侧车执行 → 结果回到对话（假模型，真链路、真仿真板）。"""
     from agentfake import FakeLLM, call
@@ -111,6 +113,7 @@ def test_agent_tools_via_ui(rig):
     assert any(e["type"] == "proposal" for e in ui.events[m:]), "提议参数要出卡片"
 
 
+@pytest.mark.needs_sim
 def test_car_firmware_options_e2e(rig):
     """固件选项（car_2wd 的 app.yaml params）：界面改参数 → 板子行为真的变了（看板子遥测）。"""
     import struct

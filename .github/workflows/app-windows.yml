@@ -4,6 +4,7 @@ name: app-windows
 on:
   workflow_dispatch:
   push:
+    branches: [main]          # 每次推 main 都跑 Windows：只有 main 的 Windows 绿了才打 tag（v0.8.0 教训）
     tags: ["app-v*", "v*"]
 jobs:
   sidecar-test:

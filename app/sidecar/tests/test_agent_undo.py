@@ -1,4 +1,5 @@
 """计划卡、板子记忆、一键撤销（参数 + git 提交）——在仿真板上走一遍。"""
+import pytest
 import time
 
 from agentfake import FakeLLM, call
@@ -17,6 +18,7 @@ def wait(pred, t=10):
     return False
 
 
+@pytest.mark.needs_sim
 def test_plan_memory_and_undo(home, repo):  # noqa: F811
     s = Session()
     s.connect("sim:car_2wd")

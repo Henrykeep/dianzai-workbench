@@ -16,6 +16,7 @@
 - docs/24 Agent 框架源码研读（Codex、Gemini CLI、DeepSeek Harness、Aider、Cline、OpenHands、Goose、OpenCode、Continue、SWE-agent、smolagents、嵌入式 MCP），docs/25 v0.9 计划。
 
 ### 修复 / 改进
+- app-windows CI：v0.8.0 的 Windows 构建因 test_wiring 里 3 个仿真板测试挂掉（mingw 没有 asan/ubsan、Makefile 用了 find）。所有起仿真板的测试统一标 `needs_sim`，Windows/无 make+cc 跳过；没标却起仿真板的测试本地直接失败（子进程侧车也拦）。Makefile 改纯 make 递归通配、Windows 默认不开 sanitizer（Windows 跑仿真板 [未测]）。app-windows 改为每次推 main 都跑。[编译]（Windows CI 结果见本次 run）
 - 外壳代码 main.rs 在本机用 rustc 1.99 对 Windows（x86_64-pc-windows-msvc）`cargo check` 通过（debug + release）[编译]。
 - 侧车收到 SIGTERM 先删“上次连接”记录，退得慢也不会下次误报“意外退出” [仿真]。
 - **dzctl 0.3.0：心跳带板 ID**（芯片 UID 折成 32 位；F1/F4 端口用 HAL_GetUIDw*，仿真用 DZ_SIM_UID；MSPM0 读 FACTORYREGION TRACEID（0x41C40000，SLASEX6 §8.35）混 USERID，预量产片 TRACEID=0 时报未知 [编译]）。旧上位机只读前 4 字节，兼容 [仿真]。

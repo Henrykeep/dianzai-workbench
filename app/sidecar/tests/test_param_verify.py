@@ -7,6 +7,8 @@ from dzbench.agent_api import AgentTools
 from dzbench.session import LinkError
 from dzbench.session import Session
 
+pytestmark = pytest.mark.needs_sim
+
 
 @pytest.fixture
 def s(home):

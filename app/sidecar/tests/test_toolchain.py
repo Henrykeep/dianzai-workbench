@@ -112,6 +112,7 @@ def sim(home):
     s.disconnect()
 
 
+@pytest.mark.needs_sim
 def test_flash_preconditions_dry_run_idcode_backup_verify_rollback(sim, tmp_path, home):
     img = tmp_path / "fw.bin"; img.write_bytes(b"\x01\x02\x03\x04" * 8)
     cfg = config.load(None); cfg["flash"]["target"] = "mspm0g3507"; cfg["flash"]["heartbeat_timeout_s"] = 2
@@ -141,6 +142,7 @@ def test_flash_preconditions_dry_run_idcode_backup_verify_rollback(sim, tmp_path
     assert e.value.code == "idcode"
 
 
+@pytest.mark.needs_sim
 def test_service_gate_human_card_and_sim_step_test(sim, tmp_path, home):
     from dzbench.agent.service import AgentService
     from dzbench.agent_api import AgentTools
@@ -166,6 +168,7 @@ def test_service_gate_human_card_and_sim_step_test(sim, tmp_path, home):
     assert ctx["history"] and len(ctx["samples_t_y_sp"]) <= 20 and "每轮只改一个参数" in ctx["rules"]
 
 
+@pytest.mark.needs_sim
 def test_service_four_segment_and_staged_rule_round(sim, tmp_path, home):
     from dzbench.agent.service import AgentService
     from dzbench.agent_api import AgentTools
