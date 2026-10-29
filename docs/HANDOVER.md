@@ -70,6 +70,11 @@
 ### 看门狗（2026-10-29，UTC+8）
 - pal 1.3.0 `pal_wdg_start/kick`；实现只在 stm32-cubemx（寄存器直写），MSPM0 WWDT 待做。复位原因进心跳、被咬后进安全态还没做。
 
+### 保护表 / 告警条 / 赛前检查（2026-10-29，UTC+8）
+- 保护表：app.yaml 参数加 `protect:` 分类、`protect_fixed:` 列编译期常量（都不进 schema 哈希）；界面 `protect.ts`，撤销栈 UndoLog 只记“保护”页下发。堵转电流行没有——algo/stall 还没接进任何 app。
+- 告警条：`alerts.ts`；确认位置存侧车 `Timeline.acked`（op alert_ack，广播同步多窗口）。
+- 赛前检查：`precontest.py`；判定项加在 board_items，人工项改 MANUAL 列表。
+
 ### 心跳条（2026-10-29，UTC+8）
 - 侧车 `linkhealth.py`（每秒格子，status 里的 `hb` + op `health`），界面 `hbstrip.ts`，曲线 `Plot.jumpTo`（`view` 非空 = 视图钉住，按 P 继续时清掉）。格子同时带 log_t（dzlog 时间）和 plot_t（曲线时间），后面的事件时间线复用同一对时间。
 - 事件时间线：`events.py`（from_broadcast / from_reply 分类表 + Timeline），会话内的看门狗/CRC 突增由 `Session.mark` 在 status() 里记；界面 `timeline.ts`，曲线 `Plot.setMarks`。

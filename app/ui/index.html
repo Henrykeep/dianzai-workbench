@@ -93,6 +93,7 @@
     <button class="ri" data-side="meas" title="测量：A/B 光标读数">测量<span class="pip" id="meas-pip" hidden></span></button>
     <button class="ri" data-side="hist" title="历史：每轮阶跃实验的曲线与参数">台账<span class="pip" id="hist-pip" hidden></span></button>
     <div class="sp"></div>
+    <button id="pre" class="ri" title="赛前全绿检查：自检 + 板子固件/参数/急停/告警/链路 + 仓库已提交；可导出封箱清单（只读）"><i data-lucide="list-checks"></i></button>
     <button id="doctor" class="ri" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
     <button id="theme" class="ri" title="切换主题：深色 → 浅色 → 高对比（户外强光下用浅色或高对比）"><i data-lucide="sun-moon"></i></button>
   </nav>
@@ -135,6 +136,9 @@
       <div id="hist" class="hist"></div>
     </section>
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
+      <dialog id="predlg" class="dlg"><form method="dialog"><h3>赛前检查</h3><div id="pre-sum" class="pre-sum"></div><ul id="pre-list" class="doc"></ul>
+        <p class="hint">板上参数要等于固件默认值：调好的值先“定稿”重烧，不然一复位就丢。人工项（电池、螺丝、线束…）在导出的清单里打勾。</p>
+        <div class="act"><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
       <dialog id="cfg" class="dlg">
         <form method="dialog" id="cfg-form">
           <h3>大模型设置</h3>

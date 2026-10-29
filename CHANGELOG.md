@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 赛前全绿检查 + 封箱清单（docs/17）：`dzbench/precontest.py` 在自检之外查板子在线、固件版本 = 仓库 HEAD 且无未提交改动、板上参数 = 固件默认值（调了没定稿 = ✗）、急停未锁、无未确认告警、链路 60 s 0 坏 0 丢、仓库已提交；界面赛前检查对话框，导出 Markdown 封箱清单（带人工打勾项与签字栏）。test_precontest 3 项（host-sim：改 kp 后参数项 ✗、急停后 ✗、导出内容）。[未测] 真板、Windows。
 - [仿真] 告警条（docs/17）：急停 / 看门狗 / CRC 突增 挂在底栏上方直到确认，点击跳转；确认位置存侧车（op `alert_ack`，`timeline` 改为返回 {events, acked}），多窗口与刷新一致。alerts.test.ts、test_timeline +1。[未测] Windows 界面。
 - [仿真] 保护阈值表（docs/17）：app.yaml 参数可加 `protect: <分类>`，`link.protect_fixed` 列编译期常量；gen_link 原样带进 link_schema.json（不进哈希，已测）；界面参数区新“保护”页按分类列出，草稿/下发与参数面板同一套，新增每参数撤销栈。car_2wd 标了 max_rps/accel_rps2（限幅）、cmd_timeout_ms（断线停车）、看门狗 500 ms（常量）；pendulum_rot 的 fall_deg 标倾倒角。堵转电流：algo/stall 还没接进任何 app，所以暂时没有这一行。test_protect、protect.test.ts。[未测] Windows 界面。
 - [仿真] 独立看门狗（docs/32 第 6 行）：pal 1.3.0 新增 `pal_wdg_start(timeout_ms)` / `pal_wdg_kick()`。stm32-cubemx 1.5.0 直接写 IWDG 寄存器（F1/F4 同一份代码，LSI 标称 F1 40 kHz / 其余 32 kHz，换算 `ports/stm32-cubemx/iwdg_calc.h`；调试器暂停时冻结，Keil/CCS 断点不会被咬）；host-sim 2.3.0 桩（`host_sim_wdg_bitten()`，仿真主循环被咬时 stderr 报出并以 86 退出，上位机看到心跳断）；mspm0-driverlib（WWDT 未做）、stm32f4-hal（已冻结）如实返回 ENOTSUP。car_2wd 初始化最后开 500 ms、主循环开头喂。tests/host/test_wdg.c（换算手算 7 例 + 桩语义）。[编译] F1/F4 交叉编译；[未测] 上板实际咬人、LSI 误差。

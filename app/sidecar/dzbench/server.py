@@ -136,6 +136,13 @@ class Server:
             return snapshots.list_all(s.schema.hash) if s.schema else []
         if op == "snapshot_restore":
             return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults"))))
+        if op in ("precontest", "precontest_export"):
+            from . import doctor, precontest
+            repo = m.get("repo") or str(self.svc.gw.root)
+            r = await run(None, lambda: precontest.run(s, repo, doctor.run(repo)))
+            if op == "precontest_export":
+                r["path"] = await run(None, lambda: precontest.export(r, s, repo, snapshots.base_dir()))
+            return r
         if op == "doctor":
             from . import doctor
             # 没指定就查侧车实际在用的工程仓库（DZBENCH_REPO / 配置 repo），以前传 None 会误报“没有 dzbench.json”（docs/29 F12）

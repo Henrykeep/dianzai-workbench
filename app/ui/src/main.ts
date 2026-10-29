@@ -509,6 +509,20 @@ link.onState = async open => {
 };
 renderParams();
 
+// 赛前全绿检查（侧车 precontest.py）：按 电脑 / 板子 / 工程 分组，全部 ✓ 才算全绿
+function renderPre(r: any) {
+  const mk: Record<string, string> = { ok: "✓", warn: "!", fail: "✗" };
+  $("pre-sum").className = "pre-sum " + (r.all_green ? "ok" : r.fails ? "fail" : "warn");
+  $("pre-sum").textContent = r.all_green ? `全绿 · ${r.t}` : `未全绿：✗ ${r.fails} 项必须处理，! ${r.warns} 项建议处理 · ${r.t}`;
+  const order: Record<string, number> = { fail: 0, warn: 1, ok: 2 };
+  $("pre-list").innerHTML = [...r.items].sort((a: any, b: any) => order[a.level] - order[b.level]).map((i: any) =>
+    `<li class="d-${i.level}"><b>${mk[i.level]} [${esc(i.group)}] ${esc(i.name)}</b>：${esc(i.msg)}${i.fix ? `<br><i>→ ${esc(i.fix)}</i>` : ""}</li>`).join("");
+}
+const runPre = async () => { const r = await call("precontest", {}).catch(() => null); if (r) renderPre(r); };
+$("pre").onclick = async () => { $("pre-list").innerHTML = "<li>检查中…</li>"; $<HTMLDialogElement>("predlg").show(); await runPre(); };
+$("pre-re").onclick = runPre;
+$("pre-exp").onclick = async () => { const r = await call("precontest_export", {}).catch(() => null); if (r) { renderPre(r); toast(`封箱清单已导出 → ${r.path}`, r.all_green ? "ok" : "warn", 12000); } };
+
 $("doctor").onclick = async () => {
   const items: any[] = await call("doctor", {}).catch(() => null) || [];
   const mk: Record<string, string> = { ok: "✓", warn: "!", fail: "✗" };
