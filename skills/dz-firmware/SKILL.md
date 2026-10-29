@@ -18,9 +18,9 @@ description: 在 dianzai-workbench 里换板、换引脚、加电赛题目或子
 ## 换板（只改引脚）
 1. 复制最像的板目录 `boards/<旧板>` → `boards/<新板>`。
 2. CubeMX 打开 `.ioc`，改引脚、保留 User Label，**GENERATE CODE**。
-3. `python3 tools/ioc_import.py boards/<新板>/cubemx/*.ioc -o boards/<新板>/board.yaml`（参数见 `docs/05-CubeMX工作流.md`）。
+3. `python3 tools/ioc_import.py boards/<新板>/cubemx/<名>.ioc --out boards/<新板>/board.yaml --base boards/<新板>/board.yaml`（`--base` 保留非引脚字段；详见 `docs/05-CubeMX工作流.md`）。
 4. `make check`（含 `check_gen_consistency.py`：漏了 GENERATE 会报残留引脚）。
-5. `make BOARD=<新板> APP=port_selftest`，上板看 LED / LINK 回显。
+5. `make BOARD=<新板> APP=port_selftest`，上板看 LED / LINK 回显；完整清单与各板最小例程表见 `docs/28-30分钟换板清单.md`。
 
 ## 加一道题
 1. 复制 `examples/2026H_ball` 的 `project.yaml` 结构（状态、参数、测试项）。

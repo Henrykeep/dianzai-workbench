@@ -110,7 +110,10 @@ CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm
          stm32f407-bldc-freertos-cubemx:2026H_ball mspm0g3507-tianmengxing:car_2wd mspm0g3507-launchpad:car_2wd \
          host-sim:car_2wd host-sim:2026H_ball dji-rm-c:imu_module host-sim:imu_module \
          mspm0g3507-tianmengxing:imu_module host-sim:motor_pos host-sim:pendulum_rot host-sim:pan_tilt host-sim:line_car \
-         stm32f407-skystar:motor_pos mspm0g3507-tianmengxing:pendulum_rot stm32f407-skystar:pan_tilt
+         stm32f407-skystar:motor_pos mspm0g3507-tianmengxing:pendulum_rot stm32f407-skystar:pan_tilt \
+         stm32f103c8t6-car-cubemx:port_selftest stm32f103c8t6-car-cubemx:motor_speed_demo stm32f407-skystar-cubemx:port_selftest \
+         mspm0g3507-tianmengxing:port_selftest mspm0g3507-launchpad:port_selftest mspm0g3507-launchpad:motor_speed_demo \
+         stm32f407-skystar:port_selftest stm32f407-skystar:motor_speed_demo dji-rm-c:port_selftest
 cross:
 	@for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done
 	@$(MAKE) -s BOARD=mspm0g3507-launchpad APP=car_2wd LINK=rtt >/dev/null 2>&1 || { echo "✗ cross LINK=rtt mspm0g3507-launchpad/car_2wd"; exit 1; }; echo "✓ mspm0g3507-launchpad/car_2wd LINK=rtt"

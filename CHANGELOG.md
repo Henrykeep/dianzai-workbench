@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] G5 `docs/28-30分钟换板清单.md`：6 步清单 + 各板最小例程表（port_selftest / motor_speed_demo / car_2wd 按板实测编译结果），9 个组合加进 `make cross`。否决"每板复制一份 minimal 例程"（重复即屎山）。发现缺口：bldc-freertos 板无 LINK 串口与 LED，自检固件跑不了。[未测] 真人计时、上板、Keil。
 - [编译] G4 STM32 只保留 CubeMX 主线：`ports/stm32f4-hal` 冻结，只服务天空星 HAL 版与 RM C 型；第三块板用它 validate_board 报错（`tools/test_port_policy.py` 进 make check）。没有删除：天空星 CubeMX 版缺电机 B、RM C 型 HSE 未确认，迁移步骤见 docs/notes/implemented/2026-10-29-cubemx-only.md。
 - [仿真] G3 2026H io 胶水拆分：`io_link.c`（上位机链路，无 LINK 板给空实现）、`io_imu.c`（UART 姿态模块 / MPU6050 / 无）、内部接口 `io_parts.h`；io_main.c 296→145 行，条件编译 15→1 处。行为不变：example 单测 35/35、侧车 142 passed、make cross 全过；MPU6050 路径仅 -fsyntax-only。[未测] 上板、Keil。
 - [编译] G3 Makefile 按芯片系列拆成 `mk/<BOARD_FAMILY>.mk`（host / stm32f4 / stm32-cubemx / mspm0-driverlib），顶层 327→228 行。拆分前后 11 个 板×应用（含 LINK=rtt）的 .bin 与 `make vars` md5 全部相同。
