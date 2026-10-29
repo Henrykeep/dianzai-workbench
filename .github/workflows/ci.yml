@@ -1,0 +1,19 @@
+# 每次推送（任何分支、任何路径）都跑：make check（含 check_version）+ make test + make compat。
+# 2026-10-29 教训：main 坏了两次（测试依赖本机已下载的器件包；CHANGELOG 版本和代码不一致），都是 CI 没跑 make check 漏掉的。
+# 本地等价物：make preflight（干净克隆、无缓存包）。
+name: ci
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  check-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with: { python-version: "3.12" }
+      - run: pip install pyyaml jsonschema -r app/sidecar/requirements.txt
+      - run: make check
+      - run: make test
+      - run: make compat

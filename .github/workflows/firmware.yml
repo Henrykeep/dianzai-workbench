@@ -4,7 +4,8 @@ name: firmware
 on:
   workflow_dispatch:
   push:
-    paths: ["boards/**", "ports/**", "firmware/**", "apps/**", "examples/**", "Makefile", "tools/syscfg_gen.sh", "tools/gen_board.py", ".github/workflows/mspm0-syscfg.yml"]
+    branches: [main, "release/**"]   # main / 补丁分支每次推都跑，不按路径过滤（打 tag 前要看到这个提交的 firmware 绿）
+    tags: ["v*"]
 jobs:
   syscfg:
     runs-on: ubuntu-latest
