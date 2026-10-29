@@ -109,6 +109,17 @@ class Server:
         if op == "snapshot_save":
             p = s.snapshot_save(m.get("name", ""), m.get("note", ""))
             return {"path": p, "snapshots": snapshots.list_all(s.schema.hash)}
+        if op == "polarity_check":          # 标定向导第 0 步：只读遥测窗口判方向（app/sidecar/dzbench/agent/polarity.py）
+            from .agent import polarity
+            secs = float(m.get("seconds", 3.0))
+            names = [n for n in (m["y"], m.get("e"), m.get("u")) if n]
+            win = {n: s.window_field(n, secs) for n in names}
+            r = polarity.check_window(win, m["step"], y=m["y"], e=m.get("e"), u=m.get("u"),
+                                      pushed_dir=int(m.get("pushed_dir", 1)), u_min=float(m.get("u_min", 0.0)))
+            if "signs" in m:                 # 前端把 push/jog 两步的结果攒齐后再要结论
+                g = m["signs"]
+                r["verdict"] = polarity.verdict(g.get("sensor", 0), g.get("err", 0), g.get("ctrl", 0), g.get("act", 0))
+            return r
         if op == "params_readback":
             return {"path": await run(None, lambda: s.export_readback(m["path"]))}
         if op == "snapshot_list":

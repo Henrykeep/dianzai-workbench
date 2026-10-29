@@ -230,6 +230,29 @@
   "hash": "864d889c4413cb07",
   "version": "1.0.0"
  },
+ "firmware/algo/stall": {
+  "decls": [
+   "stall.h: typedef struct { float load_on;",
+   "stall.h: float speed_on;",
+   "stall.h: uint32_t hold_ms;",
+   "stall.h: uint32_t start_ignore_ms;",
+   "stall.h: uint32_t retry_ms;",
+   "stall.h: } stall_cfg_t;",
+   "stall.h: typedef enum { STALL_NORMAL = 0, STALL_SUSPECT = 1, STALL_STALLED = 2 } stall_state_t;",
+   "stall.h: typedef struct { stall_cfg_t c;",
+   "stall.h: stall_state_t st;",
+   "stall.h: bool loaded;",
+   "stall.h: uint32_t t_load, t_suspect, t_stalled;",
+   "stall.h: uint32_t count;",
+   "stall.h: } stall_t;",
+   "stall.h: dz_err_t stall_init(stall_t *s, const stall_cfg_t *c);",
+   "stall.h: stall_state_t stall_update(stall_t *s, float load, float speed, uint32_t now_ms);",
+   "stall.h: void stall_clear(stall_t *s);",
+   "stall.h: dz_err_t stall_selftest(void);"
+  ],
+  "hash": "ad7e47ae493a0971",
+  "version": "1.0.0"
+ },
  "firmware/algo/vision": {
   "decls": [
    "vis.h: #define VIS_CALIB_MAX 9u",

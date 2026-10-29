@@ -42,4 +42,5 @@
 6. **alloc 支持 STM32F1（C8T6 LQFP48）**：`tools/families/stm32f1.py`，整组重映射；boardlib 的 STM32 检查改为表驱动共用。
 7. **验证证据与计分**（参考 DS 合规差距/计分矩阵、MICU 五元组）：requirements.yaml 评分项可选 `why` / `forbidden_claims` / `evidence[{path,layer,date,result}]`；`req.py check` 核对证据目录存在、目录名（`docs/verify/<题号>/logs/<YYYYMMDD-HHMM>_task<编号>_<层>/`）与层/日期/编号一致；`req.py evidence` 出五元组表 + 状态 + 禁止表述（非现场通过自动禁说“已得分”）；`req.py newlog` 建目录；`report.py --req-file --item` 把证据行带进报告并建议 evidence 条目。规范 docs/verify/README.md；2026H B3 有一条真实单元层 partial 证据。
 8. **参数回读 / 固件版本 / 黑匣子**：dzctl 0.4.0 心跳带 fw_rev；侧车 export_readback → params.txt；tools/params_diff.py（last-good）；firmware/framework/blackbox（存储失败不挡启动，有测试）。片内 flash 回调未写。
+9. **极性自检 / 堵转 / 安全对照**：侧车 agent/polarity.py（op polarity_check）；firmware/algo/stall；docs/32 对照表——缺口：IWDG 没开没喂（最该先补）、stall 未接进应用。
 仍未做（按清单优先级）：实板验证、第二道例题（建议跟随小车）、参数预设/掉电保存、界面上的回读/对比按钮、赛前准备清单。

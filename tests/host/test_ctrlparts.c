@@ -205,8 +205,53 @@ TEST(accel_ff_matches_legacy)
         }
 }
 
+/* stall：一阶电机模型 w' = (k·u − w)/tau，电流 i = (u − w/k)/R（反电动势）；卡轴时 w=0 */
+#include "stall.h"
+static stall_state_t stall_run(stall_t *s, float lock_at_s, float u, float *t_hit)
+{
+    float w = 0.0f; stall_state_t st = STALL_NORMAL; *t_hit = -1.0f;
+    for (uint32_t ms = 0; ms < 3000u; ms++) {
+        float t = (float)ms * 1e-3f;
+        bool locked = lock_at_s >= 0.0f && t >= lock_at_s;
+        if (locked) w = 0.0f; else w += 1e-3f * (10.0f * u - w) / 0.05f;     /* k=10 rad/s/V，tau=50 ms */
+        float i = (u - w / 10.0f) / 0.5f;                                       /* R=0.5 Ω：起步浪涌 2·u A，稳态≈0 */
+        st = stall_update(s, i, w, ms);
+        if (st == STALL_STALLED && *t_hit < 0.0f) *t_hit = t;
+    }
+    return st;
+}
+
+TEST(stall_detect_model)
+{
+    CHECK(stall_selftest() == DZ_OK);
+    stall_cfg_t c = { 1.0f, 0.5f, 200u, 150u, 0u };   /* 1 A、0.5 rad/s、200 ms、起步豁免 150 ms */
+    stall_t s; float th;
+    CHECK(stall_init(&s, &c) == DZ_OK);
+    CHECK(stall_run(&s, -1.0f, 1.0f, &th) == STALL_NORMAL && s.count == 0u);          /* 正常起步：浪涌 2 A 但很快转起来 */
+    CHECK(stall_init(&s, &c) == DZ_OK);
+    CHECK(stall_run(&s, 1.0f, 1.0f, &th) == STALL_STALLED);                            /* 1 s 时卡住轴 */
+    CHECK(th > 1.149f && th < 1.352f);                                                 /* 豁免 + 持续之后才报 */
+    CHECK(stall_init(&s, &c) == DZ_OK);
+    CHECK(stall_run(&s, 0.0f, 1.0f, &th) == STALL_STALLED && th >= 0.349f && th <= 0.352f); /* 一上电就卡住：豁免 150 + 持续 200 */
+    CHECK(stall_update(&s, 0.0f, 0.0f, 4000u) == STALL_STALLED);                       /* 锁存：负载降了也不自动解除 */
+    stall_clear(&s); CHECK(stall_update(&s, 0.0f, 0.0f, 4001u) == STALL_NORMAL);
+    stall_cfg_t r = c; r.retry_ms = 500u; CHECK(stall_init(&s, &r) == DZ_OK);
+    for (uint32_t ms = 0; ms <= 400u; ms++) (void)stall_update(&s, 2.0f, 0.0f, ms);
+    CHECK(s.st == STALL_STALLED && s.count == 1u);
+    CHECK(stall_update(&s, 2.0f, 0.0f, 600u) == STALL_STALLED);                        /* 还没到重试 */
+    CHECK(stall_update(&s, 2.0f, 0.0f, 900u) == STALL_NORMAL);                         /* 重试：重新豁免 */
+    for (uint32_t ms = 901u; ms <= 1300u; ms++) (void)stall_update(&s, 2.0f, 0.0f, ms);
+    CHECK(s.st == STALL_STALLED && s.count == 2u);                                     /* 还堵：再锁 */
+    CHECK(stall_init(&s, &c) == DZ_OK);
+    for (uint32_t ms = 0; ms <= 1000u; ms++) (void)stall_update(&s, NAN, 0.0f, ms);
+    CHECK(s.st == STALL_NORMAL);                                                       /* NaN 不误报 */
+    stall_cfg_t bad = c; bad.hold_ms = 0u; CHECK(stall_init(&s, &bad) == DZ_EINVAL);
+    bad = c; bad.load_on = -1.0f; CHECK(stall_init(&s, &bad) == DZ_EINVAL);
+}
+
 void suite_ctrlparts(void)
 {
+    RUN(stall_detect_model);
     RUN(slew_dir_and_mag); RUN(slew_edge_cases); RUN(slew_with_motor_model);
     RUN(mtspeed_low_speed_vs_m_method); RUN(mtspeed_decel_timeout_reverse_wrap);
     RUN(vis_plane_five_point);

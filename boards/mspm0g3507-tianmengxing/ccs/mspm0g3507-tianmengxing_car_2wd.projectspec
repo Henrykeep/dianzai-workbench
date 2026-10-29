@@ -31,6 +31,7 @@
             -I${PROJECT_LOC}/../../../firmware/algo/mtspeed
             -I${PROJECT_LOC}/../../../firmware/algo/pid
             -I${PROJECT_LOC}/../../../firmware/algo/slew
+            -I${PROJECT_LOC}/../../../firmware/algo/stall
             -I${PROJECT_LOC}/../../../firmware/algo/vision
             -I${PROJECT_LOC}/../../../firmware/framework/blackbox
             -I${PROJECT_LOC}/../../../firmware/framework/coord
@@ -102,6 +103,7 @@
         <file path="../../../firmware/algo/mtspeed/mtspeed.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/pid/pid.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/slew/slew.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/stall/stall.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/vision/vis.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/blackbox/blackbox.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/coord/coord.c" targetDirectory="dz/firmware" action="link"/>
