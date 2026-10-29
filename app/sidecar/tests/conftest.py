@@ -44,3 +44,13 @@ def _sim_guard(request, monkeypatch):
     def boom(*a, **k):
         raise AssertionError(f"{request.node.nodeid} 起了仿真板却没标 @pytest.mark.needs_sim（Windows CI 会挂）")
     monkeypatch.setattr(transport.SimTransport, "__init__", boom)
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_pack(tmp_path_factory, monkeypatch):
+    """测试不依赖本机有没有下过 TI 器件包（CI 的 sidecar-test 不下载）：统一给一个假包，fakepyocd 只记录路径。
+    要测“缺包”的用例自己 delenv / 打桩 find_pack。"""
+    p = tmp_path_factory.getbasetemp() / "fake_m0.pack"
+    if not p.exists():
+        p.write_bytes(b"PK\x05\x06" + b"\0" * 18)
+    monkeypatch.setenv("DZBENCH_PACK", str(p))
