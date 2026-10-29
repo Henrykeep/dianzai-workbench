@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import collections
 import pathlib
+import re
 import struct
 import threading
 import time
@@ -496,7 +497,8 @@ class Session:
         return [self.set_param(k, v, verify=True) for k, v in vals.items() if k in self.schema.param_index]
 
     def start_log(self) -> str:
-        name = time.strftime("run_%Y%m%d_%H%M%S.dzlog")
+        tag = re.sub(r"[^0-9A-Za-z_+-]+", "-", (self.port or "").split("/")[-1]).strip("-")[:40]   # 文件名带上端口/仿真应用，回放列表里认得出
+        name = time.strftime("run_%Y%m%d_%H%M%S") + (f"_{tag}" if tag else "") + ".dzlog"
         self.log = LogWriter(self.log_dir / name, {"port": self.port, "baud": self.baud,
                                                    "start": time.strftime("%Y-%m-%d %H:%M:%S"),
                                                    "schema_hash": f"{self.schema_hash:08X}" if self.schema_hash else None})

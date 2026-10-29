@@ -25,6 +25,7 @@ const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
 const plot = new Plot($("pb"));
 
 const S = {
+  lastLog: "" as string,
   schema: null as Schema | null,
   plotted: [] as Field[],       // 数值通道（画线）
   enums: [] as Field[],         // 枚举通道（只显示文字，如 state）
@@ -257,7 +258,7 @@ function setRun(on: boolean) { plot.running = on; $("run").querySelectorAll<HTML
 $("run").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => setRun(s.dataset.r === "1"));
 async function loadLogs() {
   const logs: any[] = await link.rpc("log_list").catch(() => []);
-  $("logs").innerHTML = logs.map(l => `<option value="${esc(l.path)}">${esc(l.path.split(/[\\/]/).pop())} · ${(l.size / 1024).toFixed(0)} kB</option>`).join("") || `<option value="">（还没有记录）</option>`;
+  $("logs").innerHTML = logs.map(l => `<option value="${esc(l.path)}">${esc(l.path.split(/[\\/]/).pop())} · ${(l.size / 1024).toFixed(0)} kB${l.recording ? " · 记录中" : ""}</option>`).join("") || `<option value="">（还没有记录）</option>`;
 }
 $("replay").onclick = async () => { const p = $<HTMLSelectElement>("logs").value; if (p) { await call("replay", { path: p }); plot.clear(); } };
 
@@ -290,6 +291,7 @@ function renderStatus(st: Msg) {
   $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
+  if (st.log && st.log !== S.lastLog) { S.lastLog = st.log; loadLogs(); }   // 新开的记录马上出现在回放列表
   $("st-log").textContent = st.replay ? `回放 ${(st.replay_progress * 100).toFixed(0)}%` : st.log ? `记录到 ${st.log}` : "未记录";
   $("st-hint").textContent = [st.hint, st.clients > 1 ? `另有 ${st.clients - 1} 个窗口也连着侧车：参数以最后一次下发为准，急停哪个窗口按都有效` : ""].filter(Boolean).join("  ·  ");
   $("rp").hidden = !st.replay;

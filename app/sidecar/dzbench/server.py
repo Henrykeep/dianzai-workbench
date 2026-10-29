@@ -22,7 +22,7 @@ from .flash import FlashError
 from .agent.service import AgentService
 from .agent_api import TOOLS, AgentTools
 from .downsample import minmax
-from .logfile import read_log
+from .logfile import read_header
 from .ports import list_ports
 from .sender import Sender
 from .spectrum import spectrum
@@ -114,7 +114,8 @@ class Server:
             return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults"))))
         if op == "log_list":
             d = s.log_dir
-            return [{"path": str(f), "size": f.stat().st_size, "header": read_log(f)[0]}
+            return [{"path": str(f), "size": f.stat().st_size, "header": read_header(f),
+                     "recording": bool(s.log and str(s.log.path) == str(f))}
                     for f in sorted(d.glob("*.dzlog"), reverse=True)[:30]] if d.is_dir() else []
         if op == "replay":
             return await run(None, lambda: s.connect("replay:" + m["path"], log=False))

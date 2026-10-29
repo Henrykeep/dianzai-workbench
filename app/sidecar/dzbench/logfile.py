@@ -39,6 +39,18 @@ class LogWriter:
             self.f.close()
 
 
+def read_header(path) -> dict | None:
+    """只读文件头（回放列表用）：不读整份记录；正在写 / 坏掉的文件返回 None，不让整个列表失败。"""
+    try:
+        with open(path, "rb") as fh:
+            raw = fh.read(8192)
+        if not raw.startswith(MAGIC):
+            return None
+        return json.loads(raw[len(MAGIC):raw.index(b"\n", len(MAGIC))])
+    except (OSError, ValueError):
+        return None
+
+
 def read_log(path) -> tuple[dict, list[tuple[float, int, bytes]]]:
     raw = pathlib.Path(path).read_bytes()
     if not raw.startswith(MAGIC):
