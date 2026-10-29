@@ -14,7 +14,7 @@ git -C "$tmp/repo" checkout -q "$(git -C "$src" rev-parse HEAD)"
 mkdir -p "$tmp/home" "$tmp/repo/third_party"
 if [ -d "$src/third_party" ]; then
   for d in "$src"/third_party/*/; do
-    n=$(basename "$d"); [ "$n" = packs ] && continue
+    n=$(basename "$d"); { [ "$n" = packs ] || [ "$n" = vendored ]; } && continue   # vendored 是提交进仓库的，用克隆里的
     cp -a "$d" "$tmp/repo/third_party/$n"
   done
 fi
