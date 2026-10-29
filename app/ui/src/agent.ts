@@ -58,14 +58,24 @@ export function initAgent(call: Call) {
 
   // ---------------------------------------------------------------- 文件改动卡片
   const cards = new Map<number, HTMLElement>();
+  // diff 的 yaml 行很长，窄侧栏里真正改的数字在最右边看不到：先把“名字 旧 → 新”摘出来列在上面
+  function defaults(diff: string): string {
+    const pick = (sign: string) => new Map((diff || "").split("\n").filter(l => l.startsWith(sign) && !l.startsWith(sign.repeat(3)))
+      .map(l => [/\bname:\s*(\w+)/.exec(l)?.[1], /\bdefault:\s*([^,}\s]+)/.exec(l)?.[1]] as const).filter(([n, v]) => n && v) as [string, string][]);
+    const o = pick("-"), n = pick("+");
+    const rows = [...n].filter(([k, v]) => o.get(k) !== v).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td class="mono dim">${esc(o.get(k) ?? "—")}</td><td>→</td><td class="mono acc">${esc(v)}</td></tr>`);
+    return rows.length ? `<table class="defs">${rows.join("")}</table>` : "";
+  }
   function renderChange(c: Msg) {
     let d = cards.get(c.id);
     if (!d) { d = add(""); cards.set(c.id, d); }
     const diff = esc(c.diff).split("\n").map(l => `<span class="${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : ""}">${l}</span>`).join("\n");
     const st: Record<string, string> = { pending: "待确认", applying: "门禁运行中…", committed: "已提交", failed: "未通过，已还原", rejected: "已拒绝", reverted: "已回滚" };
     d.className = "card change " + c.status;
+    if (c.status === "committed" && (c.files || []).some((f: string) => /\.ya?ml$/.test(f)))   // 流程条“定稿”只认真正提交了参数 yaml
+      window.dispatchEvent(new CustomEvent("dz-final", { detail: c.commit }));
     d.innerHTML = `<div class="hd"><span class="dotk file"></span><span class="t">${esc(c.title)}</span><span class="lbl">${esc(c.layer)} · ${esc(c.source)}</span></div>
-      <p>${esc(c.reason)}</p><pre class="diff">${diff}</pre>
+      <p>${esc(c.reason)}</p>${defaults(c.diff)}<pre class="diff">${diff}</pre>
       <div class="lbl">确认后：写入 → ${c.gates.length ? c.gates.map(esc).join(" → ") : "（无门禁）"} → git 提交</div>
       ${c.log && c.status !== "pending" ? `<details ${c.status === "failed" ? "open" : ""}><summary>门禁输出</summary><pre class="log">${esc(c.log)}</pre></details>` : ""}
       <div class="act">${c.status === "pending" ? `<button class="btn pri" data-a="1">确认并提交</button><button class="btn" data-a="0">拒绝</button>`

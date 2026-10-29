@@ -123,7 +123,9 @@ function applySchema(s: Schema | null) {
   ana.reset(); showXDiv();
   $("chan-n").textContent = `${S.plotted.length} 路 · ${s.period_ms ?? "?"} ms`;
   $("plot-sub").textContent = `schema ${s.hash}`;
-  renderChans(); renderParams(); loadSnaps(); fft.setFields(S.plotted.filter(f => !f.ref_for).map(f => f.name).concat(S.plotted.filter(f => f.ref_for).map(f => f.name)));   // 设定值放最后：默认选中的是有动态的量
+  renderChans(); renderParams(); loadSnaps(); { const tg = new Set(S.plotted.map(f => f.ref_for).filter(Boolean)), nm = (f: Field) => f.name;   // 被控量（有设定值指向的）排最前，设定值放最后：默认选中的是要找振荡的那个量
+    fft.setFields([...S.plotted.filter(f => tg.has(f.name)).map(nm), ...S.plotted.filter(f => !tg.has(f.name) && !f.ref_for).map(nm), ...S.plotted.filter(f => f.ref_for).map(nm)]); }
+  raw.binary();
 }
 function renderChans() {
   $("chans").innerHTML = S.enums.map(f => `<div class="ch en"><span class="k">${esc(f.name)}</span><b id="ev-${f.name}" class="mono">—</b></div>`).join("")
@@ -134,6 +136,20 @@ function renderChans() {
   });
 }
 // 按名字画：输入 "sp_* err" 回车，只显示匹配的通道；空回车恢复默认前 4 路
+// 参数筛选：真实赛题工程常有几十个参数（2026H 有 52 个，机械常数排在前面），要调的几个得能一下找到
+const pq = $<HTMLInputElement>("p-q");
+function filterParams() {
+  const rows = [...$("plist").querySelectorAll<HTMLElement>(".prow")], q = pq.value.trim();
+  pq.hidden = rows.length <= 8;
+  // 每个词：带 * 按通配，否则子串（名字或说明里有就算）；多个词取并集。“ki” 能找到 ball_ki。
+  const toks = q.split(/[\s,，]+/).filter(Boolean).map(t => t.includes("*") ? new RegExp("^" + t.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$", "i") : t.toLowerCase());
+  const hit = (r: HTMLElement) => toks.some(t => typeof t === "string" ? (r.id.slice(4) + " " + r.title).toLowerCase().includes(t) : t.test(r.id.slice(4)));
+  const on2 = rows.map(r => !toks.length || hit(r));
+  rows.forEach((r, i) => { r.hidden = !on2[i]; });
+}
+pq.oninput = filterParams;
+pq.onkeydown = e => { e.stopPropagation(); if (e.key === "Escape") { pq.value = ""; filterParams(); pq.blur(); } };
+document.addEventListener("keydown", e => { if (e.key === "/" && !(e.target instanceof HTMLInputElement) && !pq.hidden) { e.preventDefault(); pq.focus(); } });
 $<HTMLInputElement>("chan-q").onkeydown = e => {
   if (e.key !== "Enter") return;
   e.stopPropagation();
@@ -215,6 +231,7 @@ function renderParams() {
       if (c !== +inp.value) { toast(`${p.name} 超出范围，已限幅到 ${fmt(c, p)}`, "warn", 3000); inp.value = fmt(c, p); S.edit[p.name] = inp.value; markParams(); }
     };
   });
+  filterParams();
   syncParams();
 }
 function syncParams() {
@@ -261,13 +278,23 @@ $("p-read").onclick = async () => { await call("param_read_all"); };
 $("p-def").onclick = async () => { if (confirm("把全部参数恢复成固件默认值？")) { await call("snapshot_restore", { defaults: true }); toast("已恢复默认参数", "ok", 3000); } };
 
 // 顶栏流程：连接 → 调参 → 阶跃 → 判读 → 定稿，按当前状态点亮（done = 已经过，now = 下一步该做的）
+// 定稿 = 本次会话里参数 yaml 已经 git 提交（写回卡片确认 + 门禁通过）。之后再改参数就回到“调参”。
+let finalSha = "";
+window.addEventListener("dz-final", e => { finalSha = String((e as CustomEvent).detail || "✓"); flow(); });
 function flow() {
   const c = !!S.status.connected && !!S.schema, pend = pending().length > 0, runs = ana.runs(), mk = ana.marked();
-  const now = !c ? "conn" : pend ? "tune" : !mk ? "step" : runs ? "read" : "step";
-  const order = ["conn", "tune", "step", "read", "save"], k = order.indexOf(now);
+  if (pend) finalSha = "";
+  const now = !c ? "conn" : pend ? "tune" : finalSha ? "end" : !mk ? "step" : runs ? "read" : "step";
+  const order = ["conn", "tune", "step", "read", "save", "end"], k = order.indexOf(now);
+  const sv = $("flow").querySelector<HTMLElement>('[data-s="save"]')!;
+  sv.title = finalSha ? `已写回并提交 ${finalSha.slice(0, 7)}` : "定稿：把板上当前参数写回 app.yaml 的 default（先看 diff，确认后跑门禁并 git 提交）";
   $("flow").querySelectorAll<HTMLElement>("span").forEach((s, i) => { s.className = i < k ? "done" : i === k ? "now" : ""; });
 }
 setInterval(flow, 1000);
+$("flow").querySelector<HTMLElement>('[data-s="save"]')!.onclick = () => {
+  (document.querySelector('#rail [data-side="agent"]') as HTMLElement)?.click();
+  $("ag-yaml").click();
+};
 
 // ---------------------------------------------------------------- 快照
 async function loadSnaps(list?: any[]) {

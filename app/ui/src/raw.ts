@@ -26,7 +26,11 @@ export function initRaw(rpc: (op: string, a?: Record<string, unknown>) => Promis
     if (++lines > MAX_LINES) { list.firstElementChild?.remove(); lines--; }
   }
 
+  let picked = false;
+  $("raw-fmt").addEventListener("click", () => { picked = true; });
   return {
+    /** 已识别出工作台二进制协议：默认 HEX（文本模式只会是乱码）；用户手动选过就不动 */
+    binary() { if (!picked) { fmt = "hex"; $("raw-fmt").querySelectorAll<HTMLElement>("span").forEach(y => y.classList.toggle("on", y.dataset.f === "hex")); } },
     onMsg(m: Msg) {
       if (m.type !== "raw" || !on) return;
       const stick = list.scrollTop + list.clientHeight >= list.scrollHeight - 4;
