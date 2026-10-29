@@ -78,14 +78,19 @@ export function initAgent(call: Call) {
   // 风险等级 human 的动作卡（烧录 / 实机阶跃 / 实机回滚）：人点了才执行
   const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", run_sweep_test: "实机正弦扫频", rollback_best: "回滚到最好参数", flash_rollback: "回滚到烧前固件" };
   function renderAction(a: Msg) {
-    const pv = a.preview ? `<pre class="log">${esc(JSON.stringify(a.preview, null, 1))}</pre>` : "";
-    const d = add(`<div class="hd"><span class="dotk file"></span><span class="t">需要你确认：${esc(TOOL_CN[a.tool] ?? a.tool)}</span><span class="lbl">风险 human${a.sim ? " · 仿真" : " · 实机"}</span></div>
+    const PRE: Record<string, string> = { link: "链路新鲜", channels: "实验通道在遥测里", env: "电池 / 温度门限", readback: "板上增益回读一致" };
+    const pa = a.preview?.prearm, rest = a.preview ? Object.fromEntries(Object.entries(a.preview).filter(([k]) => k !== "prearm" && !(pa && k === "error"))) : {};
+    const pv = (pa ? `<ul class="prearm">${(pa.checked as string[]).map(c => `<li class="ok-t">✓ ${esc(PRE[c] ?? c)}</li>`).join("")}${(pa.failed as string[]).map(f => `<li class="warn-t">✗ ${esc(f)}</li>`).join("")}</ul>` : "")
+      + (Object.keys(rest).length ? `<pre class="log">${esc(JSON.stringify(rest, null, 1))}</pre>` : "");
+    const where = a.sim ? " · 仿真" : a.as_hw ? " · 仿真当实板" : " · 实机";
+    const d = add(`<div class="hd"><span class="dotk file"></span><span class="t">需要你确认：${esc(TOOL_CN[a.tool] ?? a.tool)}</span><span class="lbl">风险 human${where}</span></div>
+      ${pa ? `<div class="lbl">${pa.ok ? "解锁前检查全部通过" : "解锁前检查没过：先处理 ✗ 项再点执行（点的时候会再查一次）"}${a.ttl_s ? ` · 这张卡 ${Math.round(a.ttl_s)} s 内有效` : ""}</div>` : ""}
       ${pv}<div class="act"><button class="btn pri" data-a="1">执行</button><button class="btn" data-a="0">拒绝</button></div>`, "card change pending");
     d.querySelectorAll<HTMLButtonElement>("button[data-a]").forEach(b => b.onclick = () => {
       d.querySelectorAll("button").forEach(x => (x as HTMLButtonElement).disabled = true);
       call("agent_action_decide", { id: a.id, accept: b.dataset.a === "1" })
         .then(r => { d.querySelector(".act")!.innerHTML = actionResult(r); },
-              () => { d.querySelector(".act")!.innerHTML = `<span class="lbl">执行失败（见提示）</span>`; });
+              (e: any) => { d.querySelector(".act")!.innerHTML = `<span class="lbl warn-t">没有执行：${esc(e?.message ?? "见提示")}${e?.fix ? "。" + esc(e.fix) : ""}</span>`; });
     });
   }
   // 烧录/回滚的结果要把心跳校验讲清楚：“已执行”不等于板子起来了

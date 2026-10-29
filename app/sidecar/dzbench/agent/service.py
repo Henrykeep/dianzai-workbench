@@ -204,7 +204,8 @@ class AgentService:
     # -------------------------------------------------------------- 风险分级
     @property
     def sim(self) -> bool:
-        return (self.s.port or "").startswith("sim:") or bool(getattr(self.s, "replay", None))
+        port = self.s.port or ""
+        return (port.startswith("sim:") and not port.endswith("+hw")) or bool(getattr(self.s, "replay", None))
 
     def gate(self, tool: str, args: dict, run):
         """loop 每次调工具都经过这里：auto 直接跑；log 跑完记审计；human 变成待点击的动作卡；forbid 拒绝。"""
@@ -224,7 +225,9 @@ class AgentService:
                 pa = self.prearm()
                 preview = {"prearm": pa} | ({"error": "；".join(pa["failed"])} if pa["failed"] else {})
             self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run, "t": time.monotonic()}
-            self.emit({"type": "agent_action", "id": aid, "tool": tool, "args": args, "preview": preview, "sim": self.sim})
+            self.emit({"type": "agent_action", "id": aid, "tool": tool, "args": args, "preview": preview, "sim": self.sim,
+                       "as_hw": (self.s.port or "").endswith("+hw"),
+                       "ttl_s": self.ARM_TTL_S if tool in self.EXPERIMENTS else None})
             risk.audit(tool, args, t, "pending_human")
             return {"status": "pending_human_click", "action_id": aid, "note": "需要用户在界面上点“执行”"}
         r = run()

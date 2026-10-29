@@ -59,6 +59,9 @@ class SerialTransport(Transport):
         self.ser.close()
 
 
+AS_HW = "+hw"     # 端口后缀：仿真板“当实板”，用来端到端测确认卡 / pre-arm 检查
+
+
 def sim_elf(app: str) -> pathlib.Path:
     exe = ".exe" if os.name == "nt" else ""
     return ROOT / "build" / "host-sim" / app / f"{app}.elf{exe}"
@@ -69,6 +72,7 @@ class SimTransport(Transport):
 
     def __init__(self, app: str, speed: float = 1.0, build: bool = True):
         self.name = SIM_PREFIX + app
+        app = app.removesuffix(AS_HW)          # sim:xxx+hw：同一个仿真程序，只是风险分级按实板走
         if (who := os.environ.get("DZBENCH_TEST_NO_SIM")):     # 仅测试用：conftest 给没标 needs_sim 的测试设上（子进程侧车也能拦住）
             raise RuntimeError(f"{who} 起了仿真板却没标 @pytest.mark.needs_sim（Windows CI 会挂）")
         elf = sim_elf(app)

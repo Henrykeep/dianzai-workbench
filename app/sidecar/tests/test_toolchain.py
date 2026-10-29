@@ -295,3 +295,32 @@ def test_prearm_and_one_shot_card(sim, tmp_path, home, monkeypatch):
         svc.action_decide(r["action_id"], True)
     assert e.value.code == "prearm"
     sim.tx_locked = False
+
+
+@pytest.mark.needs_sim
+def test_sim_as_hw_step_test_needs_arm_card_and_prearm(home, tmp_path):
+    """sim:car_2wd+hw：同一个仿真程序，但分级按实板 —— 阶跃实验变成确认卡，预览带 pre-arm 检查，点执行才跑。"""
+    if os.name == "nt" or not shutil.which("make") or not shutil.which("cc"):
+        pytest.skip("host-sim --stream 需要 POSIX + make + cc")
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    s = Session(emit=lambda e: None)
+    s.connect("sim:car_2wd+hw", 115200, log=False)
+    try:
+        t0 = time.monotonic()
+        while s.schema_hash is None and time.monotonic() - t0 < 5:
+            time.sleep(0.05)
+        subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+        (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
+            "high": [0.4, 0], "hold_s": 1.0, "pre_s": 0.3, "y": "spd_a", "sp": "sp_a"}}), encoding="utf-8")
+        ev = []
+        svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path)
+        assert not svc.sim
+        r = svc.gate("run_step_test", {}, svc.run_step_test)
+        assert r["status"] == "pending_human_click"
+        card = [e for e in ev if e["type"] == "agent_action"][-1]
+        assert "prearm" in json.dumps(card["preview"], ensure_ascii=False)
+        out = svc.action_decide(card["id"], True)
+        assert out["status"] != "rejected", out
+    finally:
+        s.disconnect()

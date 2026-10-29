@@ -27,6 +27,8 @@ def list_ports() -> list[dict]:
     if can_sim:
         for a in SIM_APPS:
             out.append({"port": SIM_PREFIX + a, "desc": f"仿真板 · {a}（host-sim，无需硬件）", "kind": "sim", "likely": False})
+        for a in SIM_APPS:
+            out.append({"port": SIM_PREFIX + a + "+hw", "desc": f"仿真板当实板 · {a}（测确认卡 / pre-arm，实验要人点执行）", "kind": "sim", "likely": False})
     out += rtt_ports()
     return out
 
