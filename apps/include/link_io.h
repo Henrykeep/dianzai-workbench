@@ -14,7 +14,7 @@
 static inline dz_err_t link_write(const uint8_t *b, uint16_t n) { return dzrtt_write(b, n); }
 static inline dz_err_t link_read(uint8_t *b, uint16_t max, uint16_t *got) { return dzrtt_read(b, max, got); }
 static inline dz_err_t link_tx_idle(bool *idle) { *idle = true; return DZ_OK; }
-#else
+#elif defined(RES_UART_LINK)    /* 板上没有 LINK 串口时不定义（调用处自己用 #ifdef RES_UART_LINK 守着） */
 static inline dz_err_t link_write(const uint8_t *b, uint16_t n) { return pal_uart_write(RES_UART_LINK, b, n); }
 static inline dz_err_t link_read(uint8_t *b, uint16_t max, uint16_t *got) { return pal_uart_read(RES_UART_LINK, b, max, got); }
 static inline dz_err_t link_tx_idle(bool *idle) { return pal_uart_tx_idle(RES_UART_LINK, idle); }
