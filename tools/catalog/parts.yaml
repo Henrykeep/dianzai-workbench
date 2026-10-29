@@ -6,7 +6,7 @@
 #   sense.line 循线  sense.wheel_speed 轮速  sense.accel 线加速度  sense.attitude 姿态角  sense.distance 测距
 #   sense.ball_pos 小物体位置（视觉）  sense.object 目标识别/定位（视觉）  compute.vision 视觉算力
 #   act.wheel_drive 轮式驱动  act.beam_angle 精确角度执行（摆杆/云台）  act.servo_angle 普通舵机角度
-#   link.video 图传/录像  link.wireless 无线串口  ui.key 按键  ui.display 显示屏  mcu.main 主控
+#   link.video 图传/录像  link.wireless 无线串口  link.peer 两车/车机状态链路  ui.key 按键  ui.display 显示屏  mcu.main 主控
 # 可选：price_cny（参考价，元，标日期）、power_w（典型功耗）——不填就不显示，填了必须写 price_note 出处
 # res：接到主控要占的资源（tools/alloc.py 用），names 是 board.yaml 逻辑名（docs/05 标签约定），scheme.yaml 的 names 可覆盖；irq = 建议中断优先级（数小优先）
 # mcu：主控的 board.yaml mcu 段
@@ -328,10 +328,23 @@ parts:
     repo: [firmware/drivers/st77xx]
     status: 仿真
     res: [{ type: spi, names: [LCD] }, { type: gpio, dir: out, names: [LCD_DC, LCD_RES, LCD_BL] }]
+  - id: lora_uart
+    name: LoRa 透传串口模块（ATK-LORA-01 / E22 类，两车或车机互联）
+    kind: link
+    provides: [link.wireless, link.peer]
+    bus: uart
+    specs: { note: "透传模式；空中速率决定帧周期，20 ms 一帧 STATE 要 ≥ 19.2 kbps 空速（按模块手册核对）" }
+    pros: [距离远、穿透好, 走 proto/peerlink 的新鲜度/乱序/中止检查]
+    cons: [空中速率低时延迟几十 ms, 半双工，两车同时发会碰撞（要分时隙）]
+    risks: [模块 AUX/M0/M1 引脚配置模式，上电默认值要核对]
+    substitutes: [bt_serial]
+    repo: [firmware/proto/peerlink, examples/2026X_follow]
+    status: 仿真
+    res: [{ type: uart, names: [PEER], baud: 115200, irq: 4 }]
   - id: bt_serial
     name: 蓝牙串口（HC-05 / JDY 类）
     kind: link
-    provides: [link.wireless]
+    provides: [link.wireless, link.peer]
     bus: uart
     specs: {}
     pros: [调试时无线看曲线]

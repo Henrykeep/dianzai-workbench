@@ -136,3 +136,18 @@ if __name__ == "__main__":
         if k.startswith("test_"):
             f(); n += 1
     print(f"test_alloc: {n} 项通过")
+
+
+def test_app_timer_requires_allocated_and_names_override():
+    """2026X_follow：app.yaml requires timer.CTRL（器件库给不出）由 app_demands 补成需求、分到空闲定时器；
+    scheme.yaml names 把灰度 SENSOR1..8 改成应用的 LINE0..7。结果直接满足 app requires。"""
+    ex = ROOT / "examples" / "2026X_follow"
+    s = yaml.safe_load((ex / "scheme.yaml").read_text(encoding="utf-8"))
+    app = yaml.safe_load((ex / "app.yaml").read_text(encoding="utf-8"))
+    b, notes, ex_, = alloc.allocate(s, P, None, "t-draft", app)
+    rep = boardlib.check_board(b)
+    boardlib.check_requires(b, app, rep)
+    assert not rep.errors and not notes, (rep.errors, notes)
+    tims = {r["instance"] for r in b["resources"]["timer"]}
+    used = {r["timer"] for t in ("pwm", "encoder") for r in b["resources"][t]}
+    assert tims and not tims & used, (tims, used)

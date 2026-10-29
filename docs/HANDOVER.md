@@ -34,9 +34,9 @@
 ## 2026-10-29 晚（UTC+8）：核对清单后的第一批
 依据：全盘核对清单 Page（设计文档逐条对照仓库）。按优先级先做了三件，每件一个提交：
 1. **偏离修复**：加速度前馈 → `firmware/algo/accel_ff` 1.0.0（通用、无板卡依赖）；2026H ball.c 只保留来源选择（编码器/IMU + 超时）。主机单测与提取前公式逐点比对，example 35/35。
-2. **第 1 步 读题拆解**：`tools/req.py` + `schema/requirements.schema.json` + `docs/templates/requirements.yaml`；实例 `examples/2026H_ball/requirements.yaml`。见 docs/31。
-3. **第 2 步 方案选型**：`tools/scheme.py` + `tools/catalog/parts.yaml`；读第 1 步的 needs/constraints；实例 `examples/2026H_ball/scheme.yaml`。见 docs/31。
-4. **第 3 步 资源分配**：`tools/alloc.py`（器件库 `res` 字段 → stm32f4 贪心分配 → board.yaml 草稿 + cubemx.md + alloc.md，交 boardlib 同一检查；`--fixed` 沿用已有板接线）。实例 `examples/2026H_ball/alloc/`（make check 校验输出未漂移）。mspm0 只出需求清单（stm32f1 见第 6 项）。器件库加可选 price_cny(+price_note)/power_w，目前一件都没填（不编数）。
+2. **第 1 步 读题拆解**：`tools/req.py` + `schema/requirements.schema.json` + `docs/templates/requirements.yaml`；实例 `examples/2026H_ball/requirements.yaml`、第二例题 `examples/2026X_follow/requirements.yaml`（双车跟车）。见 docs/31。
+3. **第 2 步 方案选型**：`tools/scheme.py` + `tools/catalog/parts.yaml`；读第 1 步的 needs/constraints；实例 `examples/2026H_ball/scheme.yaml`、`examples/2026X_follow/scheme.yaml`。见 docs/31。
+4. **第 3 步 资源分配**：`tools/alloc.py`（器件库 `res` 字段 → stm32f4 贪心分配 → board.yaml 草稿 + cubemx.md + alloc.md，交 boardlib 同一检查；`--fixed` 沿用已有板接线）。实例 `examples/2026H_ball/alloc/`、`examples/2026X_follow/alloc/`（app requires 的 timer 自动补分配；make check 校验输出未漂移）。mspm0 只出需求清单（stm32f1 见第 6 项）。器件库加可选 price_cny(+price_note)/power_w，目前一件都没填（不编数）。
    顺手修：boardlib mspm0 定时器为 TODO 时误报“不存在”。
 5. **第 4 步 机械**：`mechanical/calc/mech.py`（通用惯量/扭矩/电机核对 + 三种机构）、`mechanical/templates/`（差速底盘/云台/球杆平板）、`mechanical/parts/`（CadQuery 可选，电机座/编码器支架/传感器支架 → STEP+STL）。CI 不装 CadQuery，test_parts 在 CI 是跳过；本机 /workspace/cqenv 装了 2.8.0 实测通过。
 6. **alloc 支持 STM32F1（C8T6 LQFP48）**：`tools/families/stm32f1.py`，整组重映射；boardlib 的 STM32 检查改为表驱动共用。

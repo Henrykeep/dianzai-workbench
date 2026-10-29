@@ -1,0 +1,5 @@
+$ cd app/sidecar && python3 -m pytest -v tests/test_follow_car.py
+
+tests/test_follow_car.py::test_two_car_safety_regression PASSED          [100%]
+
+============================== 1 passed in 7.11s ===============================

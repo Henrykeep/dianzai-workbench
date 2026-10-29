@@ -44,6 +44,7 @@
 | 29-全流程走查.md | 用 2026H 在仿真里从读题走到定稿：摩擦清单、已修项、下一步优先级 |
 | 30-验收标定与串级分层.md | yaml 里写 cal / accept / loops：物理单位、评委口径的到位判定与最差 N 轮、串级逐层调法 |
 | 31-读题拆解与方案选型.md | 第 1、2 步：题目 PDF → requirements.yaml → 测试清单（tools/req.py）；按能力标签出候选/替代/禁用（tools/scheme.py） |
+| ../examples/2026X_follow/README.md | 第二道参考例题：D 题式双车循线跟车（line_obs + peerlink + follow，9 步全套 + 双车安全回归） |
 | verify/README.md | 验证证据目录规范：`logs/<时间>_task<编号>_<层>/`、必备文件、req.py evidence 合规与计分表 |
 | 32-控制安全对照.md | 8 项控制安全（限流、堵转、软限位、急停、看门狗、无扰切换…）对照本仓库的有/缺；极性自检（标定第 0 步）；通用安全件 framework/safety + 黑匣子 |
 | SELFCHECK.md | 里程碑自检（按宗旨逐条） |

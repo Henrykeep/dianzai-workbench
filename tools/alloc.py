@@ -58,6 +58,7 @@ ENC_ORDER = ["TIM3", "TIM4", "TIM5", "TIM2", "TIM8", "TIM1"]
 PWM_ORDER = ["TIM1", "TIM8", "TIM2", "TIM5", "TIM9", "TIM12", "TIM3", "TIM4", "TIM10", "TIM11", "TIM13", "TIM14"]
 UART_ORDER = ["USART2", "USART3", "UART4", "UART5", "USART6", "USART1"]
 F4_GPIO_ORDER = [f"P{p}{i}" for p in "EDCBA" for i in range(16)]   # F4 LQFP100：PE/PD 少有复用冲突
+TIMER_ORDER = ["TIM6", "TIM7", "TIM2", "TIM5", "TIM4", "TIM3", "TIM9", "TIM10", "TIM11", "TIM12", "TIM13", "TIM14", "TIM1", "TIM8"]
 FAMILIES = ("stm32f4", "stm32f1")
 
 
@@ -199,6 +200,14 @@ class Stm32Alloc:
                 return {"name": d["name"], "instance": "ADC1", "channel": ch, "pin": pin}
         return None
 
+    def timer(self, d):
+        """周期中断定时器（app requires timer.X，无引脚）：先用基本定时器，再用没被 PWM/编码器占的通用定时器。"""
+        for tim in TIMER_ORDER:
+            if tim in self.F.TIMERS and tim not in self.tims:
+                self.tims[tim] = ("base", None)
+                return {"name": d["name"], "instance": tim}
+        return None
+
     def gpio_pin(self):
         for p in self.gpio_order:
             if self.free(p):
@@ -222,10 +231,19 @@ class Stm32Alloc:
         return getattr(self.F, "SYSCLK", 168_000_000)
 
 
-def allocate(s: dict, parts: dict, fixed: dict | None, name: str) -> tuple[dict, list[str], dict]:
+def app_demands(app: dict | None, ds: list) -> list:
+    """应用 requires 里器件库给不出的资源（目前只有 timer：控制周期中断，不接任何器件）补成需求。
+    其他类型靠器件 res + scheme.yaml names 改名对上，缺了由 check_requires 报 [缺资源]，不在这里猜方向/波特率。"""
+    have = {(d["type"], d["name"]) for d in ds}
+    return [{"type": "timer", "name": n, "part": "应用 requires（控制周期）"}
+            for n in ((app or {}).get("requires") or {}).get("timer", []) or [] if ("timer", n) not in have]
+
+
+def allocate(s: dict, parts: dict, fixed: dict | None, name: str, app: dict | None = None) -> tuple[dict, list[str], dict]:
     mpart = parts[s["mcu"]]
     mcu = dict(mpart.get("mcu") or {"family": TODO, "part": TODO})
     ds = demands(s, parts)
+    ds += app_demands(app, ds)
     fam = mcu.get("family")
     notes: list[str] = []
     res: dict[str, list] = {}
@@ -246,7 +264,7 @@ def allocate(s: dict, parts: dict, fixed: dict | None, name: str) -> tuple[dict,
             for r in fixed_res.get(t, []) or []:
                 if (t, r["name"]) not in {(d["type"], d["name"]) for d in ds}:
                     alloc.seed(t, r)
-    order = {"encoder": 0, "pwm": 1, "uart": 2, "spi": 3, "i2c": 4, "adc": 5, "gpio": 6}
+    order = {"encoder": 0, "pwm": 1, "uart": 2, "spi": 3, "i2c": 4, "adc": 5, "gpio": 6, "timer": 7}
     pending.sort(key=lambda d: order[d["type"]])
     done_pwm_parts = set()
     for d in pending:
@@ -268,7 +286,7 @@ def allocate(s: dict, parts: dict, fixed: dict | None, name: str) -> tuple[dict,
                     x["from"] = "失败"
                 notes.append(f"PWM {[x['name'] for x in grp]}：找不到一个能同时放下的定时器")
                 continue
-            got = {"encoder": alloc.encoder, "uart": alloc.uart, "i2c": alloc.i2c_bus, "spi": alloc.spi_dev, "adc": alloc.adc}.get(t, lambda _d: None)(d)
+            got = {"encoder": alloc.encoder, "uart": alloc.uart, "i2c": alloc.i2c_bus, "spi": alloc.spi_dev, "adc": alloc.adc, "timer": alloc.timer}.get(t, lambda _d: None)(d)
             if t == "gpio":
                 p = alloc.gpio_pin()
                 got = {"name": d["name"], "pin": p, "dir": d.get("dir", "out")} if p else None
@@ -283,7 +301,7 @@ def allocate(s: dict, parts: dict, fixed: dict | None, name: str) -> tuple[dict,
                    "encoder": {"timer": TODO, "pin_a": TODO, "pin_b": TODO},
                    "uart": {"instance": TODO, "tx": TODO, "rx": TODO, "baud": d.get("baud", 115200)},
                    "i2c": {"instance": TODO, "scl": TODO, "sda": TODO}, "adc": {"instance": TODO, "channel": TODO, "pin": TODO},
-                   "spi": {"instance": TODO, "sck": TODO, "mosi": TODO, "miso": TODO, "cs": TODO}}[t]}
+                   "spi": {"instance": TODO, "sck": TODO, "mosi": TODO, "miso": TODO, "cs": TODO}, "timer": {"instance": TODO}}[t]}
             if alloc:
                 notes.append(f"{t}.{d['name']}：资源用完了，没分到")
         if t == "i2c" and any(r.get("instance") == got.get("instance") and got.get("instance") != TODO for r in res.get("i2c", [])):
@@ -345,6 +363,9 @@ def cubemx_md(board: dict, extra: dict, rtos: bool) -> str:
         L.append(f"| {tim} | PWM Generation {chs} | 时钟 {clk // 1_000_000} MHz → Prescaler={psc}，Counter Period={arr}（{f} Hz，占空分辨率 {arr + 1} 级）；auto-reload preload Enable |")
     for r in res.get("encoder", []):
         L.append(f"| {r['timer']} | Combined Channels = Encoder Mode TI1 and TI2 | Counter Period={2 ** al.F.TIMERS[r['timer']][1] - 1}；Input Filter 6–10（抗电机干扰）；{r['name']} |")
+    for r in res.get("timer", []):
+        if r.get("instance") != TODO:
+            L.append(f"| {r['instance']} | Clock Source = Internal Clock（不出引脚） | 控制节拍 {r['name']}：PSC/ARR 不用在 CubeMX 填（pal_timer_start 运行时按周期设）；开 {r['instance']} global interrupt，抢占优先级比所有串口高一级 |")
     L += ["", "## 4. 串口、DMA 与中断优先级", "", "| 串口 | 逻辑名 | 波特率 | RX DMA（Circular） | NVIC 抢占优先级 |", "|---|---|---|---|---|"]
     for r in sorted(res.get("uart", []), key=lambda r: irq.get(r["name"]) or 9):
         dma = al.rx_dma(r["instance"]) if r["instance"] != TODO else None
@@ -378,10 +399,11 @@ def main(argv=None) -> int:
     parts = sch.load_catalog()
     fixed = boardlib.load_board(pathlib.Path(ns.fixed)) if ns.fixed else None
     rtos = ns.rtos or bool(fixed and (fixed.get("config_source") or {}).get("rtos") == "freertos")
-    board, notes, extra = allocate(s, parts, fixed, ns.name or re.sub(r"[^a-z0-9-]", "-", f"{sp.parent.name}-draft".lower()))
+    app = yaml.safe_load(pathlib.Path(ns.app).read_text(encoding="utf-8")) if ns.app else None
+    board, notes, extra = allocate(s, parts, fixed, ns.name or re.sub(r"[^a-z0-9-]", "-", f"{sp.parent.name}-draft".lower()), app)
     rep = boardlib.check_board(board)
-    if ns.app and not rep.errors:
-        boardlib.check_requires(board, yaml.safe_load(pathlib.Path(ns.app).read_text(encoding="utf-8")), rep)
+    if app and not rep.errors:
+        boardlib.check_requires(board, app, rep)
     o = pathlib.Path(ns.o); o.mkdir(parents=True, exist_ok=True)
     (o / "board.yaml").write_text("# tools/alloc.py 生成的草稿：CubeMX 配完后用 tools/ioc_import.py 导出的 board.yaml 覆盖它\n"
                                   + yaml.safe_dump(board, allow_unicode=True, sort_keys=False, width=200), encoding="utf-8", newline="\n")

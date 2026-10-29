@@ -1,0 +1,110 @@
+# tools/alloc.py 生成的草稿：CubeMX 配完后用 tools/ioc_import.py 导出的 board.yaml 覆盖它
+schema_version: 1
+name: 2026x-follow-draft
+description: tools/alloc.py 由 examples/2026X_follow/scheme.yaml 生成的草稿，未接线、未上板
+port: stm32-cubemx
+config_source:
+  tool: cubemx
+  file: TODO
+mcu:
+  part: STM32F103C8T6
+  family: stm32f1
+  core: cortex-m3
+  fpu: false
+  flash_kb: 64
+  ram_kb: 20
+todo:
+- 草稿：按 cubemx.md 在 CubeMX 里配一遍、生成后用 ioc_import 重新导出 board.yaml 覆盖本文件
+resources:
+  encoder:
+  - name: MOTOR_A
+    timer: TIM3
+    pin_a: PA6
+    pin_b: PA7
+  - name: MOTOR_B
+    timer: TIM4
+    pin_a: PB6
+    pin_b: PB7
+  pwm:
+  - name: MOTOR_A
+    timer: TIM1
+    channel: 1
+    pin: PA8
+    freq_hz: 20000
+  - name: MOTOR_B
+    timer: TIM1
+    channel: 2
+    pin: PA9
+    freq_hz: 20000
+  uart:
+  - name: PEER
+    instance: USART2
+    tx: PA2
+    rx: PA3
+    baud: 115200
+  - name: LINK
+    instance: USART3
+    tx: PB10
+    rx: PB11
+    baud: 115200
+  i2c:
+  - name: OLED
+    instance: I2C1
+    scl: PB8
+    sda: PB9
+    speed_hz: 400000
+  gpio:
+  - name: LINE0
+    pin: PA12
+    dir: in
+    pull: up
+  - name: LINE1
+    pin: PB12
+    dir: in
+    pull: up
+  - name: LINE2
+    pin: PB13
+    dir: in
+    pull: up
+  - name: LINE3
+    pin: PB14
+    dir: in
+    pull: up
+  - name: LINE4
+    pin: PB15
+    dir: in
+    pull: up
+  - name: LINE5
+    pin: PA0
+    dir: in
+    pull: up
+  - name: LINE6
+    pin: PA1
+    dir: in
+    pull: up
+  - name: LINE7
+    pin: PA4
+    dir: in
+    pull: up
+  - name: MOTOR_A_IN1
+    pin: PA5
+    dir: out
+  - name: MOTOR_A_IN2
+    pin: PA10
+    dir: out
+  - name: MOTOR_B_IN1
+    pin: PA11
+    dir: out
+  - name: MOTOR_B_IN2
+    pin: PB0
+    dir: out
+  - name: KEY1
+    pin: PB1
+    dir: in
+    pull: up
+  timer:
+  - name: CTRL
+    instance: TIM2
+clock:
+  hse_hz: 8000000
+  sysclk_hz: 72000000

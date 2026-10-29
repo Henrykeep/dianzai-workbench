@@ -1,0 +1,22 @@
+# 第二例题方案（第 2 步）。核对：python3 tools/scheme.py requirements.yaml --scheme scheme.yaml -o out/
+# 两车同一套硬件、同一份固件（参数 role 区分前后车）。F103C8 小车是仓库里已经有 board.yaml 的最便宜底盘。
+mcu: stm32f103c8t6
+mcu_reason: 只跑循线 + 轮速 PI + 跟车，C8T6 的 20 KB RAM / 72 MHz 足够；两车同板省一半调试量
+picks:
+  sense.line: ir_gray_array
+  sense.wheel_speed: encoder_ab
+  act.wheel_drive: dc_motor_hbridge
+  link.peer: lora_uart
+  ui.key: key_gpio
+  ui.display: oled_ssd1306
+fallback:
+  link.peer: bt_serial
+reasons:
+  sense.line: 规则 R1 只允许红外
+  sense.wheel_speed: 间距靠沿路径里程差，必须有编码器
+  act.wheel_drive: 现成底盘
+  link.peer: 规则 R3；LoRa 透传距离和抗干扰比蓝牙好，peerlink 帧与模块无关，换蓝牙只改接线
+  ui.key: 规则 R5
+  ui.display: 规则 R5
+names:      # 器件库默认逻辑名 → 本应用 app.yaml requires 用的名字（alloc.py 按这个出 board.yaml）
+  ir_gray_array: { gpio: [LINE0, LINE1, LINE2, LINE3, LINE4, LINE5, LINE6, LINE7] }

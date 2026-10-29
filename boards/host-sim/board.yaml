@@ -61,6 +61,7 @@ resources:
     - { name: BEAM, instance: SIMUART2, tx: SIM19, rx: SIM20, baud: 921600 }
     - { name: IMU, instance: SIMUART3, tx: SIM28, rx: SIM29, baud: 460800, note: RoboMaster C 型板姿态模块（dzframe） }
     - { name: BT, instance: SIMUART4, tx: SIM52, rx: SIM53, baud: 9600, note: HC-05 / JDY-31 透传 }
+    - { name: PEER, instance: SIMUART5, tx: SIM82, rx: SIM83, baud: 115200, note: 两车链路（LoRa/蓝牙透传，firmware/proto/peerlink） }
   timer:
     - { name: CTRL, instance: SIMTIM2 }
   adc:

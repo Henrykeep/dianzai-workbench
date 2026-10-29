@@ -117,7 +117,7 @@ all: $(TARGET)
 CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm32f103c8t6-car-cubemx:car_2wd \
          stm32f407-bldc-freertos-cubemx:2026H_ball mspm0g3507-tianmengxing:car_2wd mspm0g3507-launchpad:car_2wd \
          host-sim:car_2wd host-sim:2026H_ball dji-rm-c:imu_module host-sim:imu_module \
-         mspm0g3507-tianmengxing:imu_module host-sim:motor_pos host-sim:pendulum_rot host-sim:pan_tilt host-sim:line_car \
+         mspm0g3507-tianmengxing:imu_module host-sim:motor_pos host-sim:pendulum_rot host-sim:pan_tilt host-sim:line_car host-sim:2026X_follow \
          stm32f407-skystar:motor_pos mspm0g3507-tianmengxing:pendulum_rot stm32f407-skystar:pan_tilt \
          stm32f103c8t6-car-cubemx:port_selftest stm32f103c8t6-car-cubemx:motor_speed_demo stm32f407-skystar-cubemx:port_selftest \
          mspm0g3507-tianmengxing:port_selftest mspm0g3507-launchpad:port_selftest mspm0g3507-launchpad:motor_speed_demo \

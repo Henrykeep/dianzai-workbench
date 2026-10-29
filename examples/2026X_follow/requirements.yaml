@@ -1,0 +1,67 @@
+# 第二道参考例题（自拟，D 题式双车循线跟车）——用来演示“双车/车机通信 + 跟车 + 安全中止”这一类题怎么走 9 步流程。
+# ⚠ 不是官方原文：指标按往年跟随小车类题目（如 2015/2019/2021 跟随行驶类）和 DS-land-and-air 联调规范的口径自拟，
+#   换成真题时用 tools/req.py init <原文 PDF> 重新起稿，再逐条对照原文改。安全项（中止/断链/急刹）是任何双车题都该有的底线。
+schema_version: 1
+problem:
+  code: 2026X_follow
+  title: 双车循线跟随行驶（自拟练习题）
+  source: 自拟（参考 DS-land-and-air docs/D题_V23_联调与计分矩阵.md 的中止/新鲜度口径，见 docs/参考来源.md）
+  confirmed_by: []
+
+constraints:
+  - { id: R1, text: 两车都只能用红外光电循迹, forbid: [sense.line_camera], confirmed_by: [] }
+  - { id: R2, text: 行驶中不得人为干涉、遥控, confirmed_by: [] }
+  - { id: R3, text: 两车之间允许无线通信（题目给定或自选模块）, require: [link.peer], confirmed_by: [] }
+  - { id: R4, text: 两车相撞即本次测试失败, confirmed_by: [] }
+  - { id: R5, text: 每车有启动按键和显示, require: [ui.key, ui.display], confirmed_by: [] }
+
+items:
+  - id: B1
+    part: basic
+    score: 20
+    text: 前车循线行驶一圈，后车跟随，全程不脱线
+    needs: [sense.line, sense.wheel_speed, act.wheel_drive, link.peer, ui.key]
+    metrics:
+      - { name: 一圈时间, op: "<=", value: 30, unit: s }
+      - { name: 两车脱线次数, op: "==", value: 0 }
+    runs: 3
+  - id: B2
+    part: basic
+    score: 25
+    text: 跟车间距保持在 40±5 cm
+    needs: [sense.line, sense.wheel_speed, act.wheel_drive, link.peer]
+    metrics:
+      - { name: 稳态间距误差, op: "<=", value: 5, unit: cm, how: 遥测 gap_m + 直尺抽查（里程估计要每圈对一次） }
+    accept: 跟车间距（示例）
+    runs: 3
+    why: 两车走 peerlink 交换沿路径里程，algo/follow 用 v_lead + kp·(gap−ref) − kd·(v_self−v_lead) 出车速，加减速限幅
+    evidence:
+      - { path: ../../docs/verify/2026X_follow/logs/20261030-0434_taskB2_sim, layer: sim, date: "2026-10-30", result: partial,
+          note: host-sim 稳态 ±5 cm 通过；前车是虚拟车，真车里程标定误差未计入 }
+  - id: B3
+    part: basic
+    score: 25
+    text: 前车途中急停，后车自动停车且不相撞；前车恢复后继续跟随
+    needs: [link.peer, act.wheel_drive]
+    metrics:
+      - { name: 停车后两车间距, op: ">=", value: 20, unit: cm }
+    runs: 3
+    why: 后车三道闸：间距 < gap_min 立停（follow TOO_CLOSE）；前车 STOPPED / 链路超时按 f_decel 减速到 0；收到 ABORT 立停锁存
+    forbidden_claims:
+      - 仿真里不撞所以真车不撞（仿真无轮胎打滑、无无线延迟抖动）
+    evidence:
+      - { path: ../../docs/verify/2026X_follow/logs/20261030-0434_taskB3_sim, layer: sim, date: "2026-10-30", result: partial,
+          note: 前车 2 m/s² 急刹，仿真真间距最小 0.35 m；链路断/中止/双向急停也在这条回归里 }
+  - id: A1
+    part: advanced
+    score: 20
+    text: 后车被撞偏丢线后自行找回并恢复跟随
+    needs: [sense.line]
+    metrics:
+      - { name: 找回时间, op: "<=", value: 3, unit: s }
+    why: algo/line_obs 丢线确认 + 朝丢线侧原地找线（方向不定左右扫），同 apps/line_car 1.1.0；找线期间前车照走，间距只会变大
+  - { id: A2, part: other, score: 10, text: 设计报告 }
+
+estimates:
+  - { what: 链路帧周期, value: "20 ms（50 Hz）", basis: "0.3 m/s 时一帧走 6 mm，stale 200 ms ≈ 6 cm，远小于 gap_ref−gap_min = 20 cm" }
+  - { what: 断链最坏停车距离, value: "≈0.06 + v²/(2·1.5) = 0.09 m（0.3 m/s）", basis: "stale_ms 内按原速 + f_decel 减速" }
