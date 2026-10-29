@@ -213,6 +213,11 @@ class Server:
         if op == "raw_monitor":
             self.session.raw_on = bool(m.get("on", True))
             return {"on": self.session.raw_on}
+        if op == "framedef_set":                    # {"def": {...} | null}：自定义 HEX/文本帧结构（VOFA JustFloat/FireWater 预设）
+            return self.session.set_framedef(m.get("def"))
+        if op == "framedef_status":
+            p = self.session.kv
+            return {"framedef": getattr(p, "d", None), "bad": getattr(p, "bad", 0), "fields": list(p.names)}
         if op == "auto_reconnect":
             self.session.auto_reconnect = bool(m.get("on", True))
             return {"on": self.session.auto_reconnect}

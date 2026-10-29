@@ -15,6 +15,7 @@ from typing import Callable
 from . import lastsession, snapshots
 from ._dzlink import DATA, HEARTBEAT, PARAM_ACK, PARAM_SET, Parser, encode
 from .textparse import KvParser
+from .framedef import FrameDefError, FrameDefParser
 from .events import Timeline, crc_spike
 from .linkhealth import LinkHealth
 from .logfile import RX, TX, LogWriter
@@ -289,6 +290,16 @@ class Session:
                 if w:
                     w[1][:] = [st, val]
                     w[0].set()
+
+    def set_framedef(self, d: dict | None) -> dict:
+        """没烧工作台固件时怎么解析串口：None = key=value 文本（默认）；否则按用户帧结构（framedef.py）。"""
+        try:
+            p = FrameDefParser(d) if d else KvParser()
+        except FrameDefError as e:
+            raise LinkError("bad_framedef", str(e), "改帧结构表后再应用") from e
+        with self.lock:
+            self.kv = p
+        return {"framedef": p.d if d else None, "fields": len(p.names) if d else 0}
 
     def _on_text(self, data: bytes, now: float) -> None:
         rows, grew = self.kv.feed(data)

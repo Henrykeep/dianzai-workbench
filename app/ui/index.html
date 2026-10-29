@@ -21,6 +21,9 @@
           <label class="field" title="ESP32、带一键下载电路的 CH340 板：选“不拉高”防止一连就复位/进 BOOT">DTR/RTS<select id="lines">
             <option value="default">按配置</option><option value="low">不拉高</option></select></label>
           <label class="check" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
+          <label class="field" title="不是工作台固件的板子怎么解析：key=value 文本、VOFA+ JustFloat / FireWater，或自定义帧结构（帧头/字段/校验/帧尾，JSON）">非工作台帧<select id="framedef">
+            <option value="kv">key=value 文本</option><option value="justfloat">JustFloat</option><option value="firewater">FireWater</option><option value="custom">自定义…</option></select></label>
+          <label class="field" title="JustFloat / FireWater 的通道数">通道<input id="framedef-n" type="number" min="1" max="32" value="4" style="width:4em"></label>
         </div></details>
     </div>
     <nav class="flow" id="flow" title="一轮调参的进度：按当前状态自动点亮"><span data-s="conn">连接</span><span data-s="tune">调参</span><span data-s="step">阶跃</span><span data-s="read">判读</span><span data-s="save">定稿</span></nav>

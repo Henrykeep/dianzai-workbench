@@ -502,6 +502,25 @@ link.onState = async open => {
   if (!open) return;
   const h = await link.rpc("hello");
   S.ports = h.ports; renderPorts(false);
+  const applyFramedef = () => {
+    const kind = $<HTMLSelectElement>("framedef").value;
+    const n = Math.max(1, Math.min(32, Number($<HTMLInputElement>("framedef-n").value) || 4));
+    let def: unknown = null;
+    if (kind === "justfloat" || kind === "firewater") def = { preset: kind, n };
+    else if (kind === "custom") {
+      const txt = window.prompt('帧结构 JSON，例：{"header":"AA55","checksum":"sum8","check_from":2,"endian":"little","fields":[{"name":"speed","type":"i16","scale":0.01}]}', localStorage.getItem("dz.framedef") || "");
+      if (!txt) return;
+      try { def = JSON.parse(txt); } catch { alert("不是合法 JSON"); return; }
+      localStorage.setItem("dz.framedef", txt);
+    }
+    call("framedef_set", { def }).then(() => fdStatus()).catch(() => {});   // 出错 call 自己弹提示（中文原因）
+  };
+  const fdStatus = () => call<{ fields: string[]; bad: number }>("framedef_status").then(st => {
+    $<HTMLSelectElement>("framedef").title = `当前 ${st.fields.length} 个通道；校验错/帧尾不对 ${st.bad} 帧（悬停刷新）`;
+  }).catch(() => {});
+  $<HTMLSelectElement>("framedef").onmouseenter = fdStatus;
+  $<HTMLSelectElement>("framedef").onchange = applyFramedef;
+  $<HTMLInputElement>("framedef-n").onchange = applyFramedef;
   $<HTMLInputElement>("auto-rc").onchange = e => { call("auto_reconnect", { on: (e.target as HTMLInputElement).checked }).catch(() => {}); };
   if (h.recovered && !h.status.connected) {   // 侧车刚崩过：说清楚，预选上次的口，但不自动连（第一个动作交给人）
     toast({ code: "recovered", message: h.recovered.message, fix: "" }, "warn", 30000);
