@@ -5,6 +5,11 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 通用仿真被控对象 4 个：motor_pos（位置环）、pendulum_rot（旋转倒立摆，状态反馈平衡）、pan_tilt（视觉云台，30 fps / 50 ms 延迟 / 可丢帧）、line_car（8 路灰度循线，串级）。同一套侧车 / 阶跃 / 扫频 / Agent，不改代码就能跑；侧车自动发现 apps/ 与 examples/ 下可仿真的工程。共用收发头 apps/include/link_app.h（设定值约定 DATA id=1）。tests/test_e2e_plants.py 每个对象跑一轮阶跃。全部【未上板】。
+- [仿真] 修：多个对象都有 sp_a/spd_a 时阶跃配置按 dzbench.json 顺序选，line_car 拿到 car_2wd 的配置（报“阶跃后数据不足”）。现在 step_test > 当前仿真工程名 > gains 参数都在板上 > 顺序。加单测。
+- [编译] 修：gen/ 按板共享，换 APP 时 requires 检查可能被跳过，缺资源变成 `RES_xxx undeclared` 编译错误。现在每个 板×应用 单独检查，报 `[缺资源]`。cross 矩阵加入新对象（host-sim ×4、天空星 motor_pos/pan_tilt、天猛星 pendulum_rot）。
+- [仿真] 评测集 10 → 13 例：传感器丢失不调参、实机阶跃必须走确认卡（`as_hw` + `expect_action`）、带宽用扫频；`user_generic` 让点名参数不存在的对象也能跑；`evalrun --ports all`。修离线助手只读前 12 个 yaml（对象多了当前工程被截掉）。离线对照组 6 个对象 × 13 例全过；真模型【未测】。
+- [仿真] docs/19 覆盖矩阵刷新：云台 / 循迹 / 串级 / 位置环更新，下一步排期为跟随小车（双车）、起摆、风力摆。
 - [仿真] 界面复查：Y 轴随数据自适应（有最小跨度）；参数表独立滚动、操作栏固定；回放列表只列当前端口的记录；Agent 引导缩成两行；通道 / 参数空状态加图标。
 
 - [仿真] 界面改版（docs/26-UI规范.md）：设计变量（4/8 间距、5 级字阶、一个靛蓝强调色、状态色只表状态）+ 统一组件；深 / 浅两套主题（顶栏切换，记住选择）；Lucide 图标；少用功能收进菜单（串口细节、板子命令、Agent “…”），功能未删。截图 shots/ui2/before_* / after_*。
