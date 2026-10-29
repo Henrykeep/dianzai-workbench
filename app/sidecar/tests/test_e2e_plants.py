@@ -50,3 +50,16 @@ def test_plant_step_generic(home, app):
         assert m["rise_s"] is not None and m["rise_s"] < 2.0
     finally:
         s.disconnect()
+
+
+def test_pendulum_rest_is_quantisation_only(home):
+    """默认增益静止时只剩编码器 ±1~2 个计数的抖动（摆杆 2400 CPR = 0.15°/计数）；k_al 0.8 时曾有 ±0.9° 极限环。"""
+    s = Session()
+    s.connect("sim:pendulum_rot")
+    try:
+        assert wait(lambda: s.schema and len(s.window(0.5)) > 5, 30)
+        time.sleep(8)
+        p = [v["pend_deg"] for _, v in s.window(3)]
+        assert max(p) - min(p) <= 0.5, (min(p), max(p))
+    finally:
+        s.disconnect()
