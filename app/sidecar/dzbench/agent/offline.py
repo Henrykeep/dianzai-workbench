@@ -201,7 +201,11 @@ class OfflineAssistant:
                 return head + "还没法分析" + (f"：{e}" if e else "") + "。先连接板子（或仿真板），给一个设定值阶跃，再问我。"
             m = a["metrics"]
             if not m.get("ok"):
-                return head + f"最近 5 s 里没找到有效阶跃（{m.get('reason')}）。先给设定值一个台阶再问我。"
+                lv = (self.ok(done, "tune_context") or {}).get("last_verdict")
+                if lv:      # 刚跑过阶跃实验、过几秒才问：按那轮结果走，不让人重做
+                    return head + f"最近 5 s 里没有阶跃，但第 {lv.get('round')} 轮阶跃实验已判定“{ {'continue': '继续', 'done': '达标', 'rollback': '变差', 'stop': '停止'}.get(lv.get('action'), lv.get('action'))}”。" \
+                                  "点上方“规则建议”，按那轮结果给下一项参数（仍要你点采纳）；或者现在问我（阶跃后 5 s 内）。"
+                return head + f"最近 5 s 里没找到有效阶跃（{m.get('reason')}）。点上方“阶跃实验”自动做一次（或手动给设定值一个台阶），再问我。"
             s = (f"【实测】{a['y']} 跟随 {a['sp']}：超调 {_pct(m.get('overshoot_pct'))}，稳态误差 {_pct(m.get('sse_pct'))}，"
                  f"上升 {m.get('rise_s') or 0:.3f} s，振荡 {m.get('oscillations')} 次。")
             p = self.ok(done, "propose_param_change")

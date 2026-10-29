@@ -18,7 +18,7 @@ type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: numb
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
-const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isNaN(v) ? "—" : p.type === "f32" ? (+v.toPrecision(6)).toString() : String(Math.round(v));
+const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isNaN(v) ? "—" : p.type === "f32" ? (Math.abs(v) < 1e-30 ? "0" : (+v.toPrecision(6)).toString()) : String(Math.round(v));
 
 const q = new URLSearchParams(location.search);
 const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
