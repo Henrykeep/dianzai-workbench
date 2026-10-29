@@ -5,6 +5,9 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] CI：新增 ci.yml，每次推送（任何分支）跑 make check（含 check_version）/ test / compat；firmware 工作流改为每次推 main / release/* / v* tag 都跑，不再按路径过滤。
+- [编译] `make preflight`：从 HEAD 干净克隆到临时目录、空 HOME、不带 TI 器件包、清 DZBENCH_*/PYOCD_* 环境变量，跑 check/test/compat/cross。推送前必跑。
+- [仿真] 测试与本机状态解耦：DZBENCH_HOME 每个测试指到空目录（不读本机 machine.json / LLM Key / 快照）；仿真程序与 gen 按需编译（干净克隆里 test_e2e_flash 原来找不到 build/）；器件包本机目录改走 DZBENCH_HOME；pytest 打印跳过原因，CI 装 arm-gcc 和 MSPM0 SDK 免得 ELF/板卡测试静默跳过。
 
 ## [0.9.0] - 2026-10-29 调参安全、扫频、器件包
 - [仿真] 实验解锁（ArduPilot 式 pre-arm）：实机阶跃/扫频/开环实验的确认卡预览里先跑检查——急停、链路 1 s 内有数据、实验通道在遥测里、电池/温度门限、板上增益回读与侧车记录一致；点击时再查一次，不通过拒绝执行。确认卡一次性，超过 120 s 过期。仿真测过；实机未测。
