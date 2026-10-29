@@ -1,13 +1,13 @@
-import "@fontsource/jetbrains-mono/400.css";
-import "@fontsource/jetbrains-mono/500.css";
-import "@fontsource/inter-tight/400.css";
-import "@fontsource/inter-tight/500.css";
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/geist-mono/400.css";
+import "@fontsource/geist-mono/500.css";
 import "./tokens.css";
 import "./style.css";
-import { createIcons, Activity, Ellipsis, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
-import { initChrome, emptyState } from "./chrome";
+import { createIcons, Activity, Ellipsis, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
+import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
-import { Plot, chColor } from "./plot";
+import { Plot, chColor, num } from "./plot";
 import { matchNames } from "./names";
 import { Param, clampLocal, pendingOf, rangeLabel } from "./params";
 import { AGENT_IDLE, agentIdle, initAgent } from "./agent";
@@ -156,7 +156,12 @@ $("elf-go").onclick = async () => {
 };
 $("elf-stop").onclick = async () => { await call("watch_stop", {}).catch(() => null); $("elf-n").textContent = ""; };
 setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
-  S.plotted.forEach((f, i) => { const el = document.getElementById(`cv-${i}`); if (el) el.textContent = fmt(plot.last(i), f); });
+  S.plotted.forEach((f, i) => {
+    const v = plot.last(i), cv = document.getElementById(`cv-${i}`), lv = document.getElementById(`lv-${i}`);
+    if (cv) cv.textContent = fmt(v, f);
+    // lane 读数用 4 位有效数字的定宽格式，避免 -0.461538 这种抖动的长串
+    if (lv) lv.textContent = v == null || Number.isNaN(v) ? "—" : (f.type === "f32" ? num(v) : String(Math.round(v))) + (f.unit ? " " + f.unit : "");
+  });
   S.enums.forEach(f => {
     const el = document.getElementById(`ev-${f.name}`), v = S.enumVal[f.name];
     if (el && v != null) { const name = f.enum![v] ?? String(v); el.textContent = name; el.className = `mono st-${name}`; }
@@ -180,11 +185,16 @@ function pending() {
 }
 function renderParams() {
   const ps = S.schema?.params ?? [];
-  $("plist").innerHTML = ps.map(p => `<div class="prow" title="${esc(p.desc ?? "")}">
-    <span class="k">${esc(p.name)}<i>${esc(p.desc ?? "")}</i></span>
+  // 参数表（docs/26 P17）：名称 | 值（可改） | 板上 | 范围（位置条 + 上下限） | 说明；数值列右对齐、等宽
+  $("plist").innerHTML = ps.length ? `<div class="prow ph"><span>名称</span><span class="n">值</span><span class="n">板上</span><span>范围</span><span class="n">默认</span><span>说明</span></div>`
+    + ps.map(p => `<div class="prow" id="row-${p.name}">
+    <span class="k mono">${esc(p.name)}</span>
     <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off">
-    <span class="rng mono" id="pr-${p.name}" data-r="${fmt(p.min, p)}…${fmt(p.max, p)}${p.unit ? " " + esc(p.unit) : ""}"></span></div>`).join("")
-    || emptyState("sliders", "连上后列出可调参数");
+    <span class="bv mono" id="pb-${p.name}">—</span>
+    <span class="rg"><span class="bar"><i id="pk-${p.name}"></i></span><span class="mono" id="pr-${p.name}">${esc(rangeLabel(p, false, undefined))}</span></span>
+    <span class="df mono">${fmt(p.default, p)}</span>
+    <span class="ds" title="${esc(p.desc ?? "")}">${esc(p.desc ?? "")}</span></div>`).join("")
+    : emptyState("sliders", "连上后列出可调参数");
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
     inp.onkeydown = e => {
@@ -217,11 +227,14 @@ function markParams() {
   const pend = new Set(pending().map(p => p.name));
   (S.schema?.params ?? []).forEach(p => {
     document.getElementById(`pi-${p.name}`)?.classList.toggle("chg", pend.has(p.name));
-    // 草稿 ≠ 板上真值时，范围位置改显示板子回报的生效值（ACK/读回），避免把草稿当成已生效
-    const r = document.getElementById(`pr-${p.name}`);
-    if (r) { r.classList.toggle("brd", pend.has(p.name)); r.textContent = pend.has(p.name) ? rangeLabel(p, true, S.applied[p.name]) : r.dataset.r!; }
+    // 草稿 ≠ 板上真值时：行首加强调色竖条，“板上”列写成 旧 → 新（板上始终是板子回报的生效值，不把草稿当成已生效）
+    const on = pend.has(p.name), b = document.getElementById(`pb-${p.name}`), k = document.getElementById(`pk-${p.name}`);
+    document.getElementById(`row-${p.name}`)?.classList.toggle("dirty", on);
+    if (b) b.textContent = on ? `${fmt(S.applied[p.name], p)} → ${fmt(clampLocal(p, +S.edit[p.name]), p)}` : fmt(S.applied[p.name], p);
+    const v = S.applied[p.name];
+    if (k && v != null && p.max > p.min) k.style.setProperty("--x", String(Math.min(Math.max((v - p.min) / (p.max - p.min), 0), 1)));
   });
-  $("pend").textContent = pend.size ? `${pend.size} 项待下发` : "";
+  $("pend").textContent = pend.size ? `${pend.size} 项未下发` : "";
   $<HTMLButtonElement>("p-send").disabled = !pend.size;
   $<HTMLButtonElement>("p-revert").disabled = !Object.keys(S.edit).length;
 }
@@ -297,6 +310,7 @@ function renderProposal(m: Msg) {
     } catch { /* toast */ }
   });
   $("props").prepend(d);
+  notifySide("agent");
 }
 
 // ---------------------------------------------------------------- 状态
@@ -397,5 +411,5 @@ $("doctor").onclick = async () => {
   $<HTMLDialogElement>("doc").show();
 };
 
-createIcons({ icons: { Activity, Ellipsis, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
+createIcons({ icons: { Activity, Ellipsis, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
 initChrome();

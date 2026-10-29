@@ -39,3 +39,17 @@
 ## 2026-10-29 通用性审计（v0.11）
 - 代码：session.py 仿真起不来的提示写死 `APP=car_2wd` → 改用实际工程名；离线助手“找不到参数”提示写死 2026H 的 pos_k → 改为列出板上参数；Agent 引导问题按 schema 生成；阶跃配置按当前工程选。剩下的 car_2wd/2026H 出现都是注释或用法示例（bench.py 是合成速度环基准，有意保留）。
 - 文档：README、17、18 不再把 2026H 写成唯一例子。
+
+## 2026-10-29 · v4 界面落地（截图 /workspace/shots/redesign/impl/s2_dark.png、s2_light.png、s2_agent.png）
+
+| 宗旨 | 结论 | 证据 |
+|---|---|---|
+| 顾全大局 | 是 | lane、参数表、pin 全由 schema 生成；界面代码无题目字段名。setpoint 叠加因需猜命名而放弃（见 docs/26 §3.5）。 |
+| 不堆屎山 | 是 | style.css 十六进制 0 处，颜色只在 tokens.css；index.html inline style 0 处，TS 里唯一 inline 是 `--c`/`--x` 变量；src 下 ts+css 共 1379 行。 |
+| 带着脑子 | 是 | 取舍写进 docs/26 §3.5（setpoint 叠加、测量页、字体）。 |
+| 站在巨人的肩膀上 | 是 | 版式参照 Saleae Logic 2 / Linear / Grafana（design-study.md）；uPlot.sync 做联动光标，不自写。 |
+| 实验是检验真理的唯一标准 | 部分 | Playwright 连真 sidecar + 仿真板截深/浅/Agent 三张，逐张对照 v4 稿；make test 通过。未测：实机、Windows、1280 窄屏、原始/频谱视图与对话框截图。 |
+| 客观分析 | — | 差距：无 /div、余辉、t0 锚点、A/B 光标、历史页；lane 名过长截断（sp_arm_d…）；Y 轴首尾刻度贴边。 |
+| 创新 | 克制 | 只加了参数“默认”列和旧→新脏值显示，都是用户调参直接用得上的。 |
+| 站在用户的角度 | 是 | 读数定宽 4 位有效数字不再抖动；未下发数量在停靠栏顶部常显；阶跃实验按钮唯一绿色主操作。 |
+| 版本管理 | 是 | HANDOVER 与 UI 分两次提交；CHANGELOG [未发布] 有记录。 |

@@ -1,47 +1,45 @@
-/* 电赛工作台 设计变量 v0.3（docs/26-UI规范.md）
- * 网格 4/8 px；表面 4 层；一个强调色（靛蓝）只给主操作、选中、焦点、待下发改动；
- * 状态色（ok/warn/crit/info）只表示状态；急停红只给急停与故障。 */
+/* 电赛工作台 设计变量 v4（docs/26-UI规范.md §3）
+ * 灰阶：OKLCH，hue 255、chroma .005，按明度生成（P4），每一级都有固定语义（P5）：
+ *   s0 = plot（数据区，最暗） s1 = chrome（顶栏/rail/状态栏） s2 = raised（停靠面板） s3 = 控件  s-hover
+ *   line = 面板之间 1px 的缝  hair = 面板内很淡的线  ink/text/muted/dim = t1/t2/t3/t4
+ * 颜色稀缺（P15）：acc 蓝只用于选中、焦点、待下发和采纳；go 绿只给全局唯一的主动作；estop 红只给急停和故障。灰里不掺 accent，不用紫色。 */
 :root,[data-theme="dark"]{
   color-scheme:dark;
-  --s0:#0b0c0e; --s1:#121316; --s2:#181a1e; --s3:#1f2126; --s-hover:#262930;
-  --ink:#eceef2; --text:#c9ccd3; --muted:#8b9099; --dim:#5f646d; --faint:#3a3e45;
-  --hair:rgba(255,255,255,.06); --line:rgba(255,255,255,.09); --grid:rgba(255,255,255,.035); --grid-2:rgba(255,255,255,.07);
-  --hi:inset 0 1px 0 rgba(255,255,255,.04);
-  --sh-1:0 1px 2px rgba(0,0,0,.35);
-  --sh-2:0 0 0 1px var(--line),0 8px 24px -12px rgba(0,0,0,.6);
-  --sh-pop:0 0 0 1px var(--line),0 16px 40px -12px rgba(0,0,0,.7);
-  --acc:#7b8cff; --acc-2:#6474f0; --acc-ink:#0b0c1a; --acc-bg:rgba(123,140,255,.14); --focus:0 0 0 2px rgba(123,140,255,.45);
-  --ok:#4fbf86; --warn:#e2a84a; --crit:#ef5f55; --info:#6aa9d8; --off:#4a4e55;
-  --ok-bg:rgba(79,191,134,.12); --warn-bg:rgba(226,168,74,.12); --crit-bg:rgba(239,95,85,.12);
-  --estop:#ff3b30; --estop-2:#cc1f15; --estop-ink:#fff;
-  /* 通道：第 1 条最高对比，其余 Okabe-Ito；色盲可分 */
-  --ch1:#eceef2; --ch2:#56b4e9; --ch3:#2fbf8f; --ch4:#f0d65a;
-  --ch5:#cc79a7; --ch6:#e69f00; --ch7:#4c7fd6; --ch8:#9aa0a8;
-  --setpoint:#8b9099; --ref:#5f646d;
-  --f-sans:"Inter Tight","Inter","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",system-ui,sans-serif;
-  --f-mono:"JetBrains Mono","Cascadia Mono","SF Mono",Consolas,"Noto Sans Mono CJK SC","Microsoft YaHei UI",monospace;
-  /* 字阶：11 标签 / 12 正文小 / 13 正文 / 14 标题 / 20 读数 */
-  --t-xs:11px; --t-sm:12px; --t-md:13px; --t-h:14px; --t-num:20px;
-  /* 间距：4 的倍数 */
+  --s0:oklch(.135 .005 255); --s1:oklch(.175 .005 255); --s2:oklch(.205 .005 255); --s3:oklch(.235 .005 255); --s-hover:oklch(.255 .005 255);
+  --ink:oklch(.94 .005 255); --text:oklch(.74 .005 255); --muted:oklch(.58 .005 255); --dim:oklch(.48 .005 255); --faint:oklch(.34 .005 255);
+  --line:oklch(.255 .005 255); --hair:oklch(.235 .005 255); --line2:oklch(.31 .005 255);
+  --grid:oklch(.195 .005 255); --grid-2:oklch(.30 .005 255);
+  --sh-pop:0 0 0 1px var(--line2),0 12px 32px -12px oklch(0 0 0 / .7);
+  --acc:#4c82f0; --acc-t:#7fa7ff; --acc-ink:#fff; --acc-bg:oklch(.62 .15 262 / .14); --focus:0 0 0 2px oklch(.62 .15 262 / .5);
+  --go:#2f9e5b; --go-ink:#fff;
+  --ok:#4fbf86; --warn:#e2a84a; --crit:#e5544b; --info:#6aa9d8; --off:var(--faint);
+  --ok-bg:oklch(.7 .13 155 / .12); --warn-bg:oklch(.78 .13 75 / .12); --crit-bg:oklch(.62 .19 27 / .12);
+  --estop:#d6453d; --estop-bg:oklch(.62 .19 27 / .14);
+  /* 通道色：示波器惯例（黄/青/绿/橙…），只用于 trace 与标记（P11）；无紫 */
+  --ch1:#e6c34a; --ch2:#47bfd6; --ch3:#5cc27f; --ch4:#e8894a;
+  --ch5:#d9d9d9; --ch6:#6f9df2; --ch7:#c9a27a; --ch8:#8fa3a8;
+  --setpoint:var(--muted);
+  --f-sans:"Inter","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",system-ui,sans-serif;
+  --f-mono:"Geist Mono","Cascadia Mono","SF Mono",Consolas,"Noto Sans Mono CJK SC",monospace;
+  /* 字号只有三档（P7）：13 正文 / 12 数值与次要 / 11 刻度与角标 */
+  --t-xs:11px; --t-sm:12px; --t-md:13px;
   --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px;
-  --r-xs:4px; --r-sm:6px; --r:8px; --r-lg:10px;
-  --h-ctl:28px; --h-sm:24px;
-  --dur:140ms; --ease:cubic-bezier(.2,.8,.2,1);
+  --r-xs:2px; --r-sm:3px; --r:4px;
+  /* 刻度（P17）：行 28、控件 28、视图头 32、顶栏 40、状态栏 24 */
+  --h-row:28px; --h-ctl:28px; --h-sm:24px; --h-vh:32px; --h-top:40px; --h-sb:24px; --w-rail:44px; --w-side:320px; --w-lab:168px;
+  --dur:120ms; --ease:cubic-bezier(.2,.8,.2,1);
 }
 [data-theme="light"]{
   color-scheme:light;
-  --s0:#eef0f3; --s1:#ffffff; --s2:#f7f8fa; --s3:#eceef2; --s-hover:#e4e7ec;
-  --ink:#111318; --text:#2b2f37; --muted:#5d636e; --dim:#8a909b; --faint:#c3c8d0;
-  --hair:rgba(17,19,24,.07); --line:rgba(17,19,24,.11); --grid:rgba(17,19,24,.05); --grid-2:rgba(17,19,24,.10);
-  --hi:none;
-  --sh-1:0 1px 2px rgba(17,19,24,.06);
-  --sh-2:0 0 0 1px var(--line),0 4px 14px -8px rgba(17,19,24,.18);
-  --sh-pop:0 0 0 1px var(--line),0 12px 32px -10px rgba(17,19,24,.25);
-  --acc:#4c5bd4; --acc-2:#3d4bc0; --acc-ink:#fff; --acc-bg:rgba(76,91,212,.10); --focus:0 0 0 2px rgba(76,91,212,.35);
-  --ok:#14804a; --warn:#9a6200; --crit:#c42a1c; --info:#2b64a0; --off:#a4a9b2;
-  --ok-bg:rgba(20,128,74,.09); --warn-bg:rgba(154,98,0,.10); --crit-bg:rgba(196,42,28,.08);
-  --estop:#e0170b; --estop-2:#ad1208;
-  --ch1:#111318; --ch2:#0072b2; --ch3:#00936b; --ch4:#a08a00;
-  --ch5:#a8417f; --ch6:#d05a00; --ch7:#3a55b5; --ch8:#77726b;
-  --setpoint:#5d636e; --ref:#a4a9b2;
+  --s0:oklch(1 0 255); --s1:oklch(.968 .005 255); --s2:oklch(.99 .005 255); --s3:oklch(.955 .005 255); --s-hover:oklch(.935 .005 255);
+  --ink:oklch(.2 .005 255); --text:oklch(.42 .005 255); --muted:oklch(.55 .005 255); --dim:oklch(.64 .005 255); --faint:oklch(.8 .005 255);
+  --line:oklch(.905 .005 255); --hair:oklch(.935 .005 255); --line2:oklch(.85 .005 255);
+  --grid:oklch(.95 0 0); --grid-2:oklch(.84 0 0);
+  --sh-pop:0 0 0 1px var(--line2),0 12px 28px -12px oklch(.2 0 0 / .25);
+  --acc:#1f62d6; --acc-t:#1f62d6; --acc-bg:oklch(.55 .17 262 / .1); --focus:0 0 0 2px oklch(.55 .17 262 / .35);
+  --go:#1f8a4c;
+  --ok:#14804a; --warn:#9a6200; --crit:#c9362e; --info:#2b64a0;
+  --estop:#c9362e;
+  --ch1:#b58a00; --ch2:#0a8aa6; --ch3:#2c9a52; --ch4:#c7611c;
+  --ch5:#444a52; --ch6:#2d63c8; --ch7:#8a6440; --ch8:#5f7479;
 }

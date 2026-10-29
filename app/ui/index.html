@@ -8,11 +8,12 @@
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand"><i data-lucide="activity"></i><span class="zh">电赛工作台</span></div>
+    <div class="brand" title="电赛工作台"><i data-lucide="activity"></i></div>
     <div class="conn">
+      <span id="led" class="led"></span>
       <select id="port" title="端口：插上板子会自动出现并选中；sim: 开头是无需硬件的仿真板"></select>
-      <button id="connect" class="btn pri">连接 <kbd>⌃O</kbd></button>
-      <details class="menu" id="conn-opt"><summary class="btn ghost icon" title="连接选项：波特率、DTR/RTS、自动重连"><i data-lucide="sliders-horizontal"></i></summary>
+      <button id="connect" class="btn">连接 <kbd>⌃O</kbd></button>
+      <details class="menu" id="conn-opt"><summary class="ib" title="连接选项：波特率、DTR/RTS、自动重连"><i data-lucide="sliders-horizontal"></i></summary>
         <div class="pop">
           <label class="field">波特率<select id="baud" title="自动 = 依次试常用值，收到合法帧即停">
             <option value="auto">自动</option><option>115200</option><option>230400</option><option>460800</option>
@@ -22,39 +23,28 @@
           <label class="check" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
         </div></details>
     </div>
-    <div class="stats" id="stats">
-      <div class="ro"><span class="lbl"><span id="led" class="led"></span>链路</span><span class="v" id="ro-link">未连接</span></div>
-      <div class="ro"><span class="lbl">数据格式</span><span class="v" id="ro-schema">—</span></div>
-      <div class="ro"><span class="lbl">接收</span><span class="v" id="ro-rx">—</span></div>
-    </div>
+    <span class="vsep"></span>
+    <div class="pins" id="stats"></div>
     <div class="sp"></div>
-    <span id="rec" class="rec" hidden><span class="dot"></span>REC</span>
-    <button id="doctor" class="btn ghost icon" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
-    <button id="theme" class="btn ghost icon" title="切换深色 / 浅色（户外强光下用浅色）"><i data-lucide="sun-moon"></i></button>
+    <button class="btn" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
+    <button class="btn" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
+    <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button>
+    <span class="vsep"></span>
     <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停<kbd>Space</kbd></button>
   </header>
   <div id="banner" class="banner" hidden></div>
-  <main class="main">
-    <aside class="panel chans">
-      <div class="ph"><h3>通道</h3><div class="sp"></div><span class="lbl" id="chan-n"></span></div>
-      <input id="chan-q" class="in" placeholder="筛选通道：sp_* err" title="空格/逗号分隔，* 通配；只显示匹配的通道" />
-      <div id="chans"></div>
-      <details id="elfw" class="elfw"><summary title="不改固件：通过 SWD 按 ELF 符号地址直接读全局变量画线（需配置 build.elf 和探针；断开串口后使用）">ELF 变量</summary>
-        <input id="elf-q" class="mono" list="elf-list" placeholder="g_speed g_cnt:i32（类型默认按大小猜）" />
-        <datalist id="elf-list"></datalist>
-        <div class="row"><button class="btn ghost sm" id="elf-go">开始观察</button><button class="btn ghost sm" id="elf-stop">停止</button><span class="lbl" id="elf-n"></span></div>
-      </details>
-      <div class="cmds">
-        <button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除急停 R</button>
-        <details class="sub"><summary>板端命令</summary>
-          <div class="row"><input id="cmd-c" class="in" maxlength="1" placeholder="字符"><input id="cmd-n" class="in" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
-        </details>
-      </div>
-    </aside>
-    <section class="panel plot">
-      <div class="ph"><h3>实时曲线</h3><span class="lbl" id="plot-sub"></span><div class="sp"></div>
-        <div class="seg" id="view" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备"><span data-v="plot" class="on">曲线</span><span data-v="raw">原始</span><span data-v="fft" title="频谱：按固件遥测周期做 FFT（去直流 + Hann 窗），找振荡频率">频谱</span></div>
-        <div class="seg" id="win"><span data-w="2">2s</span><span data-w="5" class="on">5s</span><span data-w="10">10s</span><span data-w="30">30s</span></div>
+  <nav class="rail" id="rail">
+    <button class="ri on" data-side="chans" title="通道"><i data-lucide="activity"></i></button>
+    <button class="ri" data-side="agent" title="Agent"><i data-lucide="sparkles"></i><span class="pip" id="ag-pip" hidden></span></button>
+    <div class="sp"></div>
+    <button id="doctor" class="ri" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
+    <button id="theme" class="ri" title="切换深色 / 浅色（户外强光下用浅色）"><i data-lucide="sun-moon"></i></button>
+  </nav>
+  <main class="work">
+    <section class="scope">
+      <div class="vh"><div class="tabs" id="view"><span data-v="plot" class="on">示波</span><span data-v="raw" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备">原始</span><span data-v="fft" title="频谱：按固件遥测周期做 FFT（去直流 + Hann 窗），找振荡频率">频谱</span></div>
+        <span class="lbl mono" id="plot-sub"></span><div class="sp"></div>
+        <div class="seg" id="win"><span data-w="2">2 s</span><span data-w="5" class="on">5 s</span><span data-w="10">10 s</span><span data-w="30">30 s</span></div>
         <div class="seg" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
       </div>
       <div class="plotbox" id="pb"><div id="empty" class="empty"></div>
@@ -82,32 +72,37 @@
           <canvas id="fft-cv" class="fftcv"></canvas>
         </div></div>
     </section>
-    <aside class="side">
-      <section class="panel params">
-        <div class="ph"><h3>参数</h3><span class="lbl" id="pend"></span><div class="sp"></div>
-          <button class="btn ghost" id="p-read" title="从板子重新读取全部参数">读取</button></div>
-        <div id="plist" class="plist"></div>
-        <div class="actions">
-          <button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button>
-          <button class="btn ghost" id="p-revert" disabled>撤销</button>
-          <div class="sp"></div>
-          <button class="btn ghost" id="p-def" title="把全部参数恢复成固件编译时的默认值">恢复默认</button>
-        </div>
-        <div class="snaps">
-          <div class="row"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div>
-          <div id="snaps"></div>
-        </div>
-      </section>
-      <section class="panel agent">
-        <div class="ph"><h3>Agent</h3>
-          <select id="ag-workmode" class="sm" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
+    <section class="dock">
+      <div class="vh"><div class="tabs" id="dock-tabs"><span data-d="params" class="on">参数</span><span data-d="snaps">快照</span><span data-d="board">板端</span></div>
+        <div class="sp"></div><span class="lbl chg-t" id="pend"></span>
+        <button class="btn" id="p-revert" disabled>撤销</button>
+        <button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button>
+        <button class="ib" id="p-read" title="从板子重新读取全部参数">读取</button>
+        <button class="ib" id="p-def" title="把全部参数恢复成固件编译时的默认值">恢复默认</button>
+      </div>
+      <div class="dk" data-d="params"><div id="plist" class="plist"></div></div>
+      <div class="dk" data-d="snaps" hidden><div class="row pad"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div><div id="snaps" class="pad"></div></div>
+      <div class="dk pad" data-d="board" hidden>
+        <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除急停 R</button>
+          <span class="lbl">板端命令</span><input id="cmd-c" class="in w-xs" maxlength="1" placeholder="字符"><input id="cmd-n" class="in w-sm" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
+      </div>
+    </section>
+  </main>
+  <aside class="side">
+    <section class="pane" data-side="chans">
+      <div class="vh"><span class="ttl">通道</span><div class="sp"></div><span class="lbl mono" id="chan-n"></span></div>
+      <input id="chan-q" class="in" placeholder="筛选通道：sp_* err" title="空格/逗号分隔，* 通配；只显示匹配的通道" />
+      <div id="chans"></div>
+      <details id="elfw" class="elfw"><summary title="不改固件：通过 SWD 按 ELF 符号地址直接读全局变量画线（需配置 build.elf 和探针；断开串口后使用）">ELF 变量</summary>
+        <input id="elf-q" class="mono" list="elf-list" placeholder="g_speed g_cnt:i32（类型默认按大小猜）" />
+        <datalist id="elf-list"></datalist>
+        <div class="row"><button class="btn ghost sm" id="elf-go">开始观察</button><button class="btn ghost sm" id="elf-stop">停止</button><span class="lbl" id="elf-n"></span></div>
+      </details>
+    </section>
+    <section class="pane agent" data-side="agent" hidden>
+      <div class="vh"><span class="ttl">Agent</span><select id="ag-workmode" class="sel-q" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
             <option value="general">通用</option><option value="diagnose">诊断（只读）</option><option value="tune">调参</option>
-            <option value="edit">改代码</option><option value="review">审查</option></select>
-          <div class="sp"></div>
-          <button class="btn ghost sm" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
-          <button class="btn ghost sm" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）">阶跃实验</button>
-          <button class="btn ghost sm" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
-          <details class="menu right" id="ag-more"><summary class="btn ghost icon" title="更多：规则建议、撤销、写回 yaml、固件、设置"><i data-lucide="ellipsis"></i></summary>
+            <option value="edit">改代码</option><option value="review">审查</option></select><div class="sp"></div><details class="menu right" id="ag-more"><summary class="ib" title="更多：规则建议、撤销、写回 yaml、固件、设置"><i data-lucide="ellipsis"></i></summary>
             <div class="pop">
               <button class="mi" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button>
               <button class="mi" id="ag-undo" disabled title="撤销 Agent 最近一次已落地的改动：参数改回原值，或 git revert 那次文件提交。可连点逐步往回撤"><i data-lucide="undo-2"></i>撤销 Agent</button>
@@ -120,11 +115,11 @@
               <button class="mi" id="fw-rollback"><i data-lucide="history"></i>回滚固件…</button>
               <hr><button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置</button>
             </div></details></div>
-        <div class="fwst"><span class="lbl" id="fw-st"></span></div>
-        <div id="props" class="feed"></div>
-        <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
-      </section>
-      <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
+      <div class="fwst"><span class="lbl" id="fw-st"></span></div>
+      <div id="props" class="feed"></div>
+      <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
+    </section>
+    <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
       <dialog id="cfg" class="dlg">
         <form method="dialog" id="cfg-form">
           <h3>大模型设置</h3>
@@ -137,18 +132,20 @@
           <div class="act"><button class="btn pri" value="save">保存</button><button class="btn" value="cancel">取消</button></div>
         </form>
       </dialog>
-    </aside>
-  </main>
+
+  </aside>
   <footer class="status">
-    <span id="st-log">未记录</span>
+    <span class="mono" id="ro-link">未连接</span><span class="mono" id="ro-schema">—</span><span class="mono" id="ro-rx">—</span>
     <span id="st-hint" class="warn-t"></span>
     <span class="sp"></span>
-    <span id="rp" class="rp" hidden><button class="btn ghost sm" id="rp-play">⏸</button>
+    <span id="rec" class="rec" hidden><span class="dot"></span>REC</span>
+    <span id="st-log">未记录</span>
+    <span id="rp" class="rp" hidden><button class="ib" id="rp-play">⏸</button>
       <input type="range" id="rp-pos" min="0" max="1000" value="0"><span id="rp-t">0.0 / 0.0 s</span>
       <select id="rp-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></span>
     <select id="logs" title="回放以前记录的 .dzlog"></select>
-    <button class="btn ghost sm" id="replay">回放</button>
-    <button class="btn ghost sm" id="export" title="把这份记录导出成 CSV（UTF-8 BOM，Excel 直接打开）；Shift+点击 = PlotJuggler 格式（.pj.csv，时间列 time）">导出 CSV</button>
+    <button class="ib" id="replay">回放</button>
+    <button class="ib" id="export" title="把这份记录导出成 CSV（UTF-8 BOM，Excel 直接打开）；Shift+点击 = PlotJuggler 格式（.pj.csv，时间列 time）">导出 CSV</button>
     <span id="st-ws">侧车 —</span>
   </footer>
   <div id="toasts" class="toasts"></div>
