@@ -31,6 +31,12 @@ void  host_sim_reset(void);
 /** 看门狗桩（2.3.0）：pal_wdg_start 之后超过 timeout 没喂 = 被咬（锁存，host_sim_reset 清）；0 = 没启动。 */
 bool     host_sim_wdg_bitten(void);
 uint32_t host_sim_wdg_timeout_ms(void);
+/** 掉电存储桩（2.4.0）：8 KB / 擦除单位 1 KB，不随 host_sim_reset 清；wipe = 换一片新 flash；fail_next(n) = 接下来 n 次擦/写返回 DZ_EIO。 */
+#define HOST_SIM_NVM_SIZE 8192u
+#define HOST_SIM_NVM_UNIT 1024u
+void     host_sim_nvm_wipe(void);
+void     host_sim_nvm_fail_next(int n);
+uint32_t host_sim_nvm_erases(void);
 /** 推进虚拟时间，期间按步长运行电机模型并触发到期的定时器回调。 */
 void  host_sim_run_us(uint64_t us);
 uint64_t host_sim_now_us(void);

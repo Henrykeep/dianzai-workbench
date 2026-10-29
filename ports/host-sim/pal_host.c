@@ -2,6 +2,7 @@
  * @file pal_host.c
  * @brief pal.h 的 PC 仿真实现。资源数量来自生成的 board_gen.h（boards/host-sim/board.yaml）。
  */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "board_gen.h"
@@ -355,3 +356,70 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
 /* 心跳里的板 ID：仿真板用环境变量 DZ_SIM_UID（测试里模拟“两块同型号板”），没设 = 0 未知 */
 uint32_t dzctl_board_uid(void);
 uint32_t dzctl_board_uid(void) { const char *e = getenv("DZ_SIM_UID"); return e ? (uint32_t)strtoul(e, NULL, 0) : 0u; }
+
+/* 掉电存储（pal 1.5.0）：8 KB、擦除单位 1 KB，按 NOR flash 行为（擦 = 0xFF，写只能把 1 变 0）。
+ * 不随 host_sim_reset 清（模拟“复位后 flash 还在”）；环境变量 DZ_SIM_NVM=文件 时每次擦写后落盘、首次访问读回（模拟断电）。 */
+static uint8_t s_nvm[HOST_SIM_NVM_SIZE];
+static bool s_nvm_ready;
+static int s_nvm_fail;
+static uint32_t s_nvm_erases;
+
+static void nvm_ready(void)
+{
+    const char *path;
+    FILE *fp;
+    if (s_nvm_ready) return;
+    s_nvm_ready = true;
+    memset(s_nvm, 0xFF, sizeof s_nvm);
+    path = getenv("DZ_SIM_NVM");
+    if (path && (fp = fopen(path, "rb")) != NULL) { (void)!fread(s_nvm, 1, sizeof s_nvm, fp); fclose(fp); }
+}
+
+static void nvm_flush(void)
+{
+    const char *path = getenv("DZ_SIM_NVM");
+    FILE *fp;
+    if (path && (fp = fopen(path, "wb")) != NULL) { fwrite(s_nvm, 1, sizeof s_nvm, fp); fclose(fp); }
+}
+
+void host_sim_nvm_wipe(void) { s_nvm_ready = false; s_nvm_fail = 0; s_nvm_erases = 0; nvm_ready(); }
+void host_sim_nvm_fail_next(int n) { s_nvm_fail = n; }
+uint32_t host_sim_nvm_erases(void) { return s_nvm_erases; }
+
+dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit)
+{
+    if (size) *size = HOST_SIM_NVM_SIZE;
+    if (erase_unit) *erase_unit = HOST_SIM_NVM_UNIT;
+    return DZ_OK;
+}
+
+dz_err_t pal_nvm_erase(uint32_t off, uint32_t n)
+{
+    nvm_ready();
+    if (off % HOST_SIM_NVM_UNIT || n % HOST_SIM_NVM_UNIT || off > HOST_SIM_NVM_SIZE || n > HOST_SIM_NVM_SIZE - off) return DZ_EINVAL;
+    if (s_nvm_fail > 0) { s_nvm_fail--; return DZ_EIO; }
+    memset(s_nvm + off, 0xFF, n);
+    s_nvm_erases += n / HOST_SIM_NVM_UNIT;
+    nvm_flush();
+    return DZ_OK;
+}
+
+dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n)
+{
+    const uint8_t *b = (const uint8_t *)p;
+    uint32_t i;
+    nvm_ready();
+    if (!p || off % 8u || n % 8u || off > HOST_SIM_NVM_SIZE || n > HOST_SIM_NVM_SIZE - off) return DZ_EINVAL;
+    if (s_nvm_fail > 0) { s_nvm_fail--; return DZ_EIO; }
+    for (i = 0; i < n; i++) s_nvm[off + i] &= b[i];
+    nvm_flush();
+    return DZ_OK;
+}
+
+dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n)
+{
+    nvm_ready();
+    if (!p || off > HOST_SIM_NVM_SIZE || n > HOST_SIM_NVM_SIZE - off) return DZ_EINVAL;
+    memcpy(p, s_nvm + off, n);
+    return DZ_OK;
+}

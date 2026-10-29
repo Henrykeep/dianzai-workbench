@@ -698,3 +698,9 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
     return DZ_ENODEV;
 #endif
 }
+
+/* 掉电存储（pal 1.5.0）：本移植层尚未实现（片内 flash 要先在链接脚本里留出扇区），应用退回只用 RAM。 */
+dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit) { (void)size; (void)erase_unit; return DZ_ENOTSUP; }
+dz_err_t pal_nvm_erase(uint32_t off, uint32_t n) { (void)off; (void)n; return DZ_ENOTSUP; }
+dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
+dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }

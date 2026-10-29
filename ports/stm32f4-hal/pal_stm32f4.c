@@ -874,3 +874,9 @@ dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info)
 /* 本移植层已冻结（新 STM32 板走 stm32-cubemx，那里有 IWDG 实现）。 */
 dz_err_t pal_wdg_start(uint32_t timeout_ms) { (void)timeout_ms; return DZ_ENOTSUP; }
 void pal_wdg_kick(void) {}
+
+/* 掉电存储（pal 1.5.0）：本移植层尚未实现（片内 flash 要先在链接脚本里留出扇区），应用退回只用 RAM。 */
+dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit) { (void)size; (void)erase_unit; return DZ_ENOTSUP; }
+dz_err_t pal_nvm_erase(uint32_t off, uint32_t n) { (void)off; (void)n; return DZ_ENOTSUP; }
+dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
+dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }

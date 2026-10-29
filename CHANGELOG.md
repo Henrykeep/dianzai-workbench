@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 掉电保存：pal 1.5.0 可选存储接口 `pal_nvm_info/erase/write/read`（没有 → DZ_ENOTSUP）；host-sim 2.4.0 8 KB NOR 模拟（不随复位清，`DZ_SIM_NVM` 落盘，故障注入）；新增 `framework/persist` 1.0.0（双 bank 追加写键值区：CRC、掉电不坏旧值、同值不写、满了才擦；连续失败自动停用；黑匣子冻结区适配 `persist_bb_store`）和 `drivers/nvm_pal` 1.0.0（把板上存储切成黑匣子区 + 参数区）。测试：500 次保存只擦 18 页次、复位后参数和黑匣子都在、flash 坏了不挡运行。[未做] MSPM0/F4/CubeMX 片内 flash 实现（目前返回 DZ_ENOTSUP），应用还没接“保存参数”。
 - [仿真] 新增 `proto/peerlink` 1.0.0 两车状态链路（STATE 0x70 里程/速度/位姿/标志，ABORT 0x71 三帧中止锁存；丢重复/乱序/坏长度，stale 超时）和 `algo/follow` 1.0.0 跟车间距控制（太近立停、断链按减速度停、限幅限加速）。思路来自 DS-land-and-air 的 LoRa 联调规范。双车模型测试：稳态间距 0.5 m、断链 0.5 s 不撞、领车中止停车。
 - [仿真] 新增 `algo/line_obs` 1.0.0 丢线观测与找线恢复（TRACK/WIDE/LOST/FAIL，全白确认 3 拍、最近 4 帧定找线方向、10 拍稳定找回、12 s 超时锁存停车），默认参数与思路来自 DS-land-and-air；横向偏差模型测试“急弯甩线能找回 / 不找则超时失败”。
 - [仿真] 赛前检查固件项：tools/ 只把代码生成器（gen_*、boardlib、families、syscfg_gen.sh）算固件相关，改检查/测试脚本不再要求重烧。修：板上就是 HEAD 时没看工作区未提交/未跟踪的固件改动（直接判了通过）；严格模式现在真的要求工作区干净。

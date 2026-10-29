@@ -146,6 +146,40 @@ static uint32_t bb_boot(bbf_t *f, bb_t *bb, bb_rec_t *ring)
     return k;
 }
 
+/* persist + nvm_pal 走 host-sim 的 pal_nvm（NOR 语义，不随 host_sim_reset 清） */
+#include "persist.h"
+#include "nvm_pal.h"
+#include "host_sim.h"
+typedef struct { float kp, ki; uint32_t ver; } fake_params_t;
+TEST(persist_params_and_blackbox_survive_reset)
+{
+    CHECK(persist_selftest() == DZ_OK);
+    host_sim_nvm_wipe();
+    static persist_flash_t kvf, bbf;                              /* bb_store 只存指针：要一直有效 */
+    persist_kv_t kv; fake_params_t p = { 0.5f, 0.1f, 3u }, q; uint16_t n;
+    bb_store_t st; bb_t bb; bb_rec_t ring[32], out[32];
+    CHECK(nvm_pal_layout(&kvf, &bbf, 1u) == DZ_OK && bbf.size == 1024u && kvf.base == 1024u && kvf.size == 7168u);
+    CHECK(persist_kv_init(&kv, &kvf) == DZ_OK && persist_kv_get(&kv, 1, &q, sizeof q, &n) == DZ_EFAIL);   /* 新片：用默认 */
+    for (int k = 0; k < 500; k++) { p.kp = 0.5f + (float)k * 0.001f; CHECK(persist_kv_put(&kv, 1, &p, sizeof p) == DZ_OK); }
+    CHECK(host_sim_nvm_erases() <= 20u);                          /* 500 次保存：每条 32 B、每 bank 3 KB 放 96 条，满了才擦 3 页 → 每页约擦 3 次 */
+    CHECK(persist_bb_store(&st, &bbf) == DZ_OK && bb_init(&bb, ring, 32u, &st) == DZ_OK);
+    bb_log(&bb, 10u, BB_EV_STALL, 1u, 0.9f, 0.0f);
+    CHECK(bb_freeze(&bb) == DZ_OK);
+    host_sim_reset();                                             /* 复位 / 断电再上电 */
+    CHECK(nvm_pal_layout(&kvf, &bbf, 1u) == DZ_OK && persist_kv_init(&kv, &kvf) == DZ_OK);
+    CHECK(persist_kv_get(&kv, 1, &q, sizeof q, &n) == DZ_OK && n == sizeof q && q.kp == p.kp && q.ver == 3u);
+    CHECK(bb_init(&bb, ring, 32u, &st) == DZ_OK && bb_load_frozen(&bb, out, 32u, &n) == DZ_OK && n == 1u && out[0].code == BB_EV_STALL);
+    host_sim_nvm_fail_next(100);                                  /* flash 坏了：保存失败但不挡任何东西 */
+    p.kp = 9.0f;
+    for (int k = 0; k < 5; k++) (void)persist_kv_put(&kv, 1, &p, sizeof p);
+    CHECK(!persist_kv_usable(&kv) && persist_kv_put(&kv, 1, &p, sizeof p) == DZ_ENOTSUP);
+    CHECK(bb_freeze(&bb) != DZ_OK);
+    bb_log(&bb, 20u, BB_EV_CLEAR, 0u, 0.0f, 0.0f);               /* RAM 黑匣子照常 */
+    CHECK(bb_count(&bb) == 1u);
+    host_sim_nvm_fail_next(0);
+    host_sim_nvm_wipe();
+}
+
 TEST(blackbox_ring_freeze_reload)
 {
     CHECK(bb_selftest() == DZ_OK);
@@ -182,4 +216,4 @@ TEST(blackbox_store_failure_never_blocks_boot)
     CHECK(bb_freeze(&bb) == DZ_OK && bb.st_fail == 0u);                     /* 恢复后成功清零连续失败 */
 }
 
-void suite_framework(void) { RUN(blackbox_ring_freeze_reload); RUN(blackbox_store_failure_never_blocks_boot); RUN(rtosmon_cpu_and_stack); RUN(coord_selftest_passes); RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }
+void suite_framework(void) { RUN(blackbox_ring_freeze_reload); RUN(persist_params_and_blackbox_survive_reset); RUN(blackbox_store_failure_never_blocks_boot); RUN(rtosmon_cpu_and_stack); RUN(coord_selftest_passes); RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }

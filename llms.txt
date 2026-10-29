@@ -32,6 +32,7 @@
 - [知识：堵转](docs/agent-knowledge/stall.md)
 - [通用安全件 safety（堵转/安全态/黑匣子）](firmware/framework/safety/README.md)
 - [丢线观测 line_obs](firmware/algo/line_obs/README.md)
+- [掉电保存 persist](firmware/framework/persist/README.md)
 - [两车链路 peerlink](firmware/proto/peerlink/README.md)
 - [跟车间距 follow](firmware/algo/follow/README.md)
 - [知识：极性](docs/agent-knowledge/polarity.md)

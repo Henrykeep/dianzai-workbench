@@ -820,6 +820,13 @@
   "hash": "a435f71db996706e",
   "version": "1.0.0"
  },
+ "firmware/drivers/nvm_pal": {
+  "decls": [
+   "nvm_pal.h: dz_err_t nvm_pal_layout(persist_flash_t *kv, persist_flash_t *bb, uint32_t bb_units);"
+  ],
+  "hash": "a2b3d1b03bbee43d",
+  "version": "1.0.0"
+ },
  "firmware/drivers/qd4310": {
   "decls": [
    "qd4310.h: #define QD4310_TX_LEN 5u",
@@ -1126,6 +1133,31 @@
   "hash": "233b94f674f75ab5",
   "version": "1.0.0"
  },
+ "firmware/framework/persist": {
+  "decls": [
+   "persist.h: #define PERSIST_MAX_FAIL 3u",
+   "persist.h: #define PERSIST_MAX_KEYS 16u",
+   "persist.h: #define PERSIST_MAX_LEN 256u",
+   "persist.h: #define PERSIST_MAGIC 0x314B5644u",
+   "persist.h: typedef struct { persist_flash_t f;",
+   "persist.h: uint32_t bank_size;",
+   "persist.h: uint8_t active;",
+   "persist.h: uint32_t tail;",
+   "persist.h: uint32_t seq;",
+   "persist.h: bool usable;",
+   "persist.h: uint8_t fails;",
+   "persist.h: uint32_t errors, compactions;",
+   "persist.h: } persist_kv_t;",
+   "persist.h: dz_err_t persist_kv_init(persist_kv_t *kv, const persist_flash_t *f);",
+   "persist.h: dz_err_t persist_kv_get(persist_kv_t *kv, uint16_t key, void *buf, uint16_t max, uint16_t *len);",
+   "persist.h: dz_err_t persist_kv_put(persist_kv_t *kv, uint16_t key, const void *data, uint16_t len);",
+   "persist.h: bool persist_kv_usable(const persist_kv_t *kv);",
+   "persist.h: dz_err_t persist_bb_store(bb_store_t *out, const persist_flash_t *f);",
+   "persist.h: dz_err_t persist_selftest(void);"
+  ],
+  "hash": "ecb1bd32773b0841",
+  "version": "1.0.0"
+ },
  "firmware/framework/rtosmon": {
   "decls": [
    "rtosmon.h: #define RTOSMON_NA 0xFFFFu",
@@ -1237,6 +1269,10 @@
    "pal.h: dz_err_t pal_init(void);",
    "pal.h: const char *pal_board_name(void);",
    "pal.h: pal_reset_cause_t pal_reset_cause(void);",
+   "pal.h: dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit);",
+   "pal.h: dz_err_t pal_nvm_erase(uint32_t off, uint32_t n);",
+   "pal.h: dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n);",
+   "pal.h: dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n);",
    "pal.h: uint32_t pal_irq_save(void);",
    "pal.h: void pal_irq_restore(uint32_t state);",
    "pal.h: dz_err_t pal_wdg_start(uint32_t timeout_ms);",
@@ -1275,8 +1311,8 @@
    "pal.h: dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n);",
    "pal.h: dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);"
   ],
-  "hash": "eb5ca96551b94a24",
-  "version": "1.4.0"
+  "hash": "5d4f9aea3c72ff8a",
+  "version": "1.5.0"
  },
  "firmware/proto/dzctl": {
   "decls": [
@@ -1442,6 +1478,8 @@
  "ports/host-sim": {
   "decls": [
    "host_sim.h: #define HOST_SIM_STEP_US 100u",
+   "host_sim.h: #define HOST_SIM_NVM_SIZE 8192u",
+   "host_sim.h: #define HOST_SIM_NVM_UNIT 1024u",
    "host_sim.h: typedef struct { pal_id_t pwm, in1, in2, enc;",
    "host_sim.h: float gain_rps;",
    "host_sim.h: float tau_s;",
@@ -1452,6 +1490,9 @@
    "host_sim.h: void host_sim_reset(void);",
    "host_sim.h: bool host_sim_wdg_bitten(void);",
    "host_sim.h: uint32_t host_sim_wdg_timeout_ms(void);",
+   "host_sim.h: void host_sim_nvm_wipe(void);",
+   "host_sim.h: void host_sim_nvm_fail_next(int n);",
+   "host_sim.h: uint32_t host_sim_nvm_erases(void);",
    "host_sim.h: void host_sim_run_us(uint64_t us);",
    "host_sim.h: uint64_t host_sim_now_us(void);",
    "host_sim.h: int host_sim_bind_motor(const host_sim_motor_t *m);",
@@ -1482,8 +1523,8 @@
    "host_sim.h: int host_sim_add_periodic(uint32_t period_us, void (*fn)(void *), void *ctx);",
    "host_sim.h: void host_sim_set_reset_cause(pal_reset_cause_t c);"
   ],
-  "hash": "4629d8ec31f0c280",
-  "version": "2.3.0"
+  "hash": "a26f468f8ab79a00",
+  "version": "2.4.0"
  },
  "ports/mspm0-driverlib": {
   "decls": [
@@ -1560,7 +1601,7 @@
    "wwdt_calc.h: return 1;"
   ],
   "hash": "19636263ee0f1d5d",
-  "version": "0.5.0"
+  "version": "0.6.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -1642,7 +1683,7 @@
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
   "hash": "04a2087d8d43f192",
-  "version": "1.5.0"
+  "version": "1.6.0"
  },
  "ports/stm32f4-hal": {
   "decls": [
@@ -1853,6 +1894,6 @@
    "stm32f4xx_hal_conf.h: void assert_failed(uint8_t* file, uint32_t line);"
   ],
   "hash": "b0214c49a56898f4",
-  "version": "1.2.1"
+  "version": "1.3.0"
  }
 }

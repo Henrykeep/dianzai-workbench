@@ -42,6 +42,7 @@
             -I${PROJECT_LOC}/../../../firmware/framework/blackbox
             -I${PROJECT_LOC}/../../../firmware/framework/coord
             -I${PROJECT_LOC}/../../../firmware/framework/menu
+            -I${PROJECT_LOC}/../../../firmware/framework/persist
             -I${PROJECT_LOC}/../../../firmware/framework/rtosmon
             -I${PROJECT_LOC}/../../../firmware/framework/safety
             -I${PROJECT_LOC}/../../../firmware/framework/spsc
@@ -63,6 +64,7 @@
             -I${PROJECT_LOC}/../../../firmware/drivers/motor_2pwm
             -I${PROJECT_LOC}/../../../firmware/drivers/motor_dc
             -I${PROJECT_LOC}/../../../firmware/drivers/mpu6050
+            -I${PROJECT_LOC}/../../../firmware/drivers/nvm_pal
             -I${PROJECT_LOC}/../../../firmware/drivers/qd4310
             -I${PROJECT_LOC}/../../../firmware/drivers/servo
             -I${PROJECT_LOC}/../../../firmware/drivers/ssd1306
@@ -124,6 +126,7 @@
         <file path="../../../firmware/framework/blackbox/blackbox.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/coord/coord.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/menu/menu.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/framework/persist/persist.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/rtosmon/rtosmon.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/safety/safety.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/spsc/spsc.c" targetDirectory="dz/firmware" action="link"/>
@@ -145,6 +148,7 @@
         <file path="../../../firmware/drivers/motor_2pwm/motor_2pwm.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/motor_dc/motor_dc.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/mpu6050/mpu6050.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/nvm_pal/nvm_pal.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/qd4310/qd4310.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/servo/servo.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/ssd1306/font8x8.c" targetDirectory="dz/firmware" action="link"/>
