@@ -20,7 +20,7 @@
 | 06-新增板卡.md | 新增一块板子的步骤 |
 | 07-应用框架.md | project.yaml、子系统、协调器、示例与子系统库入库规则 |
 | 08-协处理板与软核.md | Jetson Nano 等 Linux 视觉、FPGA/软核、dzframe/1、dzlink |
-| 09-机械结构.md | SolidWorks/STEP/STL/3MF、拓竹打印参数、约束清单、估算工具、结构版本 |
+| 09-机械结构.md | SolidWorks/STEP/STL/3MF、拓竹打印参数、约束清单、估算工具（mechanical/calc）、机构模板（mechanical/templates）、CadQuery 零件（mechanical/parts）、结构版本 |
 | 10-SysConfig工作流.md | TI MSPM0 + SysConfig |
 | 11-中断与实时.md | ISR 准则 |
 | 12-参考工程与参数来源.md | P1/P2 角色、收编原则、counts_per_rev 与“转 10 圈”标定 |

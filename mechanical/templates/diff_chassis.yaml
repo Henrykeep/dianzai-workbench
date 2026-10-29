@@ -1,0 +1,10 @@
+# 差速底盘：python3 mechanical/calc/mech.py mechanical/templates/diff_chassis.yaml
+# 所有数值是【示例】，换成你的称重/手册/实测值；motor 段是输出轴（含减速箱）数据
+kind: diff_chassis
+struct_version: 0.1.0          # 改质量分布/轮径/传动比 → 升 MINOR，并重新标定（mechanical/README 约定 2）
+mass_kg: 1.5                   # 整车（含电池）称重
+wheel: { radius_mm: 32.5, mass_kg: 0.05, count_driven: 2 }
+motion: { v_max_mps: 1.2, a_max_mps2: 2.0, slope_deg: 0, crr: 0.03 }   # crr 滚动阻力系数：硬地面橡胶轮 0.01–0.03
+drive: { efficiency: 0.8 }     # 减速箱 + 轴承
+safety_factor: 1.5
+motor: { stall_torque_nm: 0.6, no_load_rpm: 530, rated_torque_nm: 0.15 }   # 示例数值，非某型号实测

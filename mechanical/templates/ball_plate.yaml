@@ -1,0 +1,10 @@
+# 球杆 / 平板（一根转轴）：平板两轴各算一次（plate: true，length 取垂直于该轴的边长）
+# lever_ratio：舵机经连杆时 梁扭矩/舵机扭矩（= 梁侧力臂 / 舵机摆臂）；直驱写 1
+kind: ball_plate
+struct_version: 0.1.0
+beam: { length_mm: 300, mass_kg: 0.25, plate: true, com_offset_mm: 5 }
+ball: { mass_kg: 0.028, x_max_mm: 130 }          # 乒乓球 2.7 g，钢球 Φ19 ≈ 28 g
+move: { angle_deg: 8, time_s: 0.15 }              # 0.15 s 内摆 8°（先加速后减速）
+lever_ratio: 1.0
+safety_factor: 2.0
+motor: { stall_torque_nm: 1.5, no_load_rpm: 100 }  # 示例数值（如 15 kg·cm 舵机 ≈ 1.47 N·m、0.1 s/60° ≈ 100 rpm）

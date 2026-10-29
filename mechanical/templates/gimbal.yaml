@@ -1,0 +1,17 @@
+# 二轴云台（激光/相机）：每轴单独算；payload 给尺寸自动按长方体算 J，或直接给 inertia_kgm2
+kind: gimbal
+struct_version: 0.1.0
+safety_factor: 2.0
+axes:
+  yaw:
+    payload: { mass_kg: 0.25, a_mm: 80, b_mm: 50, com_offset_mm: 0 }
+    extra_inertia_kgm2: 0.00005   # 俯仰电机 + 支架绕偏航轴的惯量（估）
+    gravity: false                # 竖直轴没有重力矩
+    rate_max_dps: 360
+    accel_time_s: 0.05
+    motor: { stall_torque_nm: 0.25, no_load_rpm: 300 }   # 示例数值（如 2804 云台无刷）
+  pitch:
+    payload: { mass_kg: 0.15, a_mm: 50, b_mm: 40, com_offset_mm: 8 }   # 质心偏转轴 8 mm → 重力矩
+    rate_max_dps: 360
+    accel_time_s: 0.05
+    motor: { stall_torque_nm: 0.25, no_load_rpm: 300 }

@@ -1,4 +1,4 @@
-# mechanical/ —— 机械结构板块（第 0 阶段：目录与约定预留，尚无模型与工具实现）
+# mechanical/ —— 机械结构板块（第 1 阶段：估算工具、机构模板、CadQuery 参数化零件已有；SolidWorks 模型待补）
 
 > 来源：2026 H 题的教训 —— 机械结构（架构）与 3D 建模和电控同等重要。
 > **建模软件：SolidWorks**（用户确认）。每个零件存 `.SLDPRT` 源文件 + `.STEP`（通用交换）+ `.STL`（3D 打印）+ Bambu Studio `.3mf` 打印工程（拓竹打印机），附参数说明与打印参数说明。装配体存 `.SLDASM`。
@@ -6,7 +6,9 @@
 | 目录 | 放什么 | 状态 |
 |---|---|---|
 | `constraints/` | 每道题一个 `<题号>.yaml`：题目尺寸/重量/结构限制，转成可逐条勾选的检查清单 | 预留 |
-| `calc/` | 重心、转动惯量、扭矩/电机选型估算脚本（Python，输入 = 零件参数表） | 预留 |
+| `calc/` | 转动惯量、扭矩/电机选型估算 `mech.py`（手算算例测试） | 已有 |
+| `templates/` | 机构模板：差速底盘、二轴云台、球杆/平板 | 已有 |
+| `parts/` | CadQuery 参数化零件（电机座、编码器支架、传感器支架）→ STEP + STL，CadQuery 可选 | 已有 |
 | `models/<零件名>/` | 可复用参数化零件：`<名>.SLDPRT` + `<名>.STEP` + `<名>.STL` + `<名>.3mf`（Bambu Studio）+ `PARAMS.md`（含打印参数）+ `VERSION` | 预留 |
 | `assemblies/<项目>/` | 整机装配 `.SLDASM`（+ 导出 STEP）、引用 models 的版本、`STRUCT_VERSION`、标定绑定表 | 预留 |
 
