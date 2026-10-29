@@ -109,6 +109,19 @@ export function initAgent(call: Call) {
       ${v.best ? `<div class="lbl">最好：第 ${v.best.round} 轮 ${esc(JSON.stringify(v.best.gains))}${v.rolled_back ? "（仿真已自动回滚）" : ""}</div>` : ""}
       ${v.reason ? `<div class="lbl">${esc(v.reason)}</div>` : ""}`);
   }
+  function renderSweep(m: Msg) {
+    const s = m.summary || {}, bad = new Set<number>(s.unreliable || []);
+    const rows = (m.points || []).map((p: any) => `<tr${bad.has(p.f) ? ' class="bad" title="这个频点信号质量差，结果仅供参考"' : ""}><td>${n(p.f, 2, " Hz")}</td><td>${n(p.db, 1, " dB")}</td><td>${n(p.phase, 0, "°")}</td></tr>`).join("");
+    add(`<div class="hd"><span class="dotk"></span><span class="t">扫频：带宽 ${s.bandwidth_hz ? n(s.bandwidth_hz, 2, " Hz") : "超出扫描范围"}</span><span class="lbl">程序测量</span></div>
+      <p>谐振峰 ${n(s.peak_db, 1, " dB")}${s.peak_hz ? " @ " + n(s.peak_hz, 2, " Hz") : ""} · 相位滞后 90° ${s.lag90_hz ? n(s.lag90_hz, 2, " Hz") : "—"}</p>
+      <table class="sweep"><tr><th>频率</th><th>增益</th><th>相位</th></tr>${rows}</table>
+      ${(m.errors || []).length ? `<div class="lbl">${m.errors.length} 个频点没测出来（信号太弱或太快）</div>` : ""}
+      <div class="lbl">峰 &gt; 3 dB 说明欠阻尼（超调大）；带宽低说明响应慢</div>`);
+  }
+  $("ag-sweep").onclick = (e) => {
+    const b = e.currentTarget as HTMLButtonElement; b.disabled = true; b.textContent = "扫频中…";
+    call("tune_sweep_test").catch(() => {}).finally(() => { b.disabled = false; b.textContent = "扫频"; });   // 结果走 sweep_result 事件
+  };
   $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
   $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
   $("ag-guard").onclick = () => call("tune_reset").then(() => add(`<span class="lbl">调参护栏已重置：之前的轮次和“最好一轮”不再参考</span>`, "msg bot"), () => {});
@@ -199,6 +212,7 @@ export function initAgent(call: Call) {
       if (m.type === "change") renderChange(m);
       if (m.type === "agent_action") renderAction(m);
       if (m.type === "tune_round") renderRound(m);
+      if (m.type === "sweep_result") renderSweep(m);
       if (m.type === "agent_mode" && mode) mode.textContent = m.mode === "offline" ? `${m.name} · 无需联网${m.fallback ? "（大模型连不上，已自动切换）" : ""}` : `大模型 ${m.name}`;
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
     },

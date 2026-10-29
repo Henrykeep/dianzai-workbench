@@ -96,6 +96,7 @@
         <div class="ph"><h3>Agent <span class="serif">suggests</span></h3><div class="sp"></div>
           <button class="btn ghost sm" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
           <button class="btn ghost sm" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）">阶跃实验</button>
+          <button class="btn ghost sm" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
           <button class="btn ghost sm" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳">规则建议</button>
           <button class="btn ghost sm" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）">重置护栏</button>
           <select id="ag-workmode" class="sm" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
