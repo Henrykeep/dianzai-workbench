@@ -1,7 +1,3 @@
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/500.css";
-import "@fontsource/geist-mono/400.css";
-import "@fontsource/geist-mono/500.css";
 import "./tokens.css";
 import "./style.css";
 import { createIcons, Activity, Ellipsis, Eraser, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
@@ -167,7 +163,7 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
     const v = plot.last(i), cv = document.getElementById(`cv-${i}`), lv = document.getElementById(`lv-${i}`);
     if (cv) cv.textContent = fmt(v, f);
     // lane 读数用 4 位有效数字的定宽格式，避免 -0.461538 这种抖动的长串
-    if (lv) lv.textContent = v == null || Number.isNaN(v) ? "—" : (f.type === "f32" ? num(v) : String(Math.round(v))) + (f.unit ? " " + f.unit : "");
+    if (lv) lv.innerHTML = v == null || Number.isNaN(v) ? "—" : (f.type === "f32" ? num(v) : String(Math.round(v))) + (f.unit ? `<small>${esc(f.unit)}</small>` : "");
   });
   S.enums.forEach(f => {
     const el = document.getElementById(`ev-${f.name}`), v = S.enumVal[f.name];
@@ -190,17 +186,16 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
 function pending() {
   return pendingOf(S.schema?.params ?? [], S.edit, S.applied);
 }
+const pos = (p: Param, v: number) => p.max > p.min ? String(Math.min(Math.max((v - p.min) / (p.max - p.min), 0), 1)) : "0";
 function renderParams() {
   const ps = S.schema?.params ?? [];
-  // 参数表（docs/26 P17）：名称 | 值（可改） | 板上 | 范围（位置条 + 上下限） | 说明；数值列右对齐、等宽
-  $("plist").innerHTML = ps.length ? `<div class="prow ph"><span>名称</span><span class="n">值</span><span class="n">板上</span><span>范围</span><span class="n">默认</span><span>说明</span></div>`
-    + ps.map(p => `<div class="prow" id="row-${p.name}">
-    <span class="k mono">${esc(p.name)}</span>
-    <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off">
-    <span class="bv mono" id="pb-${p.name}">—</span>
-    <span class="rg"><span class="bar"><i id="pk-${p.name}"></i></span><span class="mono" id="pr-${p.name}">${esc(rangeLabel(p, false, undefined))}</span></span>
-    <span class="df mono">${fmt(p.default, p)}</span>
-    <span class="ds" title="${esc(p.desc ?? "")}">${esc(p.desc ?? "")}</span></div>`).join("")
+  // 参数（docs/26 §6）：名字 + 数值同一行；下面一把刻度尺：板上值（实线）、默认值（○）、草稿（黄铜，连一段改动范围）、量程两端。
+  // 全部来自 schema 的 params（名字 / 量程 / 单位 / 说明），界面不认任何题目的参数名。
+  $("plist").innerHTML = ps.length ? ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(p.desc ?? "")}">
+    <div class="pr"><span class="k mono">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
+      <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off"><span class="u">${esc(p.unit ?? "")}</span></div>
+    <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div>
+    <div class="rgx mono"><span>${fmt(p.min, p)}</span><span class="ds">${esc(p.desc ?? "")}</span><span>${fmt(p.max, p)}</span></div></div>`).join("")
     : emptyState("sliders", "连上后列出可调参数");
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
@@ -234,14 +229,17 @@ function markParams() {
   const pend = new Set(pending().map(p => p.name));
   (S.schema?.params ?? []).forEach(p => {
     document.getElementById(`pi-${p.name}`)?.classList.toggle("chg", pend.has(p.name));
-    // 草稿 ≠ 板上真值时：行首加强调色竖条，“板上”列写成 旧 → 新（板上始终是板子回报的生效值，不把草稿当成已生效）
-    const on = pend.has(p.name), b = document.getElementById(`pb-${p.name}`), k = document.getElementById(`pk-${p.name}`);
+    // 草稿 ≠ 板上真值：行变成“待下发”，旧值划掉留在左边，刻度尺上黄铜标出新值和改动范围（板上始终是板子回报的生效值）
+    const on = pend.has(p.name), b = document.getElementById(`pb-${p.name}`), v = S.applied[p.name];
     document.getElementById(`row-${p.name}`)?.classList.toggle("dirty", on);
-    if (b) b.textContent = on ? `${fmt(S.applied[p.name], p)} → ${fmt(clampLocal(p, +S.edit[p.name]), p)}` : fmt(S.applied[p.name], p);
-    const v = S.applied[p.name];
-    if (k && v != null && p.max > p.min) k.style.setProperty("--x", String(Math.min(Math.max((v - p.min) / (p.max - p.min), 0), 1)));
+    if (b) b.textContent = on ? fmt(v, p) : "";
+    const set = (id: string, k: string, x: string) => document.getElementById(id)?.style.setProperty(k, x);
+    if (v != null) set(`pk-${p.name}`, "--x", pos(p, v));
+    if (on && v != null) { const n = clampLocal(p, +S.edit[p.name]); set(`pn-${p.name}`, "--x", pos(p, n)); set(`ps-${p.name}`, "--a", pos(p, Math.min(v, n))); set(`ps-${p.name}`, "--b", pos(p, Math.max(v, n))); }
   });
-  $("pend").textContent = pend.size ? `${pend.size} 项未下发` : "";
+  const pl = pending();
+  $("pend").innerHTML = pl.map(p => `<span>${esc(p.name)}</span><span>${fmt(S.applied[p.name], p)} → <b>${fmt(clampLocal(p, +S.edit[p.name]), p)}</b></span>`).join("");
+  flow();
   $<HTMLButtonElement>("p-send").disabled = !pend.size;
   $<HTMLButtonElement>("p-revert").disabled = !Object.keys(S.edit).length;
 }
@@ -261,6 +259,15 @@ $("p-send").onclick = () => sendPending();
 $("p-revert").onclick = () => { S.edit = {}; syncParams(); };
 $("p-read").onclick = async () => { await call("param_read_all"); };
 $("p-def").onclick = async () => { if (confirm("把全部参数恢复成固件默认值？")) { await call("snapshot_restore", { defaults: true }); toast("已恢复默认参数", "ok", 3000); } };
+
+// 顶栏流程：连接 → 调参 → 阶跃 → 判读 → 定稿，按当前状态点亮（done = 已经过，now = 下一步该做的）
+function flow() {
+  const c = !!S.status.connected && !!S.schema, pend = pending().length > 0, runs = ana.runs(), mk = ana.marked();
+  const now = !c ? "conn" : pend ? "tune" : !mk ? "step" : runs ? "read" : "step";
+  const order = ["conn", "tune", "step", "read", "save"], k = order.indexOf(now);
+  $("flow").querySelectorAll<HTMLElement>("span").forEach((s, i) => { s.className = i < k ? "done" : i === k ? "now" : ""; });
+}
+setInterval(flow, 1000);
 
 // ---------------------------------------------------------------- 快照
 async function loadSnaps(list?: any[]) {

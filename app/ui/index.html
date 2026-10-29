@@ -8,7 +8,7 @@
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand" title="电赛工作台"><i data-lucide="activity"></i></div>
+    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 14 H7 V6 H9 Q10.5 4 12 6 T15 6 H18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg><span>电赛工作台</span></div>
     <div class="conn">
       <span id="led" class="led"></span>
       <select id="port" title="端口：插上板子会自动出现并选中；sim: 开头是无需硬件的仿真板"></select>
@@ -23,7 +23,7 @@
           <label class="check" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
         </div></details>
     </div>
-    <span class="vsep"></span>
+    <nav class="flow" id="flow" title="一轮调参的进度：按当前状态自动点亮"><span data-s="conn">连接</span><span data-s="tune">调参</span><span data-s="step">阶跃</span><span data-s="read">判读</span><span data-s="save">定稿</span></nav>
     <div class="pins" id="stats"></div>
     <div class="sp"></div>
     <button class="btn" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
@@ -33,15 +33,20 @@
     <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停<kbd>Space</kbd></button>
   </header>
   <div id="banner" class="banner" hidden></div>
-  <nav class="rail" id="rail">
-    <button class="ri on" data-side="chans" title="通道"><i data-lucide="activity"></i></button>
-    <button class="ri" data-side="agent" title="Agent"><i data-lucide="sparkles"></i><span class="pip" id="ag-pip" hidden></span></button>
-    <button class="ri" data-side="meas" title="测量：A/B 光标读数"><i data-lucide="ruler"></i><span class="pip" id="meas-pip" hidden></span></button>
-    <button class="ri" data-side="hist" title="历史：每轮阶跃实验的曲线与参数"><i data-lucide="history"></i><span class="pip" id="hist-pip" hidden></span></button>
-    <div class="sp"></div>
-    <button id="doctor" class="ri" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
-    <button id="theme" class="ri" title="切换主题：深色 → 浅色 → 高对比（户外强光下用浅色或高对比）"><i data-lucide="sun-moon"></i></button>
-  </nav>
+    <aside class="dock">
+      <div class="vh"><div class="tabs" id="dock-tabs"><span data-d="params" class="on">参数</span><span data-d="snaps">快照</span><span data-d="board">板端</span></div>
+        <div class="sp"></div>
+        <button class="ib" id="p-read" title="读取：从板子重新读取全部参数" >读取</button>
+        <button class="ib" id="p-def" title="默认：把全部参数恢复成固件编译时的默认值" >默认</button>
+      </div>
+      <div class="dk" data-d="params"><div id="plist" class="plist"></div></div>
+      <div class="commit"><div class="pdiff mono" id="pend"></div><div class="btns"><button class="btn" id="p-revert" disabled>撤销</button><button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button></div></div>
+      <div class="dk" data-d="snaps" hidden><div class="row pad"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div><div id="snaps" class="pad"></div></div>
+      <div class="dk pad" data-d="board" hidden>
+        <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除急停 R</button>
+          <span class="lbl">板端命令</span><input id="cmd-c" class="in w-xs" maxlength="1" placeholder="字符"><input id="cmd-n" class="in w-sm" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
+      </div>
+    </aside>
   <main class="work">
     <section class="scope">
       <div class="vh"><div class="tabs" id="view"><span data-v="plot" class="on">示波</span><span data-v="raw" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备">原始</span><span data-v="fft" title="频谱：按固件遥测周期做 FFT（去直流 + Hann 窗），找振荡频率">频谱</span></div>
@@ -51,6 +56,7 @@
         <div class="seg po" id="win"><span data-w="2">2 s</span><span data-w="5" class="on">5 s</span><span data-w="10">10 s</span><span data-w="30">30 s</span></div>
         <div class="seg po" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
       </div>
+      <div class="reads" id="reads" hidden></div>
       <div class="plotbox" id="pb"><div id="empty" class="empty"></div>
         <div id="raw" class="raw" hidden>
           <div class="rawbar"><div class="seg" id="raw-fmt"><span data-f="txt" class="on">文本</span><span data-f="hex">HEX</span></div>
@@ -76,23 +82,17 @@
           <canvas id="fft-cv" class="fftcv"></canvas>
         </div></div>
     </section>
-    <section class="dock">
-      <div class="vh"><div class="tabs" id="dock-tabs"><span data-d="params" class="on">参数</span><span data-d="snaps">快照</span><span data-d="board">板端</span></div>
-        <div class="sp"></div><span class="lbl chg-t" id="pend"></span>
-        <button class="btn" id="p-revert" disabled>撤销</button>
-        <button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button>
-        <button class="ib" id="p-read" title="从板子重新读取全部参数">读取</button>
-        <button class="ib" id="p-def" title="把全部参数恢复成固件编译时的默认值">恢复默认</button>
-      </div>
-      <div class="dk" data-d="params"><div id="plist" class="plist"></div></div>
-      <div class="dk" data-d="snaps" hidden><div class="row pad"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div><div id="snaps" class="pad"></div></div>
-      <div class="dk pad" data-d="board" hidden>
-        <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除急停 R</button>
-          <span class="lbl">板端命令</span><input id="cmd-c" class="in w-xs" maxlength="1" placeholder="字符"><input id="cmd-n" class="in w-sm" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
-      </div>
-    </section>
   </main>
   <aside class="side">
+  <nav class="rail" id="rail">
+    <button class="ri on" data-side="chans" title="通道">通道</button>
+    <button class="ri" data-side="agent" title="Agent">Agent<span class="pip" id="ag-pip" hidden></span></button>
+    <button class="ri" data-side="meas" title="测量：A/B 光标读数">测量<span class="pip" id="meas-pip" hidden></span></button>
+    <button class="ri" data-side="hist" title="历史：每轮阶跃实验的曲线与参数">台账<span class="pip" id="hist-pip" hidden></span></button>
+    <div class="sp"></div>
+    <button id="doctor" class="ri" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
+    <button id="theme" class="ri" title="切换主题：深色 → 浅色 → 高对比（户外强光下用浅色或高对比）"><i data-lucide="sun-moon"></i></button>
+  </nav>
     <section class="pane" data-side="chans">
       <div class="vh"><span class="ttl">通道</span><div class="sp"></div><span class="lbl mono" id="chan-n"></span></div>
       <input id="chan-q" class="in" placeholder="筛选通道：sp_* err" title="空格/逗号分隔，* 通配；只显示匹配的通道" />
@@ -128,7 +128,7 @@
       <div id="meas" class="meas"></div>
     </section>
     <section class="pane" data-side="hist" hidden>
-      <div class="vh"><span class="ttl">历史</span><div class="sp"></div><span class="lbl mono" id="hist-n"></span></div>
+      <div class="vh"><span class="ttl">台账</span><div class="sp"></div><span class="lbl mono" id="hist-n"></span></div>
       <div id="hist" class="hist"></div>
     </section>
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
