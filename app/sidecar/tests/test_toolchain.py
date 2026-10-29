@@ -254,3 +254,44 @@ def test_sim_sweep_and_bode_predict(sim, tmp_path, home):
     assert any(e["type"] == "sweep_result" for e in ev)
     p = svc.bode_predict(K=2.0, tau=0.3, L=0.02, kp=1.0, ki=2.0)
     assert p["phase_margin_deg"] > 0 and p["bandwidth_hz"] > 0
+
+
+@pytest.mark.needs_sim
+def test_prearm_and_one_shot_card(sim, tmp_path, home, monkeypatch):
+    """解锁前检查：正常通过；增益回读不一致 / 急停 → 拒绝；确认卡一次性、过期不执行。"""
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    from dzbench import session as _session
+    from dzbench.agent import risk
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
+        "high": [0.4, 0], "hold_s": 0.6, "pre_s": 0.3, "y": "spd_a", "sp": "sp_a"}}), encoding="utf-8")
+    ev = []
+    svc = AgentService(sim, AgentTools(sim, ev.append), ev.append, root=tmp_path)
+    time.sleep(0.3)
+    pa = svc.prearm()
+    assert pa["ok"], pa
+    assert {"link", "channels", "env", "readback"} <= set(pa["checked"])
+    k = next(iter(svc._gains()))
+    real = sim.params[k]
+    sim.params[k] = real + 1.0                                   # 侧车记录和板上不一致（模拟板子被复位）
+    assert any(k in f for f in svc.prearm()["failed"])
+    sim.params[k] = real
+    # 实机分级：确认卡 + 预览带 prearm；一次性；过期拒绝
+    monkeypatch.setattr(risk, "tier", lambda tool, s: risk.HUMAN)
+    r = svc.gate("run_step_test", {}, svc.run_step_test)
+    card = [e for e in ev if e["type"] == "agent_action"][-1]
+    assert card["preview"]["prearm"]["ok"]
+    svc.actions[r["action_id"]]["t"] -= svc.ARM_TTL_S + 1
+    with pytest.raises(_session.LinkError) as e:
+        svc.action_decide(r["action_id"], True)
+    assert e.value.code == "arm_expired"
+    with pytest.raises(_session.LinkError):
+        svc.action_decide(r["action_id"], True)                   # 已消耗：不能再点一次
+    sim.tx_locked = True
+    r = svc.gate("run_step_test", {}, svc.run_step_test)
+    assert "急停" in [e for e in ev if e["type"] == "agent_action"][-1]["preview"]["error"]
+    with pytest.raises(_session.LinkError) as e:
+        svc.action_decide(r["action_id"], True)
+    assert e.value.code == "prearm"
+    sim.tx_locked = False

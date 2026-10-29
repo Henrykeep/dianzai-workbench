@@ -220,7 +220,10 @@ class AgentService:
                     preview = (self.flasher.flash if tool == "flash" else self.flasher.rollback)(dry_run=True)
                 except FlashError as e:
                     preview = {"error": e.message}
-            self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run}
+            elif tool in self.EXPERIMENTS:
+                pa = self.prearm()
+                preview = {"prearm": pa} | ({"error": "；".join(pa["failed"])} if pa["failed"] else {})
+            self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run, "t": time.monotonic()}
             self.emit({"type": "agent_action", "id": aid, "tool": tool, "args": args, "preview": preview, "sim": self.sim})
             risk.audit(tool, args, t, "pending_human")
             return {"status": "pending_human_click", "action_id": aid, "note": "需要用户在界面上点“执行”"}
@@ -237,6 +240,12 @@ class AgentService:
         if not accept:
             return {"id": aid, "status": "rejected"}
         args = dict(a["args"])
+        if a["tool"] in self.EXPERIMENTS:               # 一次点击只放行一次实验；卡片放久了板子状态可能已变 → 过期重来
+            if time.monotonic() - a.get("t", 0) > self.ARM_TTL_S:
+                raise LinkError("arm_expired", f"这张确认卡已超过 {self.ARM_TTL_S:.0f} s，板子状态可能变了，没有执行", "让 Agent 重新发起一次")
+            pa = self.prearm()
+            if pa["failed"]:
+                raise LinkError("prearm", "实验前检查没通过：" + "；".join(pa["failed"]), "处理后让 Agent 重新发起")
         if a["tool"] in ("flash", "flash_rollback"):
             args["dry_run"] = False                      # 人点了“确认烧录”才真烧
         try:
@@ -309,6 +318,46 @@ class AgentService:
         return None
 
     START_CMDS = ("T", "P", "G", "S")     # 'R' 不在里面：它同时是“解除急停”，Agent/自动实验永远不发
+
+    EXPERIMENTS = ("run_step_test", "run_sweep_test", "open_loop_test")
+    ARM_TTL_S = 120.0
+    LINK_STALE_S = 1.0
+
+    def prearm(self) -> dict:
+        """ArduPilot 式解锁前检查（实机实验前；确认卡预览里显示，点击时再查一次）：
+        急停锁存、链路新鲜、实验通道在遥测里、电池/温度门限、板上增益回读 = 侧车记录（防止板子被复位/别的工具改过）。"""
+        failed, checked = [], []
+        if self.s.tx_locked:
+            failed.append("急停已锁存")
+        age = time.monotonic() - (self.s.last_rx or 0)
+        checked.append("link")
+        if age > self.LINK_STALE_S:
+            failed.append(f"已经 {age:.1f} s 没收到板子数据")
+        st = self.step_cfg()
+        w = self.s.window(0.5)
+        last = w[-1][1] if w else {}
+        if st:
+            miss = [st[k] for k in ("y", "sp") if st.get(k) and st[k] not in last]
+            checked.append("channels")
+            if miss:
+                failed.append(f"遥测里没有实验通道 {', '.join(miss)}")
+        else:
+            failed.append("没配置 step_test")
+        env = self._guard()._env_stop(last)
+        checked.append("env")
+        if env:
+            failed.append(env)
+        if self.s.schema:
+            checked.append("readback")
+            for k, v in self._gains().items():
+                try:
+                    rb = self.s.read_param(k)
+                except Exception as e:  # noqa: BLE001
+                    failed.append(f"读不回 {k}：{e}")
+                    continue
+                if v is not None and abs(rb - v) > 1e-6 * max(1.0, abs(v)):
+                    failed.append(f"{k} 板上是 {rb:g}，侧车记录是 {v:g}（板子复位过或被改过）")
+        return {"ok": not failed, "failed": failed, "checked": checked}
 
     def step_start(self, st: dict) -> None:
         """实验前的准备命令（如 2026H：'T'1 选测试 → 'G' 开始）。运行中再发会被板子状态机忽略。
