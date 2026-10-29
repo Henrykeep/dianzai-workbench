@@ -129,7 +129,7 @@ export function initAgent(call: Call) {
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
     add(esc(text), "msg me");
     const w = add(`<span class="lbl">思考中…</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
-    tools = w.querySelector(".tools"); mode = w.querySelector(".mode");
+    tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null;
     try { const r = await call<string>("agent_ask", { text }); w.firstElementChild!.outerHTML = `<div>${esc(r).replace(/\n/g, "<br>")}</div>`; }
     catch { w.remove(); }
     // 不清 tools/mode：工具事件会比回答晚到（侧车线程 → 事件循环），留给这条消息直到下一问
@@ -153,8 +153,29 @@ export function initAgent(call: Call) {
     call("agent_config", { set: { provider: $<HTMLSelectElement>("cfg-prov").value, base_url: $<HTMLInputElement>("cfg-url").value, model: $<HTMLInputElement>("cfg-model").value, repo: $<HTMLInputElement>("cfg-repo").value, api_key: $<HTMLInputElement>("cfg-key").value } });
   };
 
+  // ---------------------------------------------------------------- 计划 / 撤销
+  let planEl: HTMLElement | null = null;
+  function renderPlan(m: Msg) {
+    const html = `<span class="lbl">计划</span><ol class="plan">${(m.steps as string[]).map((s, i) =>
+      `<li class="${i < m.current ? "done" : i === m.current ? "cur" : ""}">${esc(s)}</li>`).join("")}</ol>`;
+    if (planEl && planEl.isConnected) planEl.innerHTML = html; else planEl = add(html);
+  }
+  const undoBtn = $<HTMLButtonElement>("ag-undo");
+  function renderJournal(items: any[]) {
+    undoBtn.disabled = !items.length;
+    const e = items[items.length - 1];
+    undoBtn.title = e ? `撤销：${e.kind === "param" ? `${e.name} ${e.new} → 改回 ${e.old}` : `提交 ${e.commit} ${e.title}`}（共 ${items.length} 步可撤）` : "Agent 还没改过东西";
+  }
+  undoBtn.onclick = async () => {
+    const r = await call<any>("agent_undo").catch(() => null);
+    if (r) add(r.undone === "param" ? `已撤销：<b>${esc(r.name)}</b> 改回 ${n(r.value, 4)}（原来 ${n(r.was, 4)}）` : `已撤销提交 ${esc(r.reverted)}（新提交 ${esc(r.commit)}）`);
+  };
+  call<any[]>("agent_journal").then(renderJournal).catch(() => {});
+
   return {
     onMsg(m: Msg) {
+      if (m.type === "agent_plan") renderPlan(m);
+      if (m.type === "agent_journal") renderJournal(m.items);
       if (m.type === "change") renderChange(m);
       if (m.type === "agent_action") renderAction(m);
       if (m.type === "tune_round") renderRound(m);

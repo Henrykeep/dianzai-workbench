@@ -18,6 +18,7 @@ from . import llm as llm_mod
 from . import risk, yamlpar
 from .guard import GuardError, TuneGuard, key_samples
 from .gateway import Gateway, GatewayError
+from .journal import BoardMemory, Journal, board_key
 from .loop import AgentLoop
 from .offline import OfflineAssistant
 from .experiment import StagedSearch, asymmetry, four_segment_metrics, four_segment_plan, steady_state
@@ -49,7 +50,9 @@ class AgentService:
         # 工程仓库：DZBENCH_REPO > 配置 repo > 本仓库（开发模式）。安装版必须在 ⚙ 里指定（未在 Windows 实测）
         root = root or os.environ.get("DZBENCH_REPO") or llm_mod.load_config().get("repo") or ROOT
         self.s, self.tools, self.emit = session, tools, emit
-        self.gw = Gateway(root, emit, **({"runner": runner} if runner else {}))
+        self.journal = Journal()
+        self.gw = Gateway(root, self._gw_emit, **({"runner": runner} if runner else {}))
+        tools.on_apply = self._param_applied
         self._llm = llm
         rules = self.gw.root / "AGENTS.md"
         self.cfg = cfg_mod.load(self.gw.root)
@@ -60,6 +63,7 @@ class AgentService:
         self._aid = itertools.count(1)
         self.syms: dict | None = None
         self.last_verdict: dict | None = None
+        self.plan: dict | None = None
         self.loop = AgentLoop(None, {
             "read_telemetry": tools.read_telemetry,
             "list_params": tools.list_params,
@@ -78,8 +82,63 @@ class AgentService:
             "list_files": lambda glob="**/*": self.gw.list_files(glob),
             "read_file": lambda path: self.gw.read_file(path),
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
+            "update_plan": self.update_plan,
+            "board_memory": lambda: self.memory().summary(),
         }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate)
+
+    # -------------------------------------------------------------- 计划 / 记忆 / 撤销
+    def update_plan(self, steps: list, current: int = 0) -> dict:
+        """把多步计划显示给用户（思路同 Claude Code 的 todo 列表、Cline 的 Plan 模式）。只显示，不执行任何东西。"""
+        steps = [str(x)[:120] for x in (steps or [])][:8]
+        cur = max(0, min(int(current), len(steps) - 1)) if steps else 0
+        self.plan = {"steps": steps, "current": cur}
+        self.emit({"type": "agent_plan", **self.plan})
+        return {"shown": len(steps), "current": cur}
+
+    def memory(self) -> BoardMemory:
+        return BoardMemory(board_key(self.s.schema_hash, self.s.board_uid))
+
+    def _gw_emit(self, e: dict) -> None:
+        if e.get("type") == "change" and e.get("status") == "committed" and e.get("source") == "agent" and e.get("commit"):
+            if not any(j.get("commit") == e["commit"] for j in self.journal.list()):
+                self.journal.add("commit", commit=e["commit"], title=e.get("title", ""))
+                self.memory().add("commit", commit=e["commit"], title=e.get("title", ""))
+        self.emit(e)
+
+    def _param_applied(self, p: dict, r: dict) -> None:
+        if p.get("source") != "agent":
+            return
+        self.journal.add("param", name=p["name"], old=p.get("current"), new=r.get("applied", p["value"]), reason=p.get("reason", ""))
+        self.memory().add("param", name=p["name"], old=p.get("current"), new=r.get("applied", p["value"]))
+        self.emit({"type": "agent_journal", "items": self.journal_list()})
+
+    def journal_list(self) -> list[dict]:
+        return [{k: v for k, v in e.items() if k != "t"} | {"ago_s": round(time.time() - e["t"])} for e in self.journal.list()]
+
+    def undo_last(self) -> dict:
+        """一键撤销 Agent 最近一次已落地的改动：参数改回旧值 / git revert 那次提交。由人点按钮触发，不给 Agent 用。"""
+        e = self.journal.pop()
+        if not e:
+            raise LinkError("nothing_to_undo", "这次会话里 Agent 还没改过东西", "")
+        try:
+            if e["kind"] == "param":
+                if e.get("old") is None:
+                    raise LinkError("undo_unknown_old", f"不知道 {e['name']} 改之前是多少，不能自动撤销", "用快照恢复或手动改回")
+                r = self.s.set_param(e["name"], e["old"])
+                out = {"undone": "param", "name": e["name"], "value": r.get("applied", e["old"]), "was": e["new"]}
+            else:
+                r = self.gw.rollback(e["commit"])
+                out = {"undone": "commit", **r, "title": e.get("title", "")}
+        except GatewayError as ex:
+            self.journal.push_back(e)
+            raise LinkError(ex.code, ex.message, ex.fix) from ex
+        except LinkError:
+            self.journal.push_back(e)
+            raise
+        self.memory().add("undo", **{k: v for k, v in out.items() if k != "undone"}, what=out["undone"])
+        self.emit({"type": "agent_journal", "items": self.journal_list()})
+        return out
 
     # -------------------------------------------------------------- 风险分级
     @property
@@ -165,6 +224,9 @@ class AgentService:
         w = self.s.window(float(st.get("hold_s", 3)) + 1)
         out = {"rules": g.prompt_rules(), "history": g.history_table(), "gains": self._gains(), "stopped": g.stopped,
                "reply_format": '{"action":"PROPOSE|OBSERVE|DONE","param":"kp","value":0.1,"reason":"..."}'}
+        mem = self.memory().summary(6)
+        if mem["entries"]:
+            out["board_memory"] = mem
         if self.last_verdict:
             out["last_verdict"] = {k: self.last_verdict.get(k) for k in ("round", "action", "reason", "steady", "asymmetry", "advice") if k in self.last_verdict}
         if w and st.get("y") and st.get("sp"):
@@ -254,6 +316,8 @@ class AgentService:
         if verdict["action"] == "rollback" and verdict.get("auto"):
             verdict["rolled_back"] = self.rollback_best(_auto=True)
         self.last_verdict = verdict
+        self.memory().add("verdict", round=verdict.get("round"), action=verdict.get("action"), gains=self._gains(),
+                          overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
         self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
         return {"verdict": verdict, "metrics": m.as_dict()}
 

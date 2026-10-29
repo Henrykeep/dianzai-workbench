@@ -170,3 +170,4 @@ select:disabled{opacity:.6}
 .chip{font:inherit;font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid var(--line, #0002);background:var(--s2);color:inherit;cursor:pointer}
 .chip:hover{border-color:currentColor}
 .msg .mode:empty{display:none}
+.plan{margin:4px 0 0 18px;padding:0;font-size:12px} .plan li.done{color:var(--dim);text-decoration:line-through} .plan li.cur{font-weight:600}

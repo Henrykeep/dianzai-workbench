@@ -16,7 +16,7 @@ AUTO, LOG, HUMAN, FORBID = "auto", "log", "human", "forbid"
 
 RISK: dict[str, str] = {
     "read_telemetry": AUTO, "list_params": AUTO, "step_analysis": AUTO, "list_files": AUTO, "read_file": AUTO,
-    "tune_context": AUTO, "read_symbol": AUTO, "decode_hardfault": AUTO, "build_log": AUTO,
+    "tune_context": AUTO, "update_plan": AUTO, "board_memory": AUTO, "read_symbol": AUTO, "decode_hardfault": AUTO, "build_log": AUTO,
     "build": LOG, "reset": LOG, "propose_param_change": LOG, "propose_edit": LOG, "observe": LOG,
     "flash": HUMAN, "flash_rollback": HUMAN, "erase": HUMAN, "mem_write": HUMAN, "run_step_test": HUMAN, "rollback_best": HUMAN,
     "open_loop_test": HUMAN,                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）

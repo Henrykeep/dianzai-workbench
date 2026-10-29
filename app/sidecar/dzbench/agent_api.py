@@ -29,6 +29,7 @@ class AgentTools:
         self.pending: dict[int, dict] = {}
         self._ids = itertools.count(1)
         self.lock = threading.Lock()
+        self.on_apply = None          # AgentService 挂上：Agent 的提议落地后记日志（可撤销）
 
     def read_telemetry(self, seconds: float = 2.0) -> dict:
         w = self.s.window(seconds)
@@ -65,7 +66,10 @@ class AgentTools:
             raise LinkError("no_proposal", f"提议 {pid} 不存在或已处理")
         if not accept:
             return {"id": pid, "status": "rejected"}
-        return {"id": pid, "status": "applied", **self.s.set_param(p["name"], p["value"])}
+        r = {"id": pid, "status": "applied", **self.s.set_param(p["name"], p["value"])}
+        if self.on_apply:
+            self.on_apply(p, r)
+        return r
 
     def call(self, tool: str, args: dict):
         if tool not in {t["name"] for t in TOOLS}:

@@ -177,6 +177,10 @@ class Server:
             return self.svc.propose_hint(m["changes"], m.get("reason", "阶跃分析规则建议"))
         if op == "agent_ask":
             return await run(None, self.svc.ask, m["text"])
+        if op == "agent_undo":                     # 人点“撤销 Agent 上一步”：参数改回 / git revert
+            return await run(None, self.svc.undo_last)
+        if op == "agent_journal":
+            return self.svc.journal_list()
         if op == "agent_reset":
             return self.svc.loop.reset()
         if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”（烧录要几秒，放线程池）

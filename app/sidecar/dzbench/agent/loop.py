@@ -20,7 +20,10 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
 8. 区分事实与推断：来自工具/数据/源码的标【实测】或【源码】，自己的判断标【推断】；没看过的文件不要说"代码里是这样"。
 9. 不覆盖用户没提交的改动：propose_edit 前先 read_file 看当前内容，只改需要的最小片段。
 10. 实验结论看 verdict：steady.reason 是 warming_up/still_drifting 时先 observe 或加长实验，不要据此改参数；asymmetry 显示上下不对称时优先建议前馈/静摩擦补偿，而不是硬拧 PID。
-11. 结束时列出"待实板确认"的事项（仿真通过 ≠ 实机通过）。"""
+11. 结束时列出"待实板确认"的事项（仿真通过 ≠ 实机通过）。
+12. 要做两步以上的事，先用 update_plan 列 3~5 步计划给用户看，做完一步再更新 current。
+13. 先看 board_memory（这块板以前改过什么、实验结果如何），不要重复已经被证明变差的改动。
+14. 回答前自查：每个结论至少带一个来自工具的具体数字（如“超调 32%”“调节 0.8 s”）；拿不到数据就直说没有，不要编。"""
 
 TOOLS = [
     {"name": "read_telemetry", "description": "最近 seconds 秒每个通道的 min/max/mean/last",
@@ -54,6 +57,10 @@ TOOLS = [
     {"name": "decode_hardfault", "description": "解码 HardFault 栈帧（按内核：M0+ 无 CFSR）",
      "input_schema": {"type": "object", "required": ["frame"], "properties": {"frame": {"type": "array", "items": {"type": "integer"}},
                       "exc_return": {"type": "integer"}, "regs": {"type": "object"}}}},
+    {"name": "update_plan", "description": "把多步计划显示给用户（只显示，不执行）；steps 3~5 条短句，current 是正在做的那步序号（从 0 起）",
+     "input_schema": {"type": "object", "required": ["steps"], "properties": {"steps": {"type": "array", "items": {"type": "string"}}, "current": {"type": "integer"}}}},
+    {"name": "board_memory", "description": "这块板（按数据格式+芯片 ID 区分）跨会话的记忆：以前改过的参数、实验结论、撤销记录",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "read_symbol", "description": "查 ELF 里变量/函数的地址和大小", "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
 ]
 assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
@@ -83,7 +90,26 @@ class AgentLoop:
     def reset(self) -> None:
         self.messages = self.messages[:1]
 
+    KEEP_FULL = 6            # 最近这么多条工具结果原样保留
+    BUDGET = 60_000          # 历史总字符超过这个就压缩更早的工具结果
+
+    def condense(self) -> int:
+        """上下文压缩（思路参考 OpenHands 的 condenser，MIT；代码自写）：超预算时把较早的工具结果
+        换成“摘要 + 已压缩”标记，保留 system、用户话和最近的结果。返回压缩条数。"""
+        total = sum(len(m.get("content") or "") for m in self.messages)
+        if total <= self.BUDGET:
+            return 0
+        tools = [i for i, m in enumerate(self.messages) if m["role"] == "tool"]
+        n = 0
+        for i in tools[:-self.KEEP_FULL]:
+            c = self.messages[i]["content"]
+            if len(c) > 400 and not c.endswith("…已压缩"):
+                self.messages[i] = {**self.messages[i], "content": c[:300] + "…已压缩"}
+                n += 1
+        return n
+
     def ask(self, text: str) -> str:
+        self.condense()
         self.messages.append({"role": "user", "content": text})
         for _ in range(self.max_steps):
             try:
@@ -94,6 +120,7 @@ class AgentLoop:
                 raise
             self.messages.append({k: v for k, v in m.items() if k in ("role", "content", "tool_calls")} | {"role": "assistant"})
             calls = m.get("tool_calls") or []
+            self.condense()
             if not calls:
                 return m.get("content") or ""
             for c in calls:
