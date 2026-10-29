@@ -19,7 +19,9 @@ if [ -d "$src/third_party" ]; then
   done
 fi
 for v in $(env | sed -n 's/^\(\(DZBENCH\|PYOCD\)_[A-Z_]*\)=.*/\1/p'); do unset "$v"; done
-export HOME="$tmp/home" PYTHONDONTWRITEBYTECODE=1
+# 已装的 Python 包（pip --user）是工具链不是“机器状态”，保留；其余 HOME 内容一律看不到
+export PYTHONUSERBASE="$(python3 -m site --user-base)"
+export HOME="$tmp/home" PYTHONDONTWRITEBYTECODE=1 GIT_CONFIG_NOSYSTEM=1
 cd "$tmp/repo"
 step() { echo "── preflight: $*"; "$@" >"$tmp/log" 2>&1 || { tail -40 "$tmp/log"; echo "✗ preflight 失败：$*"; exit 1; }; }
 step make check            # ci.yml
