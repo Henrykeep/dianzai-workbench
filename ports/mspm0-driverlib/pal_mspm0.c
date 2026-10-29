@@ -699,13 +699,18 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
 #endif
 }
 
-/* 掉电存储（pal 1.5.0）：本移植层尚未实现（片内 flash 要先在链接脚本里留出扇区），应用退回只用 RAM。 */
 /* ---- 掉电保存（pal 1.5.0）：board.yaml mcu.nvm_kb > 0 才有（-DDZ_NVM_KB）；否则 DZ_ENOTSUP ----
  * Flash 末尾 nvm_kb，扇区 1 KB；按 64 位 + 硬件生成 ECC 编程（G350x 主 Flash 带 ECC，同一个 64 位字只能写一次——persist 只往擦过的地方追加）。
  * 擦/写用 DriverLib 的 *FromRAM 版本（命令执行在 .ramfunc 里），每次命令前解保护扇区（命令完自动恢复保护）。
  * 擦一个扇区约 4 ms，期间关中断：应用只在停车/急停时写。运行时核对程序没伸进保存区，重叠 → 永远 DZ_ENOTSUP。 */
 #if defined(DZ_NVM_KB) && DZ_NVM_KB > 0
+#if defined(__ti__) || defined(__TI_ARM__)
+/* CCS：boards/<板>/ccs/dz_nvm_linker.cmd（tools/gen_ide_nvm.py）把 FLASH 截短并定义 __dz_nvm_base；
+ * SysConfig 自己生成的 .cmd 里没有这个符号 → 链接报错，而不是悄悄擦到代码。 */
+extern char __dz_nvm_base[];
+#else
 extern uint32_t __data_load__, __data_start__, __data_end__;
+#endif
 #define NVM_UNIT 1024u
 #define NVM_SIZE (DZ_NVM_KB * 1024u)
 #define NVM_BASE ((DZ_FLASH_KB - DZ_NVM_KB) * 1024u)
@@ -713,8 +718,12 @@ static int8_t s_nvm_ok = -1;
 static bool nvm_ok(void)
 {
     if (s_nvm_ok < 0) {
-        uint32_t img_end = (uint32_t)&__data_load__ + (uint32_t)((uint8_t *)&__data_end__ - (uint8_t *)&__data_start__);
         uint32_t code = (uint32_t)(uintptr_t)&nvm_ok;
+#if defined(__ti__) || defined(__TI_ARM__)
+        uint32_t img_end = (uint32_t)(uintptr_t)__dz_nvm_base == NVM_BASE ? 0u : 0xFFFFFFFFu;   /* .cmd 截短了 FLASH：linker 保证不越界 */
+#else
+        uint32_t img_end = (uint32_t)&__data_load__ + (uint32_t)((uint8_t *)&__data_end__ - (uint8_t *)&__data_start__);
+#endif
         s_nvm_ok = (img_end <= NVM_BASE && code < NVM_BASE && DZ_FLASH_KB > DZ_NVM_KB) ? 1 : 0;
     }
     return s_nvm_ok == 1;

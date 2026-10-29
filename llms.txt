@@ -32,7 +32,7 @@
 - [知识：堵转](docs/agent-knowledge/stall.md)
 - [通用安全件 safety（堵转/安全态/黑匣子）](firmware/framework/safety/README.md)
 - [丢线观测 line_obs](firmware/algo/line_obs/README.md)（用法示例：apps/line_car/app_main.c 找线 + 黑匣子）
-- [掉电保存 persist](firmware/framework/persist/README.md)（板子开关：board.yaml `mcu.nvm_kb`；用法示例 apps/car_2wd：'W' 存参数、急停冻结黑匣子）
+- [掉电保存 persist](firmware/framework/persist/README.md)（板子开关：board.yaml `mcu.nvm_kb`；用法示例 apps/car_2wd：'W' 存参数、急停冻结黑匣子；Keil/CCS 链接文件：tools/gen_ide_nvm.py）
 - [两车链路 peerlink](firmware/proto/peerlink/README.md)
 - [跟车间距 follow](firmware/algo/follow/README.md)
 - [知识：极性](docs/agent-knowledge/polarity.md)

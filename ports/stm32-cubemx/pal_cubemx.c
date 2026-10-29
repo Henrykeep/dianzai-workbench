@@ -679,7 +679,13 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
  * 擦除期间 CPU 取指停顿（F1 页 ~20 ms，F4 16 KB 扇区 ~0.3 s）：应用只在停车/急停时写。
  * 运行时再核对一次程序没伸进保存区（IDE 工程用了别的链接脚本时）：重叠 → 永远 DZ_ENOTSUP，绝不擦到代码。 */
 #if defined(DZ_NVM_KB) && DZ_NVM_KB > 0 && (defined(STM32F1) || defined(STM32F4))
+#if defined(__ARMCC_VERSION)
+/* Keil：keil_inject 填的 boards/<板>/keil/dz_nvm.sct（tools/gen_ide_nvm.py）里有 EMPTY 执行域 ER_DZ_NVM；
+ * 没用这份分散加载文件 → 链接就找不到这个符号（报错而不是悄悄擦代码）。 */
+extern char Image$$ER_DZ_NVM$$ZI$$Base[];
+#else
 extern uint32_t _sidata, _sdata, _edata;
+#endif
 #if defined(STM32F4)
 #define NVM_BASE 0x08004000u
 #define NVM_UNIT 0x4000u
@@ -692,9 +698,13 @@ static int8_t s_nvm_ok = -1;
 static bool nvm_ok(void)
 {
     if (s_nvm_ok < 0) {
-        uint32_t img_end = (uint32_t)&_sidata + (uint32_t)((uint8_t *)&_edata - (uint8_t *)&_sdata);
         uint32_t code = (uint32_t)(uintptr_t)&nvm_ok;
+#if defined(__ARMCC_VERSION)
+        bool overlap = (code >= NVM_BASE && code < NVM_BASE + NVM_SIZE) || (uint32_t)(uintptr_t)Image$$ER_DZ_NVM$$ZI$$Base != NVM_BASE;
+#else
+        uint32_t img_end = (uint32_t)&_sidata + (uint32_t)((uint8_t *)&_edata - (uint8_t *)&_sdata);
         bool overlap = (code >= NVM_BASE && code < NVM_BASE + NVM_SIZE) || (img_end > NVM_BASE && (uint32_t)&_sidata < NVM_BASE + NVM_SIZE);
+#endif
 #if defined(STM32F4)
         overlap = overlap || code < NVM_BASE + NVM_SIZE || (DZ_NVM_KB != 32u && DZ_NVM_KB != 48u);
 #endif

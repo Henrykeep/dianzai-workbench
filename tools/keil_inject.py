@@ -82,6 +82,29 @@ def inject(text: str, groups: dict[str, list[str]], incs: list[str], defines: li
     return text
 
 
+def inject_scatter(text: str, sct: str) -> str:
+    """掉电保存区：Linker 页改用仓库生成的分散加载文件（tools/gen_ide_nvm.py），关掉“Use Memory Layout from Target Dialog”。"""
+    def fix(m: re.Match) -> str:
+        blk = re.sub(r"<umfTarg>\d</umfTarg>", "<umfTarg>0</umfTarg>", m.group(0), count=1)
+        if "<ScatterFile>" in blk:
+            return re.sub(r"<ScatterFile>.*?</ScatterFile>", lambda _: f"<ScatterFile>{sct}</ScatterFile>", blk, count=1, flags=re.S)
+        return blk.replace("</LDads>", f"<ScatterFile>{sct}</ScatterFile></LDads>")
+    return re.sub(r"<LDads>.*?</LDads>", fix, text, flags=re.S)
+
+
+def nvm_for_board(root: pathlib.Path, board: str) -> tuple[list[str], str | None]:
+    """board.yaml mcu.nvm_kb > 0 → (DZ_NVM_KB/DZ_FLASH_KB 宏, 仓库里的 dz_nvm.sct)；没开 → ([], None)。"""
+    import yaml
+    mcu = yaml.safe_load((root / "boards" / board / "board.yaml").read_text(encoding="utf-8")).get("mcu", {})
+    n = int(mcu.get("nvm_kb", 0) or 0)
+    sct = root / "boards" / board / "keil" / "dz_nvm.sct"
+    if not n:
+        return [], None
+    if not sct.exists():
+        raise SystemExit(f"✗ {sct} 不存在：先跑 tools/gen_ide_nvm.py")
+    return [f"DZ_NVM_KB={n}u", f"DZ_FLASH_KB={int(mcu['flash_kb'])}u"], str(sct)
+
+
 def plan(uv: pathlib.Path, root: pathlib.Path, modules: list[str], extra_src: list[str], extra_inc: list[str]):
     base = uv.parent
     groups, incs = {}, []
@@ -155,6 +178,9 @@ def selftest() -> int:
         and "<Aads><VariousControls><Define></Define>" in a
     c = inject(a, {"dz/lpf": ["x.c"]}, [], [])
     ok = ok and "dz/pid" not in c and "dz/lpf" in c
+    ld = "<LDads><umfTarg>1</umfTarg><ScatterFile></ScatterFile></LDads>"
+    d = inject_scatter(inject_scatter(ld, "..\\keil\\dz_nvm.sct"), "..\\keil\\dz_nvm.sct")
+    ok = ok and d == "<LDads><umfTarg>0</umfTarg><ScatterFile>..\\keil\\dz_nvm.sct</ScatterFile></LDads>"
     print("✓ keil_inject 自测通过" if ok else "✗ keil_inject 自测失败")
     return 0 if ok else 1
 
@@ -169,6 +195,7 @@ def main() -> int:
     ap.add_argument("--define", action="append", default=[])
     ap.add_argument("--board", help="和 --app 一起用：按这次构建自动挑模块、源文件、包含路径、DZ_ 宏（不用手列 --module）")
     ap.add_argument("--app")
+    ap.add_argument("--scatter", help="Linker 页用这个 .sct（--board 且 nvm_kb>0 时自动填 boards/<板>/keil/dz_nvm.sct）")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
@@ -182,12 +209,18 @@ def main() -> int:
         m, xs, xi, d = from_build(a.root, a.board, a.app)
         a.module += [x for x in m if x not in a.module]; a.extra_src += xs; a.extra_inc += xi
         a.define += [x for x in d if x not in a.define]
+        nd, sct = nvm_for_board(a.root, a.board)
+        a.define += [x for x in nd if x not in a.define]
+        if sct:
+            a.scatter = rel(pathlib.Path(sct), a.uvprojx.parent)
         print(f"按 {a.board}/{a.app} 的构建挑出 {len(m)} 个模块：{', '.join(pathlib.Path(x).name for x in m)}")
     text = a.uvprojx.read_text(encoding="utf-8")
     groups, incs = plan(a.uvprojx, a.root, a.module, a.extra_src, a.extra_inc)
     new = inject(text, groups, incs, a.define)
+    if a.scatter:
+        new = inject_scatter(new, a.scatter)
     if a.dry_run:
-        print(f"将添加组：{list(groups)}\n包含路径：{incs}\n宏：{a.define}")
+        print(f"将添加组：{list(groups)}\n包含路径：{incs}\n宏：{a.define}\n分散加载：{a.scatter or '不改'}")
         return 0
     if new != text:
         shutil.copy2(a.uvprojx, str(a.uvprojx) + ".bak")

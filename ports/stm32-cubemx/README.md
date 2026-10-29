@@ -26,6 +26,6 @@ CubeMX 是唯一配置源，本层只包装 CubeMX 生成的句柄（htimX/huart
 在你的回调里调用 `dz_cm_gpio_exti(GPIO_Pin)`。同号引脚共用一条 EXTI 线（PA3 与 PB3 不能同时挂，返回 DZ_EBUSY）。【编译】未上板。
 
 ## 掉电保存（1.7.0）
-只有 make 构建带 `-DDZ_NVM_KB`（BOARD_NVM_DEFS）；Keil/CCS 工程不带 = ENOTSUP，不影响开机。
+Keil：`tools/keil_inject.py <工程>.uvprojx --board <板> --app <应用>` 会同时加 `DZ_NVM_KB/DZ_FLASH_KB` 宏、把 Linker→Scatter File 设成 `boards/<板>/keil/dz_nvm.sct`（tools/gen_ide_nvm.py 按 nvm_kb 生成：F1 程序区截短，F4 扇区 0 只放向量、程序从保存区之后开始；保存区是 EMPTY 域，下载不擦）并关掉“Use Memory Layout from Target Dialog”。armclang 下运行时核对 `Image$$ER_DZ_NVM$$ZI$$Base`，没用这份 .sct 链接直接报错。[未测] Keil 里没编译过。
 
 board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：F1 = Flash 末尾（页 1 KB，≥256 KB 型号 2 KB），F4 = 扇区 1..3（0x08004000 起，nvm_kb 只能 32/48；仓库里的 F4 链接脚本把 `.text` 放到保存区之后）。用你自己 CubeMX 生成的链接脚本时要照着留出这块，否则运行时检查到重叠会一直返回 ENOTSUP（不会擦到代码）。擦除期间 CPU 停顿（F4 扇区约 0.3 s），应用只在停车/急停时写。[编译]

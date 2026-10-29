@@ -39,6 +39,18 @@ def render(board: str, app: str) -> tuple[pathlib.Path, str]:
         folder = "dz/" + ("gen" if s.startswith(gen) else s.rsplit("/", 1)[0].split("/", 1)[0])
         files.append(f'        <file path={quoteattr(rel(s))} targetDirectory="{folder}" action="link"/>')
     syscfg = next(ccs.glob("*.syscfg")).name
+    # 掉电保存区（board.yaml mcu.nvm_kb>0）：用 tools/gen_ide_nvm.py 生成的 dz_nvm_linker.cmd（FLASH 截短）替 SysConfig 的链接文件
+    import yaml
+    mcu = yaml.safe_load((ROOT / "boards" / board / "board.yaml").read_text(encoding="utf-8")).get("mcu", {})
+    nvm = int(mcu.get("nvm_kb", 0) or 0)
+    nvm_file = ""
+    if nvm:
+        if not (ccs / "dz_nvm_linker.cmd").exists():
+            raise SystemExit(f"✗ {board}/ccs/dz_nvm_linker.cmd 不存在：先跑 tools/gen_ide_nvm.py")
+        if "ProjectConfig.genLinker" not in (ccs / syscfg).read_text(encoding="utf-8"):
+            raise SystemExit(f"✗ {syscfg} 要写 ProjectConfig.genLinker = false（否则 SysConfig 再生成一份链接文件，两份 MEMORY 冲突）")
+        defs += f"\n            -DDZ_NVM_KB={nvm}u\n            -DDZ_FLASH_KB={int(mcu['flash_kb'])}u"
+        nvm_file = '\n        <file path="dz_nvm_linker.cmd" openOnCreation="false" excludeFromBuild="false" action="copy"/>'
     name = f"{board}_{app}"
     text = f'''<?xml version="1.0" encoding="UTF-8"?>
 <!-- 由 tools/gen_ccs_projectspec.py 生成，勿手改；改源文件列表后重跑。【未验证】未在 CCS 中导入编译。
@@ -94,7 +106,7 @@ def render(board: str, app: str) -> tuple[pathlib.Path, str]:
         <property name="buildProfile" value="release"/>
         <property name="isHybrid" value="true"/>
         <file path="{syscfg}" openOnCreation="true" excludeFromBuild="false" action="copy"/>
-        <file path="${{COM_TI_MSPM0_SDK_INSTALL_DIR}}/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c" openOnCreation="false" excludeFromBuild="false" targetDirectory="ticlang" action="copy"/>
+        <file path="${{COM_TI_MSPM0_SDK_INSTALL_DIR}}/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c" openOnCreation="false" excludeFromBuild="false" targetDirectory="ticlang" action="copy"/>{nvm_file}
 {chr(10).join(files)}
     </project>
 </projectSpec>

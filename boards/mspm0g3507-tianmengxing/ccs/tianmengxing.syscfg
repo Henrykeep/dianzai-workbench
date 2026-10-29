@@ -132,3 +132,8 @@ ADC121.$name                 = "ADC12_0";
 ADC121.adcMem0chansel        = "DL_ADC12_INPUT_CHAN_2";
 ADC121.peripheral.$assign    = "ADC0";
 ADC121.peripheral.adcPin2.$assign = "PA25";
+
+/* 掉电保存区（board.yaml mcu.nvm_kb）：链接文件用 tools/gen_ide_nvm.py 生成的 dz_nvm_linker.cmd（FLASH 末尾让出），
+ * 不让 SysConfig 再生成一份（两份 MEMORY 会冲突）。【未测】未在 CCS 里打开过。 */
+const ProjectConfig = scripting.addModule("/ti/project_config/ProjectConfig");
+ProjectConfig.genLinker = false;

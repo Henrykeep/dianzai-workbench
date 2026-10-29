@@ -29,4 +29,4 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 
 ## 掉电保存（0.7.0）
 
-board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：Flash 末尾，扇区 1 KB，64 位 + 硬件 ECC 编程（DriverLib `*FromRAM`）。不改 SDK 链接脚本，另传 `nvm_guard.ld` 做越界 ASSERT；只有 make 构建带 `-DDZ_NVM_KB`（BOARD_NVM_DEFS）；CCS/Keil 工程不带，pal_nvm_* 返回 ENOTSUP，存参数报“不支持”，不影响开机。[编译]
+board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：Flash 末尾，扇区 1 KB，64 位 + 硬件 ECC 编程（DriverLib `*FromRAM`）。不改 SDK 链接脚本，另传 `nvm_guard.ld` 做越界 ASSERT；CCS：projectspec（gen_ccs_projectspec.py）带 `-DDZ_NVM_KB/-DDZ_FLASH_KB` 和 `boards/<板>/ccs/dz_nvm_linker.cmd`（tools/gen_ide_nvm.py 由 SDK ticlang 模板生成，FLASH 截掉末尾 nvm_kb、定义 `__dz_nvm_base`）；.syscfg 里 `ProjectConfig.genLinker = false`，不再用 SysConfig 生成的链接文件。tiarmclang 下运行时核对 `__dz_nvm_base`，没用这份 .cmd 链接直接报错。[编译]（make）/[未测]（CCS 里没编译过）

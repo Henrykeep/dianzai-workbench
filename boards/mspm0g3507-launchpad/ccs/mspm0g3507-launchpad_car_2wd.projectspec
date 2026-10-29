@@ -85,6 +85,8 @@
             -std=c11
             -Wall
             -D__MSPM0G3507__
+            -DDZ_NVM_KB=4u
+            -DDZ_FLASH_KB=128u
         "
         linkerBuildOptions="
             -ldevice.cmd.genlibs
@@ -107,6 +109,7 @@
         <property name="isHybrid" value="true"/>
         <file path="launchpad.syscfg" openOnCreation="true" excludeFromBuild="false" action="copy"/>
         <file path="${COM_TI_MSPM0_SDK_INSTALL_DIR}/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c" openOnCreation="false" excludeFromBuild="false" targetDirectory="ticlang" action="copy"/>
+        <file path="dz_nvm_linker.cmd" openOnCreation="false" excludeFromBuild="false" action="copy"/>
         <file path="../../../firmware/algo/abobs/abobs.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/accel_ff/accel_ff.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/attitude/attitude.c" targetDirectory="dz/firmware" action="link"/>

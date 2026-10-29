@@ -205,6 +205,7 @@ check:
 	$(PY) tools/ioc_import.py --selftest
 	$(PY) tools/test_ioc_import.py
 	$(PY) tools/keil_inject.py --selftest
+	$(PY) tools/test_ide_nvm.py
 	CUBE_HAL= $(PY) tools/test_keil_inject.py   # 故意不给 HAL：CI 上没有 third_party，本地也按同样条件测
 	$(PY) tools/test_module_ide.py
 	$(PY) tools/test_mspm0_board.py

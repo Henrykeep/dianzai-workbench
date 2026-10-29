@@ -13,6 +13,9 @@
 python3 tools/keil_inject.py <工程>/MDK-ARM/xxx.uvprojx --board <板> --app <应用> --dry-run   # 先看会加什么
 python3 tools/keil_inject.py <工程>/MDK-ARM/xxx.uvprojx --board <板> --app <应用>
 ```
+
+掉电保存（board.yaml `mcu.nvm_kb` > 0）：上面这条同时把 Options→Linker→Scatter File 设成 `boards/<板>/keil/dz_nvm.sct`（`tools/gen_ide_nvm.py` 生成），关掉“Use Memory Layout from Target Dialog”，加 `DZ_NVM_KB/DZ_FLASH_KB`。编译后在 .map 里查 `ER_DZ_NVM` 地址与 board.yaml 注释一致；不想要就把 nvm_kb 改 0 重跑。【未测】没在 Keil 里编译过。
+
    【已实测】F103 car_2wd 挑出 10 个模块，只用这些目标文件 arm-gcc 能链接通过；【未验证】Keil 里编译。
    也可以手列（老写法，仍可用）：
 ```sh

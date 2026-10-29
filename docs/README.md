@@ -25,7 +25,7 @@
 | 11-中断与实时.md | ISR 准则 |
 | 12-参考工程与参数来源.md | P1/P2 角色、收编原则、counts_per_rev 与“转 10 圈”标定 |
 | 13-版本管理.md | 仓库/模块两层版本、CHANGELOG、分支与提交约定 |
-| 14-Keil工作流.md | AC6/AC5 要求、keil_inject.py 注入模块 |
+| 14-Keil工作流.md | AC6/AC5 要求、keil_inject.py 注入模块、掉电保存区 .sct |
 | 15-CCS工作流.md | 天猛星导入 CCS（projectspec + .syscfg，tiarmclang） |
 | 16-VSCode工作流.md | tasks/launch（Cortex-Debug，OpenOCD/pyOCD）、EIDE 可选 |
 | 17-桌面工作台.md | dzbench：曲线/参数/急停/回放，侧车 WebSocket 协议，Agent 接缝 |
