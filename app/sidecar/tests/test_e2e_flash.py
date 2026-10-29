@@ -13,8 +13,7 @@ import time
 
 import pytest
 
-pytestmark = pytest.mark.skipif(os.name == "nt" or not shutil.which("make") or not shutil.which("cc"),
-                                reason="pty 仿真板需要 POSIX + make + cc")
+pytestmark = pytest.mark.needs_sim  # 原 skipif 条件统一放在 conftest.SIM_OK
 
 HERE = os.path.dirname(__file__)
 

@@ -6,6 +6,11 @@
 
 ## [未发布]
 
+## [0.8.1] - 2026-10-29 Windows 构建修复
+
+### 修复
+- app-windows CI：v0.8.0 的 Windows 构建因 test_wiring 里 3 个仿真板测试挂掉（mingw 没有 asan/ubsan、Makefile 用了 find）。所有起仿真板的测试统一标 `needs_sim`，Windows/无 make+cc 跳过；没标却起仿真板的测试本地直接失败（子进程侧车也拦）。Makefile 改纯 make 递归通配（排序，CCS projectspec 稳定）、Windows 默认不开 sanitizer（Windows 跑仿真板 [未测]）。app-windows 改为每次推 main 都跑。[编译]
+
 ## [0.8.0] - 2026-10-29 “真的接上了吗” + 赛场鲁棒性 + 板名
 
 ### 修复（接线排查，详见 docs/23 §v0.8.0）

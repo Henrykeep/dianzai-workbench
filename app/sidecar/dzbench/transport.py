@@ -68,6 +68,8 @@ class SimTransport(Transport):
 
     def __init__(self, app: str, speed: float = 1.0, build: bool = True):
         self.name = SIM_PREFIX + app
+        if (who := os.environ.get("DZBENCH_TEST_NO_SIM")):     # 仅测试用：conftest 给没标 needs_sim 的测试设上（子进程侧车也能拦住）
+            raise RuntimeError(f"{who} 起了仿真板却没标 @pytest.mark.needs_sim（Windows CI 会挂）")
         elf = sim_elf(app)
         if build:
             r = subprocess.run(["make", "-s", "BOARD=host-sim", f"APP={app}"], cwd=ROOT, capture_output=True, text=True,

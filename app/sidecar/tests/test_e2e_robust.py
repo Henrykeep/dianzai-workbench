@@ -15,8 +15,7 @@ import time
 
 import pytest
 
-pytestmark = pytest.mark.skipif(os.name == "nt" or not shutil.which("make") or not shutil.which("cc"),
-                                reason="pty 仿真板需要 POSIX + make + cc")
+pytestmark = pytest.mark.needs_sim  # 原 skipif 条件统一放在 conftest.SIM_OK
 
 SIDECAR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GO = struct.pack("<ff", 0.3, 0.0).hex()            # car_2wd 运动命令（id 1）：前进
