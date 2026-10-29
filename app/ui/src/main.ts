@@ -281,6 +281,7 @@ async function sendPending(only?: string[]) {
 $("p-send").onclick = () => sendPending();
 $("p-revert").onclick = () => { S.edit = {}; syncParams(); };
 $("p-read").onclick = async () => { await call("param_read_all"); };
+$("p-rb").onclick = async () => { const r = await call("params_readback", {}); toast(`已回读到 ${r.path}`, "ok", 5000); };
 $("p-def").onclick = async () => { if (confirm("把全部参数恢复成固件默认值？")) { await call("snapshot_restore", { defaults: true }); toast("已恢复默认参数", "ok", 3000); } };
 
 // 顶栏流程：连接 → 调参 → 阶跃 → 判读 → 定稿，按当前状态点亮（done = 已经过，now = 下一步该做的）

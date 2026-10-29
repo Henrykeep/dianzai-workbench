@@ -15,6 +15,7 @@ SERVER_OPS = set(re.findall(r'op == "([a-z_]+)"', (APP / "sidecar/dzbench/server
 SCRIPT_ONLY = {
     "send_data": "按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”面板的 send_raw / 预设）",
     "agent_tool": "外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask",
+    "polarity_check": "标定向导第 0 步的后端（向导界面未做，先给脚本/外部 Agent 用；见 docs/32）",
     "propose": "外部脚本提一个待确认的参数提议（界面里的提议都来自 Agent / 阶跃分析）",
 }
 

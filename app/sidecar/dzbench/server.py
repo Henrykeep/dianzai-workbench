@@ -121,7 +121,14 @@ class Server:
                 r["verdict"] = polarity.verdict(g.get("sensor", 0), g.get("err", 0), g.get("ctrl", 0), g.get("act", 0))
             return r
         if op == "params_readback":
-            return {"path": await run(None, lambda: s.export_readback(m["path"]))}
+            path = m.get("path")
+            if not path:                    # 界面按钮：默认写到 ~/.dzbench/readback/<时间>.txt
+                import time as _t
+                from . import snapshots as _sn
+                d = _sn.base_dir() / "readback"
+                d.mkdir(parents=True, exist_ok=True)
+                path = str(d / _t.strftime("params-%Y%m%d-%H%M%S.txt"))
+            return {"path": await run(None, lambda: s.export_readback(path))}
         if op == "snapshot_list":
             return snapshots.list_all(s.schema.hash) if s.schema else []
         if op == "snapshot_restore":

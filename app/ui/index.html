@@ -37,6 +37,7 @@
       <div class="vh"><div class="tabs" id="dock-tabs"><span data-d="params" class="on">参数</span><span data-d="snaps">快照</span><span data-d="board">板端</span></div>
         <div class="sp"></div>
         <button class="ib" id="p-read" title="读取：从板子重新读取全部参数" >读取</button>
+        <button class="ib" id="p-rb" title="回读：逐个问板子当前参数值，写 params.txt（带固件版本），可用 tools/params_diff.py 对比">回读</button>
         <button class="ib" id="p-def" title="默认：把全部参数恢复成固件编译时的默认值" >默认</button>
       </div>
       <div class="dk" data-d="params"><input id="p-q" class="in pq" placeholder="筛选参数：pos_ ki*（/ 聚焦）" title="空格/逗号分隔，* 通配；按名字或说明匹配。参数多于 8 个时出现" hidden /><div id="plist" class="plist"></div></div>
