@@ -172,6 +172,25 @@
   "hash": "982222ec4c93dc31",
   "version": "1.1.0"
  },
+ "firmware/algo/slew": {
+  "decls": [
+   "slew.h: typedef enum { SLEW_BY_DIR = 0, SLEW_BY_MAG = 1 } slew_mode_t;",
+   "slew.h: typedef struct { float rise_per_s;",
+   "slew.h: float fall_per_s;",
+   "slew.h: slew_mode_t mode;",
+   "slew.h: } slew_cfg_t;",
+   "slew.h: typedef struct { slew_cfg_t cfg;",
+   "slew.h: float y;",
+   "slew.h: bool ready;",
+   "slew.h: } slew_t;",
+   "slew.h: dz_err_t slew_init(slew_t *s, const slew_cfg_t *cfg, float y0);",
+   "slew.h: float slew_update(slew_t *s, float target, float dt_s);",
+   "slew.h: void slew_reset(slew_t *s, float y);",
+   "slew.h: dz_err_t slew_selftest(void);"
+  ],
+  "hash": "864d889c4413cb07",
+  "version": "1.0.0"
+ },
  "firmware/algo/vision": {
   "decls": [
    "vis.h: #define VIS_CALIB_MAX 9u",

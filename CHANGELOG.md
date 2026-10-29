@@ -6,6 +6,7 @@
 
 ## [未发布]
 - [仿真] 全流程走查（docs/29，2026H 仿真）：流程条“定稿”接通写回→门禁→git 提交；写回卡片摘出 旧→新、只数真正改动；参数筛选；原始默认 HEX；频谱默认被控量；2026H 声明 ref_for。[未测] 真板、Windows。
+- [仿真] G7 新模块 `algo/slew` 1.0.0：不对称变化率限制（按方向 / 按远离-靠近 0，跨零先减后加），速率按"每秒"写，与控制周期无关（p2 的 Beam_RampStep 按"每拍度数"写，改周期就变速）。主机单测含一阶电机模型：起步 0.5 s、刹车 0.1 s 按配置。[未测] 实车。
 - [编译] G5 `docs/28-30分钟换板清单.md`：6 步清单 + 各板最小例程表（port_selftest / motor_speed_demo / car_2wd 按板实测编译结果），9 个组合加进 `make cross`。否决"每板复制一份 minimal 例程"（重复即屎山）。发现缺口：bldc-freertos 板无 LINK 串口与 LED，自检固件跑不了。[未测] 真人计时、上板、Keil。
 - [编译] G4 STM32 只保留 CubeMX 主线：`ports/stm32f4-hal` 冻结，只服务天空星 HAL 版与 RM C 型；第三块板用它 validate_board 报错（`tools/test_port_policy.py` 进 make check）。没有删除：天空星 CubeMX 版缺电机 B、RM C 型 HSE 未确认，迁移步骤见 docs/notes/implemented/2026-10-29-cubemx-only.md。
 - [仿真] G3 2026H io 胶水拆分：`io_link.c`（上位机链路，无 LINK 板给空实现）、`io_imu.c`（UART 姿态模块 / MPU6050 / 无）、内部接口 `io_parts.h`；io_main.c 296→145 行，条件编译 15→1 处。行为不变：example 单测 35/35、侧车 142 passed、make cross 全过；MPU6050 路径仅 -fsyntax-only。[未测] 上板、Keil。
