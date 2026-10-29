@@ -29,6 +29,7 @@
             -I${PROJECT_LOC}/../../../firmware/algo/ball_beam
             -I${PROJECT_LOC}/../../../firmware/algo/capfreq
             -I${PROJECT_LOC}/../../../firmware/algo/dds
+            -I${PROJECT_LOC}/../../../firmware/algo/line_obs
             -I${PROJECT_LOC}/../../../firmware/algo/lpf
             -I${PROJECT_LOC}/../../../firmware/algo/mtspeed
             -I${PROJECT_LOC}/../../../firmware/algo/pid
@@ -108,6 +109,7 @@
         <file path="../../../firmware/algo/ball_beam/ball_beam.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/capfreq/capfreq.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/dds/dds.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/line_obs/line_obs.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/lpf/lpf1.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/mtspeed/mtspeed.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/pid/pid.c" targetDirectory="dz/firmware" action="link"/>

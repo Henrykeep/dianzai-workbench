@@ -147,6 +147,37 @@
   "hash": "a42602cee3ace2d5",
   "version": "1.0.0"
  },
+ "firmware/algo/line_obs": {
+  "decls": [
+   "line_obs.h: #define LINE_OBS_DIR_MAX 16u",
+   "line_obs.h: typedef enum { LINE_OBS_TRACK = 0, LINE_OBS_WIDE = 1, LINE_OBS_LOST = 2, LINE_OBS_FAIL = 3 } line_obs_state_t;",
+   "line_obs.h: typedef struct { uint8_t lost_confirm;",
+   "line_obs.h: uint8_t dir_frames;",
+   "line_obs.h: uint8_t reacq_frames;",
+   "line_obs.h: uint32_t lost_timeout_ms;",
+   "line_obs.h: float center_band;",
+   "line_obs.h: } line_obs_cfg_t;",
+   "line_obs.h: typedef struct { line_obs_cfg_t c;",
+   "line_obs.h: line_obs_state_t st;",
+   "line_obs.h: float hist[LINE_OBS_DIR_MAX];",
+   "line_obs.h: uint8_t hn, hi;",
+   "line_obs.h: uint8_t miss, seen;",
+   "line_obs.h: bool just;",
+   "line_obs.h: uint32_t t_lost;",
+   "line_obs.h: int8_t dir;",
+   "line_obs.h: uint32_t lost_count;",
+   "line_obs.h: } line_obs_t;",
+   "line_obs.h: line_obs_cfg_t line_obs_cfg_default(void);",
+   "line_obs.h: dz_err_t line_obs_init(line_obs_t *o, const line_obs_cfg_t *c);",
+   "line_obs.h: line_obs_state_t line_obs_update(line_obs_t *o, bool seen, float pos, bool cross, uint32_t now_ms);",
+   "line_obs.h: bool line_obs_just_lost(const line_obs_t *o);",
+   "line_obs.h: int8_t line_obs_dir(const line_obs_t *o);",
+   "line_obs.h: void line_obs_reset(line_obs_t *o);",
+   "line_obs.h: dz_err_t line_obs_selftest(void);"
+  ],
+  "hash": "b0766b33aad31559",
+  "version": "1.0.0"
+ },
  "firmware/algo/lpf": {
   "decls": [
    "lpf1.h: typedef struct { float cutoff_hz;",

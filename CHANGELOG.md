@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 新增 `algo/line_obs` 1.0.0 丢线观测与找线恢复（TRACK/WIDE/LOST/FAIL，全白确认 3 拍、最近 4 帧定找线方向、10 拍稳定找回、12 s 超时锁存停车），默认参数与思路来自 DS-land-and-air；横向偏差模型测试“急弯甩线能找回 / 不找则超时失败”。
 - [仿真] 赛前检查固件项：tools/ 只把代码生成器（gen_*、boardlib、families、syscfg_gen.sh）算固件相关，改检查/测试脚本不再要求重烧。修：板上就是 HEAD 时没看工作区未提交/未跟踪的固件改动（直接判了通过）；严格模式现在真的要求工作区干净。
 - [仿真] 2026H_ball 0.3.0 底盘接 framework/safety（io/io_safety.c，不碰硬件）：两路堵转（占空比 ≥0.6 且 <0.05 r/s 持续 0.5 s）→ 走急停路径刹车；看门狗/锁死复位上电进急停等人按 R；黑匣子导出 0x7D、心跳带复位原因和标志。host 测试 chassis_stall_and_watchdog_boot。[编译] F407 FreeRTOS 板。[未测] 实车门限。
 - [仿真] 新增 `framework/safety` 1.0.0（多路堵转 + 异常复位安全态 + 写黑匣子，一个锁存）；blackbox 1.1.0 通用事件码 `BB_EV_*`；pal 1.4.0 `PAL_RESET_IS_FAULT`；dzctl 0.6.0 黑匣子导出帧 DATA 0x7D（请求 len=0、每条 16 字节）。侧车 op `blackbox` 翻成人话，赛前检查对话框“读黑匣子”。

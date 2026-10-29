@@ -249,11 +249,40 @@ TEST(stall_detect_model)
     bad = c; bad.load_on = -1.0f; CHECK(stall_init(&s, &bad) == DZ_EINVAL);
 }
 
+/* line_obs：横向偏差模型 pos' = drift − k·steer（mm/拍），传感器量程 ±40 mm，超出看不到线 */
+#include "line_obs.h"
+static int line_obs_run(bool search, uint32_t *lost_n)
+{
+    line_obs_t o; line_obs_cfg_t c = line_obs_cfg_default();
+    float pos = 0.0f;
+    line_obs_state_t st = LINE_OBS_TRACK;
+    (void)line_obs_init(&o, &c);
+    for (uint32_t ms = 0; ms < 20000u && st != LINE_OBS_FAIL; ms += 10u) {
+        float drift = (ms >= 1000u && ms < 1300u) ? 2.0f : 0.0f;        /* 急弯：0.3 s 内线甩出去 */
+        bool seen = fabsf(pos) < 40.0f;
+        float steer;
+        st = line_obs_update(&o, seen, pos, false, ms);
+        if (st == LINE_OBS_TRACK) steer = 0.02f * pos;
+        else steer = search ? (float)line_obs_dir(&o) * 1.5f : 0.0f;
+        pos += drift - steer;
+    }
+    *lost_n = o.lost_count;
+    return (int)st;
+}
+
+TEST(line_obs_recover_and_timeout)
+{
+    uint32_t n;
+    CHECK(line_obs_selftest() == DZ_OK);
+    CHECK(line_obs_run(true, &n) == LINE_OBS_TRACK && n == 1u);       /* 朝最后方向找回来 */
+    CHECK(line_obs_run(false, &n) == LINE_OBS_FAIL && n == 1u);       /* 不找：12 s 后判失败停车 */
+}
+
 void suite_ctrlparts(void)
 {
     RUN(stall_detect_model);
     RUN(slew_dir_and_mag); RUN(slew_edge_cases); RUN(slew_with_motor_model);
     RUN(mtspeed_low_speed_vs_m_method); RUN(mtspeed_decel_timeout_reverse_wrap);
     RUN(vis_plane_five_point);
-    RUN(accel_ff_basic); RUN(accel_ff_matches_legacy);
+    RUN(line_obs_recover_and_timeout); RUN(accel_ff_basic); RUN(accel_ff_matches_legacy);
 }
