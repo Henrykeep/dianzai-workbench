@@ -3,8 +3,8 @@ ROOT := ../../..
 EX   := ..
 OUT  := $(ROOT)/build/examples/2026H_ball
 INC  := $(addprefix -I,$(ROOT)/tests/host $(ROOT)/firmware/common $(wildcard $(ROOT)/firmware/algo/*) \
-        $(wildcard $(ROOT)/firmware/framework/*) $(ROOT)/firmware/proto/dzframe $(OUT))
-SRC  := test_example.c $(wildcard $(EX)/subsys/*/*.c) $(OUT)/project_gen.c $(OUT)/cp_vision_cpu.c \
+        $(wildcard $(ROOT)/firmware/framework/*) $(ROOT)/firmware/proto/dzframe $(EX)/io $(OUT))
+SRC  := test_example.c $(EX)/io/io_safety.c $(wildcard $(EX)/subsys/*/*.c) $(OUT)/project_gen.c $(OUT)/cp_vision_cpu.c \
         $(wildcard $(ROOT)/firmware/algo/*/*.c $(ROOT)/firmware/framework/*/*.c $(ROOT)/firmware/proto/*/*.c)
 # C↔Python 互通：用 host/maixcam/ball_sender.py 现场编一帧，C 端解码核对
 PYBALL := $(shell cd $(ROOT)/host/maixcam && python3 -c "from ball_sender import BallSender; print(','.join('0x%02x' % b for b in BallSender(None).frame(-123, 4000000000)))")

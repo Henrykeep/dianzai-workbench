@@ -5,6 +5,7 @@
 #include "dzframe.h"
 #include "ball_beam.h"
 #include "cp_vision_cpu.h"
+#include "io_safety.h"
 
 int tt_fail, tt_pass;
 
@@ -123,10 +124,26 @@ TEST(generated_tables_consistent)
     CHECK(g_project_params[PROFILE_BASE].vision_timeout_ms == 600u);
 }
 
+TEST(chassis_stall_and_watchdog_boot)
+{
+    uint32_t t;
+    bool hit = false;
+    CHECK(!io_safety_init(1u, 0u));                                   /* 上电：不进安全态 */
+    for (t = 0; t <= 2000u && !hit; t += 1u) hit = io_safety_step(0.3f, 0.3f, 0.0f, 0.0f, t);
+    CHECK(!hit);                                                      /* 占空比小：不判 */
+    for (t = 2000u; t <= 4000u && !hit; t += 1u) hit = io_safety_step(0.3f, -0.9f, 1.0f, 0.0f, t);
+    CHECK(hit && t > 2300u && (io_safety_flags() & (1u << 9)));      /* B 路卡死 → 豁免+hold 后锁存 */
+    CHECK(bb_count(io_safety_bb()) == 2u && bb_get(io_safety_bb(), 1)->code == BB_EV_STALL);
+    io_safety_clear(5000u);
+    CHECK(!io_safety_latched());
+    CHECK(io_safety_init(4u, 0u) && io_safety_latched());            /* 看门狗复位 → 安全态 */
+}
+
 int main(void)
 {
     RUN(vision_channel_codec_and_python_interop); RUN(vision_subsys); RUN(ball_subsys_closed_loop_toy);
     RUN(ball_feedforward_and_profile_switch); RUN(accel_ff_src_deadzone_failsafe); RUN(vision_subsys_selftest); RUN(generated_tables_consistent);
+    RUN(chassis_stall_and_watchdog_boot);
     printf("\n通过 %d，失败 %d\n", tt_pass, tt_fail);
     return tt_fail ? 1 : 0;
 }

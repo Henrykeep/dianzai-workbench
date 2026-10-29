@@ -22,6 +22,7 @@
 #include "qd4310.h"
 #include "cp_vision_cpu.h"   /* 由 boards/maixcam2-vision/board.yaml 自动生成 */
 #include "io_parts.h"
+#include "io_safety.h"
 
 #define BEAM_MOTOR_ID     0u      /* P1/P2：电机 ID 0（未验证） */
 #define BEAM_TIMEOUT_MS   100u
@@ -65,7 +66,13 @@ dz_err_t app_init(void)
     if ((e = qd4310_init(&BEAM, RES_UART_BEAM, BEAM_MOTOR_ID)) != DZ_OK) return e;
     io_imu_init();
     if ((e = subsys_sched_init(&SCHED, g_project_subsys, PROJECT_N_SUBSYS, &S, &g_project_params[0])) != DZ_OK) return e;
-    return coord_init(&COORD, &SCHED, g_project_tests, PROJECT_N_TESTS, g_project_profiles, PROJECT_N_PROFILES, &g_project_hooks);
+    if ((e = coord_init(&COORD, &SCHED, g_project_tests, PROJECT_N_TESTS, g_project_profiles, PROJECT_N_PROFILES, &g_project_hooks)) != DZ_OK) return e;
+    {
+        pal_reset_cause_t rc = pal_reset_cause();
+        dzctl_set_reset_cause((uint32_t)rc);
+        if (io_safety_init((uint32_t)rc, pal_millis())) coord_event(&COORD, COORD_EV_ESTOP);   /* 看门狗/锁死复位：等人按 R */
+    }
+    return DZ_OK;
 }
 
 
@@ -118,6 +125,9 @@ static void write_beam(uint32_t now)
 
 static void write_outputs(uint32_t now)
 {
+    if (coord_state(&COORD) == COORD_RUNNING &&
+        io_safety_step(S.chassis_out.cmd_a, S.chassis_out.cmd_b, encoder_speed_rps(&EA), encoder_speed_rps(&EB), now))
+        coord_event(&COORD, COORD_EV_ESTOP);                 /* 堵转：已记黑匣子，走急停路径刹车 */
     if (coord_state(&COORD) == COORD_RUNNING) {
         motor_dc_set(&MA, S.chassis_out.cmd_a);
         motor_dc_set(&MB, S.chassis_out.cmd_b);

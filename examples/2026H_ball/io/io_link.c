@@ -18,6 +18,8 @@
 #include "link_gen.h"
 #include "dz_compiler.h"
 #include "dzframe.h"
+#include "io_safety.h"
+#include "safety.h"
 #include "dzctl.h"
 #include "rtosmon.h"
 
@@ -56,7 +58,7 @@ static void handle_cmd(const dzframe_t *f)
     case 'P': coord_select_profile(io_coord(), n); break;
     case 'G': coord_event(io_coord(), COORD_EV_START); break;
     case 'S': coord_event(io_coord(), COORD_EV_STOP); break;
-    case 'R': coord_event(io_coord(), COORD_EV_RESET); break;
+    case 'R': io_safety_clear(pal_millis()); coord_event(io_coord(), COORD_EV_RESET); break;   /* 人确认：解堵转/安全态 */
     default: io_sim_cmd(f->payload[0], n); break;
     }
 }
@@ -73,6 +75,14 @@ void io_link_read(void)
         dzctl_wd_feed(&WD, &f, pal_millis());
         if (dzctl_is_estop(&f)) { coord_event(io_coord(), COORD_EV_ESTOP); s_host_sp_px = 0.0f; }
         else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);
+        else if (dzctl_is_bb_request(&f)) {                 /* 黑匣子导出（dzctl 0.6.0） */
+            const bb_t *bb = io_safety_bb();
+            for (uint16_t k = 0; k < bb_count(bb); k++) {
+                const bb_rec_t *r = bb_get(bb, k);
+                dzctl_bb_frame(r->t_ms, r->code, r->arg, r->a, r->b, 0u, &ack);
+                link_send(&ack);
+            }
+        }
         else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) handle_cmd(&f);
         else if (f.kind == DZF_DATA && f.id == LINK_ID_BALL_SP && f.len == 4u) {
             float v; memcpy(&v, f.payload, 4u);
@@ -104,6 +114,8 @@ void io_link_write(uint32_t now)
     if (now - last_hb >= 500u) {
         dzctl_table_t pt = link_param_table(&g_project_params[io_coord()->profile_idx]);
         last_hb = now;
+        dzctl_set_flags(SAFETY_F_SAFE_BOOT | SAFETY_F_STALL, false);
+        dzctl_set_flags(io_safety_flags(), true);
         dzctl_heartbeat(&pt, 0, &f);
         link_send(&f);
     }
