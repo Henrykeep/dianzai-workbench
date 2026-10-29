@@ -105,6 +105,32 @@
   "hash": "e12176c4fc49f183",
   "version": "1.1.0"
  },
+ "firmware/algo/mtspeed": {
+  "decls": [
+   "mtspeed.h: typedef struct { float counts_per_rev;",
+   "mtspeed.h: uint32_t timeout_us;",
+   "mtspeed.h: } mtspeed_cfg_t;",
+   "mtspeed.h: typedef struct { mtspeed_cfg_t cfg;",
+   "mtspeed.h: volatile uint32_t gen;",
+   "mtspeed.h: volatile int32_t count;",
+   "mtspeed.h: volatile uint32_t t_last;",
+   "mtspeed.h: volatile bool any;",
+   "mtspeed.h: int32_t count_ref;",
+   "mtspeed.h: uint32_t t_ref;",
+   "mtspeed.h: bool have_ref;",
+   "mtspeed.h: bool stopped;",
+   "mtspeed.h: float rps;",
+   "mtspeed.h: bool ready;",
+   "mtspeed.h: } mtspeed_t;",
+   "mtspeed.h: dz_err_t mtspeed_init(mtspeed_t *m, const mtspeed_cfg_t *cfg);",
+   "mtspeed.h: void mtspeed_edge(mtspeed_t *m, uint32_t t_us, int8_t dir);",
+   "mtspeed.h: void mtspeed_poll(mtspeed_t *m, uint32_t now_us);",
+   "mtspeed.h: float mtspeed_rps(const mtspeed_t *m);",
+   "mtspeed.h: dz_err_t mtspeed_selftest(void);"
+  ],
+  "hash": "471b0f9f7772f318",
+  "version": "1.0.0"
+ },
  "firmware/algo/pid": {
   "decls": [
    "pid.h: #define PID_GAP_FACTOR 5.0f",

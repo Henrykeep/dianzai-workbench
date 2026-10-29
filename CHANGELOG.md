@@ -6,6 +6,7 @@
 
 ## [未发布]
 - [仿真] 全流程走查（docs/29，2026H 仿真）：流程条“定稿”接通写回→门禁→git 提交；写回卡片摘出 旧→新、只数真正改动；参数筛选；原始默认 HEX；频谱默认被控量；2026H 声明 ref_for。[未测] 真板、Windows。
+- [仿真] G7 新模块 `algo/mtspeed` 1.0.0：变周期 M/T 法测速（PAL 边沿中断时间戳），低线数编码器 + 1 kHz 环时代替窗口差分。主机仿真 1.9 rps、52 边沿/转：标准差 M 法 1 ms 窗口 5.74、20 ms 窗口 0.147、M/T 0.0003 rps（理想等间隔边沿，实物会更大）。[未测] 真实编码器、中断并发双读。
 - [仿真] G7 新模块 `algo/slew` 1.0.0：不对称变化率限制（按方向 / 按远离-靠近 0，跨零先减后加），速率按"每秒"写，与控制周期无关（p2 的 Beam_RampStep 按"每拍度数"写，改周期就变速）。主机单测含一阶电机模型：起步 0.5 s、刹车 0.1 s 按配置。[未测] 实车。
 - [编译] G5 `docs/28-30分钟换板清单.md`：6 步清单 + 各板最小例程表（port_selftest / motor_speed_demo / car_2wd 按板实测编译结果），9 个组合加进 `make cross`。否决"每板复制一份 minimal 例程"（重复即屎山）。发现缺口：bldc-freertos 板无 LINK 串口与 LED，自检固件跑不了。[未测] 真人计时、上板、Keil。
 - [编译] G4 STM32 只保留 CubeMX 主线：`ports/stm32f4-hal` 冻结，只服务天空星 HAL 版与 RM C 型；第三块板用它 validate_board 报错（`tools/test_port_policy.py` 进 make check）。没有删除：天空星 CubeMX 版缺电机 B、RM C 型 HSE 未确认，迁移步骤见 docs/notes/implemented/2026-10-29-cubemx-only.md。
