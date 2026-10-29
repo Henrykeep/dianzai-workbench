@@ -4,7 +4,7 @@ import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
 import "./tokens.css";
 import "./style.css";
-import { createIcons, Activity, Ellipsis, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
+import { createIcons, Activity, Ellipsis, Eraser, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
 import { Plot, chColor, num } from "./plot";
@@ -14,8 +14,9 @@ import { AGENT_IDLE, agentIdle, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
 import { initSend } from "./send";
+import { initAnalysis } from "./analysis";
 
-type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[] };
+type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -25,6 +26,8 @@ const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isN
 const q = new URLSearchParams(location.search);
 const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
 const plot = new Plot($("pb"));
+const ana = initAnalysis(plot, () => S.applied, notifySide);
+const showXDiv = () => { const d = plot.xDiv(); $("xdiv").textContent = `${d < 1 ? d * 1000 + " ms" : d + " s"}/div`; };
 
 const S = {
   lastLog: "" as string,
@@ -116,11 +119,15 @@ function applySchema(s: Schema | null) {
   document.querySelectorAll(".ro.pin").forEach(e => e.remove());
   $("stats").insertAdjacentHTML("beforeend", S.enums.filter(f => f.pin).map(f =>
     `<div class="ro pin" title="${esc(f.name)}"><span class="lbl">${esc(f.pin!)}</span><span class="v" id="pin-${f.name}">—</span></div>`).join(""));
-  S.visible = S.plotted.map((_, i) => i < 4);
-  plot.setChannels(S.plotted.map(f => f.name), S.plotted.map(f => f.unit ?? ""), S.visible);
+  // 设定值通道（schema 里写了 ref_for）叠在被控量 lane 上画虚线，不单独占 lane，也不占“默认显示前 4 条”的名额
+  const refFor = S.plotted.map(f => S.plotted.findIndex(p => p.name === f.ref_for));
+  let shown = 0;
+  S.visible = S.plotted.map((_, i) => refFor[i] >= 0 || shown++ < 4);
+  plot.setChannels(S.plotted.map(f => f.name), S.plotted.map(f => f.unit ?? ""), S.visible, refFor);
+  ana.reset(); showXDiv();
   $("chan-n").textContent = `${S.plotted.length} 路 · ${s.period_ms ?? "?"} ms`;
   $("plot-sub").textContent = `schema ${s.hash}`;
-  renderChans(); renderParams(); loadSnaps(); fft.setFields(S.plotted.map(f => f.name));
+  renderChans(); renderParams(); loadSnaps(); fft.setFields(S.plotted.filter(f => !f.ref_for).map(f => f.name).concat(S.plotted.filter(f => f.ref_for).map(f => f.name)));   // 设定值放最后：默认选中的是有动态的量
 }
 function renderChans() {
   $("chans").innerHTML = S.enums.map(f => `<div class="ch en"><span class="k">${esc(f.name)}</span><b id="ev-${f.name}" class="mono">—</b></div>`).join("")
@@ -275,7 +282,7 @@ $("snap-save").onclick = saveSnap;
 $("cmd-r").onclick = () => call("cmd", { c: "R" });
 $("cmd-send").onclick = () => { const c = $<HTMLInputElement>("cmd-c").value, n = $<HTMLInputElement>("cmd-n").value; if (c) call("cmd", { c, n: n === "" ? null : +n }); };
 $("win").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => {
-  $("win").querySelectorAll("span").forEach(x => x.classList.toggle("on", x === s)); plot.win = +s.dataset.w!; plot.redraw();
+  $("win").querySelectorAll("span").forEach(x => x.classList.toggle("on", x === s)); plot.win = +s.dataset.w!; showXDiv(); plot.redraw();
 });
 function setRun(on: boolean) { plot.running = on; $("run").querySelectorAll<HTMLElement>("span").forEach(x => x.classList.toggle("on", (x.dataset.r === "1") === on)); }
 $("run").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => setRun(s.dataset.r === "1"));
@@ -352,7 +359,7 @@ function applyNone() {
 const agent = initAgent(call);
 const fft = initFFT((op, a) => link.rpc(op, a ?? {}));
 const send = initSend((op, a) => link.rpc(op, a ?? {}), e => toast(e as Err));
-const raw = initRaw((op, a) => link.rpc(op, a ?? {}), v => fft.setView(v === "fft"));
+const raw = initRaw((op, a) => link.rpc(op, a ?? {}), v => { fft.setView(v === "fft"); document.querySelector<HTMLElement>(".scope")!.dataset.view = v; });   // 只属于示波的控件在原始/频谱里收起
 // 回放时间轴：拖动 = 跳转（旧样本清掉，曲线从新位置画）
 let rpDrag = false;
 const rpPos = $<HTMLInputElement>("rp-pos");
@@ -411,5 +418,5 @@ $("doctor").onclick = async () => {
   $<HTMLDialogElement>("doc").show();
 };
 
-createIcons({ icons: { Activity, Ellipsis, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
+createIcons({ icons: { Activity, Ellipsis, Eraser, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
 initChrome();

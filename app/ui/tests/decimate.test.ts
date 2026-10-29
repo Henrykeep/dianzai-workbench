@@ -23,3 +23,10 @@ if (pendingOf([kp], { kp: "0.08" }, { kp: 0.08 }).length !== 0) throw "same valu
 if (pendingOf([kp], { kp: "" }, { kp: 0.08 }).length !== 0) throw "empty not pending";
 if (rangeLabel({ ...kp, unit: "rps" }, false, 0.08) !== "0…2 rps") throw "range";
 console.log("params ok");
+import { measure, nearest, niceDiv } from "../src/measure.ts";
+{ const t = [0, .1, .2, .3, .4], y = [[0, 1, 4, 2, 3]];
+  if (nearest(t, .26) !== 3 || nearest(t, -5) !== 0 || nearest(t, 9) !== 4) throw "nearest";
+  const [r] = measure(t, y, .1, .4, [0]); if (r.a !== 1 || r.b !== 3 || r.d !== 2 || r.max !== 4 || r.min !== 1 || r.mean !== 2.5) throw "measure " + JSON.stringify(r);
+  const [q] = measure(t, y, .4, .1, [0]); if (q.d !== -2) throw "measure flip";
+  if (niceDiv(10, 10) !== 1 || niceDiv(3, 4) !== 1 || Math.abs(niceDiv(0.9, 4) - 0.5) > 1e-12) throw "nicediv";
+  console.log("measure ok"); }
