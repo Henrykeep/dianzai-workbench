@@ -141,7 +141,7 @@ link:
       - { name: wheel_b_mps, type: float, unit: m/s }
       - { name: bb_state,   type: uint8 }
       - { name: beam_online, type: uint8 }
-      - { name: vis_state,  type: uint8, enum: [LOST, HELD, VALID] }
+      - { name: vis_state,  type: uint8, enum: [LOST, HELD, VALID], pin: 视觉, pin_with: [vis_age_ms, vis_drops] }
       - { name: vis_age_ms, type: uint32, unit: ms }
       - { name: vis_drops,  type: uint32 }
       - { name: vis_lat_ms, type: int16, unit: ms }

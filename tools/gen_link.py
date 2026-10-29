@@ -69,7 +69,9 @@ def schema(spec: dict, params: list) -> dict:
          "telemetry": {"id": int(tel.get("id", 2)), "period_ms": int(tel.get("period_ms", 20)),
                        "fields": [{"name": f["name"], "type": WIRE[f["type"]], "unit": f.get("unit", ""),
                                    **({"enum": f["enum"]} if f.get("enum") else {}),
-                                   **({"na": int(f["na"])} if f.get("na") is not None else {})}    # 这个值表示“无数据”，界面显示 —
+                                   **({"na": int(f["na"])} if f.get("na") is not None else {}),
+                                   # pin：顶栏状态块的标签（任何题目通用，界面不认具体字段名）；pin_with：块里附带显示的数值字段
+                                   **({"pin": str(f["pin"]), "pin_with": list(f.get("pin_with") or [])} if f.get("pin") else {})}    # 这个值表示“无数据”，界面显示 —
                                   for f in tel.get("fields", [])]},
          "params": [{"name": p["name"], "type": WIRE[p["type"]], "min": p["min"], "max": p["max"],
                      "unit": p.get("unit", "")} for p in params]}

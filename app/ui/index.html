@@ -8,33 +8,36 @@
 <body>
 <div class="app">
   <header class="top">
-    <div class="brand"><span class="zh">电赛工作台</span><span class="serif">bench</span></div>
+    <div class="brand"><i data-lucide="activity"></i><span class="zh">电赛工作台</span></div>
     <div class="conn">
       <select id="port" title="端口：插上板子会自动出现并选中；sim: 开头是无需硬件的仿真板"></select>
-      <select id="baud" title="波特率：自动 = 依次试常用值，收到合法帧即停">
-        <option value="auto">自动</option><option>115200</option><option>230400</option><option>460800</option>
-        <option>921600</option><option>1000000</option><option>57600</option><option>9600</option>
-      </select>
-      <select id="lines" title="打开串口时 DTR/RTS 电平。ESP32、带一键下载电路的 CH340 板：选“不拉高”防止一连就复位/进 BOOT">
-        <option value="default">DTR/RTS 按配置</option><option value="low">DTR/RTS 不拉高</option>
-      </select>
-      <label class="lbl" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
       <button id="connect" class="btn pri">连接 <kbd>⌃O</kbd></button>
-      <button id="doctor" class="btn ghost sm" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）">自检</button>
+      <details class="menu" id="conn-opt"><summary class="btn ghost icon" title="连接选项：波特率、DTR/RTS、自动重连"><i data-lucide="sliders-horizontal"></i></summary>
+        <div class="pop">
+          <label class="field">波特率<select id="baud" title="自动 = 依次试常用值，收到合法帧即停">
+            <option value="auto">自动</option><option>115200</option><option>230400</option><option>460800</option>
+            <option>921600</option><option>1000000</option><option>57600</option><option>9600</option></select></label>
+          <label class="field" title="ESP32、带一键下载电路的 CH340 板：选“不拉高”防止一连就复位/进 BOOT">DTR/RTS<select id="lines">
+            <option value="default">按配置</option><option value="low">不拉高</option></select></label>
+          <label class="check" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
+        </div></details>
     </div>
-    <div class="ro"><span class="lbl"><span id="led" class="led"></span>链路</span><span class="v" id="ro-link">未连接</span></div>
-    <div class="ro"><span class="lbl">数据格式</span><span class="v" id="ro-schema">—</span></div>
-    <div class="ro"><span class="lbl">接收</span><span class="v" id="ro-rx">—</span></div>
-    <div class="ro" id="ro-vis-w" hidden title="视觉链路：VALID 正常 / HELD 短时没新帧、沿用上一帧 / LOST 超时。仿真里在“命令”框发 V 30 = 假相机停 3 s，可看 HELD→LOST→VALID"><span class="lbl">视觉</span><span class="v" id="ro-vis">—</span></div>
+    <div class="stats" id="stats">
+      <div class="ro"><span class="lbl"><span id="led" class="led"></span>链路</span><span class="v" id="ro-link">未连接</span></div>
+      <div class="ro"><span class="lbl">数据格式</span><span class="v" id="ro-schema">—</span></div>
+      <div class="ro"><span class="lbl">接收</span><span class="v" id="ro-rx">—</span></div>
+    </div>
     <div class="sp"></div>
-    <span id="rec" class="rec" hidden>● REC</span>
-    <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停 E-STOP<kbd>Space / Esc</kbd></button>
+    <span id="rec" class="rec" hidden><span class="dot"></span>REC</span>
+    <button id="doctor" class="btn ghost icon" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
+    <button id="theme" class="btn ghost icon" title="切换深色 / 浅色（户外强光下用浅色）"><i data-lucide="sun-moon"></i></button>
+    <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停<kbd>Space</kbd></button>
   </header>
   <div id="banner" class="banner" hidden></div>
   <main class="main">
     <aside class="panel chans">
       <div class="ph"><h3>通道</h3><div class="sp"></div><span class="lbl" id="chan-n"></span></div>
-      <input id="chan-q" class="mono" placeholder="按名字画：bb_* err, Enter（空=恢复）" title="空格/逗号分隔，* 通配；只显示匹配的通道" />
+      <input id="chan-q" class="in" placeholder="筛选通道：sp_* err" title="空格/逗号分隔，* 通配；只显示匹配的通道" />
       <div id="chans"></div>
       <details id="elfw" class="elfw"><summary title="不改固件：通过 SWD 按 ELF 符号地址直接读全局变量画线（需配置 build.elf 和探针；断开串口后使用）">ELF 变量</summary>
         <input id="elf-q" class="mono" list="elf-list" placeholder="g_speed g_cnt:i32（类型默认按大小猜）" />
@@ -42,9 +45,10 @@
         <div class="row"><button class="btn ghost sm" id="elf-go">开始观察</button><button class="btn ghost sm" id="elf-stop">停止</button><span class="lbl" id="elf-n"></span></div>
       </details>
       <div class="cmds">
-        <span class="lbl">板端命令</span>
-        <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存">解除急停 R</button></div>
-        <div class="row"><input id="cmd-c" class="in" maxlength="1" placeholder="字符"><input id="cmd-n" class="in" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
+        <button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除急停 R</button>
+        <details class="sub"><summary>板端命令</summary>
+          <div class="row"><input id="cmd-c" class="in" maxlength="1" placeholder="字符"><input id="cmd-n" class="in" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
+        </details>
       </div>
     </aside>
     <section class="panel plot">
@@ -63,9 +67,9 @@
           <div class="rawbar" id="snd" title="侧车发送；急停后全部锁定，按“解除急停”(R)才恢复">
             <select id="snd-k" class="in"><option value="text">文本</option><option value="hex">HEX</option></select>
             <select id="snd-eol" class="in"><option value="">无换行</option><option value="\n">\n</option><option value="\r\n" selected>\r\n</option></select>
-            <input id="snd-in" class="in" style="flex:1" placeholder="要发的内容，回车发送">
+            <input id="snd-in" class="in" placeholder="要发的内容，回车发送">
             <button class="btn sm" id="snd-go">发送</button><button class="btn ghost sm" id="snd-save" title="存为预设">存</button>
-            <input id="snd-ms" class="in" style="width:5em" type="number" min="10" value="100" title="定时周期 ms">
+            <input id="snd-ms" class="in" type="number" min="10" value="100" title="定时周期 ms">
           </div>
           <div class="rawbar" id="snd-presets"></div>
         </div>
@@ -95,22 +99,28 @@
         </div>
       </section>
       <section class="panel agent">
-        <div class="ph"><h3>Agent <span class="serif">suggests</span></h3><div class="sp"></div>
-          <button class="btn ghost sm" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
-          <button class="btn ghost sm" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）">阶跃实验</button>
-          <button class="btn ghost sm" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
-          <button class="btn ghost sm" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳">规则建议</button>
-          <button class="btn ghost sm" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）">重置护栏</button>
+        <div class="ph"><h3>Agent</h3>
           <select id="ag-workmode" class="sm" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
             <option value="general">通用</option><option value="diagnose">诊断（只读）</option><option value="tune">调参</option>
             <option value="edit">改代码</option><option value="review">审查</option></select>
-          <button class="btn ghost sm" id="ag-undo" disabled title="撤销 Agent 最近一次已落地的改动：参数改回原值，或 git revert 那次文件提交。可连点逐步往回撤">撤销 Agent</button>
-          <button class="btn ghost sm" id="ag-new" title="清空和 Agent 的对话上下文">新对话</button>
-          <button class="btn ghost sm" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交">写回 yaml</button>
-          <button class="btn ghost sm" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）">⚙</button></div>
-        <div class="row fw" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">
-          <button class="btn ghost sm" id="fw-build">编译</button><button class="btn ghost sm" id="fw-flash">烧录…</button>
-          <button class="btn ghost sm" id="fw-rollback">回滚固件…</button><span class="lbl" id="fw-st"></span></div>
+          <div class="sp"></div>
+          <button class="btn ghost sm" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
+          <button class="btn ghost sm" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）">阶跃实验</button>
+          <button class="btn ghost sm" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
+          <details class="menu right" id="ag-more"><summary class="btn ghost icon" title="更多：规则建议、撤销、写回 yaml、固件、设置"><i data-lucide="ellipsis"></i></summary>
+            <div class="pop">
+              <button class="mi" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button>
+              <button class="mi" id="ag-undo" disabled title="撤销 Agent 最近一次已落地的改动：参数改回原值，或 git revert 那次文件提交。可连点逐步往回撤"><i data-lucide="undo-2"></i>撤销 Agent</button>
+              <button class="mi" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交"><i data-lucide="file-pen"></i>写回 yaml</button>
+              <button class="mi" id="ag-new" title="清空和 Agent 的对话上下文"><i data-lucide="message-square-plus"></i>新对话</button>
+              <button class="mi" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）"><i data-lucide="shield-off"></i>重置护栏</button>
+              <hr><span class="mh" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">固件</span>
+              <button class="mi" id="fw-build"><i data-lucide="hammer"></i>编译</button>
+              <button class="mi" id="fw-flash"><i data-lucide="zap"></i>烧录…</button>
+              <button class="mi" id="fw-rollback"><i data-lucide="history"></i>回滚固件…</button>
+              <hr><button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置</button>
+            </div></details></div>
+        <div class="fwst"><span class="lbl" id="fw-st"></span></div>
         <div id="props" class="feed"></div>
         <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
       </section>

@@ -4,6 +4,8 @@ import "@fontsource/inter-tight/400.css";
 import "@fontsource/inter-tight/500.css";
 import "./tokens.css";
 import "./style.css";
+import { createIcons, Activity, Ellipsis, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
+import { initChrome } from "./chrome";
 import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
 import { matchNames } from "./names";
@@ -13,7 +15,7 @@ import { initRaw } from "./raw";
 import { initFFT } from "./fft";
 import { initSend } from "./send";
 
-type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number };
+type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[] };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number };
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -110,6 +112,9 @@ function applySchema(s: Schema | null) {
   if (!s) return;
   S.plotted = s.fields.filter(f => f.name !== "t_ms" && !f.enum);
   S.enums = s.fields.filter(f => f.enum);
+  document.querySelectorAll(".ro.pin").forEach(e => e.remove());
+  $("stats").insertAdjacentHTML("beforeend", S.enums.filter(f => f.pin).map(f =>
+    `<div class="ro pin" title="${esc(f.name)}"><span class="lbl">${esc(f.pin!)}</span><span class="v" id="pin-${f.name}">—</span></div>`).join(""));
   S.visible = S.plotted.map((_, i) => i < 4);
   plot.setChannels(S.plotted.map(f => f.name), S.plotted.map(f => f.unit ?? ""), S.visible);
   $("chan-n").textContent = `${S.plotted.length} 路 · ${s.period_ms ?? "?"} ms`;
@@ -124,7 +129,7 @@ function renderChans() {
     const i = +el.dataset.i!; S.visible[i] = !S.visible[i]; el.classList.toggle("on", S.visible[i]); plot.show(i, S.visible[i]);
   });
 }
-// 按名字画：输入 "bb_* err" 回车，只显示匹配的通道；空回车恢复默认前 4 路
+// 按名字画：输入 "sp_* err" 回车，只显示匹配的通道；空回车恢复默认前 4 路
 $<HTMLInputElement>("chan-q").onkeydown = e => {
   if (e.key !== "Enter") return;
   e.stopPropagation();
@@ -155,12 +160,16 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
     const el = document.getElementById(`ev-${f.name}`), v = S.enumVal[f.name];
     if (el && v != null) { const name = f.enum![v] ?? String(v); el.textContent = name; el.className = `mono st-${name}`; }
   });
-  const vs = S.enums.find(f => f.name === "vis_state");          // 视觉状态放到顶栏：比赛时一眼看到
-  $("ro-vis-w").hidden = !vs;
-  if (vs && S.enumVal.vis_state != null) {
-    const name = vs.enum![S.enumVal.vis_state] ?? "?", at = (n: string) => S.plotted.findIndex(f => f.name === n);
-    const age = plot.last(at("vis_age_ms")), drops = plot.last(at("vis_drops"));
-    $("ro-vis").innerHTML = `<b class="st-${name}">${name}</b>${age != null ? ` · ${Math.round(age)} ms` : ""}${drops ? ` · 丢 ${drops}` : ""}`;
+  // schema 里标了 pin 的枚举字段放到顶栏（视觉链路、通信、模式……由题目自己声明，界面不认字段名）
+  for (const f of S.enums) {
+    if (!f.pin || S.enumVal[f.name] == null) continue;
+    const name = f.enum![S.enumVal[f.name]] ?? "?";
+    const extra = (f.pin_with ?? []).map(n => {
+      const k = S.plotted.findIndex(p => p.name === n); const v = k < 0 ? null : plot.last(k);
+      return v == null ? "" : ` · ${Math.round(v)}${S.plotted[k].unit ? " " + S.plotted[k].unit : ""}`;
+    }).join("");
+    const el = document.getElementById(`pin-${f.name}`);
+    if (el) el.innerHTML = `<b class="st-${name}">${esc(name)}</b><i>${esc(extra.replace(/^ · /, ""))}</i>`;
   }
 }, 100);
 
@@ -375,3 +384,6 @@ $("doctor").onclick = async () => {
   $("doc-list").innerHTML = items.map(i => `<li class="d-${i.level}"><b>${mk[i.level]} ${esc(i.name)}</b>：${esc(i.msg)}${i.fix ? `<br><i>→ ${esc(i.fix)}</i>` : ""}</li>`).join("");
   $<HTMLDialogElement>("doc").show();
 };
+
+createIcons({ icons: { Activity, Ellipsis, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
+initChrome();

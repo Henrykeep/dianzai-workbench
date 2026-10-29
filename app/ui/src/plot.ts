@@ -20,12 +20,21 @@ export class Plot {
     new ResizeObserver(() => this.u?.setSize(this.size())).observe(box);
     const tick = () => { if (this.dirty && this.running) this.redraw(); requestAnimationFrame(tick); };
     requestAnimationFrame(tick);
+    // 换主题：颜色在创建时读出，所以按原数据重建一次
+    window.addEventListener("dz-theme", () => {
+      if (!this.u || !this.chDef) return;
+      const t = this.t, ys = this.ys, vis = this.u.series.slice(1).map(s => s.show !== false);
+      this.setChannels(this.chDef.names, this.chDef.units, vis);
+      this.t = t; this.ys = ys; this.dirty = true;
+    });
   }
+  private chDef?: { names: string[]; units: string[] };
 
   private size() { const r = this.box.getBoundingClientRect(); return { width: Math.max(r.width - 16, 100), height: Math.max(r.height - 8, 100) }; }
 
   setChannels(names: string[], units: string[], visible: boolean[]) {
     this.u?.destroy();
+    this.chDef = { names, units };
     this.names = names; this.t = []; this.ys = names.map(() => []);
     const grid = { stroke: css("--grid-2"), width: 1 };
     const ax = { stroke: css("--dim"), grid, ticks: { stroke: css("--grid-2"), width: 1 }, font: "500 10px JetBrains Mono", };

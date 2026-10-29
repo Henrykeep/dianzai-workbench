@@ -5,6 +5,9 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+
+- [仿真] 界面改版（docs/26-UI规范.md）：设计变量（4/8 间距、5 级字阶、一个靛蓝强调色、状态色只表状态）+ 统一组件；深 / 浅两套主题（顶栏切换，记住选择）；Lucide 图标；少用功能收进菜单（串口细节、板子命令、Agent “…”），功能未删。截图 shots/ui2/before_* / after_*。
+- [仿真] 顶栏状态块改为 schema 驱动：遥测字段写 `pin: 标签`、`pin_with: [字段]` 就上顶栏，界面不再认具体字段名（原来写死 vis_state）。
 - [编译] check_deps 新规则 I1（restudy M4）：传给 pal_gpio_irq_attach 的中断回调里出现 printf / pal_delay / 串口或链路发送 / malloc / OLED / 浮点数学函数 / while·for 循环 → 拦截。违规样例自测；现有代码 0 处违规。
 - [仿真] dt 异常重置（restudy P4）：pid 1.1.0 加 `pid_check_gap`（间隔 > 5×dt 或 > 0.5 s：清微分历史 / 微分滤波，保留积分），lpf 1.1.0 加 `lpf1_check_gap`（下个样本直通）；car_2wd 控制中断按 pal_micros 实测间隔调用。自测通过；断点恢复场景真板【未测】。iface_hash 自测改为按模块当前版本算（原来写死 1.0.0）。
 - [仿真] doctor 自检（restudy A7）：`python -m dzbench --doctor [--repo 工程]` 或 UI 顶栏“自检”，查 Python 依赖、arm-gcc / make、dzbench.json、Keil 路径、flash.target、MSPM0 器件包、探针、串口、大模型 Key、数据目录，每项 ✓/!/✗ 加中文修复提示，只读。多探针不猜（A3）：没配 flash.probe 又插了多个探针 → 报 multi_probe 并列出序列号；配置的探针没插 → probe_missing。假 pyOCD 单测；真探针【未测】。

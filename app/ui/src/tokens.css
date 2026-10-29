@@ -1,43 +1,47 @@
-/* 电赛工作台 设计变量 v0.2 —— 4/8 px 网格；表面层次分区，少用边框 */
-@font-face{font-family:"Smiley Sans";src:url(./smiley.woff2) format("woff2")}
+/* 电赛工作台 设计变量 v0.3（docs/26-UI规范.md）
+ * 网格 4/8 px；表面 4 层；一个强调色（靛蓝）只给主操作、选中、焦点、待下发改动；
+ * 状态色（ok/warn/crit/info）只表示状态；急停红只给急停与故障。 */
 :root,[data-theme="dark"]{
-  /* 表面层次：0 底 → 1 面板 → 2 抬起 → 3 控件 */
-  --s0:#09090a; --s1:#111112; --s2:#18181a; --s3:#202023; --s-hover:#26262a;
-  --ink:#f4f1ec; --text:#d9d5cf; --muted:#8a8680; --dim:#5a5853; --faint:#3a3936;
-  --hair:rgba(240,236,230,.06); --grid:rgba(240,236,230,.035); --grid-2:rgba(240,236,230,.07);
-  --hi:inset 0 1px 0 rgba(255,255,255,.05);              /* 内高光 */
-  --sh-1:0 1px 2px rgba(0,0,0,.4);
-  --sh-2:0 1px 0 rgba(255,255,255,.04) inset,0 8px 24px -8px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.035);
-  /* 品牌橙：只用于“待生效的改动”与主操作 */
-  --acc:#ec8a5e; --acc-ink:#1a0d06; --acc-bg:rgba(236,138,94,.12); --acc-soft:#e9b494;
-  --ok:#6cc08c; --warn:#dca54c; --crit:#e5604e; --info:#93aed3; --off:#4d4b47;
-  --ok-bg:rgba(108,192,140,.10); --warn-bg:rgba(220,165,76,.11); --crit-bg:rgba(229,96,78,.12);
-  --estop:#ff3b30; --estop-2:#c81e14; --estop-ink:#fff;
-  /* 通道：主测量为象牙白（最高对比），其余 Okabe-Ito 改；第 5 通道起叠加线型 */
-  --ch1:#ece6dc; --ch2:#62b6ef; --ch3:#34b98f; --ch4:#efd75a;
-  --ch5:#c98bb8; --ch6:#e0743e; --ch7:#3f86d0; --ch8:#9a968f;
-  --setpoint:#8a8680; --ref:#6a6862;
-  --f-brand:"Smiley Sans","Inter Tight",sans-serif;
-  --f-serif:"Instrument Serif","Newsreader",Georgia,serif;
-  --f-sans:"Inter Tight","Inter","PingFang SC","Microsoft YaHei","Noto Sans CJK SC",system-ui,sans-serif;
-  --f-mono:"JetBrains Mono","Cascadia Code",Consolas,monospace;
-  /* 字阶：标签 10 / 正文 12–13 / 小标题 14 / 读数 20 / 主指标 40 */
-  --t-lbl:10px; --t-sm:12px; --t-md:13px; --t-h:14px; --t-num:20px; --t-kpi:40px;
-  --r-xs:4px; --r-sm:6px; --r:8px; --r-lg:12px;
-  --u:4px; --dur:120ms; --ease:cubic-bezier(.22,1,.36,1);
+  color-scheme:dark;
+  --s0:#0b0c0e; --s1:#121316; --s2:#181a1e; --s3:#1f2126; --s-hover:#262930;
+  --ink:#eceef2; --text:#c9ccd3; --muted:#8b9099; --dim:#5f646d; --faint:#3a3e45;
+  --hair:rgba(255,255,255,.06); --line:rgba(255,255,255,.09); --grid:rgba(255,255,255,.035); --grid-2:rgba(255,255,255,.07);
+  --hi:inset 0 1px 0 rgba(255,255,255,.04);
+  --sh-1:0 1px 2px rgba(0,0,0,.35);
+  --sh-2:0 0 0 1px var(--line),0 8px 24px -12px rgba(0,0,0,.6);
+  --sh-pop:0 0 0 1px var(--line),0 16px 40px -12px rgba(0,0,0,.7);
+  --acc:#7b8cff; --acc-2:#6474f0; --acc-ink:#0b0c1a; --acc-bg:rgba(123,140,255,.14); --focus:0 0 0 2px rgba(123,140,255,.45);
+  --ok:#4fbf86; --warn:#e2a84a; --crit:#ef5f55; --info:#6aa9d8; --off:#4a4e55;
+  --ok-bg:rgba(79,191,134,.12); --warn-bg:rgba(226,168,74,.12); --crit-bg:rgba(239,95,85,.12);
+  --estop:#ff3b30; --estop-2:#cc1f15; --estop-ink:#fff;
+  /* 通道：第 1 条最高对比，其余 Okabe-Ito；色盲可分 */
+  --ch1:#eceef2; --ch2:#56b4e9; --ch3:#2fbf8f; --ch4:#f0d65a;
+  --ch5:#cc79a7; --ch6:#e69f00; --ch7:#4c7fd6; --ch8:#9aa0a8;
+  --setpoint:#8b9099; --ref:#5f646d;
+  --f-sans:"Inter Tight","Inter","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono","Cascadia Mono","SF Mono",Consolas,"Noto Sans Mono CJK SC","Microsoft YaHei UI",monospace;
+  /* 字阶：11 标签 / 12 正文小 / 13 正文 / 14 标题 / 20 读数 */
+  --t-xs:11px; --t-sm:12px; --t-md:13px; --t-h:14px; --t-num:20px;
+  /* 间距：4 的倍数 */
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px;
+  --r-xs:4px; --r-sm:6px; --r:8px; --r-lg:10px;
+  --h-ctl:28px; --h-sm:24px;
+  --dur:140ms; --ease:cubic-bezier(.2,.8,.2,1);
 }
 [data-theme="light"]{
-  --s0:#eceae6; --s1:#f7f6f3; --s2:#ffffff; --s3:#f0eee9; --s-hover:#e7e4de;
-  --ink:#0f0e0d; --text:#24221f; --muted:#5b5751; --dim:#837e77; --faint:#bdb8b0;
-  --hair:rgba(15,14,13,.08); --grid:rgba(15,14,13,.05); --grid-2:rgba(15,14,13,.10);
-  --hi:inset 0 1px 0 rgba(255,255,255,.9);
-  --sh-1:0 1px 2px rgba(15,14,13,.08);
-  --sh-2:0 1px 0 rgba(255,255,255,.9) inset,0 6px 20px -8px rgba(15,14,13,.14),0 0 0 1px rgba(15,14,13,.06);
-  --acc:#c4541c; --acc-ink:#fff; --acc-bg:rgba(196,84,28,.10); --acc-soft:#a8481a;
-  --ok:#17804a; --warn:#9a5f00; --crit:#bf2717; --info:#2c5a8e; --off:#a19c94;
-  --ok-bg:rgba(23,128,74,.09); --warn-bg:rgba(154,95,0,.10); --crit-bg:rgba(191,39,23,.09);
-  --estop:#e0170b; --estop-2:#a90f06;
-  --ch1:#1b1a18; --ch2:#0072b2; --ch3:#00936b; --ch4:#a08a00;
+  color-scheme:light;
+  --s0:#eef0f3; --s1:#ffffff; --s2:#f7f8fa; --s3:#eceef2; --s-hover:#e4e7ec;
+  --ink:#111318; --text:#2b2f37; --muted:#5d636e; --dim:#8a909b; --faint:#c3c8d0;
+  --hair:rgba(17,19,24,.07); --line:rgba(17,19,24,.11); --grid:rgba(17,19,24,.05); --grid-2:rgba(17,19,24,.10);
+  --hi:none;
+  --sh-1:0 1px 2px rgba(17,19,24,.06);
+  --sh-2:0 0 0 1px var(--line),0 4px 14px -8px rgba(17,19,24,.18);
+  --sh-pop:0 0 0 1px var(--line),0 12px 32px -10px rgba(17,19,24,.25);
+  --acc:#4c5bd4; --acc-2:#3d4bc0; --acc-ink:#fff; --acc-bg:rgba(76,91,212,.10); --focus:0 0 0 2px rgba(76,91,212,.35);
+  --ok:#14804a; --warn:#9a6200; --crit:#c42a1c; --info:#2b64a0; --off:#a4a9b2;
+  --ok-bg:rgba(20,128,74,.09); --warn-bg:rgba(154,98,0,.10); --crit-bg:rgba(196,42,28,.08);
+  --estop:#e0170b; --estop-2:#ad1208;
+  --ch1:#111318; --ch2:#0072b2; --ch3:#00936b; --ch4:#a08a00;
   --ch5:#a8417f; --ch6:#d05a00; --ch7:#3a55b5; --ch8:#77726b;
-  --setpoint:#5b5751; --ref:#b3aea6;
+  --setpoint:#5d636e; --ref:#a4a9b2;
 }
