@@ -3,6 +3,7 @@
 > 全国大学生电子设计竞赛用的嵌入式工作台：STM32（CubeMX+HAL）与 TI MSPM0（SysConfig+DriverLib）多板卡，换板只改引脚；PC 仿真板；dzframe/1 串口协议；桌面工作台 dzbench（曲线、参数、急停、回放、内置 Agent）。
 
 改代码前先读 [AGENTS.md](AGENTS.md)。芯片事实以数据手册 / SDK 头文件为准。
+换板、换引脚、加题前先读 [skills/dz-firmware/SKILL.md](skills/dz-firmware/SKILL.md)（含文件级改法纪律）。
 
 ## 先看这个
 - [快速上手](docs/00-快速上手.md)：装 exe → CubeMX → Keil 加模块 → 烧录 → 连接 → Agent 调参 → 急停
