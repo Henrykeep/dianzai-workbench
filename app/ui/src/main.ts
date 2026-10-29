@@ -94,6 +94,8 @@ async function toggleConnect() {
   const btn = $<HTMLButtonElement>("connect");
   btn.disabled = true; btn.textContent = $<HTMLSelectElement>("baud").value === "auto" && !port.startsWith("sim:") ? "探测波特率…" : "连接中…";
   try {
+    const low = $<HTMLSelectElement>("lines").value === "low";
+    await call("serial_lines", low ? { dtr: false, rts: false } : { dtr: null, rts: null });
     const r = await call("connect", { port, baud: $<HTMLSelectElement>("baud").value });
     if (r?.baud) $<HTMLSelectElement>("baud").value = String(r.baud);
     plot.clear();
@@ -292,7 +294,7 @@ function renderStatus(st: Msg) {
   }
   $("connect").innerHTML = st.connected ? "断开 <kbd>⌃O</kbd>" : "连接 <kbd>⌃O</kbd>";
   $("connect").classList.toggle("pri", !st.connected);
-  $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = !!st.connected;
+  $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = $<HTMLSelectElement>("lines").disabled = !!st.connected;
   $("empty").hidden = !!st.connected && !!S.schema;
   $("empty").innerHTML = `<div>${st.connected ? (st.hint ? esc(st.hint) : "等待板子心跳…") : "选端口，点 <b>连接</b>。<br>没有硬件？选 <b>仿真板</b> 先熟悉界面。"}</div>`;
   if (was && !st.connected) { applyNone(); loadLogs(); }

@@ -82,6 +82,12 @@ class Server:
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
         if op == "list_ports":
             return await run(None, list_ports)
+        if op == "serial_lines":                       # {"dtr": true/false/null, "rts": ...}；下次打开串口生效
+            from . import ports as _p
+            _p.LINES.clear()
+            if any(m.get(k) is not None for k in ("dtr", "rts")):   # 都是 null = 回到配置文件 serial.dtr/rts
+                _p.LINES.update({k: m.get(k) for k in ("dtr", "rts")})
+            return {"ok": True, **_p.line_settings()}
         if op == "connect":
             baud = m.get("baud")
             return await run(None, s.connect, m["port"], None if baud in (None, "auto", 0) else int(baud))

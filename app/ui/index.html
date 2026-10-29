@@ -15,6 +15,9 @@
         <option value="auto">自动</option><option>115200</option><option>230400</option><option>460800</option>
         <option>921600</option><option>1000000</option><option>57600</option><option>9600</option>
       </select>
+      <select id="lines" title="打开串口时 DTR/RTS 电平。ESP32、带一键下载电路的 CH340 板：选“不拉高”防止一连就复位/进 BOOT">
+        <option value="default">DTR/RTS 按配置</option><option value="low">DTR/RTS 不拉高</option>
+      </select>
       <label class="lbl" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
       <button id="connect" class="btn pri">连接 <kbd>⌃O</kbd></button>
     </div>

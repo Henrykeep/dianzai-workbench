@@ -5,6 +5,8 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 文本遥测解析：`\r\n`、单独 `\r` 都当行尾；先按 UTF-8、不合法再按 GB18030（GBK）解码，中文通道名可用，GBK 第二字节不再拆出假 ASCII 通道。补任意字节切分 / CRLF 切开 / GBK 双字节切开的测试。
+- [仿真] 串口 DTR/RTS 可配：配置 `serial.dtr/rts`（null = 驱动默认）或连接栏“DTR/RTS 不拉高”；在 open() 前设好，防 ESP32/一键下载电路一连就复位。真 CH340/ESP32 未测。
 - [仿真] 钢珠跟踪器：搜索期连续 3 帧位置一致才锁定（`confirm`，1 = 旧行为）、门限随速度放宽（`gate_vel_k`）、外推时速度逐帧衰减（`coast_damp`）、速度上限。PC 合成数据测过，实机阈值未调。
 - [仿真] 侧车烧录：MSPM0 改走 TI 官方 DFP 包（MSPM0G1X0X_G3X0X_DFP 1.3.1，BSD-3，sha256 校验；`tools/fetch_third_party.sh m0pack`），Windows 安装包内置；缺包时报 `no_pack` 而不是让 pyOCD 猜目标。查找顺序 DZBENCH_PACK → 安装包内 → third_party/packs → ~/.dzbench/packs。真探针未测。
 - [仿真] 变量监视按地址合并成块读（相邻间隔 ≤64 B 合一次读），减少 SWD 往返。真探针提速幅度未测。

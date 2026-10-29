@@ -44,12 +44,37 @@ def explain_open_error(device: str, e: Exception) -> tuple[str, str]:
     return f"打不开 {device}：{msg}", "拔插 USB 线；确认驱动（CH340/CP210x）已装"
 
 
+LINES: dict = {}      # 运行时覆盖（server 的 serial_lines 操作）；空 = 读配置 serial.dtr / serial.rts
+
+
+def line_settings() -> dict:
+    """DTR/RTS：None = 不动（驱动默认，pyserial 打开时置高），True/False = 打开前就设好。
+    ESP32 / 带自动下载电路的 CH340 板：DTR/RTS 一动就复位或进 BOOT，一般要设 False。"""
+    if LINES:
+        return dict(LINES)
+    try:
+        from . import config
+        sec = config.load().get("serial") or {}
+    except Exception:  # noqa: BLE001
+        sec = {}
+    return {k: sec.get(k) for k in ("dtr", "rts")}
+
+
 def open_serial(device: str, baud: int, **kw):
-    """POSIX 上独占打开（Windows 本来就独占）：两个窗口/程序抢同一个口时第二个直接报“被占用”，而不是两边都收到半截数据。"""
+    """POSIX 上独占打开（Windows 本来就独占）：两个窗口/程序抢同一个口时第二个直接报“被占用”，而不是两边都收到半截数据。
+    DTR/RTS 在 open() 之前设好，避免打开瞬间的电平跳变把板子复位。"""
     import serial
     if os.name != "nt":
         kw.setdefault("exclusive", True)
-    return serial.Serial(device, baud, **kw)
+    lines = {k: v for k, v in line_settings().items() if v is not None}
+    if not lines:
+        return serial.Serial(device, baud, **kw)
+    s = serial.Serial(None, baud, **kw)
+    s.port = device
+    for k, v in lines.items():
+        setattr(s, k, bool(v))
+    s.open()
+    return s
 
 
 def identity(device: str) -> tuple | None:

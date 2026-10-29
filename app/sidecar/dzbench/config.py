@@ -23,6 +23,7 @@ DEFAULTS: dict = {
     "step_test": None,      # segments: 4 + delta:[..] = 四段正负阶跃；plant_stable: 开环实验门禁（默认 false）
                             # {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}
     "step_tests": {},       # 多个对象：{工程名: step_test}；和 step_test（可为列表）一起按“遥测里有 y/sp”自动选
+    "serial": {"dtr": None, "rts": None},   # None = 驱动默认；false = 打开串口时不拉 DTR/RTS（ESP32/自动下载电路防复位）
     "core": None,           # "cm0plus" / "cm3" / "cm4" / "cm7"；不填按 flash.target 猜
 }
 ENV = {"DZBENCH_PYOCD_TARGET": ("flash", "target"), "DZBENCH_PROBE": ("flash", "probe"), "DZBENCH_UV4": ("build", "keil_uv4")}
