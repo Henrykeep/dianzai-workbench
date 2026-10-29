@@ -8,19 +8,22 @@
 - AC5（旧工程）：Options → C/C++ → 勾选 **C99 Mode**（即 `--c99`）。【未验证】
 
 ## 把模块加进已有 Keil 工程
-1. 生成板卡表：`make BOARD=<板> APP=<应用> gen` → `build/<板>/gen/board_gen.{h,c}`。
-2. 注入（可重复运行，只增删 `dz/` 开头的组，原文件备份为 `.bak`）：
+1. 注入（可重复运行，只增删 `dz/` 开头的组，原文件备份为 `.bak`）。**推荐**按板子+应用自动挑模块（先 `make gen`，再按头文件依赖只加用到的模块、应用源文件、生成的 board_gen / link_gen 和 `DZ_` 宏）：
+```sh
+python3 tools/keil_inject.py <工程>/MDK-ARM/xxx.uvprojx --board <板> --app <应用> --dry-run   # 先看会加什么
+python3 tools/keil_inject.py <工程>/MDK-ARM/xxx.uvprojx --board <板> --app <应用>
+```
+   【已实测】F103 car_2wd 挑出 10 个模块，只用这些目标文件 arm-gcc 能链接通过；【未验证】Keil 里编译。
+   也可以手列（老写法，仍可用）：
 ```sh
 python3 tools/keil_inject.py <工程>/MDK-ARM/xxx.uvprojx \
-  --module firmware/algo/pid --module firmware/drivers/motor_dc --module firmware/drivers/encoder \
-  --module firmware/proto/dzframe --module ports/stm32-cubemx \
-  --extra-src build/<板>/gen/board_gen.c --extra-inc build/<板>/gen --extra-inc apps/include \
-  --extra-src apps/<应用>/app_main.c
+  --module firmware/algo/pid --module firmware/proto/dzframe --module ports/stm32-cubemx \
+  --extra-src build/<板>/gen/board_gen.c --extra-inc build/<板>/gen --extra-inc apps/include --extra-src apps/<应用>/app_main.c
 ```
-   TIM 时基工程再加 `--define DZ_CM_TIM_TIMEBASE`，FreeRTOS 工程加 `--define DZ_CM_RTOS_FREERTOS`（与 board_gen.mk 的 BOARD_DEFS 一致）。
-3. 在 CubeMX 生成的 main.c 的 USER CODE 区放接缝（docs/05）。
-4. **回调冲突**：ports/stm32-cubemx 定义了 `HAL_UART_RxCpltCallback`、`HAL_UART_ErrorCallback`、（SysTick 时基时）`HAL_TIM_PeriodElapsedCallback`。原工程里同名回调要删掉或改成转发，否则链接报重复定义。
-5. 以后修改模块列表，重新运行同一条命令即可。
+   手列时：TIM 时基工程再加 `--define DZ_CM_TIM_TIMEBASE`，FreeRTOS 工程加 `--define DZ_CM_RTOS_FREERTOS`（与 board_gen.mk 的 BOARD_DEFS 一致；`--board` 写法自动加）。
+2. 在 CubeMX 生成的 main.c 的 USER CODE 区放接缝（docs/05）。
+3. **回调冲突**：ports/stm32-cubemx 定义了 `HAL_UART_RxCpltCallback`、`HAL_UART_ErrorCallback`、（SysTick 时基时）`HAL_TIM_PeriodElapsedCallback`。原工程里同名回调要删掉或改成转发，否则链接报重复定义。
+4. 以后修改模块列表，重新运行同一条命令即可。
 
 ## 测试
 `make check` 会跑 `tools/test_keil_inject.py`：对 `tools/testdata/real/` 下两个真实 .uvprojx 的副本注入两次，检查 XML 合法、第二次无变化、原有组都在。

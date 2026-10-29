@@ -454,6 +454,11 @@ def build_board(res: dict, meta: dict, base: dict | None, ioc_rel: str) -> dict:
         "schema_version": 1, "name": "TODO", "vendor": "TODO", "description": "由 tools/ioc_import.py 从 .ioc 生成",
         "toolchain": {"compiler": "arm-none-eabi-gcc", "flasher": "openocd", "openocd_interface": "TODO",
                       "openocd_target": "TODO"}}
+    tc = b.setdefault("toolchain", {})
+    if tc.get("openocd_target", "TODO") == "TODO" and str(meta.get("family", "")).startswith("stm32"):
+        tc["openocd_target"] = f"target/{meta['family']}x.cfg"        # stm32f1 → target/stm32f1x.cfg（OpenOCD 自带脚本名）
+    if b.get("name", "TODO") == "TODO":
+        b["name"] = pathlib.Path(ioc_rel).stem                          # 先用 .ioc 文件名，改成你板子的名字
     b["port"] = "stm32-cubemx"
     b["config_source"] = {"tool": "cubemx", "file": ioc_rel,
                           **{k: meta[k] for k in ("hal_timebase", "rtos") if meta.get(k)}}
@@ -543,7 +548,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("ioc", nargs="?", type=pathlib.Path)
     g = ap.add_mutually_exclusive_group()
-    g.add_argument("--out", type=pathlib.Path, help="写出 board.yaml")
+    g.add_argument("-o", "--out", type=pathlib.Path, help="写出 board.yaml")
     g.add_argument("--check", type=pathlib.Path, help="与已有 board.yaml 对比，不一致退出 1")
     ap.add_argument("--base", type=pathlib.Path, help="生成时保留其中的名称/说明/verified/note 等人工信息")
     ap.add_argument("--timer", action="append", default=[], help="节拍定时器 名=实例，如 CTRL=TIM6")

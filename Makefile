@@ -221,9 +221,9 @@ $(OUT)/hal/%.s.o: %.s
 	@echo "  AS  $<"
 	$(Q)$(CC) $(MCU) -c $< -o $@
 
-$(TARGET): $(OBJS) $(HAL_OBJS)
+$(TARGET): $(OBJS) $(HAL_OBJS) $(LDSCRIPT)
 	@echo "  LD  $@"
-	$(Q)$(CC) $^ $(LDFLAGS) -o $@
+	$(Q)$(CC) $(filter-out $(LDSCRIPT),$^) $(LDFLAGS) -o $@
 ifneq ($(filter stm32f4 stm32-cubemx mspm0-driverlib,$(BOARD_FAMILY)),)
 	$(TC)objcopy -O binary $@ $(OUT)/$(APP).bin
 	$(TC)objcopy -O ihex $@ $(OUT)/$(APP).hex

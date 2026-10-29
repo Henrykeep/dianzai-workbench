@@ -5,6 +5,8 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] keil_inject `--board <板> --app <应用>`：先 make gen，再按头文件依赖闭包只挑用到的模块、应用源文件、board_gen / link_gen、DZ_ 宏，不用手列 --module（F103 car_2wd 挑 10 个，只用这些目标文件 arm-gcc 链接通过；Keil 里【未测】）。docs/14 改为推荐这个写法。
+- [编译] ioc_import：文档里写的 `-o` 实际不认（只有 --out）→ 加 `-o`；新板没 --base 时 openocd_target 按系列填（stm32f1 → target/stm32f1x.cfg），name 用 .ioc 文件名代替 TODO。链接步骤依赖链接脚本（改 .ld 会重链）。
 - [编译] 固件 LINK 可走 RTT：`make LINK=rtt BOARD=… APP=…`（新模块 firmware/proto/dzrtt 0.1.0，SEGGER RTT 兼容控制块、非阻塞整段丢；应用经 apps/include/link_io.h 收发，默认仍是串口）。输出到 build/<板>-rtt/。主机单测模拟探针读写已过；MSPM0 / F407 交叉编译通过（MSPM0 car_2wd 多 1.3 KB RAM）；真探针【未上板】。
 - [仿真] 端口 `sim:<应用>+hw`（端口列表“仿真板当实板”）：同一个仿真程序，风险分级按实板走，阶跃/扫频实验要点确认卡，可端到端测 pre-arm 检查。确认卡把解锁前检查画成 ✓/✗ 清单、标出 120 s 有效期、执行被拦时直接显示原因。
 - [仿真] 走查 v0.9.0 修的别扭处：启动瞬间弹假“侧车未连接”；Agent 工具栏溢出（重置护栏/模式被裁掉）；扫频只能靠问 Agent、结果界面不显示 → 加“扫频”按钮和结果卡；离线助手在阶跃实验后几秒才问时说“没阶跃”→ 改为引用上一轮判定并指向“规则建议”；浮点 1e-45 级噪声显示为 0。实机确认卡（arm 卡）仿真里是自动级不出卡，未在实板上走查。

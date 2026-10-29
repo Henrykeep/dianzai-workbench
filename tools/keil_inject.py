@@ -100,6 +100,42 @@ def plan(uv: pathlib.Path, root: pathlib.Path, modules: list[str], extra_src: li
     return groups, incs
 
 
+def from_build(root: pathlib.Path, board: str, app: str) -> tuple[list[str], list[str], list[str], list[str]]:
+    """--board/--app：不用手列模块。先 make gen，再按 make vars 的源文件做头文件依赖闭包，只挑真正用到的模块。
+    返回 (modules, extra_src, extra_inc, defines)。"""
+    import re
+    import shutil
+    import subprocess
+    mk = ["make", "-s", "-C", str(root), f"BOARD={board}", f"APP={app}"]
+    r = subprocess.run(mk + ["gen"], capture_output=True, text=True)
+    if r.returncode:
+        raise SystemExit(f"✗ make gen 失败：\n{r.stdout[-600:]}{r.stderr[-600:]}")
+    v = dict(l.split("=", 1) for l in subprocess.run(mk + ["vars"], capture_output=True, text=True, check=True).stdout.splitlines() if "=" in l)
+    srcs, incs = v["SRCS"].split(), v["INC"].split()
+    defs = [d[2:] for d in v.get("DEFS", "").split() if d.startswith("-DDZ_")]   # 芯片宏（STM32F103xB 等）Keil 工程里本来就有
+    mod_of = lambda f: str(pathlib.Path(f).parent) if re.match(r"(firmware|ports)/", f) else None
+    lib = {}
+    for f in srcs:
+        if (m := mod_of(f)):
+            lib.setdefault(m, []).append(f)
+    seed = [f for f in srcs if not mod_of(f)] + lib.get(next((m for m in lib if m.startswith("ports/")), ""), [])
+    cc = shutil.which("arm-none-eabi-gcc") or shutil.which("cc") or "gcc"
+    need, todo, seen = set(m for m in lib if m.startswith("ports/")), list(seed), set()
+    while todo:
+        batch = [f for f in todo if f not in seen]; seen.update(batch); todo = []
+        if not batch:
+            break
+        out = subprocess.run([cc, "-MM", "-MG", *[f"-I{i}" for i in incs], *v.get("DEFS", "").split(), *batch],
+                             cwd=root, capture_output=True, text=True).stdout
+        for h in re.findall(r"(\S+\.h)\b", out.replace("\\\n", " ")):
+            m = str(pathlib.Path(h).parent)
+            if m in lib and m not in need:
+                need.add(m); todo += lib[m]
+    extra_src = [f for f in srcs if not mod_of(f)]
+    extra_inc = [i for i in incs if not re.match(r"(firmware|ports)/", i) or i in ("apps/include",)]
+    return sorted(need), extra_src, extra_inc, defs
+
+
 def selftest() -> int:
     sample = """<?xml version="1.0"?>
 <Project><Targets><Target><TargetName>T</TargetName><TargetOption><TargetArmAds><Cads><VariousControls>
@@ -131,6 +167,8 @@ def main() -> int:
     ap.add_argument("--extra-src", action="append", default=[])
     ap.add_argument("--extra-inc", action="append", default=[])
     ap.add_argument("--define", action="append", default=[])
+    ap.add_argument("--board", help="和 --app 一起用：按这次构建自动挑模块、源文件、包含路径、DZ_ 宏（不用手列 --module）")
+    ap.add_argument("--app")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
@@ -138,6 +176,13 @@ def main() -> int:
         return selftest()
     if not a.uvprojx:
         ap.error("需要 .uvprojx 路径")
+    if a.board or a.app:
+        if not (a.board and a.app):
+            ap.error("--board 和 --app 要一起给")
+        m, xs, xi, d = from_build(a.root, a.board, a.app)
+        a.module += [x for x in m if x not in a.module]; a.extra_src += xs; a.extra_inc += xi
+        a.define += [x for x in d if x not in a.define]
+        print(f"按 {a.board}/{a.app} 的构建挑出 {len(m)} 个模块：{', '.join(pathlib.Path(x).name for x in m)}")
     text = a.uvprojx.read_text(encoding="utf-8")
     groups, incs = plan(a.uvprojx, a.root, a.module, a.extra_src, a.extra_inc)
     new = inject(text, groups, incs, a.define)

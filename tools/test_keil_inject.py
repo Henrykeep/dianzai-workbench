@@ -24,4 +24,12 @@ for src in sorted((ROOT / "tools/testdata/real").glob("*.uvprojx")):
             and sum(g.startswith("dz/") for g in new_groups) == len(MODS) * orig.count("<Target>")
         print(("✓" if ok else "✗"), src.name, f"原有组 {len(old_groups)}，新增 {len(new_groups) - len(old_groups)}")
         fail += not ok
+# --board/--app：按构建自动挑模块（头文件依赖闭包）；用的模块在、没用的（如 LINK=uart 时的 dzrtt）不在
+sys.path.insert(0, str(ROOT / "tools"))
+import keil_inject  # noqa: E402
+mods, xs, xi, _ = keil_inject.from_build(ROOT, "stm32f103c8t6-car-cubemx", "car_2wd")
+ok = {"firmware/proto/dzframe", "firmware/proto/dzctl", "firmware/algo/pid", "ports/stm32-cubemx"} <= set(mods) \
+    and "firmware/proto/dzrtt" not in mods and "apps/car_2wd/app_main.c" in xs and any(i.endswith("linkgen") for i in xi)
+print(("✓" if ok else "✗"), "--board/--app 自动挑模块：", " ".join(pathlib.Path(m).name for m in mods))
+fail += not ok
 sys.exit(1 if fail else 0)
