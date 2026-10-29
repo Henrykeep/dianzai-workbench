@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 import re
 
+from .untrusted import unwrap
+
 NAME = "离线规则助手"
 
 INTENTS = (   # 顺序即优先级
@@ -57,7 +59,7 @@ class OfflineAssistant:
                 steps += 1
             if m["role"] == "tool":
                 try:
-                    r = json.loads(m["content"])
+                    r = json.loads(unwrap(m["content"]).split("\n[工作台")[0])
                 except ValueError:       # loop 把超长结果截断到 8000 字符
                     r = {"ok": False, "error": "工具结果太长被截断"}
                 done.setdefault(m["tool_call_id"].split("_", 1)[1], []).append(r)

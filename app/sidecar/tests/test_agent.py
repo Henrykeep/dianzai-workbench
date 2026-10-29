@@ -1,5 +1,7 @@
 """内置 Agent：全部离线（假 LLM / 本地假 HTTP 服务），不需要网络和 Key。"""
 import json
+
+from dzbench.agent.untrusted import unwrap
 import math
 import os
 import pathlib
@@ -191,7 +193,7 @@ def test_agent_loop_only_proposes_and_cannot_estop(repo):
     prop = [e for e in ev if e["type"] == "proposal"]
     # 调参护栏（非仿真 = 实机档）：0.08 一步最多 ×1.5 → 0.12，而不是直接到上限 2；且还没生效
     assert prop and prop[0]["value"] == 0.12 and "护栏" in prop[0]["reason"] and s.params["kp"] == 0.08
-    tool_msgs = [json.loads(m["content"]) for m in fake.seen[-1][0] if m["role"] == "tool"]
+    tool_msgs = [json.loads(unwrap(m["content"])) for m in fake.seen[-1][0] if m["role"] == "tool"]
     assert tool_msgs[2]["ok"] is False and "estop" in tool_msgs[2]["error"]
     assert tool_msgs[3]["ok"] is False and "frozen" in tool_msgs[3]["error"]
     assert not any("estop" in t["name"] for t in fake.seen[0][1])
@@ -298,3 +300,15 @@ def test_yaml_writeback_counts_only_changed_and_refuses_noop(repo):
     with pytest.raises(GatewayError) as e:
         g.propose_yaml_params("apps/x/app.yaml", {"kp": cur}, "写回")
     assert e.value.code == "no_change"
+
+
+def test_edit_miss_gives_closest_lines(repo):
+    """aider find_similar_lines：search 差一点时把最像的原文回给模型；replace 已在文件里时直说。"""
+    (repo / "apps/x/b.c").write_text("a();\nb();\nint gain = 1;\nc();\nd();\n", encoding="utf-8")
+    g = Gateway(repo, runner=Runner())
+    with pytest.raises(GatewayError) as e:
+        g.propose_edit("apps/x/b.c", "b();\nint gain = 1 ;\nc();", "b();\nint gain = 3;\nc();", "r")
+    assert "int gain = 1;" in e.value.fix and "没有找到" in e.value.message
+    with pytest.raises(GatewayError) as e:
+        g.propose_edit("apps/x/main.c", "int gainz = 9;", "int other = 2;", "r")
+    assert "已经在" in e.value.fix

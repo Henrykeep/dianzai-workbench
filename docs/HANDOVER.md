@@ -54,3 +54,7 @@
 - 本体 `third_party/vendored/pid_helper/pid_helper_ident.py`（GPL-3.0，逐函数移植，改动列在 SOURCE.md）；适配层 `app/sidecar/dzbench/tuning/identify.py`：`steady_state`、`open_loop_pid`、分阶段打分。
 - experiment.py 的自写稳态判定已删除（不留两份）；StagedSearch / 四段阶跃 / 相对打分仍是自写。
 - 待做：`open_loop_test` 只有门禁（require_open_loop）没有执行入口，接上时直接调 `identify.open_loop_pid`。
+
+### 第 11 项：Agent 护栏（2026-10-29，UTC+8）
+- `agent/stuck.py`（OpenHands 移植）、`agent/untrusted.py`（工具结果包 `<工具数据>`）、`AgentLoop._trim_middle`（头尾裁剪）、`gateway.similar_lines`（aider 移植）。说明在 docs/18 末节。
+- 解析工具消息的地方要先 `untrusted.unwrap()`（offline.py、stuck.py、测试已改）。

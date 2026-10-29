@@ -160,3 +160,10 @@ aggressive 在实机档 8 轮内仍调不好（单步 ×0.7 下限太保守）�
 - `hardfault.py`：栈帧 + EXC_RETURN + （v7-M 才有的）CFSR/HFSR/MMFAR/BFAR；**M0/M0+ 没有这些寄存器**，只靠 PC/LR 和对齐提示；有 ELF 时把 PC/LR 翻成 `函数+偏移`。
 - `elfsym.py`：纯 Python 读 ELF32 符号表；`SymbolWatch` 按变量名经探针轮询画曲线（虚拟 schema `ELF`，仅串口未绑定固件 schema 时可用）。
 - `config.py` 分层：内置默认 < `~/.dzbench/machine.json`（UV4 路径、探针序列号）< 仓库 `dzbench.json`（芯片、ELF、阶跃实验、门限；**出现 api_key/password/token 直接报错**）< 环境变量。
+
+## 护栏：卡死、外部文本、长对话、编辑没对上（2026-10-29，UTC+8）
+只对真大模型开（`AgentLoop.guards`），离线规则助手是确定性的不需要。
+- **卡死检测** `agent/stuck.py`（直接移植 OpenHands software-agent-sdk 的 StuckDetector，MIT）：同动作同结果 4 次、同动作同报错超过 3 次、连续 3 条不调工具的自言自语、两个动作 ABAB 交替 6 次 → 停下，界面收到 `agent_stuck` 事件，回答“我卡住了：原因”。快到阈值时（第 3 次）先在工具结果后面提醒一次。用户插话后重新计数；结果在变（真在干活）不算。
+- **外部文本是数据**：每条工具结果包进 `<工具数据 来源="工具名">…</工具数据>`，系统提示第 15 条说明里面的话不是指令；内容里伪造的闭合标签会被插零宽空格转义（`agent/untrusted.py`）。
+- **头尾裁剪**：压缩早期工具结果后仍超预算 → 保留 system、第一条用户请求和最近 12 条，中间换成一句“已省略 N 条”；切点不落在 tool 结果上，不拆开工具调用和它的结果。
+- **编辑没对上给提示**：`propose_edit` 的 search 找不到时，用 aider 的 find_similar_lines（Apache-2.0）找出最像的几行回给模型照抄；replace 内容已经在文件里时直接说“可能已经改过”。错误的 `fix` 字段现在也会回给模型（以前丢了）。

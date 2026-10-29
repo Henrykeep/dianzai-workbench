@@ -21,6 +21,25 @@ from typing import Callable
 from . import yamlpar
 
 ALLOW, ASK, DENY = "allow", "ask", "deny"
+
+
+def similar_lines(search: str, content: str, threshold: float = 0.6) -> str:
+    """SEARCH 没匹配上时找最像的一段给模型看。
+    Source: github.com/Aider-AI/aider@5dc9490 aider/coders/editblock_coder.py find_similar_lines（Apache-2.0）
+    原样移植；只把变量名缩短。首尾行对得上时只回这段，否则前后各多带 5 行上下文。"""
+    s_lines, c_lines = search.splitlines(), content.splitlines()
+    best, best_i, best_m = 0.0, 0, None
+    for i in range(len(c_lines) - len(s_lines) + 1):
+        chunk = c_lines[i:i + len(s_lines)]
+        r = difflib.SequenceMatcher(None, s_lines, chunk).ratio()
+        if r > best:
+            best, best_m, best_i = r, chunk, i
+    if best < threshold or not best_m:
+        return ""
+    if best_m[0] == s_lines[0] and best_m[-1] == s_lines[-1]:
+        return "\n".join(best_m)
+    lo, hi = max(0, best_i - 5), min(len(c_lines), best_i + len(s_lines) + 5)
+    return "\n".join(c_lines[lo:hi])
 TRAILER = "Dzbench-Change"
 
 # 自上而下第一条匹配生效；write 的 ASK = 出 diff 等人确认。gates = 确认后、提交前必须通过的命令。
@@ -152,6 +171,13 @@ class Gateway:
         if search == "" and old:
             raise GatewayError("bad_edit", "search 为空只用于新建文件，但文件已存在")
         n = old.count(search) if search else 1
+        if n == 0:
+            hint = "先 read_file 看当前内容，search 要逐字复制（含缩进、空行）"
+            if replace and replace in old:
+                hint = f"replace 的内容已经在 {rel} 里了——这处改动可能已经做过，不用再改"
+            elif near := similar_lines(search, old):
+                hint = f"你是不是想匹配 {rel} 里这几行？请照它逐字重写 search：\n{near}"
+            raise GatewayError("bad_edit", f"search 文本在 {rel} 中没有找到", hint)
         if n != 1:
             raise GatewayError("bad_edit", f"search 文本在 {rel} 中出现 {n} 次（需要恰好 1 次）", "多带几行上下文让它唯一")
         new = old.replace(search, replace, 1) if search else replace
