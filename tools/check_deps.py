@@ -24,6 +24,9 @@
   D2  MSPM0：DL_Timer*_setCaptureCompareValue(实例, 值, 通道) 参数顺序（第 2 个参数是 *_INDEX 即写反）；
   D1  MSPM0：DL_xxx() 必须在 SDK driverlib 头文件里真实存在（符号表自动从头文件生成，不手抄黑名单）；
       TIMA 实例（TIMA0/1 或其别名宏）不得传给 DL_TimerG_*()，应用 DL_TimerA_*()。SDK 未下载时跳过。
+  I1  GPIO 中断回调（传给 pal_gpio_irq_attach 的函数）只做计数 / 记时间戳：函数体里不许出现 printf/sprintf、pal_delay_*、
+      串口 / 链路发送、malloc/free、OLED 刷新、浮点数学函数（sinf/sqrtf/atan2f…）和 while/for 循环。
+      高速编码器在中断里调重函数会丢脉冲（restudy M4）。只查回调本身那一层函数体。
   V1  每个模块目录的 VERSION 必须与头文件里的 XXX_VERSION 宏一致。
 """
 import argparse, os, re, sys
@@ -293,6 +296,25 @@ class Checker:
                         if sec in sections and sec not in owns[n]:
                             self.err("S2", p, lineno(src, m.start()), f"子系统 {n} 通过强制转换获得了 {sec} 的可写指针")
 
+    # ---------------------------------------------------------------- I1
+    ISR_BAD = re.compile(r'\b(printf|sprintf|snprintf|puts|pal_delay_\w+|pal_uart_\w+|link_write|malloc|free|oled_\w+|'
+                         r'(?:sin|cos|tan|asin|acos|atan2?|sqrt|exp|log|pow)f?)\s*\(|\b(while|for)\s*\(')
+
+    def check_isr(self, path, src):
+        for m in re.finditer(r'\bpal_gpio_irq_attach\s*\(', src):
+            args = _call_args(src, m.start())
+            if len(args) < 3 or not re.fullmatch(r'\w+', args[2]):
+                continue
+            d = re.search(r'\b' + args[2] + r'\s*\([^;{)]*\)\s*\{', src)
+            if not d:
+                continue
+            i, depth = d.end(), 1
+            while i < len(src) and depth:
+                depth += {"{": 1, "}": -1}.get(src[i], 0); i += 1
+            for b in self.ISR_BAD.finditer(src, d.end(), i):
+                self.err("I1", path, lineno(src, b.start()),
+                         f"中断回调 {args[2]}() 里调用了 {b.group(1) or b.group(2)}：中断里只计数 / 记时间戳，其余放到主循环或任务里")
+
     # ---------------------------------------------------------------- V1
     def check_versions(self):
         for d, dirs, fs in os.walk(self.root):
@@ -325,6 +347,8 @@ class Checker:
                     continue
                 self.check_file(p)
                 self.check_port(p)
+                if not p.startswith(os.path.join(self.root, "ports")) and p.endswith(".c"):
+                    self.check_isr(p, strip_comments(open(p, encoding="utf-8", errors="replace").read()))
         ex = os.path.join(self.root, "examples")
         if os.path.isdir(ex):
             for e in sorted(os.listdir(ex)):
