@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "读题拆解 requirements.yaml（tools/req.py）",
+  "type": "object",
+  "required": ["schema_version", "problem", "items"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "problem": {
+      "type": "object", "required": ["code", "title", "source"], "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" }, "title": { "type": "string" },
+        "source": { "type": "string", "description": "官方题目原文出处（PDF 路径/链接）；拆解以原文为准" },
+        "project": { "type": "string", "description": "对应 project.yaml（相对本文件），用于核对子系统/验收/测试编号" },
+        "confirmed_by": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": {
+        "type": "object", "required": ["id", "text"], "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^R[0-9]+$" },
+          "text": { "type": "string" },
+          "forbid": { "type": "array", "items": { "type": "string" }, "description": "禁用的能力/器件标签（tools/select.py 据此排除候选）" },
+          "require": { "type": "array", "items": { "type": "string" } },
+          "confirmed_by": { "type": "array", "items": { "type": "string" }, "description": "读题时三人各自确认，空 = 未确认" }
+        }
+      }
+    },
+    "items": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["id", "part", "text"], "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[BA][0-9]+$", "description": "B=基本要求 A=发挥部分" },
+          "part": { "enum": ["basic", "advanced", "other"] },
+          "score": { "type": "number", "minimum": 0 },
+          "text": { "type": "string" },
+          "subsystems": { "type": "array", "items": { "type": "string" }, "description": "project.yaml 子系统名；不在固件里的写 ext:xxx（ext:图传 / ext:机械 / ext:报告）" },
+          "needs": { "type": "array", "items": { "type": "string" }, "description": "能力标签，给第 2 步方案选型用（见 tools/catalog/parts.yaml）" },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object", "required": ["name", "op", "value"], "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string" }, "op": { "enum": ["<=", ">=", "<", ">", "==", "in"] },
+                "value": {}, "unit": { "type": "string" },
+                "how": { "type": "string", "description": "怎么测（工具、次数、谁计时）" }
+              }
+            }
+          },
+          "runs": { "type": "integer", "minimum": 1 },
+          "accept": { "type": "string", "description": "project.yaml link.accept 的 name（工作台自动判通过）" },
+          "test_id": { "type": "integer", "description": "project.yaml tests 的 id" },
+          "notes": { "type": "string" }
+        }
+      }
+    },
+    "estimates": {
+      "type": "array", "description": "读题时的量级估算（扰动、速度、精度），写依据",
+      "items": { "type": "object", "required": ["what", "value", "basis"], "additionalProperties": false,
+        "properties": { "what": { "type": "string" }, "value": { "type": "string" }, "basis": { "type": "string" } } }
+    }
+  }
+}

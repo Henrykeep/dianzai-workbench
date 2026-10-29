@@ -1,0 +1,92 @@
+# 2026H 读题拆解（第 1 步）。起稿：tools/req.py init "nuedc/H题_车载平衡滚球运动控制系统.pdf" --code 2026H，
+# 之后对照原文逐条手工补全指标、子系统和 needs。原文没有“基本/发挥”之分，8 项都按 B 编号。
+# 验收口径（误差带保持时间、连续 3 次看最差）来自测评经验文章，不是原文，见 docs/参考来源.md 35–36 行。
+schema_version: 1
+problem:
+  code: 2026H
+  title: 车载平衡滚球运动控制系统
+  source: nuedc 2026 赛区赛 H 题 PDF（H题_车载平衡滚球运动控制系统.pdf）
+  project: project.yaml
+  confirmed_by: []          # TODO(队伍)：三人各自对照原文后签名
+
+constraints:
+  - { id: R1, text: "车身长宽不超过 35cm×25cm；整个摆杆不超出车身", confirmed_by: [] }
+  - { id: R2, text: 行驶过程中不得人为干涉、遥控小车, confirmed_by: [] }
+  - { id: R3, text: 小车投影完全脱离轨迹线即本次测试失败, confirmed_by: [] }
+  - { id: R4, text: 循迹模块只能使用红外光电模块（数量不限）, forbid: [sense.line_camera], confirmed_by: [] }
+  - { id: R5, text: "必须有启动按键和显示装置，按键即开始计时并显示时间；显示屏不大于 2 英寸", require: [ui.key, ui.display], forbid: [ui.display_large], confirmed_by: [] }
+  - { id: R6, text: 图传接收模块及显示存储装置赛后和作品一起封存, confirmed_by: [] }
+  - { id: R7, text: "摆杆为 25cm 4 分 PPR 管改造，凹槽内壁保持原状，有凹坑或增摩擦改造则不予测试；刻度线不许贴在槽内", confirmed_by: [] }
+  - { id: R8, text: 凹槽内钢球位置检测必须采用摄像头, forbid: [sense.ball_pos_contact], confirmed_by: [] }
+  - { id: R9, text: "摆杆左端铰链固定，距小车平板高度 h≥5cm", confirmed_by: [] }
+
+items:
+  - id: B1
+    part: basic
+    score: 6
+    text: 图传：发送端稳固装车，接收端在线路外实时显示钢球滚动画面，完整记录每次测试视频并可回放
+    subsystems: [ext:图传]
+    needs: [link.video]
+    metrics:
+      - { name: 每次测试都有完整视频, op: "==", value: true, how: 每次测试前开录、测试后回放核对 }
+  - id: B2
+    part: basic
+    score: 16
+    text: A 点按键启动，顺时针一圈停回 A 点，显示总时间
+    subsystems: [chassis]
+    needs: [sense.line, sense.wheel_speed, act.wheel_drive, ui.key, ui.display]
+    metrics:
+      - { name: 一圈总时间, op: "<=", value: 20, unit: s, how: 车上显示 + 人工秒表复核 }
+      - { name: 停车偏差, op: "<=", value: 2, unit: cm, how: 车上测试位置到停车基准线，直尺 }
+    runs: 3
+  - id: B3
+    part: basic
+    score: 13
+    text: 小车静止，钢球 O → +5cm → 折返 → −5cm 并稳定
+    subsystems: [vision, ball]
+    needs: [sense.ball_pos, act.beam_angle]
+    metrics:
+      - { name: 运行时间, op: "<=", value: 5, unit: s, how: 离开 O 开始连续计时（工作台验收自动计） }
+      - { name: ±5cm 处最大误差绝对值, op: "<=", value: 1, unit: cm, how: 视觉读数 + 刻度线目视复核 }
+    runs: 3
+    accept: 静态定位
+    test_id: 1
+  - id: B4
+    part: basic
+    score: 20
+    text: 钢球置 O，A 点启动顺时针行驶通过 B，过程中钢球稳定在中心附近
+    subsystems: [chassis, vision, ball]
+    needs: [sense.line, sense.wheel_speed, act.wheel_drive, sense.ball_pos, act.beam_angle, sense.accel]
+    metrics:
+      - { name: AB 行驶时间, op: "<=", value: 8, unit: s }
+      - { name: 钢球误差绝对值, op: "<=", value: 1, unit: cm, how: 全程录像 + 遥测，取最大值 }
+    runs: 3
+    test_id: 2
+  - id: B5
+    part: basic
+    score: 20
+    text: 钢球置 O，顺时针一圈通过 A，过程中钢球稳定在中心附近
+    subsystems: [chassis, vision, ball]
+    needs: [sense.line, sense.wheel_speed, act.wheel_drive, sense.ball_pos, act.beam_angle, sense.accel]
+    metrics:
+      - { name: 一圈总时间, op: "<=", value: 30, unit: s }
+      - { name: 钢球误差绝对值, op: "<=", value: 1, unit: cm }
+    runs: 3
+  - id: B6
+    part: basic
+    score: 20
+    text: 钢球置任意指定位置，顺时针一圈通过 A，钢球稳定在指定位置附近
+    subsystems: [chassis, vision, ball]
+    needs: [sense.line, sense.wheel_speed, act.wheel_drive, sense.ball_pos, act.beam_angle, sense.accel, ui.key]
+    metrics:
+      - { name: 一圈总时间, op: "<=", value: 30, unit: s }
+      - { name: 钢球误差绝对值, op: "<=", value: 1, unit: cm, how: 指定点由评委给，现场用按键/屏幕输入 }
+    runs: 3
+  - { id: B7, part: other, score: 5, text: 其他（自选发挥） }
+  - { id: B8, part: other, score: 20, text: 设计报告（方案论证 3、理论分析 5、电路与程序 5、测试方案与结果 4、规范性 3）, subsystems: [ext:报告] }
+
+estimates:
+  - { what: 一圈路线长, value: "≈6.14 m", basis: "AB、CD 各 1.5 m + 两个 R0.5 m 半圆 = 3 + π" }
+  - { what: 平均车速, value: "20 s 约 0.31 m/s；30 s 约 0.20 m/s", basis: 路线长 / 限时 }
+  - { what: 弯道离心加速度, value: "0.08–0.19 m/s²（≈0.5°–1.1° 摆杆倾角）", basis: "v²/R，R=0.5 m；θ≈a/g → 前馈和执行器分辨率要够细" }
+  - { what: 耦合项分值, value: "B4–B6 共 60 分", basis: 要求车和摆杆同时达标，单独调好不算 }

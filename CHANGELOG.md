@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 第 1 步读题拆解 `tools/req.py`（init / check / checklist）+ `schema/requirements.schema.json` + `docs/templates/requirements.yaml` + docs/31：题目 PDF 起稿评分项（分值、≤/≥ 阈值）和候选规则约束 → 人工核对、三人签字的 requirements.yaml → 测试清单 md/csv（规则确认框、评分项→指标/测法/次数/子系统/工作台验收、子系统×评分项耦合矩阵、量级估算）；check 对照 project.yaml 核对子系统 / accept / tests。实例 examples/2026H_ball/requirements.yaml（make check 校验）。2026 年 A–H 八道真题都能起稿，H 题 8 项分值与原文一致、复盘漏看的 4 条规则全部抓到。局限：嵌套小问无归属、表格内要求抓不到。
 - [仿真] 新模块 `algo/accel_ff` 1.0.0：加速度前馈（θ≈a/g × 增益，死区边沿连续，无效/NaN/超限 → 0，限幅）从 examples/2026H_ball/subsys/ball/ball.c 提出（核对清单唯一“偏离”项）；来源选择与 IMU 超时仍在例题里，只传 valid。行为不变：主机单测把新模块和提取前原公式在 ±12 m/s²×4 档增益上逐点比对（误差 <1e-6），2026H example 35/35。[未测] 实车。
 - [仿真] 验收 / 单位标定 / 串级分层（docs/30），全部写在 yaml `link:`（gen_link 带进 link_schema.json，不进哈希），代码里没有题目字段名：字段 `cal`（多点直线或分段）把曲线/读数换成物理单位；`accept`（误差带、可选速度门限、保持时间、限时、多目标分段、最近 N 轮按最差）让读数条和台账显示 通过/未过（原因）· 到位时间 · 到位后误差；`loops` 给台账加“层”下拉，每层一本台账、参数只列这层增益。TS（accept.ts）与 Python（dzbench/accept.py）同一定义，共用手算期望值的测试向量；make check 改为跑全部 UI 单测（measure.test 以前没跑）。验证：2026H（cm、±1 cm/300 ms/5 s/3 轮）、car_2wd（rps→cm/s、示例阈值）、line_car（轮速/循线两层）。[未测] 真机标定、Windows。
 - [仿真] F11/F12 修复：仿真板编译、端口列表、schema 查找优先用 DZBENCH_REPO（以前固定用侧车自己的仓库，写回的默认值到不了仿真板）；自检默认查侧车在用的仓库（以前说没有 dzbench.json）。F7（全新克隆缺 third_party/ 时 check_ai_docs 报错不直观）只诊断，tools/ 归另一位。

@@ -201,6 +201,8 @@ check:
 	$(PY) tools/test_mspm0_board.py
 	$(PY) tools/test_new_subsys.py
 	$(PY) tools/test_report.py
+	$(PY) tools/test_req.py
+	for r in examples/*/requirements.yaml; do $(PY) tools/req.py check $$r >/dev/null || { $(PY) tools/req.py check $$r; exit 1; }; done
 	$(PY) tools/syscfg_import.py --selftest
 	$(PY) tools/gen_link.py --selftest
 	$(PY) tools/syscfg_import.py boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg --check boards/mspm0g3507-tianmengxing/board.yaml

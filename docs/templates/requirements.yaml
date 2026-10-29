@@ -1,0 +1,32 @@
+# 读题拆解模板（第 1 步）。复制到 examples/<题>/requirements.yaml 或用 tools/req.py init 从原文起稿。
+# 字段定义：schema/requirements.schema.json；完整实例：examples/2026H_ball/requirements.yaml
+schema_version: 1
+problem:
+  code: 2027X                 # 年份+题号
+  title: 题目名称
+  source: 官方原文 PDF 路径或链接（拆解以原文为准）
+  project: project.yaml       # 可选：对应的题目工程，check 会核对子系统 / 验收 / 测试编号
+  confirmed_by: []            # 三人各自对照原文核对后签名
+
+constraints:                  # 规则约束单列：违反直接不予测试/扣分，最容易漏看
+  - id: R1
+    text: 例：循迹只能用红外光电模块
+    forbid: [sense.line_camera]   # 第 2 步选型据此排除候选（标签见 tools/catalog/parts.yaml）
+    require: []
+    confirmed_by: []
+
+items:                        # 每个评分项一条；B=基本要求 A=发挥部分；other=其他/报告
+  - id: B1
+    part: basic
+    score: 10
+    text: 题目原话（可精简，不改意思）
+    subsystems: [chassis]     # project.yaml 的子系统；不在固件里的写 ext:图传 / ext:机械 / ext:报告
+    needs: [sense.line, act.wheel_drive]   # 能力标签，第 2 步按它出候选
+    metrics:                  # “稳定”“尽快”一律写成数，不然没法验收
+      - { name: 一圈时间, op: "<=", value: 20, unit: s, how: 怎么测、谁计时、用什么量 }
+    runs: 3                   # 连续几次，按最差一次算
+    accept: ""                # 可选：project.yaml link.accept 名（工作台自动判通过）
+    test_id: 1                # 可选：project.yaml tests 编号
+
+estimates:                    # 量级估算：速度、扰动、精度，写清依据（选型和调参都要用）
+  - { what: 平均车速, value: "≈0.3 m/s", basis: 路线长 / 限时 }
