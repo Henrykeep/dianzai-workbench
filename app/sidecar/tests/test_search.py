@@ -41,3 +41,31 @@ def test_bounds_respected():
     r = optimize(ev, SEED, strategy="pso", sim=True, iterations=6, swarm=6, bounds=bnd)
     for c in r["top"]:
         assert all(bnd[k][0] <= c["gains"][k] <= bnd[k][1] for k in bnd)
+
+
+def _open_loop(K=2.0, T=0.3, L=0.05, du=0.5, dt=0.005, t_end=3.0):
+    t, y, u, x, buf = [], [], [], 0.0, [0.0] * int(L / dt + 1)
+    for i in range(int(t_end / dt)):
+        tt = i * dt
+        uu = du if tt >= 0.5 else 0.0
+        buf.append(uu)
+        x += dt / T * (K * buf.pop(0) - x)
+        t.append(tt); y.append(x); u.append(uu)
+    return t, y, u
+
+
+def test_search_from_step_identifies_and_searches():
+    from dzbench.tuning.search import search_from_step
+    t, y, u = _open_loop()
+    r = search_from_step(t, y, u, strategy="staged", iterations=8)
+    assert abs(r["model"]["K"] - 2.0) < 0.3 and r["model"]["seed_from"] == "identify"
+    assert r["best"]["score"] <= 1.0 and len(r["top"]) == 3
+
+
+def test_wide_mode_reaches_further():
+    narrow = optimize(ev, SEED, strategy="pso", sim=True, iterations=12, swarm=8, rng_seed=1)
+    wide = optimize(ev, SEED, strategy="pso", sim=True, iterations=12, swarm=8, rng_seed=1, wide=True)
+    assert wide["wide"] and wide["best"]["score"] <= narrow["best"]["score"] + 1e-9
+    st = optimize(ev, SEED, strategy="staged", sim=True, iterations=12, wide=True)
+    assert st["best"]["score"] < 0.8
+

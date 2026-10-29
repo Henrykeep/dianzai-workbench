@@ -61,8 +61,10 @@ def simulate_fopdt(gains: dict, K: float, T: float, L: float, *, dt: float = 0.0
 
 
 def optimize(evaluate, seed: dict, *, strategy: str = "pso", sim: bool, iterations: int = 12, swarm: int = 8,
-             profile: str = "balanced", top_k: int = 3, rng_seed: int = 0, bounds: dict | None = None) -> dict:
-    """evaluate(gains{kp,ki,kd}) → 指标 dict。返回 {baseline, best, top[k], evals, strategy}；score 越小越好，1.0 = 和初值一样。"""
+             profile: str = "balanced", top_k: int = 3, rng_seed: int = 0, bounds: dict | None = None,
+             wide: bool = False) -> dict:
+    """wide=False（默认）= PID_Helper 原版：只在初值附近搜；wide=True = 宽范围：PSO 边界放到初值的 0–4 倍（至少 kp≤1/ki≤0.5/kd≤0.1）、
+    分阶段每步 ±25/50/100%。evaluate(gains{kp,ki,kd}) → 指标 dict。返回 {baseline, best, top[k], evals, strategy}；score 越小越好，1.0 = 和初值一样。"""
     if strategy == "pso":
         require_swarm(sim)
     elif strategy != "staged":
@@ -84,6 +86,8 @@ def optimize(evaluate, seed: dict, *, strategy: str = "pso", sim: bool, iteratio
     ev(s0)
     if strategy == "pso":
         pb = {MAP[k]: tuple(v) for k, v in bounds.items()} if bounds else None
+        if pb is None and wide:
+            pb = {"p": (0.0, max(4 * s0["p"], 1.0)), "i": (0.0, max(4 * s0["i"], 0.5)), "d": (0.0, max(4 * s0["d"], 0.1))}
         opt = PSO.default_options(s0, swarm, pos_bounds=pb)
         sw = PSO.create_swarm(s0, opt, rnd)
         gbest, gscore = dict(s0), ev(s0)
@@ -97,7 +101,7 @@ def optimize(evaluate, seed: dict, *, strategy: str = "pso", sim: bool, iteratio
         cur, cs = dict(s0), ev(s0)
         for stage in ("p", "i", "d", "micro"):
             for _ in range(max(1, iterations // 4)):
-                cands = PSO.micro_candidates(cur) if stage == "micro" else PSO.staged_candidates(stage, cur)
+                cands = PSO.micro_candidates(cur) if stage == "micro" else PSO.staged_candidates(stage, cur, pcts=[25, 50, 100] if wide else None)
                 if bounds:
                     cands = [c for c in cands if all(bounds[k][0] <= c[v] <= bounds[k][1] for k, v in MAP.items() if k in bounds)]
                 best = min(cands, key=ev, default=None)
@@ -105,6 +109,30 @@ def optimize(evaluate, seed: dict, *, strategy: str = "pso", sim: bool, iteratio
                     break
                 cur, cs = best, ev(best)
     ranked = sorted(seen.values(), key=lambda x: x["score"])
-    return {"strategy": strategy, "profile": profile, "evals": len(seen), "baseline": {"gains": dict(seed), "metrics": base},
+    return {"strategy": strategy, "profile": profile, "wide": wide, "evals": len(seen), "baseline": {"gains": dict(seed), "metrics": base},
             "best": ranked[0], "top": ranked[:top_k],
             "note": "仿真候选：实机逐个验证，每个都过护栏/人工确认" if sim else "实机候选：每个都过护栏/人工确认"}
+
+
+def search_from_step(t: list[float], y: list[float], u: list[float], seed: dict | None = None, **kw) -> dict:
+    """开环阶跃数据（控制量 u 跳一下）→ identify.open_loop_pid 得 FOPDT → 在该模型上仿真搜索。
+    seed 缺省用辨识出的保守 λ 初值。返回 optimize 的结果 + model。"""
+    from .identify import open_loop_pid
+    if len(t) < 10 or len(u) != len(t):
+        raise ValueError("数据太少：先在开环下给控制量一个台阶，录 2–5 s")
+    k = max(range(1, len(u)), key=lambda i: abs(u[i] - u[i - 1]))
+    du = u[k] - u[k - 1]
+    if abs(du) < 1e-9:
+        raise ValueError("控制量没有跳变：先开环给一个台阶")
+    m = open_loop_pid(t, y, t[k], du, u)
+    K, T, L = m["K"], max(m["tau_s"], 1e-3), max(m["dead_s"], 0.0)
+    if K < 0:
+        raise ValueError("辨识出的增益为负：反馈方向和控制量相反，先做极性检查")
+    src = "board" if seed and any(seed.values()) else "identify"
+    if src == "identify":
+        seed = {"kp": m["pid"]["p"], "ki": m["pid"]["i"], "kd": m["pid"]["d"]}
+    u_lim = max(abs(x) for x in u) * 1.5 or 1.0
+    dt = max(min(T / 50, 0.01), 1e-4)
+    r = abs(m["y1"] - m["y0"]) or 1.0          # 仿真目标 = 实验台阶的输出变化量（执行器够得着的幅度）
+    ev = lambda g: simulate_fopdt(g, K, T, L, dt=dt, u_lim=u_lim, r=r)
+    return optimize(ev, seed, sim=True, **kw) | {"model": {"K": K, "tau_s": T, "dead_s": L, "seed_from": src}}

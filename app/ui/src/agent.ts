@@ -56,6 +56,31 @@ export function initAgent(call: Call) {
   }
   $("ag-tune").onclick = () => tune();
 
+  // ---------------------------------------------------------------- 仿真搜索（缺口第 2 项）：开环阶跃 → 辨识 → 仿真 PSO/分阶段 → 实机逐个验 top-k
+  async function simSearch() {
+    const ask = (k: string, q: string, d: string) => { const v = window.prompt(q, localStorage.getItem(k) || d); if (v != null) localStorage.setItem(k, v); return v; };
+    const y = ask("dz.search.y", "反馈通道（开环台阶时录的输出，如 spd_a）", "spd_a"); if (!y) return;
+    const u = ask("dz.search.u", "控制量通道（台阶加在这一路，如 pwm_a）", "pwm_a"); if (!u) return;
+    const mode = ask("dz.search.mode", "策略：pso / staged，加 ,wide 为宽范围（默认是 PID_Helper 原版窄范围）", "pso"); if (!mode) return;
+    const [strategy, w] = mode.split(",").map(x => x.trim());
+    const r = await call("tune_search", { y, u, seconds: 5, strategy, wide: w === "wide", top_k: 3 }).catch(() => null);
+    if (!r) return;
+    const md = r.model;
+    const d = add(`<div class="hd"><span class="dotk tune"></span><span class="t">仿真搜索</span><span class="lbl">${esc(r.strategy)}${r.wide ? " · 宽范围" : ""} · ${r.evals} 次仿真</span></div>
+      <p class="sm">模型 K=${n(md.K, 3)} τ=${n(md.tau_s, 3, " s")} L=${n(md.dead_s, 3, " s")}；初值来自${md.seed_from === "board" ? "板上当前参数" : "辨识"}。得分 1.0 = 和初值一样，越小越好。候选只是仿真结果：逐个上板验证，每次都要你确认。</p>
+      <div class="hints"></div>`);
+    const hs = d.querySelector(".hints")!;
+    r.top.forEach((c: { gains: Record<string, number>; score: number }, i: number) => {
+      const changes: Record<string, number> = {};
+      Object.entries(c.gains).forEach(([k, v]) => { if (r.names[k]) changes[r.names[k]] = v; });
+      const e = document.createElement("div"); e.className = "h info";
+      e.innerHTML = `<span>#${i + 1} 得分 ${n(c.score, 3)}：${Object.entries(changes).map(([k, v]) => `${esc(k)}=${+v.toPrecision(4)}`).join(" ")}</span><button class="btn sm">上板验证</button>`;
+      e.querySelector("button")!.addEventListener("click", ev => { (ev.target as HTMLButtonElement).disabled = true; call("tune_propose", { changes, reason: `仿真搜索候选 #${i + 1}（${r.strategy}，得分 ${c.score}）` }); });
+      hs.append(e);
+    });
+  }
+  $("ag-search").onclick = () => simSearch();
+
   // ---------------------------------------------------------------- 文件改动卡片
   const cards = new Map<number, HTMLElement>();
   // diff 的 yaml 行很长，窄侧栏里真正改的数字在最右边看不到：先把“名字 旧 → 新”摘出来列在上面

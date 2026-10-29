@@ -30,6 +30,7 @@
     <div class="pins" id="stats"></div>
     <div class="sp"></div>
     <button class="btn" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
+    <button class="btn" id="ag-search" title="开环给控制量一个台阶后点：辨识 FOPDT → 仿真里 PSO/分阶段搜索 → 列出 top-k；每个候选点“上板验证”才发提议卡，你确认后才写入">仿真搜索</button>
     <button class="btn" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
     <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button>
     <span class="vsep"></span>

@@ -230,6 +230,9 @@ class Server:
         if op == "tune_analyze":
             return await run(None, lambda: self.svc.step_analysis(m.get("y"), m.get("sp"), float(m.get("seconds", 5)),
                                                                    m.get("kp"), m.get("ki"), m.get("kd")))
+        if op == "tune_search":                    # 开环阶跃 → 辨识 → 仿真 PSO/分阶段 → top-k（不写板子）
+            return await run(None, lambda: self.svc.sim_search(m["y"], m["u"], float(m.get("seconds", 5)), m.get("strategy", "pso"),
+                                                               bool(m.get("wide")), int(m.get("top_k", 3))))
         if op == "tune_propose":
             return self.svc.propose_hint(m["changes"], m.get("reason", "阶跃分析规则建议"))
         if op == "agent_ask":

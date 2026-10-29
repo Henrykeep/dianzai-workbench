@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 仿真搜索接到界面：Agent 栏“仿真搜索”按钮 → 侧车 op `tune_search`（最近 5 s 开环台阶 → identify 辨识 FOPDT → 仿真 PSO/分阶段 → top-k，不写板子）；每个候选“上板验证”走 `tune_propose` 提议卡，你确认后才限幅写入。新增可选宽范围模式 `wide`（PSO 边界放到初值 0–4 倍，分阶段 ±25/50/100%），默认仍是 PID_Helper 原版窄范围。tests/test_search.py 加辨识+搜索、宽范围两例。[未测] 界面按钮在真板上的完整一轮
 - [仿真] 修 f64fbc7 firmware CI 红：CI 稀疏检出的 MSPM0 SDK 没有 `source/ti/project_config`，SysConfig 读到 `ProjectConfig.genLinker` 报 No such resource。fetch_third_party.sh 加这个目录；本机 SysConfig 1.28 CLI 两块板重生成一致，且确认 genLinker=false 后不再输出 device_linker.cmd
 - [仿真] 上位机自定义帧结构（缺口清单第 1 项）：没烧工作台固件的板子/第三方模块也能画曲线。新 `dzbench/framedef.py`：VOFA+ JustFloat / FireWater 预设，或自定义 HEX 表（帧头/帧尾、u8…f64 字段、大小端、scale、sum8/xor8/crc8/crc16_modbus 校验 + 起算偏移）；错帧丢弃并逐字节重同步，NaN/Inf 丢。侧车 op `framedef_set` / `framedef_status`（错帧计数）；连接设置加“非工作台帧”下拉 + 通道数，自定义 JSON 记在本机。tests/test_framedef.py（任意字节切分、垃圾后重同步、校验错、CRC16 标准向量 0x4B37、中文报错、Session 端到端）。[未测] 真 VOFA 设备
 - [仿真] 仿真里跑完整 PSO / 分阶段 PID 搜索，实机只验 top-k（缺口清单第 2 项）：移植 PID_Helper pid-pso.ts + pid-optimizer.ts 分阶段候选与三档打分到 third_party/vendored/pid_helper/pid_helper_pso.py（GPL，Source 头）；`dzbench/tuning/search.py` 给 FOPDT 闭环阶跃仿真 + `optimize(evaluate, seed, strategy=pso|staged, sim=…)`，PSO 只许仿真（require_swarm），结果是排好序的 top-k 候选，实机逐个过护栏。tests/test_search.py（两种策略都比初值好、固定种子可复现、实机拒 PSO、边界、发散不崩）。[未测] 实机 top-k 验证流程尚无界面入口，先给脚本/Agent 用

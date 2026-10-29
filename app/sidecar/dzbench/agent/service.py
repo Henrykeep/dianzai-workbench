@@ -662,6 +662,24 @@ class AgentService:
         return {"y": y, "sp": sp, "pairs": guess_pairs(fields), "gains": {"kp": kp, "ki": ki, "kd": kd},
                 "metrics": m.as_dict(), "hints": [h.as_dict() for h in hints]}
 
+    def sim_search(self, y: str, u: str, seconds: float = 5.0, strategy: str = "pso", wide: bool = False, top_k: int = 3) -> dict:
+        """缺口第 2 项接到界面：最近 seconds 秒的开环阶跃（u 跳变）→ 辨识 FOPDT → 仿真 PSO/分阶段 → top-k。
+        候选只返回，不写板子；实机验证走 tune_propose（提议卡 → 你确认 → 限幅写入），每次一个候选。"""
+        from ..tuning.search import search_from_step
+        w = [x for x in self.s.window(seconds) if y in x[1] and u in x[1]]
+        if len(w) < 10:
+            raise LinkError("no_data", f"最近 {seconds:g} s 没有同时含 {y} 和 {u} 的数据", "开环下给控制量一个台阶并录 2–5 s，再点仿真搜索")
+        gn = self._gain_names()
+        seed = {k: float(self.s.params.get(n, 0.0)) for k, n in gn.items()}
+        try:
+            r = search_from_step([x[0] for x in w], [float(x[1][y]) for x in w], [float(x[1][u]) for x in w],
+                                 seed=seed, strategy=strategy, wide=bool(wide), top_k=int(top_k))
+        except (ValueError, GuardError) as e:
+            raise LinkError("search_failed", str(e), "确认是开环台阶数据、反馈和控制量通道选对")
+        except Exception as e:  # noqa: BLE001  identify 的 IdentError 等带中文原因
+            raise LinkError("search_failed", str(e), "确认是开环台阶数据、反馈和控制量通道选对")
+        return r | {"names": gn}
+
     def propose_hint(self, changes: dict, reason: str) -> list[dict]:
         return [self.tools.propose_param_change(k, v, reason, "规则") for k, v in changes.items()]
 
