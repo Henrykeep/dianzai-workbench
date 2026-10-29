@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 外部代码改为“可直接使用、注明来源”：新目录 `third_party/vendored/`（提交进仓库，其余 third_party 仍是下载的官方 SDK），GPL/AGPL 代码一律隔离在此、经薄适配层调用；`tools/check_vendored.py` 进 make check：每个来源须有 LICENSE、SOURCE.md（Source: repo@commit path），每个代码文件头 15 行内有 Source:，且已在 docs/参考来源.md 登记。参考来源.md 开头改写两种借鉴方式。
 - [仿真] 参数面板加“回读”按钮（op params_readback 不带 path 时写 ~/.dzbench/readback/params-<时间>.txt）；polarity_check 暂登记为脚本专用（向导界面未做）。修第 8 项 preflight 的 test_wiring 失败。
 - [仿真] 极性自检 + 堵转检测 + 控制安全对照（参考 MICU-auto-embedded 的 control-loop-sign-debug / control-safety-limits）：侧车 `agent/polarity.py` + op `polarity_check`：手推（观察模式）判传感器轴、误差极性、控制器符号，点动判执行器方向，合成负/正反馈结论并指出哪一处反（只读遥测，不发指令）；8 项测试覆盖五种接法与死区/弱数据。新模块 `algo/stall` 1.0.0：高负载 + 近零速 + 持续、起步豁免、锁存/定时重试、NaN 不误报；主机测试用一阶电机模型（正常起步不误报，卡轴后 150+200 ms 报出）。docs/32 逐项对照 8 个安全检查项：发现**没有开 IWDG/喂狗**（只读复位原因）、无热折返、无通用软限位、无 WARN 档——列为建议，未改。[未测] 实物；stall 未接进应用；向导界面未做。
 - [仿真] 参数回读 / 固件版本 / 黑匣子（参考 DS-land-and-air 的 P/F/H 命令与 ESP32 NVS 写满卡启动的教训）：dzctl 0.4.0 心跳第 3 个 u32 = 固件版本（git 短哈希，bit31 = 编译时有未提交改动；make 只给 dzctl.c 注入 `DZ_FW_REV`，换提交不全量重编；Keil/CCS 未传时为 0 = 未知），侧车 status 显示 `fw_rev`；`Session.export_readback()` / op `params_readback` 逐个问板子写 params.txt（带 schema/fw_rev/board_uid）；`tools/params_diff.py` 对比两次回读或快照 json（last-good 对比，有差异退出 1）。新模块 `framework/blackbox` 1.0.0：RAM 环形事件日志 + 可选掉电冻结（存储是回调，先擦后写、头最后写、CRC32 校验、放不下只存最新）；**存储失败不挡启动**：init 零存储操作、每次 freeze/load 操作次数有上限、连续 3 次失败自动停用——主机测试模拟读写擦全坏仍进控制循环、启动只碰存储 1 次、停用后不再碰。e2e（host-sim）：心跳版本与 git HEAD 一致、回读→改 kp→diff 报出 0.08 → 0.3。[未测] 片内 flash 回调、上板、界面按钮。

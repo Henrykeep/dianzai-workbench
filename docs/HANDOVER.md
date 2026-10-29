@@ -44,3 +44,8 @@
 8. **参数回读 / 固件版本 / 黑匣子**：dzctl 0.4.0 心跳带 fw_rev；侧车 export_readback → params.txt；tools/params_diff.py（last-good）；firmware/framework/blackbox（存储失败不挡启动，有测试）。片内 flash 回调未写。
 9. **极性自检 / 堵转 / 安全对照**：侧车 agent/polarity.py（op polarity_check）；firmware/algo/stall；docs/32 对照表——缺口：IWDG 没开没喂（最该先补）、stall 未接进应用。
 仍未做（按清单优先级）：实板验证、第二道例题（建议跟随小车）、参数预设/掉电保存、界面上的回读/对比按钮、赛前准备清单。
+### 第 10 项：直接使用外部代码的规矩（2026-10-29，UTC+8）
+- `third_party/vendored/<来源>/`：搬来的代码 + 原样 LICENSE + SOURCE.md；文件头 `Source: <repo>@<commit> <path>`。`.gitignore` 改为 `third_party/*` + `!third_party/vendored/`。
+- `tools/check_vendored.py` 在 make check 里强制。GPL 代码（PID_Helper 辨识，第 13 项）放这里；侧车通过 `dzbench/tuning/` 薄层调用，PyInstaller 需加 `--paths third_party/vendored`。
+- 已有的“参考 …”文件都是思路借鉴、代码自写，不加 Source: 头。
+- 顺带修：第 8 项 params_readback 没有界面入口导致 test_wiring 失败 → 参数面板加“回读”按钮。

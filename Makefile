@@ -229,6 +229,7 @@ check:
 	$(PY) tools/audit_port.py --selftest
 	$(PY) tools/check_ai_docs.py --selftest
 	$(PY) tools/check_ai_docs.py --check
+	$(PY) tools/check_vendored.py
 	$(PY) tools/check_version.py
 	$(MAKE) ioc-check
 	$(PY) tools/check_gen_consistency.py --selftest
