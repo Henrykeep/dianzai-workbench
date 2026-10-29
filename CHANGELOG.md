@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] MSPM0 走查：干净克隆里 `make BOARD=mspm0g3507-* gen` 因缺 SDK 退出、没生成 link_gen.c，CCS 导入 projectspec 会缺文件 → gen / vars 不再要求 SDK。DFP 包能被 pyOCD 识别出 mspm0g3507【离线】；CCS 导入 / 真烧【未测】。走查表见 docs/15。
 - [仿真] pendulum_rot 默认 k_al 0.8 → 1.2：0.8 太接近稳定边界，静止时有极限环（摆杆 ±0.9°、摆臂 pp 3.5°）；现在摆杆 pp 0.3°（±1 个编码器计数），摆臂 pp 约 1.2°。曲线台阶是编码器量化（摆臂 0.23°/计数、摆杆 0.15°/计数），不是绘图问题。加静止测试。
 - [仿真] 界面：断开后清掉顶栏状态块；Agent 引导问题按 schema 生成（不再写死“速度环”“左轮比右轮慢”）。
 - [仿真] 通用仿真被控对象 4 个：motor_pos（位置环）、pendulum_rot（旋转倒立摆，状态反馈平衡）、pan_tilt（视觉云台，30 fps / 50 ms 延迟 / 可丢帧）、line_car（8 路灰度循线，串级）。同一套侧车 / 阶跃 / 扫频 / Agent，不改代码就能跑；侧车自动发现 apps/ 与 examples/ 下可仿真的工程。共用收发头 apps/include/link_app.h（设定值约定 DATA id=1）。tests/test_e2e_plants.py 每个对象跑一轮阶跃。全部【未上板】。

@@ -170,8 +170,11 @@ ifeq ($(BOARD_FAMILY),mspm0-driverlib)
 TC      ?= arm-none-eabi-
 CC      := $(TC)gcc
 M0_SDK  ?= third_party/mspm0-sdk/source
+# make gen / vars 不要 SDK：CCS 用户的 SDK 装在 CCS 里，导入 projectspec 前只需要生成 board_gen / link_gen
 ifeq ($(wildcard $(M0_SDK)/ti/driverlib/driverlib.h),)
+ifneq ($(filter-out vars gen,$(or $(MAKECMDGOALS),all)),)
 $(error 找不到 MSPM0 SDK（$(M0_SDK)）：运行 tools/fetch_third_party.sh 或设置 M0_SDK)
+endif
 endif
 M0_DEV  := $(M0_SDK)/ti/devices/msp/m0p
 MCU     := $(BOARD_CPU)
