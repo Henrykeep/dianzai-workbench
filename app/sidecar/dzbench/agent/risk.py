@@ -16,15 +16,15 @@ AUTO, LOG, HUMAN, FORBID = "auto", "log", "human", "forbid"
 
 RISK: dict[str, str] = {
     "read_telemetry": AUTO, "list_params": AUTO, "step_analysis": AUTO, "list_files": AUTO, "read_file": AUTO,
-    "tune_context": AUTO, "update_plan": AUTO, "board_memory": AUTO, "read_symbol": AUTO, "decode_hardfault": AUTO, "build_log": AUTO,
+    "tune_context": AUTO, "update_plan": AUTO, "board_memory": AUTO, "read_symbol": AUTO, "decode_hardfault": AUTO, "build_log": AUTO, "bode_predict": AUTO,
     "build": LOG, "reset": LOG, "propose_param_change": LOG, "propose_edit": LOG, "observe": LOG,
-    "flash": HUMAN, "flash_rollback": HUMAN, "erase": HUMAN, "mem_write": HUMAN, "run_step_test": HUMAN, "rollback_best": HUMAN,
+    "flash": HUMAN, "flash_rollback": HUMAN, "erase": HUMAN, "mem_write": HUMAN, "run_step_test": HUMAN, "run_sweep_test": HUMAN, "rollback_best": HUMAN,
     "open_loop_test": HUMAN,                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）
     "swarm_search": FORBID,                        # 群体/随机搜索：实机永远不给，仿真降为 log
     "raw_cmd": FORBID, "disable_estop": FORBID, "unlock_rdp": FORBID, "estop": FORBID,
 }
 # 仿真里不动真东西：这几项降为 log
-SIM_RELAX = {"run_step_test": LOG, "rollback_best": LOG, "swarm_search": LOG}
+SIM_RELAX = {"run_step_test": LOG, "run_sweep_test": LOG, "rollback_best": LOG, "swarm_search": LOG}
 
 
 def tier(tool: str, sim: bool) -> str:

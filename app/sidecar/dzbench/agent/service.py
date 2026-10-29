@@ -5,6 +5,7 @@ import itertools
 import os
 import re
 import pathlib
+import math
 import struct
 import time
 
@@ -73,6 +74,8 @@ class AgentService:
             "tune_context": self.tune_context,
             "observe": lambda reason="": {"status": "observing", "reason": reason},
             "run_step_test": self.run_step_test,
+            "run_sweep_test": self.run_sweep_test,
+            "bode_predict": self.bode_predict,
             "rollback_best": self.rollback_best,
             "flash": lambda dry_run=True: self.flasher.flash(dry_run),
             "flash_rollback": lambda dry_run=True: self.flasher.rollback(dry_run),
@@ -378,6 +381,69 @@ class AgentService:
                           overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
         self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
         return {"verdict": verdict, "metrics": m.as_dict()}
+
+    SWEEP_MAX_S = 90.0
+    SWEEP_SEND_S = 0.02                              # 主机发设定值的周期：频率上限按它的 1/10 算
+
+    def run_sweep_test(self, f0: float | None = None, f1: float | None = None, n: int | None = None,
+                       amp: float | None = None) -> dict:
+        """闭环扫频：设定值 = high + amp·(high−low)·sin(2πft)，增益/相位用遥测里板子实际收到的 sp 和 y 算
+        （主机发送抖动不影响结果，只影响幅值）。频点间不回到 low。"""
+        from . import bode
+        st = self.step_cfg()
+        if not st:
+            raise LinkError("no_step_test", "扫频复用 step_test 的配置（通道、工作点），但现在没有", "先在 dzbench.json 写 step_test")
+        sw = st.get("sweep") or {}
+        f0, f1 = float(f0 or sw.get("f0", 0.5)), float(f1 or sw.get("f1", 5.0))
+        n, amp = int(n or sw.get("n", 6)), float(amp or sw.get("amp", 0.2))
+        settle, cyc = float(sw.get("settle_cycles", 2)), float(sw.get("cycles", 4))
+        per = ((self.s.schema.d["telemetry"].get("period_ms") if self.s.schema else None) or 10) / 1000.0
+        fmax = min(1 / (10 * self.SWEEP_SEND_S), 1 / (8 * per))
+        if not (0 < f0 < f1 <= fmax) or n < 2:
+            raise LinkError("bad_sweep", f"频率范围要满足 0 < f0 < f1 ≤ {fmax:.3g} Hz（发送周期 {self.SWEEP_SEND_S * 1000:.0f} ms、遥测 {per * 1000:.0f} ms 决定）")
+        freqs = bode.log_freqs(f0, f1, n)
+        total = sum((settle + cyc) / f for f in freqs)
+        if total > self.SWEEP_MAX_S:
+            raise LinkError("sweep_too_long", f"要 {total:.0f} s，超过 {self.SWEEP_MAX_S:.0f} s", "提高 f0 或减少频点 n")
+        lo, hi = st["low"], st["high"]
+        idx = [i for i, (a, b) in enumerate(zip(lo, hi)) if a != b]
+        self.step_start(st)
+        pts, errs = [], []
+        for f in freqs:
+            dur = (settle + cyc) / f
+            w0 = self.s.window(0.05)
+            tb = w0[-1][0] if w0 else 0.0
+            t0 = time.monotonic()
+            while (el := time.monotonic() - t0) < dur:
+                k = amp * math.sin(2 * math.pi * f * el)
+                vals = [h + (k * (h - l) if i in idx else 0.0) for i, (l, h) in enumerate(zip(lo, hi))]
+                self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *vals))
+                time.sleep(self.SWEEP_SEND_S)
+            w = [x for x in self.s.window(dur + 1.0) if x[0] > tb]
+            try:
+                pts.append(bode.measure([a for a, _ in w], [float(v[st["sp"]]) for _, v in w],
+                                        [float(v[st["y"]]) for _, v in w], f, settle))
+            except (ValueError, KeyError) as e:
+                errs.append({"f": f, "error": str(e)})
+        self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *hi))
+        if len(pts) < 2:
+            raise LinkError("sweep_failed", f"有效频点不足：{errs}")
+        summ = bode.closed_loop_summary(pts)
+        res = {"points": [{k: round(v, 4) if isinstance(v, float) else v for k, v in p.items()} for p in pts],
+               "summary": summ, "errors": errs, "gains": self._gains()}
+        self.memory().add("sweep", gains=self._gains(), bandwidth_hz=summ["bandwidth_hz"], peak_db=round(summ["peak_db"], 2))
+        self.emit({"type": "sweep_result", **res})
+        return res
+
+    def bode_predict(self, K: float, tau: float, kp: float, L: float = 0.0, ki: float = 0.0, kd: float = 0.0, tf: float = 0.0) -> dict:
+        from . import bode
+        if tau <= 0 or L < 0:
+            raise LinkError("bad_model", "tau 要 > 0，L 要 ≥ 0（秒）")
+        r = bode.predict(K, tau, L, kp, ki, kd, tf)
+        keep = ("crossover_hz", "phase_margin_deg", "gain_margin_db", "phase180_hz", "bandwidth_hz", "peak_db", "peak_hz")
+        out = {k: (round(r[k], 4) if isinstance(r[k], float) else r[k]) for k in keep}
+        out["note"] = "模型预测（FOPDT + PID），不是实测；用 run_sweep_test 实测对比"
+        return out
 
     def rollback_best(self, _auto: bool = False) -> dict:
         g = self._guard()

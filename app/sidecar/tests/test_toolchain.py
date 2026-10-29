@@ -233,3 +233,24 @@ def test_service_build_log_feeds_flasher(tmp_path, home):
     assert svc.build_log()["flash_ready"] != True and svc.flasher.last_build is None
     with pytest.raises(Exception):
         svc.build()                                               # 没配 keil_uv4：明确报错
+
+
+@pytest.mark.needs_sim
+def test_sim_sweep_and_bode_predict(sim, tmp_path, home):
+    """仿真板闭环扫频：低频增益≈1、高频衰减、相位滞后随频率增加；计算器给出裕度。"""
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
+        "high": [0.4, 0], "hold_s": 1.0, "y": "spd_a", "sp": "sp_a",
+        "sweep": {"f0": 0.5, "f1": 4.0, "n": 4, "settle_cycles": 1, "cycles": 3}}}), encoding="utf-8")
+    ev = []
+    svc = AgentService(sim, AgentTools(sim, ev.append), ev.append, root=tmp_path)
+    out = svc.gate("run_sweep_test", {}, svc.run_sweep_test)          # 仿真里 log 级，直接跑
+    pts = out["points"]
+    assert len(pts) >= 3 and not out["errors"], out
+    assert 0.5 < pts[0]["gain"] < 1.5, pts[0]
+    assert pts[-1]["phase"] < pts[0]["phase"]
+    assert any(e["type"] == "sweep_result" for e in ev)
+    p = svc.bode_predict(K=2.0, tau=0.3, L=0.02, kp=1.0, ki=2.0)
+    assert p["phase_margin_deg"] > 0 and p["bandwidth_hz"] > 0

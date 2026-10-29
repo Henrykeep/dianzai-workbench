@@ -76,7 +76,7 @@ export function initAgent(call: Call) {
     });
   }
   // 风险等级 human 的动作卡（烧录 / 实机阶跃 / 实机回滚）：人点了才执行
-  const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", rollback_best: "回滚到最好参数", flash_rollback: "回滚到烧前固件" };
+  const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", run_sweep_test: "实机正弦扫频", rollback_best: "回滚到最好参数", flash_rollback: "回滚到烧前固件" };
   function renderAction(a: Msg) {
     const pv = a.preview ? `<pre class="log">${esc(JSON.stringify(a.preview, null, 1))}</pre>` : "";
     const d = add(`<div class="hd"><span class="dotk file"></span><span class="t">需要你确认：${esc(TOOL_CN[a.tool] ?? a.tool)}</span><span class="lbl">风险 human${a.sim ? " · 仿真" : " · 实机"}</span></div>

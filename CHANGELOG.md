@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 频率响应：新工具 `run_sweep_test`（闭环正弦扫频，复用 step_test 的通道和工作点，配置 `step_test.sweep`；按板子实际收到的 sp 算增益/相位；实机需点击，最长 90 s，频率上限按发送/遥测周期限制），返回闭环带宽（相对最低频点 −3 dB）、谐振峰、相位滞后 90° 频率，残差大的点标为不可信。新计算器 `bode_predict`（FOPDT + PID → 相位/幅值裕度、闭环带宽，模型预测）。与一阶闭环解析解对过；仿真板扫频测过；真板未测。
 - [仿真] CI 修复：侧车测试不再依赖本机是否下载了 TI 器件包（conftest 统一给假包）；之前本地有包、CI 没包，test_e2e_flash 在 app-windows 上报 no_pack。
 - [仿真] 文本遥测解析：`\r\n`、单独 `\r` 都当行尾；先按 UTF-8、不合法再按 GB18030（GBK）解码，中文通道名可用，GBK 第二字节不再拆出假 ASCII 通道。补任意字节切分 / CRLF 切开 / GBK 双字节切开的测试。
 - [仿真] 串口 DTR/RTS 可配：配置 `serial.dtr/rts`（null = 驱动默认）或连接栏“DTR/RTS 不拉高”；在 open() 前设好，防 ESP32/一键下载电路一连就复位。真 CH340/ESP32 未测。
