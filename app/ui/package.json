@@ -9,8 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@fontsource/geist-mono": "^5.3.0",
-    "@fontsource/inter": "^5.3.0",
     "lucide": "^1.63.0",
     "uplot": "^1.6.30"
   },

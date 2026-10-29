@@ -1,59 +1,65 @@
-/* 电赛工作台 设计变量 v4（docs/26-UI规范.md §3）
- * 灰阶：OKLCH，hue 255、chroma .005，按明度生成（P4），每一级都有固定语义（P5）：
- *   s0 = plot（数据区，最暗） s1 = chrome（顶栏/rail/状态栏） s2 = raised（停靠面板） s3 = 控件  s-hover
- *   line = 面板之间 1px 的缝  hair = 面板内很淡的线  ink/text/muted/dim = t1/t2/t3/t4
- * 颜色稀缺（P15）：acc 蓝只用于选中、焦点、待下发和采纳；go 绿只给全局唯一的主动作；estop 红只给急停和故障。灰里不掺 accent，不用紫色。 */
+/* 电赛工作台 设计变量 v6（docs/26-UI规范.md §6）
+ * 只有三级文字对比（ink / text / muted；dim、faint 只给禁用和刻度），面板间 8px 间隙 + 12px 圆角，面板内不画线。
+ * 唯一强调色：黄铜 = 意图（设定值、待下发、提议、主按钮）。实测通道用降饱和冷色；状态色降饱和；红只给急停和故障。不用紫。
+ * 字号 4 级：12 / 14 / 20 / 40；间距 8 的倍数（细节 4）。字体全部本地（OFL，见 fonts/）。 */
+@font-face{font-family:"Bricolage Grotesque";src:url(./fonts/bricolage-grotesque-var.woff2) format("woff2");font-weight:200 800;font-display:swap}
+@font-face{font-family:"Geist Mono";src:url(./fonts/geist-mono-var.woff2) format("woff2");font-weight:100 900;font-display:swap}
+@font-face{font-family:"Noto Sans SC Dz";src:url(./fonts/noto-sans-sc-dz.woff2) format("woff2");font-weight:100 900;font-display:swap}
+:root{
+  --f-sans:"Bricolage Grotesque","Noto Sans SC Dz","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
+  --f-mono:"Geist Mono","Noto Sans SC Dz",Consolas,monospace;
+  --t-xs:12px; --t-sm:12px; --t-md:14px; --t-lg:20px; --t-xl:40px;
+  --sp1:4px; --sp2:8px; --sp3:16px; --sp4:16px; --sp5:24px;
+  --r-xs:4px; --r-sm:6px; --r:8px; --r-lg:12px;
+  --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:56px; --h-sb:28px; --w-rail:0px; --w-left:280px; --w-side:320px; --w-lab:136px;
+  /* 动效：四档时长、只动 transform / opacity */
+  --d-1:160ms; --d-2:280ms; --d-3:480ms; --d-4:720ms; --dur:160ms; --ease:cubic-bezier(.22,1,.36,1);
+}
 :root,[data-theme="dark"]{
   color-scheme:dark;
-  --s0:oklch(.135 .005 255); --s1:oklch(.175 .005 255); --s2:oklch(.205 .005 255); --s3:oklch(.235 .005 255); --s-hover:oklch(.255 .005 255);
-  --ink:oklch(.94 .005 255); --text:oklch(.74 .005 255); --muted:oklch(.58 .005 255); --dim:oklch(.48 .005 255); --faint:oklch(.34 .005 255);
-  --line:oklch(.255 .005 255); --hair:oklch(.235 .005 255); --line2:oklch(.31 .005 255);
-  --grid:oklch(.195 .005 255); --grid-2:oklch(.30 .005 255);
-  --sh-pop:0 0 0 1px var(--line2),0 12px 32px -12px oklch(0 0 0 / .7);
-  --acc:#4c82f0; --acc-t:#7fa7ff; --acc-ink:#fff; --acc-bg:oklch(.62 .15 262 / .14); --focus:0 0 0 2px oklch(.62 .15 262 / .5);
-  --go:#2f9e5b; --go-ink:#fff;
-  --ok:#4fbf86; --warn:#e2a84a; --crit:#e5544b; --info:#6aa9d8; --off:var(--faint);
-  --ok-bg:oklch(.7 .13 155 / .12); --warn-bg:oklch(.78 .13 75 / .12); --crit-bg:oklch(.62 .19 27 / .12);
-  --estop:#d6453d; --estop-bg:oklch(.62 .19 27 / .14);
-  /* 通道色：示波器惯例（黄/青/绿/橙…），只用于 trace 与标记（P11）；无紫 */
-  --ch1:#e6c34a; --ch2:#47bfd6; --ch3:#5cc27f; --ch4:#e8894a;
-  --ch5:#d9d9d9; --ch6:#6f9df2; --ch7:#c9a27a; --ch8:#8fa3a8;
-  --setpoint:var(--muted);
-  --f-sans:"Inter","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Source Han Sans SC",system-ui,sans-serif;
-  --f-mono:"Geist Mono","Cascadia Mono","SF Mono",Consolas,"Noto Sans Mono CJK SC",monospace;
-  /* 字号只有三档（P7）：13 正文 / 12 数值与次要 / 11 刻度与角标 */
-  --t-xs:11px; --t-sm:12px; --t-md:13px;
-  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px;
-  --r-xs:2px; --r-sm:3px; --r:4px;
-  /* 刻度（P17）：行 28、控件 28、视图头 32、顶栏 40、状态栏 24 */
-  --h-row:28px; --h-ctl:28px; --h-sm:24px; --h-vh:32px; --h-top:40px; --h-sb:24px; --w-rail:44px; --w-side:320px; --w-lab:168px;
-  --dur:120ms; --ease:cubic-bezier(.2,.8,.2,1);
+  --bg:oklch(.115 .004 60);
+  --s0:oklch(.135 .004 60); --s1:oklch(.115 .004 60); --s2:oklch(.155 .005 60); --s3:oklch(.195 .006 60); --s-hover:oklch(.215 .006 60);
+  --ink:oklch(.95 .012 80); --text:oklch(.68 .01 75); --muted:oklch(.52 .008 70); --dim:oklch(.42 .008 70); --faint:oklch(.3 .006 70);
+  --line:oklch(1 0 0 / .06); --hair:oklch(1 0 0 / .045); --line2:oklch(1 0 0 / .1);
+  --grid:oklch(1 0 0 / .04); --grid-2:oklch(1 0 0 / .08);
+  --sh-pop:0 0 0 1px var(--line2),0 16px 40px -16px oklch(0 0 0 / .8);
+  --acc:oklch(.78 .12 62); --acc-t:oklch(.8 .11 66); --acc-ink:oklch(.17 .03 62); --acc-bg:oklch(.78 .12 62 / .1); --focus:0 0 0 2px oklch(.78 .12 62 / .45);
+  --go:var(--acc); --go-ink:var(--acc-ink);
+  --ok:oklch(.76 .07 155); --warn:oklch(.8 .09 85); --crit:oklch(.72 .1 30); --info:oklch(.78 .05 225); --off:var(--faint);
+  --ok-bg:oklch(.76 .07 155 / .1); --warn-bg:oklch(.8 .09 85 / .1); --crit-bg:oklch(.72 .1 30 / .12);
+  --estop:oklch(.6 .19 27); --estop-ink:#fff; --estop-bg:oklch(.6 .19 27 / .14);
+  --band:oklch(.86 .06 210 / .05);
+  /* 通道：降饱和冷色在前（实测），暖色靠后；黄铜留给设定值 */
+  --ch1:oklch(.86 .06 210); --ch2:oklch(.78 .06 160); --ch3:oklch(.78 .05 250); --ch4:oklch(.8 .015 80);
+  --ch5:oklch(.8 .06 185); --ch6:oklch(.74 .05 130); --ch7:oklch(.72 .03 40); --ch8:oklch(.66 .02 230);
+  --setpoint:var(--acc);
 }
 [data-theme="light"]{
   color-scheme:light;
-  --s0:oklch(1 0 255); --s1:oklch(.968 .005 255); --s2:oklch(.99 .005 255); --s3:oklch(.955 .005 255); --s-hover:oklch(.935 .005 255);
-  --ink:oklch(.2 .005 255); --text:oklch(.42 .005 255); --muted:oklch(.55 .005 255); --dim:oklch(.64 .005 255); --faint:oklch(.8 .005 255);
-  --line:oklch(.905 .005 255); --hair:oklch(.935 .005 255); --line2:oklch(.85 .005 255);
-  --grid:oklch(.95 0 0); --grid-2:oklch(.84 0 0);
-  --sh-pop:0 0 0 1px var(--line2),0 12px 28px -12px oklch(.2 0 0 / .25);
-  --acc:#1f62d6; --acc-t:#1f62d6; --acc-bg:oklch(.55 .17 262 / .1); --focus:0 0 0 2px oklch(.55 .17 262 / .35);
-  --go:#1f8a4c;
-  --ok:#14804a; --warn:#9a6200; --crit:#c9362e; --info:#2b64a0;
-  --estop:#c9362e;
-  --ch1:#b58a00; --ch2:#0a8aa6; --ch3:#2c9a52; --ch4:#c7611c;
-  --ch5:#444a52; --ch6:#2d63c8; --ch7:#8a6440; --ch8:#5f7479;
+  --bg:oklch(.945 .005 80);
+  --s0:oklch(.99 .003 85); --s1:oklch(.945 .005 80); --s2:oklch(.99 .003 85); --s3:oklch(.955 .005 80); --s-hover:oklch(.93 .006 80);
+  --ink:oklch(.2 .01 60); --text:oklch(.45 .01 60); --muted:oklch(.58 .008 60); --dim:oklch(.66 .007 60); --faint:oklch(.82 .006 60);
+  --line:oklch(0 0 0 / .07); --hair:oklch(0 0 0 / .05); --line2:oklch(0 0 0 / .12);
+  --grid:oklch(0 0 0 / .045); --grid-2:oklch(0 0 0 / .09);
+  --sh-pop:0 0 0 1px var(--line2),0 16px 32px -16px oklch(.2 0 0 / .25);
+  --acc:oklch(.6 .13 58); --acc-t:oklch(.55 .13 55); --acc-ink:oklch(.99 0 0); --acc-bg:oklch(.6 .13 58 / .09); --focus:0 0 0 2px oklch(.6 .13 58 / .35);
+  --ok:oklch(.5 .09 155); --warn:oklch(.55 .1 75); --crit:oklch(.55 .13 30); --info:oklch(.5 .07 230);
+  --ok-bg:oklch(.5 .09 155 / .08); --warn-bg:oklch(.55 .1 75 / .1); --crit-bg:oklch(.55 .13 30 / .08);
+  --estop:oklch(.56 .2 27);
+  --band:oklch(.48 .09 225 / .05);
+  --ch1:oklch(.48 .09 225); --ch2:oklch(.5 .08 165); --ch3:oklch(.48 .08 260); --ch4:oklch(.45 .02 70);
+  --ch5:oklch(.52 .08 190); --ch6:oklch(.5 .07 135); --ch7:oklch(.5 .06 40); --ch8:oklch(.5 .03 230);
 }
-/* 高对比（户外强光 / 投影 / 视力）：纯黑底、纯白字、线和网格加亮，通道色提饱和；仍不用紫。
- * 参照 WCAG 2.2 AAA 正文 7:1、VS Code High Contrast 主题的做法：靠边框而不是靠底色区分层级。 */
+/* 高对比（户外强光 / 投影）：纯黑底、纯白字、线加亮，靠边框区分层级（WCAG 2.2 AAA 7:1）；仍不用紫 */
 [data-theme="hc"]{
   color-scheme:dark;
-  --s0:oklch(0 0 0); --s1:oklch(0 0 0); --s2:oklch(.1 0 0); --s3:oklch(.16 0 0); --s-hover:oklch(.24 0 0);
+  --bg:oklch(0 0 0);
+  --s0:oklch(0 0 0); --s1:oklch(0 0 0); --s2:oklch(.1 0 0); --s3:oklch(.18 0 0); --s-hover:oklch(.26 0 0);
   --ink:oklch(1 0 0); --text:oklch(.95 0 0); --muted:oklch(.85 0 0); --dim:oklch(.75 0 0); --faint:oklch(.6 0 0);
   --line:oklch(.62 0 0); --hair:oklch(.42 0 0); --line2:oklch(.8 0 0);
   --grid:oklch(.3 0 0); --grid-2:oklch(.5 0 0);
-  --acc:#5c9dff; --acc-t:#9cc2ff; --acc-bg:oklch(.7 .14 262 / .22); --focus:0 0 0 2px #9cc2ff;
-  --go:#2fbf6a; --ok:#5fe39a; --warn:#ffc24a; --crit:#ff6b60; --info:#7cc4ff; --estop:#ff4d42;
-  --ch1:#ffd84a; --ch2:#4ae0ff; --ch3:#6cf08f; --ch4:#ff9c4a;
-  --ch5:#ffffff; --ch6:#8ab4ff; --ch7:#e8c08f; --ch8:#b0c4c8;
-  --setpoint:oklch(.85 0 0);
+  --acc:oklch(.85 .15 70); --acc-t:oklch(.88 .14 75); --acc-ink:#000; --acc-bg:oklch(.85 .15 70 / .2); --focus:0 0 0 2px #fff;
+  --ok:#5fe39a; --warn:#ffd24a; --crit:#ff6b60; --info:#7cc4ff; --estop:#ff4d42;
+  --ch1:#4ae0ff; --ch2:#6cf08f; --ch3:#8ab4ff; --ch4:#ffffff; --ch5:#4affd2; --ch6:#c8ff6c; --ch7:#ff9c4a; --ch8:#b0c4c8;
+  --setpoint:var(--acc); --band:oklch(1 0 0 / .08);
 }
