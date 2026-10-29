@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] G1 生成物一致性检查 `tools/check_gen_consistency.py`（进 make check / CI）：CubeMX `MX_GPIO_Init` 引脚与 .ioc 的 GPIO 双向对比（改 .ioc 没重新 GENERATE、残留旧引脚即报错），链接脚本必须有 `__flash_kb` ASSERT。复现换板实测：LED PA8→PC13 只改 .ioc 时报出两条。复核更正 docs/27：flash 超限早已由 ASSERT 拦住（`BOARD_FLASH_KB=8` 实测链接报错），初稿误判。新增 docs/notes/。[未测] 真 CubeMX 生成的 gpio.c 分文件布局、Keil。
 - [未测] docs/26 §5：v5「调参台」视觉方向（原则出处 + 原创落地 + 自评），示意稿在工作区，代码未动。
 - [仿真] 界面按 v4 示意稿落地：灰阶 tokens、分 lane 示波、停靠参数表（含默认列）、侧栏页签；新增 docs/HANDOVER.md。[未测] 实机、Windows 字体、1280 窄屏。
 - [未测] docs/26：改为 17 条设计原则、v3 审计和 v4 原则→决定映射（只改文档，应用代码未动）

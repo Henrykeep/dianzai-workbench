@@ -309,6 +309,8 @@ check:
 	$(PY) tools/check_ai_docs.py --check
 	$(PY) tools/check_version.py
 	$(MAKE) ioc-check
+	$(PY) tools/check_gen_consistency.py --selftest
+	$(PY) tools/check_gen_consistency.py
 	$(MAKE) -C examples/2026H_ball/tests
 	cd host/python && $(PY) -m dzlink.test_dzlink
 	$(PY) host/maixcam/test_ball_sender.py
