@@ -1,3 +1,4 @@
+import { createElement, Activity, SlidersHorizontal } from "lucide";
 // 外壳行为：主题切换（记在 localStorage）、弹出菜单点外面 / Esc / 点菜单项后收起。
 const KEY = "dz.theme";
 
@@ -26,3 +27,8 @@ export function initChrome(): void {
     if (e.key === "Escape") menus().forEach((m) => (m.open = false));
   });
 }
+
+// 动态插入的空状态用的图标（静态 HTML 里的图标由 createIcons 处理）
+const ICONS = { activity: Activity, sliders: SlidersHorizontal };
+export const icon = (k: keyof typeof ICONS) => createElement(ICONS[k]).outerHTML;
+export const emptyState = (k: keyof typeof ICONS, text: string) => `<div class="empty-s">${icon(k)}<span>${text}</span></div>`;

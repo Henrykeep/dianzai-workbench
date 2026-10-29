@@ -5,7 +5,7 @@ import "@fontsource/inter-tight/500.css";
 import "./tokens.css";
 import "./style.css";
 import { createIcons, Activity, Ellipsis, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
-import { initChrome } from "./chrome";
+import { initChrome, emptyState } from "./chrome";
 import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
 import { matchNames } from "./names";
@@ -183,7 +183,7 @@ function renderParams() {
     <span class="k">${esc(p.name)}<i>${esc(p.desc ?? "")}</i></span>
     <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off">
     <span class="rng mono" id="pr-${p.name}" data-r="${fmt(p.min, p)}…${fmt(p.max, p)}${p.unit ? " " + esc(p.unit) : ""}"></span></div>`).join("")
-    || `<div class="hint">连上板子并识别出数据格式后，这里会列出可调参数。</div>`;
+    || emptyState("sliders", "连上后列出可调参数");
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
     inp.onkeydown = e => {
@@ -265,11 +265,20 @@ $("win").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => {
 });
 function setRun(on: boolean) { plot.running = on; $("run").querySelectorAll<HTMLElement>("span").forEach(x => x.classList.toggle("on", (x.dataset.r === "1") === on)); }
 $("run").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => setRun(s.dataset.r === "1"));
+// 回放列表只列当前端口 / 仿真应用的记录（文件名带端口标签，见 session.start_log）；“其他端口”收在最后一项
+let logsAll = false;
+const portTag = (p: string) => p.split("/").pop()!.replace(/[^0-9A-Za-z_+-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
 async function loadLogs() {
   const logs: any[] = await link.rpc("log_list").catch(() => []);
-  $("logs").innerHTML = logs.map(l => `<option value="${esc(l.path)}">${esc(l.path.split(/[\\/]/).pop())} · ${(l.size / 1024).toFixed(0)} kB${l.recording ? " · 记录中" : ""}</option>`).join("") || `<option value="">（还没有记录）</option>`;
+  const tag = portTag(S.status?.connected ? S.status.port : $<HTMLSelectElement>("port").value || "");
+  const mine = logs.filter(l => tag && String(l.path).replace(/\.dzlog$/, "").endsWith("_" + tag));
+  const shown = logsAll ? logs : mine, others = logs.length - mine.length;
+  $("logs").innerHTML = (shown.map(l => `<option value="${esc(l.path)}">${esc(l.path.split(/[\\/]/).pop())} · ${(l.size / 1024).toFixed(0)} kB${l.recording ? " · 记录中" : ""}</option>`).join("")
+    || `<option value="">没有记录</option>`) + (!logsAll && others ? `<option value="__all">其他端口的 ${others} 个记录…</option>` : "");
 }
-$("replay").onclick = async () => { const p = $<HTMLSelectElement>("logs").value; if (p) { await call("replay", { path: p }); plot.clear(); } };
+$("logs").addEventListener("change", () => { if ($<HTMLSelectElement>("logs").value === "__all") { logsAll = true; loadLogs(); } });
+$("port").addEventListener("change", () => { logsAll = false; loadLogs(); });
+$("replay").onclick = async () => { const p = $<HTMLSelectElement>("logs").value; if (p && p !== "__all") { await call("replay", { path: p }); plot.clear(); } };
 
 // ---------------------------------------------------------------- 提议卡片（Agent 接缝）
 function renderProposal(m: Msg) {
@@ -319,7 +328,7 @@ function renderStatus(st: Msg) {
 }
 function applyNone() {
   S.schema = null; S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
-  plot.setChannels([], [], []); $("chans").innerHTML = ""; $("chan-n").textContent = ""; $("plot-sub").textContent = "";
+  plot.setChannels([], [], []); $("chans").innerHTML = emptyState("activity", "连上后列出通道"); $("chan-n").textContent = ""; $("plot-sub").textContent = "";
   $("snaps").innerHTML = ""; renderParams();
   $("props").innerHTML = AGENT_IDLE;
 }
@@ -341,6 +350,7 @@ $("export").onclick = async (e: MouseEvent) => {
   const r = await call("log_export", { path: p, fmt: e.shiftKey ? "plotjuggler" : "excel" }).catch(() => null);
   if (r) toast(`已导出 ${r.rows} 行 → ${r.path}`, "ok", 12000);
 };
+$("chans").innerHTML = emptyState("activity", "连上后列出通道");
 $("props").innerHTML = AGENT_IDLE;
 link.on(m => {
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);

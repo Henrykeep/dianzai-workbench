@@ -122,6 +122,8 @@ details.sub .row{margin-top:var(--sp1)}
 .st-RUNNING,.st-VALID{color:var(--ok)!important} .st-HELD{color:var(--warn)!important}
 .st-ESTOP,.st-FAULT,.st-LOST{color:var(--crit)!important} .st-DONE{color:var(--info)!important}
 
+.empty-s{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--sp2);min-height:120px;height:100%;color:var(--dim);font-size:var(--t-sm);text-align:center}
+.empty-s svg{width:20px;height:20px;stroke-width:1.5;color:var(--faint)}
 /* 曲线 */
 .plot{display:grid;grid-template-rows:44px minmax(0,1fr)}
 .plotbox{position:relative;min-height:0;padding:var(--sp2)}
@@ -132,11 +134,13 @@ details.sub .row{margin-top:var(--sp1)}
 
 /* 右栏 */
 .side{display:grid;grid-template-rows:minmax(0,1fr) minmax(0,1.3fr);gap:var(--sp2);min-height:0}
-.params{display:flex;flex-direction:column}
+.params{display:flex;flex-direction:column;min-height:0}
+.params>.actions,.params>.snaps{flex:none}
 #pend{color:var(--acc);font-family:var(--f-sans)}
-.plist{flex:1;overflow:auto;padding:var(--sp1) var(--sp3) 0 var(--sp4)}
+.plist{flex:1 1 0;min-height:0;overflow:auto;scroll-snap-type:y proximity;mask-image:linear-gradient(#000 calc(100% - 24px),transparent);padding-bottom:24px;padding:var(--sp1) var(--sp3) 0 var(--sp4)}
 .prow{display:grid;grid-template-columns:minmax(0,1fr) 88px 96px;gap:var(--sp2);align-items:center;min-height:40px;border-bottom:1px solid var(--hair)}
 .prow:last-child{border-bottom:0}
+.prow{scroll-snap-align:start}
 .prow .k{font:500 var(--t-sm) var(--f-mono);color:var(--ink);overflow:hidden}
 .prow .k i{display:block;font:400 10px var(--f-sans);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .prow .rng{font:400 10px var(--f-mono);color:var(--dim);text-align:right;white-space:nowrap}
@@ -148,7 +152,7 @@ details.sub .row{margin-top:var(--sp1)}
 .hv .tag{font:500 10px var(--f-mono);color:var(--dim)}
 
 /* Agent */
-.agent{display:flex;flex-direction:column}
+.agent{display:flex;flex-direction:column;min-height:0}
 .agent .ph{gap:var(--sp1)}
 .agent .ph h3{margin-right:var(--sp2)}
 .fwst:has(.lbl:empty){display:none}

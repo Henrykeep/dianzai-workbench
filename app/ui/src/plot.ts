@@ -42,7 +42,7 @@ export class Plot {
       ...this.size(),
       legend: { show: false },
       cursor: { points: { size: 6 }, drag: { x: true, y: false } },
-      scales: { x: { time: false } },
+      scales: { x: { time: false }, y: { range: yRange } },
       axes: [{ ...ax, values: (_u, v) => v.map(x => x.toFixed(1) + " s") }, { ...ax, size: 56 }],
       series: [{}, ...names.map((n, i) => ({ label: n, stroke: chColor(i), width: i === 0 ? 1.75 : 1.25, show: visible[i], dash: i >= 4 ? [6, 2, 1, 2] : undefined, value: (_u: uPlot, v: number | null) => v == null ? "—" : v.toFixed(3) + (units[i] ? " " + units[i] : "") }))],
     }, [[], ...names.map(() => [])], this.box);
@@ -75,4 +75,13 @@ export class Plot {
 
   show(i: number, on: boolean) { this.u?.setSeries(i + 1, { show: on }); }
   last(i: number) { const a = this.ys[i]; return a?.length ? a[a.length - 1] : undefined; }
+}
+
+// Y 轴跟数据走：上下各留 8%；数据几乎是平的时给一个最小跨度（按量级取，0 附近 ±1），不会出现 0–100 的默认刻度
+export function yRange(_u: uPlot, lo: number | null, hi: number | null): [number, number] {
+  if (lo == null || hi == null || !isFinite(lo) || !isFinite(hi)) return [-1, 1];
+  const mid = (lo + hi) / 2, minSpan = Math.max(Math.abs(mid) * 0.1, 2);
+  let span = hi - lo;
+  if (span < minSpan) { lo = mid - minSpan / 2; hi = mid + minSpan / 2; span = minSpan; }
+  return [lo - span * 0.08, hi + span * 0.08];
 }

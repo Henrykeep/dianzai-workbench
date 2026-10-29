@@ -7,9 +7,7 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&am
 const n = (v: number | null | undefined, d = 2, u = "") => v == null ? "—" : `${(+v).toFixed(d)}${u}`;
 
 export const AGENT_IDLE = `<div class="hint">
-  <b>分析阶跃</b>：给一个设定值阶跃后点它，离线算超调 / 上升 / 调节时间 / 振荡，并给调参建议。<br>
-  <b>问 Agent</b>：没填 Key 也能问，由<b>离线规则助手</b>回答（只认常见问题）；在 ⚙ 里填大模型（DeepSeek、通义千问、本地 Ollama）对话更灵活。<br>
-  Agent 只能<b>提议</b>：参数改动要你点“采纳”才下发；文件改动先给 diff，确认后跑 <code>make check</code> 通过才 git 提交，随时可回滚。它碰不到急停。
+  点“分析阶跃”离线看超调 / 调节时间；或直接问。改参数和文件都要你确认，碰不到急停。
   <div class="chips">${["超调好大，怎么办", "帮我把速度环调好", "为什么左轮比右轮慢", "仿真里调好了，可以上车了吗"]
     .map(q => `<button type="button" class="chip" data-q="${q}">${q}</button>`).join("")}</div></div>`;
 
