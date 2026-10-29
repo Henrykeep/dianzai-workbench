@@ -71,7 +71,7 @@ FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard fi
 LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/proto/*/*.c firmware/drivers/*/*.c)
 # 纯 make 递归通配（不调 find：Windows 上 find.exe 是另一个程序，会报 "File not found - *.c"）
 rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
-APP_ALL := $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f),,$f))
+APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f),,$f)))
 SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
 APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC) $(LINK_SRC)
 PORT_DIR = ports/$(BOARD_PORT)
