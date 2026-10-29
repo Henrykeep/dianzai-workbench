@@ -15,9 +15,9 @@ from .. import snapshots
 AUTO, LOG, HUMAN, FORBID = "auto", "log", "human", "forbid"
 
 RISK: dict[str, str] = {
-    "read_telemetry": AUTO, "list_params": AUTO, "step_analysis": AUTO, "list_files": AUTO, "read_file": AUTO,
+    "read_telemetry": AUTO, "list_params": AUTO, "step_analysis": AUTO, "list_files": AUTO, "read_file": AUTO, "repo_map": AUTO,
     "tune_context": AUTO, "update_plan": AUTO, "board_memory": AUTO, "read_symbol": AUTO, "decode_hardfault": AUTO, "build_log": AUTO, "bode_predict": AUTO,
-    "build": LOG, "reset": LOG, "propose_param_change": LOG, "propose_edit": LOG, "observe": LOG,
+    "build": LOG, "reset": LOG, "propose_param_change": LOG, "propose_edit": LOG, "remember": LOG, "observe": LOG,
     "flash": HUMAN, "flash_rollback": HUMAN, "erase": HUMAN, "mem_write": HUMAN, "run_step_test": HUMAN, "run_sweep_test": HUMAN, "rollback_best": HUMAN,
     "open_loop_test": HUMAN,                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）
     "swarm_search": FORBID,                        # 群体/随机搜索：实机永远不给，仿真降为 log

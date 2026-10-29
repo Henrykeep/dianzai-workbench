@@ -30,6 +30,7 @@
 | 16-VSCode工作流.md | tasks/launch（Cortex-Debug，OpenOCD/pyOCD）、EIDE 可选 |
 | 17-桌面工作台.md | dzbench：曲线/参数/急停/回放，侧车 WebSocket 协议，Agent 接缝 |
 | 18-内置Agent.md | 分层写权限网关、diff 确认 + make check + git 提交/回滚、可插拔大模型、离线阶跃整定 |
+| agent-knowledge/ | 内置 Agent 按触发词加载的知识（堵转/极性/阶跃辨识）与人工接受后写入的项目记忆 |
 | 19-赛题覆盖矩阵.md | 历年控制题 × 所需能力 × 仓库现状（有/部分/缺），用于排模块 |
 | 20-MSPM0速查.md | MSPM0 坑位速查（宏名、QEI、时钟、版本锁），给 AI 和赶时间的人 |
 | 21-结构与3D打印.md | SolidWorks → Bambu Studio 检查清单、材料、电机/编码器/摄像头/PCB 安装座要点（给控制方向同学） |

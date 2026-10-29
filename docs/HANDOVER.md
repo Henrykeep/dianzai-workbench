@@ -58,3 +58,7 @@
 ### 第 11 项：Agent 护栏（2026-10-29，UTC+8）
 - `agent/stuck.py`（OpenHands 移植）、`agent/untrusted.py`（工具结果包 `<工具数据>`）、`AgentLoop._trim_middle`（头尾裁剪）、`gateway.similar_lines`（aider 移植）。说明在 docs/18 末节。
 - 解析工具消息的地方要先 `untrusted.unwrap()`（offline.py、stuck.py、测试已改）。
+
+### 第 12 项：Agent 上下文（2026-10-29，UTC+8）
+- `agent/codemap.py`（仓库地图，git 状态缓存）、`agent/knowledge.py`（触发词知识 + 项目记忆）、`docs/agent-knowledge/`。新增工具 repo_map（AUTO）、remember（LOG，走网关 diff 卡片，人接受才写）。
+- 新知识文件：加 `triggers:` 头即可，不用改代码；README.md 无触发词不会被加载。

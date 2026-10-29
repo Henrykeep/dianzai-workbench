@@ -23,6 +23,7 @@ from .journal import BoardMemory, Journal, board_key
 from .loop import AgentLoop
 from .offline import OfflineAssistant
 from ..tuning.identify import steady_state
+from . import codemap, knowledge
 from .experiment import StagedSearch, asymmetry, four_segment_metrics, four_segment_plan
 from .tuning import StepMetrics, step_metrics, tuning_hints
 
@@ -84,13 +85,16 @@ class AgentService:
             "build_log": self.build_log,
             "decode_hardfault": self.decode_hardfault,
             "read_symbol": self.read_symbol,
+            "repo_map": lambda focus="": codemap.render(self.gw.root, focus),
+            "remember": lambda note, reason: knowledge.propose_memory(self.gw, note, reason),
             "list_files": lambda glob="**/*": self.gw.list_files(glob),
             "read_file": lambda path: self.gw.read_file(path),
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
         }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
-            gate=self.gate)
+            gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
+        self._kn_seen: set[str] = set()
 
     # -------------------------------------------------------------- 计划 / 记忆 / 撤销
     def update_plan(self, steps: list, current: int | None = None) -> dict:
@@ -119,6 +123,12 @@ class AgentService:
         self.plan = {"steps": [r["step"] for r in rows], "items": rows, "current": cur}
         self.emit({"type": "agent_plan", **self.plan})
         return {"shown": len(rows), "done": sum(r["status"] == "completed" for r in rows)}
+
+    def _knowledge(self, text: str) -> list[dict]:
+        """每次提问现读 docs/agent-knowledge（文件少、很快），新对话时 reset 已附过的记录。"""
+        if len(self.loop.messages) <= 1:
+            self._kn_seen = set()
+        return knowledge.match(text, knowledge.load(self.gw.root), self._kn_seen)
 
     def memory(self) -> BoardMemory:
         return BoardMemory(board_key(self.s.schema_hash, self.s.board_uid))

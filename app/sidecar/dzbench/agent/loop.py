@@ -39,6 +39,10 @@ TOOLS = [
     {"name": "propose_param_change", "description": "提议改一个板上参数（需用户确认）",
      "input_schema": {"type": "object", "required": ["name", "value", "reason"], "properties": {
          "name": {"type": "string"}, "value": {"type": "number"}, "reason": {"type": "string"}}}},
+    {"name": "repo_map", "description": "仓库地图：各代码文件的顶层定义（函数/类型/宏），按引用关系排名；focus 写你关心的文件名或标识符会优先列出。先看它再 read_file",
+     "input_schema": {"type": "object", "properties": {"focus": {"type": "string"}}}},
+    {"name": "remember", "description": "提议往项目记忆追加一条以后每次对话都该知道的事实（如“左编码器方向反，已在 board.yaml 取反”）。会出确认卡，人接受才写入",
+     "input_schema": {"type": "object", "required": ["note", "reason"], "properties": {"note": {"type": "string"}, "reason": {"type": "string"}}}},
     {"name": "list_files", "description": "列出仓库文件（glob）", "input_schema": {"type": "object", "properties": {"glob": {"type": "string"}}}},
     {"name": "read_file", "description": "读仓库文件", "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
     {"name": "propose_edit", "description": "提议修改仓库文件（SEARCH/REPLACE；用户看 diff 确认，通过 make check 后自动 git 提交）",
@@ -80,7 +84,7 @@ assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
 # ---------------------------------------------------------------- 模式（工具白名单）
 # 思路：Gemini CLI 的 plan 策略、Cline Plan/Act、OpenCode build/plan、firework 的分任务提示词；模式只“收窄”工具，
 # 审批分级（risk.py）照旧独立生效。没有“全自动”模式。
-_READ = {"read_telemetry", "list_params", "step_analysis", "tune_context", "board_memory", "list_files", "read_file",
+_READ = {"read_telemetry", "list_params", "step_analysis", "tune_context", "board_memory", "repo_map", "list_files", "read_file",
          "read_symbol", "decode_hardfault", "build_log", "update_plan", "observe"}
 MODES = {
     "general": {"name": "通用", "tools": None, "prompt": ""},
@@ -90,7 +94,7 @@ MODES = {
              "prompt": "当前是【调参】模式：先 board_memory + tune_context，再每轮只改一个参数，改完用实验验证。不改代码。"},
     "edit": {"name": "改代码", "tools": _READ | {"propose_edit", "build", "flash", "flash_rollback"},
              "prompt": "当前是【改代码】模式：先 read_file 看当前内容，保留用户未提交的改动，只改最小片段；改完要通过 make check。不改板上参数。"},
-    "review": {"name": "审查", "tools": {"list_files", "read_file", "read_symbol", "build_log", "update_plan", "board_memory"},
+    "review": {"name": "审查", "tools": {"repo_map", "list_files", "read_file", "read_symbol", "build_log", "update_plan", "board_memory"},
                "prompt": "当前是【审查】模式：只报缺陷，按严重度排序，每条给文件和行；没发现问题也要列出还没有测试覆盖的地方。不提议修改。"},
 }
 
@@ -122,11 +126,13 @@ def grounded(text: str, results: list[dict]) -> str | None:
 
 class AgentLoop:
     def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8,
-                 project_rules: str = "", gate: Callable | None = None):
+                 project_rules: str = "", gate: Callable | None = None, knowledge: Callable[[str], list[dict]] | None = None,
+                 memory: Callable[[], str] | None = None):
         self.llm, self.handlers, self.emit, self.max_steps = llm, handlers, emit, max_steps
+        self.knowledge = knowledge or (lambda text: [])
         self.gate = gate or (lambda tool, args, run: run())
-        sys_ = SYSTEM + (f"\n\n以下是本工程仓库的 AGENTS.md（项目规则，必须遵守）：\n{project_rules[:6000]}" if project_rules else "")
-        self.messages: list[dict] = [{"role": "system", "content": sys_}]
+        self._rules, self._memory = project_rules, memory or (lambda: "")
+        self.messages: list[dict] = [self._system()]
         self.mode = "general"
         # 下面三项“护栏”（回答数字校验 / 重复提醒 / 空结果说明）只对真大模型开；离线规则助手是确定性的，不需要也读不懂
         self.guards = False
@@ -146,8 +152,15 @@ class AgentLoop:
         """把界面上发生的事告诉模型（例如用户撤销了 Agent 的改动），下一问时它能看到。"""
         self.messages.append({"role": "user", "content": f"[工作台通知，不是用户提问] {text}"})
 
+    def _system(self) -> dict:
+        sys_ = SYSTEM + (f"\n\n以下是本工程仓库的 AGENTS.md（项目规则，必须遵守）：\n{self._rules[:6000]}" if self._rules else "")
+        if mem := self._memory():
+            sys_ += f"\n\n项目记忆（人确认过的事实，docs/agent-knowledge/project-memory.md）：\n{mem}"
+        return {"role": "system", "content": sys_}
+
     def reset(self) -> None:
-        self.messages = self.messages[:1]
+        """新对话：重读项目记忆（刚被接受的条目从这一轮起生效）。"""
+        self.messages = [self._system()]
 
     KEEP_FULL = 6            # 最近这么多条工具结果原样保留
     BUDGET = 60_000          # 历史总字符超过这个就压缩更早的工具结果
@@ -191,7 +204,8 @@ class AgentLoop:
     def ask(self, text: str) -> str:
         self.condense()
         mp = MODES[self.mode]["prompt"]
-        self.messages.append({"role": "user", "content": (f"（{mp}）\n" if mp else "") + text})
+        kn = "".join(f"[工作台知识 {k['name']}，按触发词附上]\n{k['body']}\n\n" for k in self.knowledge(text))
+        self.messages.append({"role": "user", "content": kn + (f"（{mp}）\n" if mp else "") + text})
         results, checked = [], False
         det = StuckDetector()
         for _ in range(self.max_steps):
