@@ -27,6 +27,11 @@
 - **dzctl 0.3.0：心跳带板 ID**（芯片 UID 折成 32 位；F1/F4 端口用 HAL_GetUIDw*，仿真用 DZ_SIM_UID；MSPM0 读 FACTORYREGION TRACEID（0x41C40000，SLASEX6 §8.35）混 USERID，预量产片 TRACEID=0 时报未知 [编译]）。旧上位机只读前 4 字节，兼容 [仿真]。
 - 换 USB 口自动跟随改为**按板 ID 认板**：两块同型号 CH340 板同时插着也不会跟错；旧固件（无 ID）+ 无 USB 序列号 + 多个候选时不猜，中文提示手动选 [仿真]。真 CH340 [未测]。
 
+## [0.8.1] - 2026-10-29 Windows 构建修复
+
+### 修复
+- app-windows CI：v0.8.0 的 Windows 构建因 test_wiring 里 3 个仿真板测试挂掉（mingw 没有 asan/ubsan、Makefile 用了 find）。所有起仿真板的测试统一标 `needs_sim`，Windows/无 make+cc 跳过；没标却起仿真板的测试本地直接失败（子进程侧车也拦）。Makefile 改纯 make 递归通配（排序，CCS projectspec 稳定）、Windows 默认不开 sanitizer（Windows 跑仿真板 [未测]）。app-windows 改为每次推 main 都跑。[编译]
+
 ## [0.8.0] - 2026-10-29 “真的接上了吗” + 赛场鲁棒性 + 板名
 
 ### 修复（接线排查，详见 docs/23 §v0.8.0）
