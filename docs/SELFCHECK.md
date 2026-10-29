@@ -1,0 +1,18 @@
+# 自检（每个里程碑报告前更新）
+
+## 2026-10-29 · 界面改版（commit 见 git log，"界面改版…" 与 "docs 索引加 26"）
+
+| 宗旨 | 结论 | 证据 / 处理 |
+|---|---|---|
+| 顾全大局 | 是（有遗留） | 界面不再写任何题目字段名：顶栏状态块改由 schema `pin:` 驱动（原来写死 `vis_state`，已删）；通道筛选示例改成通用的 `sp_*`。遗留：`ports.py` 的 `SIM_APPS` 是手写列表，下个里程碑（通用性）改为扫描 `examples/`。 |
+| 不堆屎山 | 是 | style.css 只用 tokens.css 变量，十六进制颜色 0 处；TS 里唯一的 inline style 是通道色变量绑定 `--c`。最大文件 main.ts 389 行。旧的一次性规则（#snd、chips、sweep…）都并进组件段。 |
+| 带着脑子 | 是 | 每项取舍写在 docs/26：强调色从橙换靛蓝（不和警告 / 急停抢）；CJK 用系统字体（不打包几 MB 字体）；菜单用原生 `<details>`（不引框架）。 |
+| 站在巨人的肩膀上 | 是 | docs/26 参考表：VOFA+、Serial Studio、PlotJuggler、SerialWeb（只看思路）、Betaflight、VS Code、Linear、Raycast、Arc、Figma、Grafana、Foxglove；图标 Lucide（MIT），通道色 Okabe-Ito。 |
+| 实验是检验真理的唯一标准 | 是 | 6 个状态前后截图由 Playwright 跑真 sidecar + 仿真板生成；tsc、build 通过；preflight 结果见报告。**未测**：浅色主题没截图核对、Windows 上字体回退、1280 px 以下布局、键盘遍历全部菜单。 |
+| 客观分析 | — | 弱点：参数范围列在窄屏会截断；Agent 区高度固定比例，长对话要滚；pin 只支持枚举字段；主题切换靠重建曲线（数据保留，缩放状态丢）。 |
+| 创新 | 是 | 主题可切换并记忆，默认深色；schema 不写 `pin` 时顶栏只少一块，行为和旧版其余部分一致；旧 UI 可 `git revert` 这一个提交回退。 |
+| 站在用户的角度 | 是 | 走查：首次打开（空状态告诉你选串口或仿真板）→ 连接看曲线 → 问 Agent → 状态块随视觉丢失变 LOST → 实机确认卡带检查清单 → 断开回放。截图 /workspace/shots/ui2/before_1..6 vs after_1..6。 |
+
+**三行摘要**：界面已通用化（schema 驱动、无题目字段名），样式全走变量；参考与取舍有文档。
+未测：浅色主题 / Windows 字体 / 窄屏；已知弱点 4 条已列。
+遗留通用性问题 1 处（SIM_APPS 手写），排进下一里程碑。

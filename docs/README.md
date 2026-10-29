@@ -38,6 +38,7 @@
 | 24-Agent框架研读.md | 读 Codex / Gemini CLI / Aider / Cline / OpenHands 等源码：采纳什么、不采纳什么、许可证 |
 | 25-v0.9计划.md | v0.9 合并计划（P0 优先） |
 | 26-UI规范.md | 界面规范：网格、字阶、配色、组件、信息层级 |
+| SELFCHECK.md | 里程碑自检（按宗旨逐条） |
 | MORNING.md | 给你的一页清单：要带什么、要量什么、要拍板什么 |
 | QUESTIONS.md | 待你确认的问题 |
 | 硬件路线图.md | 各板卡/协处理器状态 |
