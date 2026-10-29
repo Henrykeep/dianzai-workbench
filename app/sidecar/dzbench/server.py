@@ -156,7 +156,11 @@ class Server:
         if op == "health":
             return s.health.history()
         if op == "timeline":
-            return s.timeline.history()
+            return {"events": s.timeline.history(), "acked": s.timeline.acked}
+        if op == "alert_ack":
+            r = {"type": "alert_ack", "upto": s.timeline.ack(m["upto"])}
+            await self._broadcast(r)
+            return r
         if op == "replay_ctl":
             r = self.session.replay_ctl(m.get("seek"), m.get("speed"), m.get("pause"))
             if m.get("seek") is not None:

@@ -56,3 +56,11 @@ def test_sim_events(home):
     finally:
         s.tr = None
         s.disconnect()
+
+
+def test_alert_ack_clamped_and_monotonic():
+    tl = Timeline()
+    for k in range(3):
+        tl.add("estop", str(k), None, None)
+    assert tl.ack(99) == 2            # 不能确认还没发生的
+    assert tl.ack(0) == 2             # 只进不退

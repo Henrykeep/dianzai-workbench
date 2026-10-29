@@ -44,6 +44,7 @@ class Timeline:
         self.lk = threading.Lock()
         self.ev: collections.deque = collections.deque(maxlen=keep)
         self._n = 0
+        self.acked = -1                 # 告警条：已确认到的事件序号（侧车记，多窗口/刷新一致）
 
     def add(self, kind: str, text: str, log_t: float | None, plot_t: float | None) -> dict:
         with self.lk:
@@ -53,6 +54,11 @@ class Timeline:
             self._n += 1
             self.ev.append(e)
             return e
+
+    def ack(self, upto: int) -> int:
+        with self.lk:
+            self.acked = max(self.acked, min(int(upto), self._n - 1))
+            return self.acked
 
     def history(self) -> list[dict]:
         with self.lk:

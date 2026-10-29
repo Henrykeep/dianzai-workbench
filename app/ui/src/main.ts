@@ -16,6 +16,7 @@ import { AcceptSpec } from "./accept";
 import { initHbStrip } from "./hbstrip";
 import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
+import { Alerts } from "./alerts";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[]; protect_fixed?: Fixed[] };
@@ -37,6 +38,18 @@ const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
   else toast(`这一秒已滚出曲线缓冲：${where}，可以在底栏回放这份记录再点`, "warn", 6000);
 };
 const hb = initHbStrip($("hbstrip"), jumpAt);
+const AL = new Alerts();
+function renderAlerts() {
+  const el = $("alerts"), l = AL.list;
+  el.hidden = !l.length;
+  if (!l.length) { el.innerHTML = ""; return; }
+  const last = l[l.length - 1];
+  el.innerHTML = `<span class="al-n">${l.length}</span><span class="al-t" title="点击跳到这一刻">${esc(last.text)}<i>${last.log_t != null ? "dzlog " + last.log_t.toFixed(1) + " s" : ""}</i></span>` +
+    (l.length > 1 ? `<span class="al-more">${l.slice(0, -1).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
+    `<span class="sp"></span><button class="btn sm" id="al-ack">知道了</button>`;
+  el.querySelector<HTMLElement>(".al-t")!.onclick = () => jumpAt(last);
+  $("al-ack").onclick = async () => { const r = await call("alert_ack", { upto: AL.top() }); AL.ack(r.upto); renderAlerts(); };
+}
 const tl = initTimeline($("tl"), e => jumpAt({ log_t: e.log_t, plot_t: e.plot_t != null ? e.plot_t + 0.5 : null }),
   evs => plot.setMarks(evs.filter(e => e.plot_t != null).map(e => ({ t: e.plot_t!, tag: kindOf(e.kind)[0], color: kindOf(e.kind)[1] }))));
 const ana = initAnalysis(plot, () => S.applied, notifySide);
@@ -428,8 +441,8 @@ function renderStatus(st: Msg) {
   $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = $<HTMLSelectElement>("lines").disabled = !!st.connected;
   $("empty").hidden = !!st.connected && !!S.schema;
   $("empty").innerHTML = `<div>${st.connected ? (st.hint ? esc(st.hint) : "等待板子心跳…") : "选端口，点 <b>连接</b>。<br>没有硬件？选 <b>仿真板</b> 先熟悉界面。"}</div>`;
-  if (!was && st.connected) { call("health").then(h => hb.set(h)).catch(() => {}); call("timeline").then(e => tl.set(e)).catch(() => {}); }   // 刷新页面/新窗口：补回已有的格子
-  if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); tl.clear(); }
+  if (!was && st.connected) { call("health").then(h => hb.set(h)).catch(() => {}); call("timeline").then(r => { tl.set(r.events); AL.ack(r.acked); r.events.forEach((x: any) => AL.offer(x)); renderAlerts(); }).catch(() => {}); }   // 刷新页面/新窗口：补回已有的格子
+  if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); tl.clear(); AL.reset(); renderAlerts(); }
 }
 function applyNone() {
   S.schema = null; UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
@@ -467,7 +480,8 @@ link.on(m => {
       break;
     }
     case "status": renderStatus(m); hb.add(m.hb); break;
-    case "event": tl.add(m as any); break;
+    case "event": tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
+    case "alert_ack": AL.ack(m.upto); renderAlerts(); break;   // 另一个窗口点了“知道了”
     case "schema": applySchema(m.schema); break;
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;

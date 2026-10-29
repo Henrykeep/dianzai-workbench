@@ -328,3 +328,9 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .ptab th{color:var(--muted);font-weight:500}
 .ptab input.in{width:7em}
 .ptab tr.fixed td{color:var(--muted)}
+/* 底部告警条（alerts.ts）：确认前一直在 */
+.alerts{display:flex;align-items:center;gap:10px;padding:4px 12px;background:var(--crit-bg);color:var(--crit);border-top:1px solid var(--crit);font:500 var(--t-sm) var(--f-sans)}
+.alerts .al-n{min-width:18px;text-align:center;border-radius:9px;background:var(--crit);color:var(--bg);font:600 var(--t-xs) var(--f-mono)}
+.alerts .al-t{cursor:pointer}.alerts .al-t i{font-style:normal;margin-left:8px;opacity:.75;font-family:var(--f-mono)}
+.alerts .al-more{opacity:.7;font-size:var(--t-xs);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.alerts .sp{flex:1}
