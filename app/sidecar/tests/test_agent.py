@@ -61,6 +61,14 @@ def test_hints_sustained_oscillation_and_no_step():
     assert not m.ok and "阶跃" in m.reason and tuning_hints(m, {})[0].level == "info"
 
 
+def test_hints_good_response_without_settling_time():
+    """窗口内没算出调节时间（settling_s=None）但响应良好：不能抛 TypeError（离线助手曾因此说“还没法分析”）。"""
+    from dzbench.agent.tuning import StepMetrics
+    m = StepMetrics(ok=True, rise_s=0.2, overshoot_pct=3.0, settling_s=None, sse_pct=0.5)
+    h = tuning_hints(m, {"kp": 1.0}, "kp", None, None)
+    assert any("调节时间" in x.text for x in h)
+
+
 def test_guess_pairs():
     assert guess_pairs(["t_ms", "sp_a", "spd_a", "sp_b", "spd_b"]) == [("spd_a", "sp_a"), ("spd_b", "sp_b")]
 

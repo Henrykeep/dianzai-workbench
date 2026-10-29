@@ -148,5 +148,5 @@ def tuning_hints(m: StepMetrics, gains: dict[str, float], kp: str = "kp", ki: st
         c = {ki: rnd((g(ki) or 0) * (1 + 2 * step) if g(ki) else max(g(kp) or 0, 1e-3) * 0.1)} if ki and ki in gains else {}
         h.append(Hint("warn", f"稳态误差 {m.sse_pct:.1f}%：{'加 Ki' if c else '这个环没有积分项，考虑加 Ki 或前馈'}。", c))
     if not h:
-        h.append(Hint("info", f"响应良好：超调 {m.overshoot_pct:.1f}%，调节 {m.settling_s:.3f} s，稳态误差 {m.sse_pct:.1f}%。建议存快照。"))
+        h.append(Hint("info", f"响应良好：超调 {m.overshoot_pct:.1f}%，" + (f"调节 {m.settling_s:.3f} s，" if m.settling_s is not None else "窗口内没算出调节时间，") + f"稳态误差 {m.sse_pct:.1f}%。建议存快照。"))
     return h
