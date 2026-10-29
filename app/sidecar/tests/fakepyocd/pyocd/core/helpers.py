@@ -28,6 +28,9 @@ class _Target:
         pyocd.LOG.append(("read", addr, n))
         return list(bytes(pyocd.FLASH[:n]).ljust(n, b"\xff"))
 
+    def resume(self):
+        pyocd.LOG.append(("resume",))
+
     def reset(self):
         pyocd.LOG.append(("reset",))
         app = bytes(pyocd.FLASH).rstrip(b"\xff\x00").decode()

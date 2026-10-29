@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] RTT 传输：端口 `rtt:<目标>[@探针]`，经 pyOCD 读写 SEGGER RTT 通道 0（API 按 pyOCD 主干源码 pyocd/debug/rtt.py 核对：RTTControlBlock.from_target → start → up/down_channels；连上后 resume），装了 pyOCD 且配置了 flash.target 时出现在端口列表。假 pyocd 测过；真探针未测；本仓库固件还没有 RTT 版 LINK 输出。
 - [编译] CI：新增 ci.yml，每次推送（任何分支）跑 make check（含 check_version）/ test / compat；firmware 工作流改为每次推 main / release/* / v* tag 都跑，不再按路径过滤。
 - [编译] `make preflight`：从 HEAD 干净克隆到临时目录、空 HOME、不带 TI 器件包、清 DZBENCH_*/PYOCD_* 环境变量，跑 check/test/compat/cross。推送前必跑。
 - [仿真] 测试与本机状态解耦：DZBENCH_HOME 每个测试指到空目录（不读本机 machine.json / LLM Key / 快照）；仿真程序与 gen 按需编译（干净克隆里 test_e2e_flash 原来找不到 build/）；器件包本机目录改走 DZBENCH_HOME；pytest 打印跳过原因，CI 装 arm-gcc 和 MSPM0 SDK 免得 ELF/板卡测试静默跳过。

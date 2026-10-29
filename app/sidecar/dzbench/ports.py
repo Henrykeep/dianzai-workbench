@@ -27,7 +27,24 @@ def list_ports() -> list[dict]:
     if can_sim:
         for a in SIM_APPS:
             out.append({"port": SIM_PREFIX + a, "desc": f"仿真板 · {a}（host-sim，无需硬件）", "kind": "sim", "likely": False})
+    out += rtt_ports()
     return out
+
+
+def rtt_ports() -> list[dict]:
+    """装了 pyOCD（含 RTT）且配置了 flash.target 时，列一个 rtt:<目标>（经调试探针收发，不占串口）。"""
+    try:
+        import importlib.util
+        if importlib.util.find_spec("pyocd") is None or importlib.util.find_spec("pyocd.debug.rtt") is None:
+            return []
+        from . import config
+        f = config.load().get("flash") or {}
+    except Exception:  # noqa: BLE001
+        return []
+    if not f.get("target"):
+        return []
+    spec = f["target"] + (f"@{f['probe']}" if f.get("probe") else "")
+    return [{"port": "rtt:" + spec, "desc": f"RTT · {f['target']}（调试探针，固件需把 LINK 输出到 RTT 通道 0）", "kind": "rtt", "likely": False}]
 
 
 def explain_open_error(device: str, e: Exception) -> tuple[str, str]:

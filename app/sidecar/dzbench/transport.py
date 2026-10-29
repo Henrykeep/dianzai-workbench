@@ -38,7 +38,8 @@ class Transport:
         raise NotImplementedError
 
     def close(self) -> None:
-        self._stop.set()
+        if hasattr(self, "_stop"):                  # 没 start() 过（打开后立刻关）也能关
+            self._stop.set()
 
 
 class SerialTransport(Transport):
@@ -126,7 +127,69 @@ class LoopbackTransport(Transport):
             self.tx += data
 
 
+RTT_PREFIX = "rtt:"
+
+
+class RttTransport(Transport):
+    """SEGGER RTT 当串口用（端口名 rtt:<pyOCD 目标>[@探针序列号]，如 rtt:mspm0g3507）。
+    API 按 pyOCD 源码 pyocd/debug/rtt.py 核对（2026-10 主干）：RTTControlBlock.from_target(target, address, size)
+    → start() 在 RAM 里找 "SEGGER RTT" 控制块 → up_channels[i].read() 非阻塞读、down_channels[i].write(data)。
+    与 `pyocd rtt` 子命令一样：连上后 target.resume()（pyOCD 默认连接会停核）。
+    【仿真】fakepyocd 测过；【未测】真探针。固件侧需要把 LINK 输出到 RTT 通道 0（本仓库固件尚未提供 RTT 版 LINK）。"""
+
+    def __init__(self, spec: str, address: int | None = None, size: int | None = None, channel: int = 0):
+        try:
+            from pyocd.core.helpers import ConnectHelper  # type: ignore
+            from pyocd.debug.rtt import RTTControlBlock  # type: ignore
+        except ImportError as e:
+            raise RuntimeError("RTT 需要 pyOCD（含 pyocd.debug.rtt）：pip install -U pyocd") from e
+        from .flash import M0_PACK, find_pack
+        target, _, probe = spec.partition("@")
+        self.name = RTT_PREFIX + spec
+        pack = find_pack(target)
+        if target.lower().startswith("mspm0") and not pack:
+            raise RuntimeError(f"找不到 MSPM0 器件包 {M0_PACK}：运行 tools/fetch_third_party.sh m0pack 或设 DZBENCH_PACK")
+        kw = {"pack": str(pack)} if pack else {}
+        self.sess = ConnectHelper.session_with_chosen_probe(unique_id=probe or None, target_override=target, blocking=False, **kw)
+        if self.sess is None:
+            raise RuntimeError("没找到调试探针：插上 DAPLink/XDS110/ST-Link")
+        self.sess.open()
+        try:
+            t = self.sess.target
+            cb = RTTControlBlock.from_target(t, address=address, size=size)
+            cb.start()
+            if len(cb.up_channels) <= channel:
+                raise RuntimeError(f"RTT 只有 {len(cb.up_channels)} 个上行通道")
+            self.up = cb.up_channels[channel]
+            self.down = cb.down_channels[channel] if len(cb.down_channels) > channel else None
+            t.resume()
+        except Exception as e:
+            self.sess.close()
+            if type(e).__name__ == "RTTError":
+                raise RuntimeError(f"RAM 里没找到 RTT 控制块（固件没启用 RTT？）：{e}") from e
+            raise
+
+    def read(self) -> bytes:
+        b = bytes(self.up.read())
+        if not b:
+            time.sleep(0.005)                       # 轮询：没数据别空转
+        return b
+
+    def write(self, data: bytes) -> None:
+        if self.down is None:
+            raise RuntimeError("RTT 没有下行通道：只能看不能发")
+        n = 0
+        while n < len(data):
+            n += self.down.write(data[n:], blocking=True)
+
+    def close(self) -> None:
+        super().close()
+        self.sess.close()
+
+
 def open_transport(port: str, baud: int) -> Transport:
     if port.startswith(SIM_PREFIX):
         return SimTransport(port[len(SIM_PREFIX):])
+    if port.startswith(RTT_PREFIX):
+        return RttTransport(port[len(RTT_PREFIX):])
     return SerialTransport(port, baud)

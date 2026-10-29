@@ -83,7 +83,7 @@ class Session:
     def connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
         self.disconnect()
         note = ""
-        if not port.startswith((SIM_PREFIX, "replay:")) and not baud:
+        if not port.startswith((SIM_PREFIX, "replay:", "rtt:")) and not baud:
             try:
                 baud, note = probe_baud(port)
             except PortOpenError as e:
