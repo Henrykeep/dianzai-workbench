@@ -5,6 +5,8 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 验收 / 单位标定 / 串级分层（docs/30），全部写在 yaml `link:`（gen_link 带进 link_schema.json，不进哈希），代码里没有题目字段名：字段 `cal`（多点直线或分段）把曲线/读数换成物理单位；`accept`（误差带、可选速度门限、保持时间、限时、多目标分段、最近 N 轮按最差）让读数条和台账显示 通过/未过（原因）· 到位时间 · 到位后误差；`loops` 给台账加“层”下拉，每层一本台账、参数只列这层增益。TS（accept.ts）与 Python（dzbench/accept.py）同一定义，共用手算期望值的测试向量；make check 改为跑全部 UI 单测（measure.test 以前没跑）。验证：2026H（cm、±1 cm/300 ms/5 s/3 轮）、car_2wd（rps→cm/s、示例阈值）、line_car（轮速/循线两层）。[未测] 真机标定、Windows。
+- [仿真] F11/F12 修复：仿真板编译、端口列表、schema 查找优先用 DZBENCH_REPO（以前固定用侧车自己的仓库，写回的默认值到不了仿真板）；自检默认查侧车在用的仓库（以前说没有 dzbench.json）。F7（全新克隆缺 third_party/ 时 check_ai_docs 报错不直观）只诊断，tools/ 归另一位。
 - [仿真] 全流程走查（docs/29，2026H 仿真）：流程条“定稿”接通写回→门禁→git 提交；写回卡片摘出 旧→新、只数真正改动；参数筛选；原始默认 HEX；频谱默认被控量；2026H 声明 ref_for。[未测] 真板、Windows。
 [仿真] tools/report.py（G11）：录像（.dzlog/CSV）一键出参数表 + 阶跃指标表（每次/平均/最差/满足率，按 --req 判是否满足）+ 叠加阶跃曲线 SVG（无依赖）；指标与工作台同一算法；--source 必填，仿真录像不能标实测；参数只取快照，不猜。tools/test_report.py 用二阶系统解析解核对（超调 16.6% vs 理论 16.3%，含噪声）。docs/templates/report.md 报告骨架。真实录像：15 次仿真摆臂录像 7 次可算。
 - [编译] check_deps F1 扩展：apps/examples 里 dt 写成数字字面量（`ec.dt_s = 0.001f`）也拦（夹具 deps_F1_dt_literal）。2026H io_main 的编码器 dt 改为与主循环门控共用 `IO_TICK_MS`（取 1 时行为不变，example 35/35）。[未测] 上板。

@@ -42,6 +42,7 @@
 - [复用性审计](docs/27-复用性审计.md)
 - [30 分钟换板清单](docs/28-30分钟换板清单.md)
 - [全流程走查（2026H 仿真）](docs/29-全流程走查.md)
+- [验收、单位标定与串级分层](docs/30-验收标定与串级分层.md)
 - [自检](docs/SELFCHECK.md)
 - [交接](docs/HANDOVER.md)
 - [给用户的待办清单](docs/MORNING.md)
