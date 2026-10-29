@@ -159,7 +159,8 @@ static void read_link(void)
 
 static void write_link(uint32_t now)
 {
-    static uint32_t last_tx, last_hb;
+    static uint32_t last_tx;
+    static uint32_t last_hb = 0u - 500u;   /* 复位后第一拍就发心跳，上位机马上认出 schema */
     dzframe_t f;
     if (now - last_tx >= LINK_TELEM_PERIOD_MS) {
         link_telem_t t;

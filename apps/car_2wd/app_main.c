@@ -145,7 +145,8 @@ static void handle_rx(uint32_t now)
 
 void app_loop(void)
 {
-    static uint32_t last_tx, last_hb, last_led;
+    static uint32_t last_tx, last_led;
+    static uint32_t last_hb = 0u - 500u;   /* 复位后第一拍就发心跳（带 schema 哈希），上位机不用等 500 ms 才认出板子 */
     static uint8_t seq;
     uint32_t now = pal_millis();
     handle_rx(now);
