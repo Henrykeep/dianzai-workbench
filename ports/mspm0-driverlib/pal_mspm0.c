@@ -211,11 +211,28 @@ dz_err_t pal_gpio_irq_detach(pal_id_t id)
 
 /* ---------- PWM（频率由 SysConfig 的周期决定，本层只写比较值） ---------- */
 #if BOARD_PWM_COUNT > 0
-static uint32_t pwm_top(const m0_pwm_t *p) { return DL_Timer_getLoadValue(p->inst) + 1u; }
+static uint32_t pwm_top(const m0_pwm_t *p)   /* 一个 PWM 周期的计数数：中心对齐 = 2·LOAD，边沿对齐 = LOAD+1 */
+{
+    uint32_t load = DL_Timer_getLoadValue(p->inst);
+    return (DL_Timer_getCounterMode(p->inst) == DL_TIMER_COUNT_MODE_UP_DOWN) ? 2u * load : load + 1u;
+}
+/* 按 SysConfig 实际配置换算比较值（依据 mspm0-sdk dl_timer.c DL_Timer_initFourCCPWMMode 的 CC 动作）：
+ *   边沿对齐·递减（SysConfig 默认）：LOAD 处置高、向下到 CC 置低 → 高电平 = top − CC，所以 CC=0 是 ≈100%（“反逻辑”）
+ *   边沿对齐·递增：0 处置高、向上到 CC 置低 → 高电平 = CC
+ *   中心对齐（上下计数，周期 = 2·LOAD）：向上过 CC 置高、向下过 CC 置低 → 高电平 = 2·(LOAD − CC)
+ * 再看该通道 OCTL 的 CCPOINV（输出反相）：反相时高低互换。
+ * 只认这三种默认 CC 动作；SysConfig 里手改了 CC 动作的话这里会算错。[编译] 上板 [未测] */
 static void pwm_set_high_ticks(const m0_pwm_t *p, uint32_t high)
 {
-    /* 【未验证】TI 例程约定：边沿对齐递减计数，计数器 < CC 时输出有效，故 CC = top − 高电平计数 */
-    DL_Timer_setCaptureCompareValue(p->inst, pwm_top(p) - high, p->cc);
+    uint32_t load = DL_Timer_getLoadValue(p->inst), cc;
+    DL_TIMER_COUNT_MODE m = DL_Timer_getCounterMode(p->inst);
+    uint32_t top = pwm_top(p);
+    if (high > top) high = top;
+    if (DL_Timer_getCaptureCompareOutCtl(p->inst, p->cc) & DL_TIMER_CC_OCTL_INV_OUT_ENABLED) high = top - high;
+    if (m == DL_TIMER_COUNT_MODE_UP) cc = high;
+    else if (m == DL_TIMER_COUNT_MODE_UP_DOWN) cc = load - high / 2u;
+    else cc = top - high;
+    DL_Timer_setCaptureCompareValue(p->inst, cc, p->cc);   /* 参数顺序：(实例, 值, 通道)，见 dl_timer.h */
 }
 #endif
 dz_err_t pal_pwm_set_duty(pal_id_t id, uint16_t duty)

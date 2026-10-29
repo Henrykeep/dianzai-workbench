@@ -7,6 +7,18 @@ name: mspm0g3507-tianmengxing
 vendor: 嘉立创 (LCKFB)
 description: 天猛星 MSPM0G3507；SysConfig + DriverLib；car_2wd 可交叉编译，未上板测试
 port: mspm0-driverlib
+# 保留引脚：功能名对照 TI SLAU873（LP-MSPM0G3507 用户指南）与 mspm0g350x.h IOMUX（PINCM41/42 = SWDIO/SWCLK）。
+# PA10/PA11 接板载 CH340 是天猛星资料的说法【未对照原理图】；晶振脚是否焊了晶体【未核实】，所以只告警。
+reserved_pins:
+  PA19: {reason: "SWDIO（调试口，复用后无法下载/调试）", level: err}
+  PA20: {reason: "SWCLK（调试口，复用后无法下载/调试）", level: err}
+  PA10: {reason: "UART0_TX → 板载 CH340（USB 串口）", level: err, allow: [uart.LINK.]}
+  PA11: {reason: "UART0_RX ← 板载 CH340（USB 串口）", level: err, allow: [uart.LINK.]}
+  PA2:  {reason: "ROSC（SYSOSC 外部校准电阻脚）", level: warn}
+  PA3:  {reason: "LFXIN（32 kHz 晶振）", level: warn}
+  PA4:  {reason: "LFXOUT（32 kHz 晶振）", level: warn}
+  PA5:  {reason: "HFXIN（高速晶振）", level: warn}
+  PA6:  {reason: "HFXOUT（高速晶振）", level: warn}
 config_source:
   tool: sysconfig
   file: ccs/tianmengxing.syscfg

@@ -5,6 +5,11 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 侧车烧录：MSPM0 改走 TI 官方 DFP 包（MSPM0G1X0X_G3X0X_DFP 1.3.1，BSD-3，sha256 校验；`tools/fetch_third_party.sh m0pack`），Windows 安装包内置；缺包时报 `no_pack` 而不是让 pyOCD 猜目标。查找顺序 DZBENCH_PACK → 安装包内 → third_party/packs → ~/.dzbench/packs。真探针未测。
+- [仿真] 变量监视按地址合并成块读（相邻间隔 ≤64 B 合一次读），减少 SWD 往返。真探针提速幅度未测。
+- [编译] MSPM0 移植层 PWM：按计数模式算周期和占空（向下计数默认 / 向上计数 / 中心对齐 2·LOAD），支持 CCPOINV 反相；依据 SDK dl_timer.c。未上板。
+- [编译] check_deps D2：抓 `DL_Timer*_setCaptureCompareValue(实例, 值, 通道)` 参数写反（第 2 个参数是 *_INDEX）。
+- [编译] board.yaml 新增 `reserved_pins`；天猛星标 SWD（PA19/PA20）、CH340 串口（PA10/PA11，仅 uart.LINK 可用）为错误，晶振/ROSC（PA2–PA6）为告警。功能名对照 TI SLAU873 和 IOMUX 头文件；CH340 接线和晶体是否焊接未对照原理图。
 
 - Agent 评测一键运行 `make agent-eval`：真大模型 × 两块仿真板 × 10 例 × 重复 N 次，出 report.md/json；没 Key 或中途退回离线时退出码 2、报告标“不算成绩”。运行器 [仿真]，真模型结果 [未测]（docs/18 §3.3）
 - Agent 计划卡 / 板子记忆 / 一键“撤销 Agent”：计划按 {步骤, 状态} 整表更新（同时只一步进行中，重复/空步骤拒绝）；每块板（schema+UID）记最近 200 条参数与提交；撤销参数改回旧值或 git revert，**那次提交改过的文件有未提交改动时拒绝撤销**，撤销后告诉模型别原样重做。[仿真]（真大模型 [未测]）

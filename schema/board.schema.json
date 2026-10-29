@@ -934,6 +934,34 @@
         }
       ],
       "unevaluatedProperties": false
+    },
+    "reserved_pins": {
+      "type": "object",
+      "description": "板上已占用/不宜复用的引脚：引脚名 → {reason, level: err|warn, allow: 允许使用的资源前缀}",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "err",
+              "warn"
+            ]
+          },
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [

@@ -135,6 +135,10 @@ def generic_check(board: dict, rep: Report) -> None:
     for pin, who in used.items():
         if len(who) > 1:
             rep.err(f"[引脚冲突] {pin} 同时被 {', '.join(who)} 使用")
+    for pin, r in (board.get("reserved_pins") or {}).items():     # 板级保留脚（SWD、板载 USB 串口、晶振脚…）
+        bad = [w for w in used.get(pin, []) if not any(w.startswith(a) for a in r.get("allow", []))]
+        if bad:
+            (rep.err if r.get("level", "err") == "err" else rep.warn)(f"[保留引脚] {pin} 是 {r['reason']}，却被 {', '.join(bad)} 使用")
     # 3) 定时器用途冲突：编码器独占整个定时器；周期定时器独占；PWM 同一定时器频率必须一致
     owners: dict[str, list[str]] = {}
     pwm_freq: dict[str, set] = {}

@@ -21,6 +21,7 @@
       Callback 1 里的 dz_cubemx_tim_callback(htim)），业务逻辑一律写进子系统。
   C2  SysConfig 生成的 ti_msp_dl_config.{c,h} 视为厂商生成代码：允许 DriverLib，禁止 HAL/LL。
   P2  厂商 API 不得串用：HAL_/LL_ 只能在 ports/stm32*，DL_ 只能在 ports/mspm0*。
+  D2  MSPM0：DL_Timer*_setCaptureCompareValue(实例, 值, 通道) 参数顺序（第 2 个参数是 *_INDEX 即写反）；
   D1  MSPM0：DL_xxx() 必须在 SDK driverlib 头文件里真实存在（符号表自动从头文件生成，不手抄黑名单）；
       TIMA 实例（TIMA0/1 或其别名宏）不得传给 DL_TimerG_*()，应用 DL_TimerA_*()。SDK 未下载时跳过。
   V1  每个模块目录的 VERSION 必须与头文件里的 XXX_VERSION 宏一致。
@@ -46,6 +47,27 @@ LAYER_ALLOW = {
     "framework": {"common", "algo", "proto", "framework"},
     "drivers":   {"common", "pal", "algo", "proto", "drivers"},
 }
+
+
+def _call_args(src, pos):
+    """从函数名之后的 '(' 取出顶层逗号分隔的实参文本。"""
+    i = src.find("(", pos)
+    depth, cur, out = 0, "", []
+    for ch in src[i:]:
+        if ch == "(":
+            depth += 1
+            if depth == 1:
+                continue
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                out.append(cur.strip())
+                break
+        if ch == "," and depth == 1:
+            out.append(cur.strip()); cur = ""
+        else:
+            cur += ch
+    return out
 
 
 def strip_comments(src):
@@ -218,6 +240,11 @@ class Checker:
             api, arg = m.group(1), m.group(2)
             if syms and api not in syms:
                 self.err("D1", path, lineno(src, m.start()), f"{api}() 在 mspm0-sdk driverlib 头文件里不存在（常见：DL_GPIO_setDirection/DL_TimerG_setPeriod/DL_WDT_*）")
+            if api.endswith("_setCaptureCompareValue"):
+                args = _call_args(src, m.end(1))
+                if len(args) == 3 and re.search(r'CC_\d+_INDEX|_INDEX\b', args[1]) and not re.search(r'_INDEX\b', args[2]):
+                    self.err("D2", path, lineno(src, m.start()),
+                             f"{api}() 参数顺序是 (实例, 比较值, 通道)，这里第 2 个是通道 {args[1]}——写反了（dl_timer.h）")
             if api.startswith("DL_TimerG_") and arg in tima:
                 self.err("D1", path, lineno(src, m.start()), f"{arg} 是 TIMA 实例，应调用 DL_TimerA_{api[10:]}()")
 
@@ -312,7 +339,7 @@ def selftest(root):
     ok = True
     cases = sorted(d for d in os.listdir(fx) if d.startswith("deps_"))
     for c in cases:
-        if c.startswith("deps_D1") and not Checker.dl_symbols():
+        if c.startswith(("deps_D1", "deps_D2")) and not Checker.dl_symbols():
             print(f"- {c}: 跳过（无 mspm0-sdk）"); continue
         expect = open(os.path.join(fx, c, "EXPECT")).read().split()
         errs = Checker(os.path.join(fx, c)).run()
