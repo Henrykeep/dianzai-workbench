@@ -21,6 +21,13 @@ link:
       - { name: sp_b,      type: float, unit: rps, ref_for: spd_b }
       - { name: spd_b,     type: float, unit: rps }
       - { name: mode,      type: uint8, enum: [LOST, RUNNING, ESTOP], pin: 循线 }
+  # 串级分层（内环在前）：界面台账“层”下拉按这个切，读数/台账/参数筛选跟着换。调法见 docs/30
+  loops:
+    - { name: 轮速, y: spd_a, gains: [kp, ki], note: 内环；左右轮同参，看 spd_a }
+    - { name: 循线, y: line_mm, gains: [kp_line, kd_line], note: 外环；内环不稳不调这层 }
+  # 验收：band 取 8 路灰度的量化间距 12 mm（dzbench.json step_tests.line_car 的说明）；示例，按题目改
+  accept:
+    - { name: 偏线阶跃（示例）, y: line_mm, band: 12, hold_s: 0.3, runs: 3 }
   params:
     - { name: v_base,  type: float, default: 2.0,  min: 0,  max: 6,   unit: rps, desc: 直道基础轮速 }
     - { name: kp_line, type: float, default: 0.05, min: 0,  max: 0.5, unit: rps/mm, desc: 线位置比例 }

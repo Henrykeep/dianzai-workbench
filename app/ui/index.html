@@ -128,7 +128,7 @@
       <div id="meas" class="meas"></div>
     </section>
     <section class="pane" data-side="hist" hidden>
-      <div class="vh"><span class="ttl">台账</span><div class="sp"></div><span class="lbl mono" id="hist-n"></span></div>
+      <div class="vh"><span class="ttl">台账</span><div class="sp"></div><select id="layer" class="sm" hidden title="串级分层（schema loops，内环在前）：选一层，读数/台账/验收换成这层，参数只列这层的增益。先调稳内层再往外"></select><span class="lbl mono" id="hist-n"></span></div>
       <div id="hist" class="hist"></div>
     </section>
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>

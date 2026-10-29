@@ -10,10 +10,13 @@ import { AGENT_IDLE, agentIdle, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
 import { initSend } from "./send";
-import { initAnalysis } from "./analysis";
+import { initAnalysis, Loop } from "./analysis";
+import { Cal, calMap } from "./calib";
+import { AcceptSpec } from "./accept";
 
-type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string };
-type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number };
+type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
+type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[] };
+let CAL = new Map<string, { f: (x: number) => number; unit: string }>();
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -119,7 +122,10 @@ function applySchema(s: Schema | null) {
   const refFor = S.plotted.map(f => S.plotted.findIndex(p => p.name === f.ref_for));
   let shown = 0;
   S.visible = S.plotted.map((_, i) => refFor[i] >= 0 || shown++ < 4);
-  plot.setChannels(S.plotted.map(f => f.name), S.plotted.map(f => f.unit ?? ""), S.visible, refFor);
+  // 单位标定（schema 字段的 cal）：进曲线前换成物理单位；原始帧视图不变
+  CAL = calMap(s.fields);
+  plot.setChannels(S.plotted.map(f => f.name), S.plotted.map(f => CAL.get(f.name)?.unit ?? f.unit ?? ""), S.visible, refFor);
+  ana.setSpec(s.accept ?? [], s.loops ?? [], l => { pq.value = l ? (l.gains ?? []).map(g => "=" + g).join(" ") : ""; filterParams(); });
   ana.reset(); showXDiv();
   $("chan-n").textContent = `${S.plotted.length} 路 · ${s.period_ms ?? "?"} ms`;
   $("plot-sub").textContent = `schema ${s.hash}`;
@@ -130,7 +136,7 @@ function applySchema(s: Schema | null) {
 function renderChans() {
   $("chans").innerHTML = S.enums.map(f => `<div class="ch en"><span class="k">${esc(f.name)}</span><b id="ev-${f.name}" class="mono">—</b></div>`).join("")
     + S.plotted.map((f, i) => `<label class="ch ${S.visible[i] ? "on" : ""}" data-i="${i}" title="点击显示/隐藏">
-      <span class="sw" style="--c:${chColor(i)}"></span><span class="k">${esc(f.name)}</span><b id="cv-${i}" class="mono">—</b><i>${esc(f.unit ?? "")}</i></label>`).join("");
+      <span class="sw" style="--c:${chColor(i)}"></span><span class="k">${esc(f.name)}</span><b id="cv-${i}" class="mono">—</b><i title="${CAL.has(f.name) ? "已按 schema cal 标定（原始 " + esc(f.unit ?? "") + "）" : ""}">${esc(CAL.get(f.name)?.unit ?? f.unit ?? "")}</i></label>`).join("");
   $("chans").querySelectorAll<HTMLElement>("label.ch").forEach(el => el.onclick = () => {
     const i = +el.dataset.i!; S.visible[i] = !S.visible[i]; el.classList.toggle("on", S.visible[i]); plot.show(i, S.visible[i]);
   });
@@ -140,9 +146,9 @@ function renderChans() {
 const pq = $<HTMLInputElement>("p-q");
 function filterParams() {
   const rows = [...$("plist").querySelectorAll<HTMLElement>(".prow")], q = pq.value.trim();
-  pq.hidden = rows.length <= 8;
-  // 每个词：带 * 按通配，否则子串（名字或说明里有就算）；多个词取并集。“ki” 能找到 ball_ki。
-  const toks = q.split(/[\s,，]+/).filter(Boolean).map(t => t.includes("*") ? new RegExp("^" + t.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$", "i") : t.toLowerCase());
+  pq.hidden = rows.length <= 8 && !q;           // 选了串级层时即使参数少也显示，好让人看见并清掉筛选
+  // 每个词：=名字 精确，带 * 按通配，否则子串（名字或说明里有就算）；多个词取并集。“ki” 能找到 ball_ki。
+  const toks = q.split(/[\s,，]+/).filter(Boolean).map(t => t.startsWith("=") ? new RegExp("^" + t.slice(1).replace(/[.+?^${}()|[\]\\*]/g, "\\$&") + "$", "i") : t.includes("*") ? new RegExp("^" + t.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$", "i") : t.toLowerCase());
   const hit = (r: HTMLElement) => toks.some(t => typeof t === "string" ? (r.id.slice(4) + " " + r.title).toLowerCase().includes(t) : t.test(r.id.slice(4)));
   const on2 = rows.map(r => !toks.length || hit(r));
   rows.forEach((r, i) => { r.hidden = !on2[i]; });
@@ -413,7 +419,7 @@ link.on(m => {
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   switch (m.type) {
     case "telem": {
-      plot.push(m.t, m.y);
+      if (CAL.size) { const y = { ...m.y }; CAL.forEach((c, k) => { if (y[k]) y[k] = y[k].map(c.f); }); plot.push(m.t, y); } else plot.push(m.t, m.y);
       S.enums.forEach(f => { const a = m.y[f.name]; if (a?.length) S.enumVal[f.name] = a[a.length - 1]; });
       break;
     }

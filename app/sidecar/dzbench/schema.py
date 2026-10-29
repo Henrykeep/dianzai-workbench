@@ -41,14 +41,16 @@ class Schema:
 
     def summary(self) -> dict:
         return {"hash": f"{self.hash:08X}", "path": self.path, "fields": self.fields, "params": self.params,
-                "period_ms": self.d["telemetry"].get("period_ms")}
+                "period_ms": self.d["telemetry"].get("period_ms"),
+                # 只给界面：验收规格、串级分层（gen_link 从 yaml link: 段原样带过来；字段的 cal 在 fields 里）
+                "accept": self.d.get("accept") or [], "loops": self.d.get("loops") or []}
 
 
 def search_dirs() -> list[pathlib.Path]:
     extra = os.environ.get("DZBENCH_SCHEMA_DIRS", "")
     # 环境变量 → 仓库 build/（开发/源码运行）→ ~/.dzbench/schemas（打包版：把 link_schema.json 拷进去）
     from .snapshots import base_dir
-    return [pathlib.Path(p) for p in extra.split(os.pathsep) if p] + [ROOT / "build", base_dir() / "schemas"]
+    return [pathlib.Path(p) for p in extra.split(os.pathsep) if p] + ([pathlib.Path(os.environ["DZBENCH_REPO"]) / "build"] if os.environ.get("DZBENCH_REPO") else []) + [ROOT / "build", base_dir() / "schemas"]
 
 
 def find_by_hash(h: int) -> Schema | None:

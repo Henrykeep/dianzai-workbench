@@ -308,3 +308,6 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .pq{margin:0 var(--sp5) var(--sp2);width:calc(100% - 2 * var(--sp5))}
 .defs{border-collapse:collapse;margin:var(--sp2) 0;font-size:var(--t-md)} .defs td{padding:2px var(--sp2) 2px 0} .defs .dim{color:var(--muted);text-decoration:line-through} .defs .acc{color:var(--acc-t)}
 .scope:not([data-view="plot"]) #reads{display:none}
+.rd.acc .v{font-weight:300} .rd.acc.ok .v{color:var(--ok)} .rd.acc.bad .v{color:var(--warn,var(--ink))}
+.acc-sum{font:400 var(--t-sm)/18px var(--f-mono);color:var(--muted);margin:0 0 var(--sp2)} .acc-sum.ok{color:var(--ok)}
+#layer{font-size:var(--t-xs);max-width:120px;margin-right:var(--sp2)}

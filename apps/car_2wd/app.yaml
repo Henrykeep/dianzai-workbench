@@ -17,10 +17,13 @@ link:
     fields:
       - { name: t_ms,     type: uint32, unit: ms }
       - { name: sp_a,     type: float, unit: rps, ref_for: spd_a }
-      - { name: spd_a,    type: float, unit: rps }
+      - { name: spd_a,    type: float, unit: rps, cal: { unit: cm/s, pts: [[0, 0], [1, 20.42]] } }   # 轮径 0.065 m（app_main.c s_params）→ π·6.5 cm/圈；sp_a 自动继承
       - { name: sp_b,     type: float, unit: rps, ref_for: spd_b }
-      - { name: spd_b,    type: float, unit: rps }
+      - { name: spd_b,    type: float, unit: rps, cal: { unit: cm/s, pts: [[0, 0], [1, 20.42]] } }
       - { name: ctrl_err, type: uint32 }
+  # 验收规格（上位机判“到位”，不进 schema 哈希）。单位 = 标定后的 cm/s。示例阈值，不是任何题目的要求——按题目改
+  accept:
+    - { name: 轮速阶跃（示例）, y: spd_a, band: 2, hold_s: 0.3, t_max_s: 1.0, runs: 3 }
   params:
     - { name: kp,             type: float,  default: 0.08, min: 0,   max: 2,    desc: 轮速 PID（起步值，未实测） }
     - { name: ki,             type: float,  default: 1.5,  min: 0,   max: 20,   desc: 轮速 PID（起步值，未实测） }

@@ -133,7 +133,7 @@ link:
       - { name: t_ms,       type: uint32, unit: ms }
       - { name: state,      type: uint8, enum: [IDLE, RUNNING, DONE, ESTOP, FAULT] }
       - { name: test_id,    type: uint8 }
-      - { name: cam_x_px,   type: int16, unit: px }
+      - { name: cam_x_px,   type: int16, unit: px, cal: { unit: cm, pts: [[0, 0], [600, 100]] } }   # 仿真 1 m = 600 px（io/sim_setup.c SIM_PX_PER_M）；真机用 O/±5 cm 多点实测重标
       - { name: ball_sp_px, type: float, unit: px, ref_for: cam_x_px }
       - { name: angle_deg,  type: float, unit: "°" }
       - { name: beam_fb_deg, type: float, unit: "°" }
@@ -150,6 +150,11 @@ link:
       - { name: imu_ok,     type: uint8 }
       - { name: cpu_pm,     type: uint16, na: 65535, unit: "‰" }      # CPU 负载千分比；0xFFFF = 无数据（裸机 / 没开运行时统计）
       - { name: stk_min_w,  type: uint16, na: 65535, unit: 字 }      # 所有任务里最小的栈余量（4 字节/字）；0xFFFF = 无数据
+
+  # 验收（评委口径，来源见 docs/参考来源.md）：误差 ≤1 cm、保持 300 ms、O→+5→−5 一次计时 ≤5 s、连续 3 次按最差。
+  # 速度门限题目只说“静止”，没给数，留空（填了才判）；只有位置环有设定值上报，不声明 loops（内环没有 sp/y 遥测）
+  accept:
+    - { name: 静态定位, y: cam_x_px, band: 1, hold_s: 0.3, t_max_s: 5, runs: 3 }
 
 profiles:
   - { name: base, desc: P1 普通档 }

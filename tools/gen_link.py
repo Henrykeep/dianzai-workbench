@@ -60,6 +60,28 @@ def check(spec: dict, params: list) -> list[str]:
         r = f.get("ref_for")
         if r and (r not in names or r == f.get("name")):
             errs.append(f"telemetry.{f.get('name')}: ref_for 指向不存在的字段 {r}")
+    for f in tel.get("fields", []):
+        c = f.get("cal")
+        if c is not None:
+            pts = c.get("pts") if isinstance(c, dict) else None
+            if not (isinstance(pts, list) and len(pts) >= 2 and all(isinstance(q, list) and len(q) == 2 for q in pts)
+                    and len({float(q[0]) for q in pts}) == len(pts) and c.get("unit")):
+                errs.append(f"telemetry.{f.get('name')}: cal 须为 {{unit: cm, pts: [[原始, 物理], ...]}}，至少两点且原始值互不相同")
+            elif c.get("mode", "linear") not in ("linear", "piecewise"):
+                errs.append(f"telemetry.{f.get('name')}: cal.mode 只能是 linear / piecewise")
+    plotted = {f.get("name") for f in tel.get("fields", []) if not f.get("enum")}
+    pnames = {p.get("name") for p in params}
+    for a in spec.get("accept") or []:
+        if a.get("y") not in plotted or not any(f.get("ref_for") == a.get("y") for f in tel.get("fields", [])):
+            errs.append(f"accept.{a.get('name')}: y={a.get('y')} 须是遥测字段且有 ref_for 指向它的设定值")
+        if not float(a.get("band", 0)) > 0:
+            errs.append(f"accept.{a.get('name')}: band 须 > 0（物理单位，和该字段 cal.unit 一致）")
+    for lp in spec.get("loops") or []:
+        if lp.get("y") not in plotted:
+            errs.append(f"loops.{lp.get('name')}: y={lp.get('y')} 不是遥测字段")
+        for g in lp.get("gains") or []:
+            if g not in pnames:
+                errs.append(f"loops.{lp.get('name')}: 增益 {g} 不在参数表里")
     for p in params:
         if "min" not in p or "max" not in p:
             errs.append(f"参数 {p['name']}: 缺 min/max（上位机写参数必须限幅）")
@@ -86,6 +108,13 @@ def schema(spec: dict, params: list) -> dict:
     for p, src in zip(s["params"], params):
         p["default"] = src.get("default", 0)
         p["desc"] = src.get("desc", "")
+    # 下面都只给上位机看（标定、验收、串级分层），不进哈希：改它们不用重烧固件
+    for f, src in zip(s["telemetry"]["fields"], tel.get("fields", [])):
+        if src.get("cal"):
+            f["cal"] = src["cal"]
+    for k in ("accept", "loops"):
+        if spec.get(k):
+            s[k] = spec[k]
     return s
 
 
