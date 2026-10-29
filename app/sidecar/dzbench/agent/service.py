@@ -22,7 +22,8 @@ from .gateway import Gateway, GatewayError
 from .journal import BoardMemory, Journal, board_key
 from .loop import AgentLoop
 from .offline import OfflineAssistant
-from .experiment import StagedSearch, asymmetry, four_segment_metrics, four_segment_plan, steady_state
+from ..tuning.identify import steady_state
+from .experiment import StagedSearch, asymmetry, four_segment_metrics, four_segment_plan
 from .tuning import StepMetrics, step_metrics, tuning_hints
 
 
@@ -433,7 +434,10 @@ class AgentService:
             ys = [float(v[st["y"]]) for _, v in w]
             m = step_metrics(t, ys, [float(v[st["sp"]]) for _, v in w])
             g = self._guard()
-        ss = steady_state(t, ys, window_s=min(0.3, hold / 3))
+        spw = [float(v[st["sp"]]) for _, v in w]
+        k = max((i for i in range(1, len(spw)) if spw[i] != spw[i - 1]), default=None)   # 最后一次设定值跳变 = 阶跃时刻
+        ss = steady_state(t, ys, t_step=t[k] if k else None, window_s=min(0.3, hold / 3),
+                          span_ref=abs(spw[k] - spw[k - 1]) if k else None)
         verdict = g.record(m, self._gains(), w[-1][1] if w else {})
         verdict["steady"] = ss
         if not ss["steady"] and ss["reason"] in ("still_drifting", "warming_up"):

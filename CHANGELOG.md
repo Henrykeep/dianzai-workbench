@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 阶跃辨识改用 PID_Helper 的实现（直接移植，GPL-3.0，`third_party/vendored/pid_helper/`，Source: PID_Helper@17813ca src/shared/pid-identification.ts）：开环阶跃 10%/63.2% 两点法 FOPDT + 保守 λ 整定出 PID 初值、阶跃后稳态判定（基线/暖机/幅度/漂移/噪声原因码）、纯 P 与速度环分阶段打分和候选网格。侧车适配层 `dzbench/tuning/identify.py`：秒→毫秒、原版按转速写死的绝对阈值按阶跃幅度换算（弧度量纲也能用）、反向响应自动翻转、另加振荡判定；`experiment.py` 里自写的 steady_state 删掉，service 按最后一次设定值跳变定阶跃时刻和幅度。tests/test_identify.py 5 项：已知 K=2/τ=0.5/L=0.1 模型辨识误差 K<3%、τ<15%、L±40 ms；K=−0.02 小量纲；没动时拒绝；六种稳态原因。PyInstaller 加 `--paths third_party/vendored/pid_helper`。[未测] 实机开环实验（open_loop_test 仍无执行入口，只有门禁）。
 - [仿真] 外部代码改为“可直接使用、注明来源”：新目录 `third_party/vendored/`（提交进仓库，其余 third_party 仍是下载的官方 SDK），GPL/AGPL 代码一律隔离在此、经薄适配层调用；`tools/check_vendored.py` 进 make check：每个来源须有 LICENSE、SOURCE.md（Source: repo@commit path），每个代码文件头 15 行内有 Source:，且已在 docs/参考来源.md 登记。参考来源.md 开头改写两种借鉴方式。
 - [仿真] 参数面板加“回读”按钮（op params_readback 不带 path 时写 ~/.dzbench/readback/params-<时间>.txt）；polarity_check 暂登记为脚本专用（向导界面未做）。修第 8 项 preflight 的 test_wiring 失败。
 - [仿真] 极性自检 + 堵转检测 + 控制安全对照（参考 MICU-auto-embedded 的 control-loop-sign-debug / control-safety-limits）：侧车 `agent/polarity.py` + op `polarity_check`：手推（观察模式）判传感器轴、误差极性、控制器符号，点动判执行器方向，合成负/正反馈结论并指出哪一处反（只读遥测，不发指令）；8 项测试覆盖五种接法与死区/弱数据。新模块 `algo/stall` 1.0.0：高负载 + 近零速 + 持续、起步豁免、锁存/定时重试、NaN 不误报；主机测试用一阶电机模型（正常起步不误报，卡轴后 150+200 ms 报出）。docs/32 逐项对照 8 个安全检查项：发现**没有开 IWDG/喂狗**（只读复位原因）、无热折返、无通用软限位、无 WARN 档——列为建议，未改。[未测] 实物；stall 未接进应用；向导界面未做。

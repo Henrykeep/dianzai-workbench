@@ -49,3 +49,8 @@
 - `tools/check_vendored.py` 在 make check 里强制。GPL 代码（PID_Helper 辨识，第 13 项）放这里；侧车通过 `dzbench/tuning/` 薄层调用，PyInstaller 需加 `--paths third_party/vendored`。
 - 已有的“参考 …”文件都是思路借鉴、代码自写，不加 Source: 头。
 - 顺带修：第 8 项 params_readback 没有界面入口导致 test_wiring 失败 → 参数面板加“回读”按钮。
+
+### 第 13 项：PID_Helper 辨识直接移植（2026-10-29，UTC+8）
+- 本体 `third_party/vendored/pid_helper/pid_helper_ident.py`（GPL-3.0，逐函数移植，改动列在 SOURCE.md）；适配层 `app/sidecar/dzbench/tuning/identify.py`：`steady_state`、`open_loop_pid`、分阶段打分。
+- experiment.py 的自写稳态判定已删除（不留两份）；StagedSearch / 四段阶跃 / 相对打分仍是自写。
+- 待做：`open_loop_test` 只有门禁（require_open_loop）没有执行入口，接上时直接调 `identify.open_loop_pid`。

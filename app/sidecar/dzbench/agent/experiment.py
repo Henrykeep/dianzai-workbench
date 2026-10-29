@@ -1,12 +1,11 @@
-"""调参实验与打分：相对基线归一化打分 + 权重模板、四段正负阶跃、带原因码的稳态判定、分阶段 P→I→D 搜索、开环/群体搜索门禁。
+"""调参实验与打分：相对基线归一化打分 + 权重模板、四段正负阶跃、分阶段 P→I→D 搜索、开环/群体搜索门禁。
 
-思路来源：PID_Helper（gitee.com/qianmonai，GPL-3.0）——**只借鉴思路，本文件代码全部自写**，未拷贝其任何源码。
+思路来源：PID_Helper（gitee.com/qianmonai，GPL-3.0）——本文件为思路借鉴、代码自写；稳态判定已改用直接移植的版本（dzbench/tuning/identify.py → third_party/vendored/pid_helper）。
 见 docs/参考来源.md、docs/QUESTIONS.md 第 23 条。全部只在仿真/基准上验证过，未上实机。
 """
 from __future__ import annotations
 
 import math
-import statistics
 from dataclasses import dataclass, field
 
 from .guard import GuardError, TuneGuard, stable
@@ -39,56 +38,8 @@ def rel_score(m: StepMetrics, base: StepMetrics, weights: str | dict = "balanced
     return s + (0.0 if stable(m) else 1.0)
 
 
-# ---------------------------------------------------------------- 2. 稳态判定（带原因码）
-REASONS = {"steady": "已稳态", "too_few_samples": "样本太少", "warming_up": "刚开始/刚阶跃，还在暖机",
-           "still_drifting": "还在漂移（窗口首尾差超过噪声）", "too_little_motion": "几乎没动：激励太小或执行器没响应",
-           "oscillating": "在稳态附近持续振荡"}
-
-
-def _median3(y):
-    return [statistics.median(y[max(0, i - 1):i + 2]) for i in range(len(y))]
-
-
-def steady_state(t: list[float], y: list[float], window_s: float = 0.3, warmup_s: float = 0.2,
-                 span_ref: float | None = None) -> dict:
-    """返回 {steady, reason, text, noise, drift}。先 3 点中值滤波再 EMA；阈值 = max(3×噪声, 1% 参考幅度)，随噪声自适应。
-    reason 给 Agent/人看：warming_up / still_drifting → 应 OBSERVE（多等一会儿）而不是改参数。"""
-    if len(t) < 10 or t[-1] - t[0] < window_s:
-        return _ss(False, "too_few_samples")
-    if t[-1] - t[0] < warmup_s + window_s:
-        return _ss(False, "warming_up")
-    i0 = next(i for i, v in enumerate(t) if v >= t[-1] - window_s)
-    raw = y[i0:]
-    f = _median3(raw)
-    # 噪声 = 原始值相对 3 点中值的残差（MAD×1.4826）：只含高频抖动，不会被慢振荡/漂移撑大
-    res = sorted(abs(r - q) for r, q in zip(raw, f))
-    noise = 1.4826 * res[len(res) // 2]
-    ema = [f[0]]
-    for v in f[1:]:
-        ema.append(ema[-1] + 0.3 * (v - ema[-1]))
-    ref = span_ref if span_ref is not None else (max(y) - min(y))
-    if span_ref is not None and abs(span_ref) < 1e-6:
-        return _ss(False, "too_little_motion", noise)
-    thr = max(3 * noise, 0.01 * abs(ref), 1e-9)
-    mean = sum(ema) / len(ema)
-    cross, side = 0, 0
-    for v in ema:                                    # 带滞回的均值穿越
-        sd = 1 if v > mean + thr else -1 if v < mean - thr else 0
-        if sd and side and sd != side:
-            cross += 1
-        if sd:
-            side = sd
-    n3 = max(1, len(ema) // 3)
-    drift = abs(sum(ema[-n3:]) / n3 - sum(ema[:n3]) / n3)
-    if cross >= 3:
-        return _ss(False, "oscillating", noise, drift)
-    if drift > thr:
-        return _ss(False, "still_drifting", noise, drift)
-    return _ss(True, "steady", noise, drift)
-
-
-def _ss(ok, reason, noise=0.0, drift=0.0):
-    return {"steady": ok, "reason": reason, "text": REASONS[reason], "noise": round(noise, 6), "drift": round(drift, 6)}
+# ---------------------------------------------------------------- 2. 稳态判定
+# 已换成 PID_Helper 的实现：dzbench/tuning/identify.py（steady_state）。这里不再保留第二份。
 
 
 # ---------------------------------------------------------------- 3. 四段正负阶跃

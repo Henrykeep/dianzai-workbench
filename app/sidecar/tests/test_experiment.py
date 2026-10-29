@@ -20,15 +20,6 @@ def test_rel_score_baseline_is_one_and_units_free():
     assert E.rel_score(worse, base, "conservative") > E.rel_score(worse, base, "balanced")   # 怕超调的模板罚得更重
 
 
-def test_steady_state_reasons():
-    t = [i * 0.01 for i in range(200)]
-    assert E.steady_state(t, [1.0 + 0.001 * (i % 3) for i in range(200)])["reason"] == "steady"
-    assert E.steady_state(t, [0.01 * i for i in range(200)])["reason"] == "still_drifting"
-    assert E.steady_state(t[:5], [0] * 5)["reason"] == "too_few_samples"
-    import math
-    assert E.steady_state(t, [math.sin(i * 0.6) for i in range(200)])["reason"] == "oscillating"
-
-
 def test_four_segment_plan_and_cut():
     plan = E.four_segment_plan(1.0, 0.5, 1.0)
     assert [v for _, v in plan] == [1.0, 0.5, 1.0, 1.5, 1.0]
