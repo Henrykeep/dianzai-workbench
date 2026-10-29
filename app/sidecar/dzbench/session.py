@@ -447,10 +447,19 @@ class Session:
             with self.lock:
                 self._acks.pop(i, None)
 
-    def set_param(self, name: str, value: float) -> dict:
+    def set_param(self, name: str, value: float, verify: bool = False) -> dict:
+        """verify=True：写完再单独读一次，和 ACK 报的生效值比对（llm-pid-tuner 的“回读比对”，MIT）。
+        Agent 落地参数、恢复快照时用；拖滑条不用（多一次往返）。"""
         v, clamped_here = self.schema.clamp(name, float(value)) if self.schema and name in self.schema.param_index else (value, False)
         applied, status = self._param_rpc(name, struct.pack("<f", v))
-        return {"name": name, "requested": value, "applied": applied, "status": "clamped" if clamped_here else status}
+        out = {"name": name, "requested": value, "applied": applied, "status": "clamped" if clamped_here else status}
+        if verify:
+            rb = self.read_param(name)
+            out["readback"] = rb
+            if abs(rb - applied) > 1e-6 * max(1.0, abs(applied)):
+                raise LinkError("readback_mismatch", f"{name} 写入后板上回报 {applied}，回读却是 {rb}",
+                                "可能固件里别处也在改这个变量（例如自整定/状态机），或写入被覆盖；先看固件逻辑再重试")
+        return out
 
     def read_param(self, name: str) -> float:
         return self._param_rpc(name, b"")[0]
@@ -484,7 +493,7 @@ class Session:
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表")
         vals = {p["name"]: p["default"] for p in self.schema.params} if defaults else snapshots.load(self.schema.hash, name)
-        return [self.set_param(k, v) for k, v in vals.items() if k in self.schema.param_index]
+        return [self.set_param(k, v, verify=True) for k, v in vals.items() if k in self.schema.param_index]
 
     def start_log(self) -> str:
         name = time.strftime("run_%Y%m%d_%H%M%S.dzlog")

@@ -51,6 +51,7 @@ class AgentService:
         root = root or os.environ.get("DZBENCH_REPO") or llm_mod.load_config().get("repo") or ROOT
         self.s, self.tools, self.emit = session, tools, emit
         self.journal = Journal()
+        self.tune_orig: dict | None = None     # Agent 第一次改参数前的整套参数（ArduPilot 自整定 ORIGINAL 增益的思路）
         self.gw = Gateway(root, self._gw_emit, **({"runner": runner} if runner else {}))
         tools.on_apply = self._param_applied
         self._llm = llm
@@ -125,9 +126,40 @@ class AgentService:
                 self.memory().add("commit", commit=e["commit"], title=e.get("title", ""))
         self.emit(e)
 
+    def _mark_tuning(self, name: str, old) -> None:
+        if self.tune_orig is None:
+            self.tune_orig = {"values": {**self.s.params, **({name: old} if old is not None else {})}, "changed": []}
+        if name not in self.tune_orig["changed"]:
+            self.tune_orig["changed"].append(name)
+        self.emit({"type": "agent_tune_pending", **self.tune_status()})
+
+    def tune_status(self) -> dict:
+        o = self.tune_orig
+        if not o:
+            return {"pending": False, "items": []}
+        return {"pending": True, "items": [{"name": k, "orig": o["values"].get(k), "now": self.s.params.get(k)} for k in o["changed"]]}
+
+    def tune_finish(self, keep: bool) -> dict:
+        """人点“保留 / 恢复原值”。Agent 调出来的参数不经人确认就一直算“试用中”（ArduPilot 自整定结束后不保存就恢复原增益）。
+        保留 = 存一份快照（掉电后可一键恢复）；恢复 = 把改过的参数逐个写回并回读比对。"""
+        o = self.tune_orig
+        if not o:
+            raise LinkError("no_tuning", "Agent 这次没有改过参数")
+        if keep:
+            snap = self.s.snapshot_save(time.strftime("agent_%m%d_%H%M%S"), "Agent 调参结果（用户确认保留）")
+            out = {"kept": o["changed"], "snapshot": snap}
+        else:
+            out = {"restored": [self.s.set_param(k, o["values"][k], verify=True) for k in o["changed"] if o["values"].get(k) is not None]}
+            self.loop.note("用户没有保留你这轮调出的参数，已恢复到调参前的值：" + "，".join(f"{k}={o['values'].get(k)}" for k in o["changed"]))
+        self.memory().add("tune_end", keep=keep, params=o["changed"])
+        self.tune_orig = None
+        self.emit({"type": "agent_tune_pending", **self.tune_status()})
+        return out
+
     def _param_applied(self, p: dict, r: dict) -> None:
         if p.get("source") != "agent":
             return
+        self._mark_tuning(p["name"], p.get("current"))
         self.journal.add("param", name=p["name"], old=p.get("current"), new=r.get("applied", p["value"]), reason=p.get("reason", ""))
         self.memory().add("param", name=p["name"], old=p.get("current"), new=r.get("applied", p["value"]))
         self.emit({"type": "agent_journal", "items": self.journal_list()})
@@ -352,7 +384,10 @@ class AgentService:
         b = g.best()
         if not b:
             raise LinkError("no_best", "还没有稳定的一轮可回滚")
-        applied = {k: self.s.set_param(k, v) for k, v in b.gains.items() if self.s.params.get(k) != v}
+        changed = {k: self.s.params.get(k) for k, v in b.gains.items() if self.s.params.get(k) != v}
+        applied = {k: self.s.set_param(k, v, verify=True) for k, v in b.gains.items() if k in changed}
+        for k, old in changed.items():
+            self._mark_tuning(k, old)
         g.proposed_this_round = None
         return {"round": b.n, "gains": b.gains, "applied": list(applied), "auto": _auto}
 

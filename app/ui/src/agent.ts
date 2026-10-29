@@ -173,6 +173,18 @@ export function initAgent(call: Call) {
     if (r) add(r.undone === "param" ? `已撤销：<b>${esc(r.name)}</b> 改回 ${n(r.value, 4)}（原来 ${n(r.was, 4)}）` : `已撤销提交 ${esc(r.reverted)}（新提交 ${esc(r.commit)}）`);
   };
   call<any[]>("agent_journal").then(renderJournal).catch(() => {});
+  // Agent 调过的参数处于“试用中”，人确认保留或恢复原值
+  let tuneEl: HTMLElement | null = null;
+  function renderTune(m: Msg) {
+    if (!m.pending) { tuneEl?.remove(); tuneEl = null; return; }
+    const rows = (m.items as any[]).map((it) => `${esc(it.name)} ${n(it.orig, 4)} → ${n(it.now, 4)}`).join("，");
+    const html = `<span class="lbl">试用中</span> Agent 改过：${rows}。<button class="btn sm" data-k="1">保留（存快照）</button> <button class="btn ghost sm" data-k="0">恢复原值</button>`;
+    if (tuneEl && tuneEl.isConnected) tuneEl.innerHTML = html; else tuneEl = add(html);
+    tuneEl.querySelectorAll<HTMLButtonElement>("button").forEach((b) => b.onclick = async () => {
+      const r = await call<any>("agent_tune_finish", { keep: b.dataset.k === "1" }).catch(() => null);
+      if (r) add(r.kept ? `已保留，快照 ${esc(String(r.snapshot).split(/[\\/]/).pop() || "")}` : `已恢复 ${r.restored.length} 个参数到调参前的值`);
+    });
+  }
   const wm = $<HTMLSelectElement>("ag-workmode");
   wm.onchange = async () => {
     const r = await call<any>("agent_set_mode", { mode: wm.value }).catch(() => null);
@@ -182,6 +194,7 @@ export function initAgent(call: Call) {
   return {
     onMsg(m: Msg) {
       if (m.type === "agent_plan") renderPlan(m);
+      if (m.type === "agent_tune_pending") renderTune(m);
       if (m.type === "agent_journal") renderJournal(m.items);
       if (m.type === "change") renderChange(m);
       if (m.type === "agent_action") renderAction(m);

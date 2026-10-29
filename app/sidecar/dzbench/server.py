@@ -181,6 +181,8 @@ class Server:
             return await run(None, self.svc.undo_last)
         if op == "agent_set_mode":                 # 工作模式：通用 / 诊断 / 调参 / 改代码 / 审查（只收窄工具）
             return self.svc.set_mode(m["mode"])
+        if op == "agent_tune_finish":              # 人点“保留 / 恢复原值”（Agent 调过的参数）
+            return await run(None, self.svc.tune_finish, bool(m["keep"]))
         if op == "agent_journal":
             return self.svc.journal_list()
         if op == "agent_reset":

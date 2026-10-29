@@ -66,7 +66,12 @@ class AgentTools:
             raise LinkError("no_proposal", f"提议 {pid} 不存在或已处理")
         if not accept:
             return {"id": pid, "status": "rejected"}
-        r = {"id": pid, "status": "applied", **self.s.set_param(p["name"], p["value"])}
+        now = self.s.params.get(p["name"])
+        old = p.get("current")
+        if old is not None and now is not None and abs(now - old) > 1e-6 * max(1.0, abs(old)):
+            raise LinkError("stale_proposal", f"提议时 {p['name']} 是 {old}，现在已经是 {now}（期间被别处改过），这张卡作废",
+                            "让 Agent 按当前值重新提议")
+        r = {"id": pid, "status": "applied", **self.s.set_param(p["name"], p["value"], verify=True)}
         if self.on_apply:
             self.on_apply(p, r)
         return r
