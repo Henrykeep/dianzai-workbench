@@ -32,6 +32,7 @@
             -I${PROJECT_LOC}/../../../firmware/algo/pid
             -I${PROJECT_LOC}/../../../firmware/algo/slew
             -I${PROJECT_LOC}/../../../firmware/algo/vision
+            -I${PROJECT_LOC}/../../../firmware/framework/blackbox
             -I${PROJECT_LOC}/../../../firmware/framework/coord
             -I${PROJECT_LOC}/../../../firmware/framework/rtosmon
             -I${PROJECT_LOC}/../../../firmware/framework/spsc
@@ -102,6 +103,7 @@
         <file path="../../../firmware/algo/pid/pid.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/slew/slew.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/vision/vis.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/framework/blackbox/blackbox.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/coord/coord.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/rtosmon/rtosmon.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/spsc/spsc.c" targetDirectory="dz/firmware" action="link"/>

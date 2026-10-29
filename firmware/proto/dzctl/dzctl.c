@@ -75,7 +75,13 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     out->kind = DZF_HEARTBEAT; out->seq = seq;
     (void)dzframe_put_u32(out, t ? t->schema_hash : 0u);
     (void)dzframe_put_u32(out, dzctl_board_uid());
+    (void)dzframe_put_u32(out, dzctl_fw_rev());                 /* 0.4.0：第 3 个 u32，旧上位机不读 */
 }
+
+#ifndef DZ_FW_REV
+#define DZ_FW_REV 0u
+#endif
+DZ_WEAK uint32_t dzctl_fw_rev(void) { return (uint32_t)(DZ_FW_REV); }
 
 DZ_WEAK uint32_t dzctl_board_uid(void) { return 0u; }
 
@@ -108,6 +114,8 @@ int dzctl_selftest(void)
     fail += dzctl_set(&t, 2, 1.0f, &v) != DZCTL_OK || !p.on;
     fail += dzctl_set(&t, 3, 1.0f, &v) != DZCTL_BAD_ID;
     memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 0;
+    dzctl_heartbeat(&t, 1u, &ack);
+    fail += ack.kind != DZF_HEARTBEAT || ack.len != 12u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
     fail += !dzctl_handle(&t, &in, &ack) || ack.kind != DZF_PARAM_ACK || dzframe_get_u8(&ack, 0) != DZCTL_OK
             || dzframe_get_f32(&ack, 1) != 1.0f;
     {   /* 看门狗：未布防不触发；心跳布防后超时触发一次并撤防 */

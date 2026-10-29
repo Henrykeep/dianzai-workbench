@@ -3,6 +3,7 @@
 #include "subsys.h"
 #include "coord.h"
 #include "rtosmon.h"
+#include "blackbox.h"
 #include <string.h>
 
 typedef struct { int a_steps, b_steps, a_out; subsys_mode_t last_mode; int mode_calls; } st_t;
@@ -122,4 +123,61 @@ TEST(rtosmon_cpu_and_stack)
     CHECK(m.stk_min_w == 40u);                                    /* 空扫描不覆盖 */
 }
 
-void suite_framework(void) { RUN(rtosmon_cpu_and_stack); RUN(coord_selftest_passes); RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }
+/* ---- blackbox：存储失败不能挡住启动 ---- */
+typedef struct { uint8_t mem[16u + 8u * 16u]; int fail_erase, fail_write, fail_read, ops; } bbf_t;
+static dz_err_t bbf_erase(void *c) { bbf_t *f = c; f->ops++; if (f->fail_erase) return DZ_EIO; memset(f->mem, 0xFF, sizeof f->mem); return DZ_OK; }
+static dz_err_t bbf_write(void *c, uint32_t o, const void *p, uint32_t n)
+{ bbf_t *f = c; f->ops++; if (f->fail_write || o + n > sizeof f->mem) return DZ_EIO; memcpy(f->mem + o, p, n); return DZ_OK; }
+static dz_err_t bbf_read(void *c, uint32_t o, void *p, uint32_t n)
+{ bbf_t *f = c; f->ops++; if (f->fail_read || o + n > sizeof f->mem) return DZ_EIO; memcpy(p, f->mem + o, n); return DZ_OK; }
+static int bb_lines; static void bb_put(void *c, const char *l) { (void)c; bb_lines += (strncmp(l, "BB,", 3) == 0); }
+
+/* 模拟“启动”：init + 读上次冻结 + 进入控制循环记 100 条。返回进到循环的条数（必须是 100，不管存储怎样）。 */
+static uint32_t bb_boot(bbf_t *f, bb_t *bb, bb_rec_t *ring)
+{
+    bb_store_t st = { bbf_erase, bbf_write, bbf_read, f, sizeof f->mem };
+    static bb_store_t keep; keep = st;
+    bb_rec_t prev[8]; uint16_t n;
+    if (bb_init(bb, ring, 8u, &keep) != DZ_OK) return 0u;
+    (void)bb_load_frozen(bb, prev, 8u, &n);                       /* 结果无所谓：失败也继续 */
+    uint32_t k = 0;
+    for (; k < 100u; k++) bb_log(bb, k, 1u, 0u, (float)k, 0.0f);
+    return k;
+}
+
+TEST(blackbox_ring_freeze_reload)
+{
+    CHECK(bb_selftest() == DZ_OK);
+    static bbf_t f; memset(&f, 0, sizeof f); memset(f.mem, 0xFF, sizeof f.mem);
+    bb_t bb; bb_rec_t ring[8], out[8]; uint16_t n;
+    CHECK(bb_boot(&f, &bb, ring) == 100u && bb_count(&bb) == 8u && bb_get(&bb, 0)->t_ms == 92u);
+    CHECK(bb_freeze(&bb) == DZ_OK);
+    bb_t bb2; bb_rec_t ring2[8];                                  /* “复位”后读回 */
+    CHECK(bb_boot(&f, &bb2, ring2) == 100u);
+    CHECK(bb_load_frozen(&bb2, out, 8u, &n) == DZ_OK && n == 8u && out[0].t_ms == 92u && out[7].a == 99.0f);
+    CHECK(bb_load_frozen(&bb2, out, 4u, &n) == DZ_EINVAL && n == 0u);   /* 缓冲小：不截断 */
+    f.mem[20] ^= 0x5Au;                                           /* 记录被改：校验不过 */
+    CHECK(bb_load_frozen(&bb2, out, 8u, &n) == DZ_EFAIL);
+    bb_lines = 0; CHECK(bb_dump(ring, 3u, bb_put, NULL) == 3u && bb_lines == 3);
+    bb_t r; bb_rec_t rr[4];
+    CHECK(bb_init(&r, rr, 4u, NULL) == DZ_OK && bb_freeze(&r) == DZ_ENOTSUP && bb_init(&r, rr, 0u, NULL) == DZ_EINVAL);
+}
+
+TEST(blackbox_store_failure_never_blocks_boot)
+{
+    static bbf_t f; bb_t bb; bb_rec_t ring[8];
+    memset(&f, 0, sizeof f); f.fail_erase = f.fail_write = f.fail_read = 1;   /* 坏 flash：读写擦全失败 */
+    CHECK(bb_boot(&f, &bb, ring) == 100u && bb_count(&bb) == 8u);           /* 启动照常、RAM 日志照常 */
+    CHECK(f.ops == 1);                                                      /* 启动路径只碰存储 1 次（读头），不重试 */
+    CHECK(bb_freeze(&bb) == DZ_EIO && bb_freeze(&bb) == DZ_EIO);            /* 已 3 次失败（读 1 + 擦 2） */
+    CHECK(!bb_store_usable(&bb) && bb.st_errors == 3u);
+    int before = f.ops;
+    CHECK(bb_freeze(&bb) == DZ_ENOTSUP && f.ops == before);                 /* 停用后一次都不再碰 */
+    bb_log(&bb, 1000u, 9u, 0u, 0.0f, 0.0f); CHECK(bb_get(&bb, 7)->code == 9u);
+    memset(&f, 0, sizeof f); f.fail_write = 1; memset(f.mem, 0xFF, sizeof f.mem); /* 擦成功、写失败（写满/掉电）：头没写 → 下次读到“无” */
+    CHECK(bb_boot(&f, &bb, ring) == 100u && bb_freeze(&bb) == DZ_EIO);
+    f.fail_write = 0; { bb_rec_t o[8]; uint16_t n; CHECK(bb_load_frozen(&bb, o, 8u, &n) == DZ_EFAIL && n == 0u); }
+    CHECK(bb_freeze(&bb) == DZ_OK && bb.st_fail == 0u);                     /* 恢复后成功清零连续失败 */
+}
+
+void suite_framework(void) { RUN(blackbox_ring_freeze_reload); RUN(blackbox_store_failure_never_blocks_boot); RUN(rtosmon_cpu_and_stack); RUN(coord_selftest_passes); RUN(sched_rejects_bad); RUN(sched_periods_modes_overrun_wrap); RUN(coord_state_machine); }

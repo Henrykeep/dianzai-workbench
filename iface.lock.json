@@ -794,6 +794,41 @@
   "hash": "78f031dc6f3d7563",
   "version": "1.0.0"
  },
+ "firmware/framework/blackbox": {
+  "decls": [
+   "blackbox.h: #define BB_STORE_MAX_FAIL 3u",
+   "blackbox.h: #define BB_MAGIC 0x31424244u",
+   "blackbox.h: typedef struct { uint32_t t_ms;",
+   "blackbox.h: uint16_t code;",
+   "blackbox.h: uint16_t arg;",
+   "blackbox.h: float a, b;",
+   "blackbox.h: } bb_rec_t;",
+   "blackbox.h: typedef struct { dz_err_t (*erase)(void *ctx);",
+   "blackbox.h: dz_err_t (*write)(void *ctx, uint32_t off, const void *p, uint32_t n);",
+   "blackbox.h: dz_err_t (*read)(void *ctx, uint32_t off, void *p, uint32_t n);",
+   "blackbox.h: void *ctx;",
+   "blackbox.h: uint32_t size;",
+   "blackbox.h: } bb_store_t;",
+   "blackbox.h: typedef struct { bb_rec_t *ring;",
+   "blackbox.h: uint16_t cap, head;",
+   "blackbox.h: uint32_t total;",
+   "blackbox.h: const bb_store_t *st;",
+   "blackbox.h: uint8_t st_fail;",
+   "blackbox.h: uint32_t st_errors;",
+   "blackbox.h: } bb_t;",
+   "blackbox.h: dz_err_t bb_init(bb_t *bb, bb_rec_t *buf, uint16_t cap, const bb_store_t *store);",
+   "blackbox.h: void bb_log(bb_t *bb, uint32_t t_ms, uint16_t code, uint16_t arg, float a, float b);",
+   "blackbox.h: uint16_t bb_count(const bb_t *bb);",
+   "blackbox.h: const bb_rec_t *bb_get(const bb_t *bb, uint16_t i);",
+   "blackbox.h: dz_err_t bb_freeze(bb_t *bb);",
+   "blackbox.h: dz_err_t bb_load_frozen(bb_t *bb, bb_rec_t *out, uint16_t max, uint16_t *n);",
+   "blackbox.h: bool bb_store_usable(const bb_t *bb);",
+   "blackbox.h: uint16_t bb_dump(const bb_rec_t *r, uint16_t n, void (*put)(void *ctx, const char *line), void *ctx);",
+   "blackbox.h: dz_err_t bb_selftest(void);"
+  ],
+  "hash": "4cc68cbf6db247e4",
+  "version": "1.0.0"
+ },
  "firmware/framework/coord": {
   "decls": [
    "coord.h: typedef enum { COORD_IDLE = 0, COORD_RUNNING, COORD_DONE, COORD_ESTOP, COORD_FAULT } coord_state_t;",
@@ -980,6 +1015,7 @@
    "dzctl.h: bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack);",
    "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
    "dzctl.h: uint32_t dzctl_board_uid(void);",
+   "dzctl.h: uint32_t dzctl_fw_rev(void);",
    "dzctl.h: void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);",
    "dzctl.h: typedef struct { uint32_t last_ms, timeout_ms;",
    "dzctl.h: bool armed;",
@@ -989,8 +1025,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "940f71eaa71e7037",
-  "version": "0.3.0"
+  "hash": "ffee8a5914c6da02",
+  "version": "0.4.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

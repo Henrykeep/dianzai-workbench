@@ -41,6 +41,34 @@ def test_car_2wd_params(home):
         s.disconnect()
 
 
+def test_readback_fw_rev_and_last_good_diff(home, tmp_path):
+    """dzctl 0.4.0：心跳带固件版本；全量回读写 params.txt；params_diff 与 last-good 对比。"""
+    import subprocess
+    import sys
+    from dzbench.session import fw_rev_str
+    repo = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+    s = Session()
+    s.connect("sim:car_2wd")
+    try:
+        assert wait(lambda: s.schema and len(s.params) == 5 and s.fw_rev)
+        head = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
+        if head:
+            assert fw_rev_str(s.fw_rev).startswith(head), (fw_rev_str(s.fw_rev), head)
+        assert s.status()["fw_rev"] == fw_rev_str(s.fw_rev)
+        good = s.export_readback(tmp_path / "last_good.txt")
+        txt = open(good, encoding="utf-8").read()
+        assert "fw_rev = " + fw_rev_str(s.fw_rev) in txt and "kp = 0.08\n" in txt
+        s.set_param("kp", 0.3)
+        now = s.export_readback(tmp_path / "now.txt")
+    finally:
+        s.disconnect()
+    tool = os.path.join(repo, "tools", "params_diff.py")
+    same = subprocess.run([sys.executable, tool, good, good], capture_output=True, text=True)
+    assert same.returncode == 0 and "完全一致" in same.stdout
+    r = subprocess.run([sys.executable, tool, good, now], capture_output=True, text=True)
+    assert r.returncode == 1 and "~ kp: 0.08 → 0.3" in r.stdout and "共 1 处" in r.stdout, r.stdout
+
+
 def test_2026h_estop_and_replay(home):
     s = Session()
     s.connect("sim:2026H_ball")

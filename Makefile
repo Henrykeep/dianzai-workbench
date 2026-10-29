@@ -91,6 +91,14 @@ WARN := -Wall -Wextra -Werror -Wshadow -Wdouble-promotion -Wno-unused-parameter
 include $(wildcard mk/$(BOARD_FAMILY).mk)
 
 CFLAGS += $(if $(filter rtt,$(LINK)),-DDZ_LINK_RTT=1)
+# 固件版本进心跳（dzctl_fw_rev）：git 短哈希 + bit31=工作区有改动。只加给 dzctl.c，换提交不会让全工程重编
+FW_REV := $(shell h=$$(git rev-parse --short=7 HEAD 2>/dev/null) && { git diff --quiet HEAD 2>/dev/null && echo 0x$$h || printf '0x%x' $$((0x$$h | 0x80000000)); } || echo 0)
+$(OUT)/obj/firmware/proto/dzctl/dzctl.c.o: CFLAGS += -DDZ_FW_REV=$(FW_REV)u
+$(OUT)/obj/firmware/proto/dzctl/dzctl.c.o: $(OUT)/fw_rev
+$(OUT)/fw_rev: FORCE
+	@mkdir -p $(@D); echo $(FW_REV) | cmp -s - $@ || echo $(FW_REV) > $@
+.PHONY: FORCE
+FORCE:
 INC  = $(addprefix -I,$(FW_INC) $(PROJ_INC) $(PORT_DIR) $(GEN) $(HAL_INC))
 SRCS = $(LIB_SRC) $(APP_SRC) $(PORT_SRC) $(GEN)/board_gen.c
 OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
@@ -164,6 +172,7 @@ vars: $(GEN)/board_gen.mk
 	@echo "INC=$(FW_INC) $(PROJ_INC) $(PORT_DIR) $(GEN)"
 	@echo "DEFS=$(BOARD_DEFS)"
 	@echo "GEN=$(GEN)"
+	@echo "FW_REV=$(FW_REV)"
 
 # 只生成 board_gen.{h,c,mk}（给 Keil / CCS 工程用）
 gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
@@ -202,6 +211,7 @@ check:
 	$(PY) tools/test_new_subsys.py
 	$(PY) tools/test_report.py
 	$(PY) tools/test_req.py
+	$(PY) tools/test_params_diff.py
 	$(PY) tools/test_scheme.py
 	$(PY) tools/test_alloc.py
 	$(PY) mechanical/calc/test_mech.py

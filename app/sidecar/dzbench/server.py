@@ -109,6 +109,8 @@ class Server:
         if op == "snapshot_save":
             p = s.snapshot_save(m.get("name", ""), m.get("note", ""))
             return {"path": p, "snapshots": snapshots.list_all(s.schema.hash)}
+        if op == "params_readback":
+            return {"path": await run(None, lambda: s.export_readback(m["path"]))}
         if op == "snapshot_list":
             return snapshots.list_all(s.schema.hash) if s.schema else []
         if op == "snapshot_restore":

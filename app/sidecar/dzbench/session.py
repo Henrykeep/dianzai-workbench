@@ -61,6 +61,7 @@ class Session:
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
+        self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
         self.samples: collections.deque = collections.deque()
         self._new: list = []
         self.params: dict[str, float] = {}
@@ -238,6 +239,8 @@ class Session:
                     h = struct.unpack_from("<I", payload)[0]
                     if len(payload) >= 8:
                         self.board_uid = struct.unpack_from("<I", payload, 4)[0] or None
+                    if len(payload) >= 12:
+                        self.fw_rev = struct.unpack_from("<I", payload, 8)[0] or None
                     if h != self.schema_hash:
                         self._bind_schema(h)
             elif kind == DATA and self.schema and id_ == self.schema.telem_id:
@@ -484,6 +487,18 @@ class Session:
             self.emit(LinkError("param_read_aborted", f"后台读参数中断：{type(e).__name__}: {e}",
                                 "通常是读参途中断开/换口；重新连接后会自动再读").as_dict())
 
+    def export_readback(self, path: str | pathlib.Path) -> str:
+        """参数全量回读（逐个问板子，不是上位机记的值）写成 params.txt，给 tools/params_diff.py 和 docs/verify 用。"""
+        if not self.schema:
+            raise LinkError("no_schema", "还没识别出参数表，不能回读")
+        vals = self.read_all_params()
+        if len(vals) < len(self.schema.params):
+            raise LinkError("readback_incomplete", f"只读回 {len(vals)}/{len(self.schema.params)} 个参数", "检查连接后重试")
+        p = pathlib.Path(path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(readback_text(vals, self.schema.hash, self.fw_rev, self.board_uid), encoding="utf-8", newline="\n")
+        return str(p)
+
     # ------------------------------------------------------------------ 快照 / 日志
     def snapshot_save(self, name: str, note: str = "") -> str:
         if not self.schema:
@@ -513,7 +528,7 @@ class Session:
             st = {"type": "status", "connected": connected, "port": self.port, "baud": self.baud,
                   "alive": alive, "rx_bytes": self.rx_bytes, "good": self.parser.good, "bad": self.parser.bad,
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
-                  "schema_ok": self.schema is not None, "log": str(self.log.path) if self.log else None,
+                  "schema_ok": self.schema is not None, "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}
@@ -529,3 +544,17 @@ class Session:
             st["hint"] = ("收到字节但没有合法帧：波特率可能不对" if self.rx_bytes and not self.parser.good
                           else "超过 1.6 s 没有心跳：板子没上电/没跑工作台固件/线松了")
         return st
+
+
+def fw_rev_str(rev: int | None) -> str:
+    """dzctl_fw_rev → "c3b7dfd" / "c3b7dfd+改动" / "未知"。"""
+    if not rev:
+        return "未知"
+    return f"{rev & 0x0FFFFFFF:07x}" + ("+改动" if rev & 0x80000000 else "")
+
+
+def readback_text(vals: dict, schema_hash: int, fw_rev: int | None, board_uid: int | None) -> str:
+    head = [f"# dzbench 参数回读 {time.strftime('%Y-%m-%d %H:%M:%S')}",
+            f"# schema_hash = {schema_hash:08X}", f"# fw_rev = {fw_rev_str(fw_rev)}",
+            f"# board_uid = {board_uid:08X}" if board_uid else "# board_uid = 未知"]
+    return "\n".join(head + [f"{k} = {v:.9g}" for k, v in vals.items()]) + "\n"

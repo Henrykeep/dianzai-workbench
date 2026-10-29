@@ -19,7 +19,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.3.0"
+#define DZCTL_VERSION "0.4.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 
@@ -54,6 +54,9 @@ bool dzctl_is_estop(const dzframe_t *f);
 
 /** 芯片唯一 ID 折成 32 位（端口实现；弱默认返回 0 = 未知）。 */
 uint32_t dzctl_board_uid(void);
+/** 固件版本：git 短哈希（7 位十六进制 = 低 28 位），bit31 = 编译时工作区有未提交改动；0 = 未知（Keil/CCS 工程没传 DZ_FW_REV）。
+ *  make 自动给 dzctl.c 传 -DDZ_FW_REV；应用也可覆盖（弱符号）。 */
+uint32_t dzctl_fw_rev(void);
 
 /** 填心跳帧（schema 哈希 + 板 ID）。 */
 void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);
