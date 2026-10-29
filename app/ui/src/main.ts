@@ -521,10 +521,10 @@ function renderPre(r: any) {
   $("pre-list").innerHTML = [...r.items].sort((a: any, b: any) => order[a.level] - order[b.level]).map((i: any) =>
     `<li class="d-${i.level}"><b>${mk[i.level]} [${esc(i.group)}] ${esc(i.name)}</b>：${esc(i.msg)}${i.fix ? `<br><i>→ ${esc(i.fix)}</i>` : ""}</li>`).join("");
 }
-const runPre = async () => { const r = await call("precontest", {}).catch(() => null); if (r) renderPre(r); };
+const runPre = async () => { const r = await call("precontest", { strict: $<HTMLInputElement>("pre-strict").checked }).catch(() => null); if (r) renderPre(r); };
 $("pre").onclick = async () => { $("pre-list").innerHTML = "<li>检查中…</li>"; $<HTMLDialogElement>("predlg").show(); await runPre(); };
 $("pre-re").onclick = runPre;
-$("pre-exp").onclick = async () => { const r = await call("precontest_export", {}).catch(() => null); if (r) { renderPre(r); toast(`封箱清单已导出 → ${r.path}`, r.all_green ? "ok" : "warn", 12000); } };
+$("pre-exp").onclick = async () => { const r = await call("precontest_export", { strict: $<HTMLInputElement>("pre-strict").checked }).catch(() => null); if (r) { renderPre(r); toast(`封箱清单已导出 → ${r.path}`, r.all_green ? "ok" : "warn", 12000); } };
 
 $("doctor").onclick = async () => {
   const items: any[] = await call("doctor", {}).catch(() => null) || [];

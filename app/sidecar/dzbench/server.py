@@ -139,7 +139,7 @@ class Server:
         if op == "precontest" or op == "precontest_export":
             from . import doctor, precontest
             repo = m.get("repo") or str(self.svc.gw.root)
-            r = await run(None, lambda: precontest.run(s, repo, doctor.run(repo)))
+            r = await run(None, lambda: precontest.run(s, repo, doctor.run(repo), bool(m.get("strict"))))
             if op == "precontest_export":
                 r["path"] = await run(None, lambda: precontest.export(r, s, repo, snapshots.base_dir()))
             return r

@@ -50,3 +50,30 @@ def test_repo_items_dirty(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     (tmp_path / "a.txt").write_text("x", encoding="utf-8")
     assert precontest.repo_items(str(tmp_path))[0]["level"] == "fail"
+
+
+def _repo(tmp_path):
+    import subprocess
+    g = lambda *a: subprocess.run(["git", "-C", str(tmp_path), *a], check=True, capture_output=True, text=True).stdout.strip()
+    g("init", "-q"); g("config", "user.email", "t@t"); g("config", "user.name", "t")
+    (tmp_path / "firmware").mkdir(); (tmp_path / "firmware" / "a.c").write_text("1", encoding="utf-8")
+    (tmp_path / "docs").mkdir(); (tmp_path / "docs" / "x.md").write_text("1", encoding="utf-8")
+    g("add", "-A"); g("commit", "-qm", "1")
+    return g, int(g("rev-parse", "--short=7", "HEAD"), 16)
+
+
+def test_fw_item_relaxed_vs_strict(tmp_path):
+    g, rev = _repo(tmp_path)
+    r = str(tmp_path)
+    assert precontest.fw_item(rev, r)["level"] == "ok"
+    assert precontest.fw_item(rev | 0x80000000, r)["level"] == "fail"        # 带改动烧的
+    (tmp_path / "docs" / "x.md").write_text("2", encoding="utf-8"); g("commit", "-qam", "doc")
+    assert precontest.fw_item(rev, r)["level"] == "ok"                       # 只改文档：默认算一致
+    assert precontest.fw_item(rev, r, strict=True)["level"] == "fail"        # 严格：必须是 HEAD
+    (tmp_path / "firmware" / "a.c").write_text("3", encoding="utf-8")
+    it = precontest.fw_item(rev, r)
+    assert it["level"] == "fail" and "firmware/a.c" in it["msg"]             # 未提交的固件改动
+    g("commit", "-qam", "fw")
+    assert precontest.fw_item(rev, r)["level"] == "fail"                     # 已提交但没重烧
+    assert precontest.fw_item(0x0abcdef, r)["level"] == "fail"               # 不在本仓库历史
+    assert precontest.fw_item(None, r)["level"] == "warn"

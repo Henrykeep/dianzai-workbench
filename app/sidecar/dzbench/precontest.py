@@ -1,6 +1,6 @@
 """赛前全绿检查 + 封箱清单（docs/17）。
 
-= 自检（doctor，电脑环境）+ 板子/工程的“上场前状态”：板子在线、固件版本就是仓库 HEAD 且没有未提交改动、
+= 自检（doctor，电脑环境）+ 板子/工程的“上场前状态”：板子在线、板上固件就是当前固件源码（烧录那次提交之后固件相关目录没改；strict = 必须是 HEAD）、
 板上参数 = 固件默认值（否则复位就丢）、急停未锁、没有未确认的严重告警、最近 60 s 链路 0 坏 0 丢、仓库工作区干净。
 只读：不发任何参数、不改文件；导出清单是唯一的写操作（写到 ~/.dzbench/seal/）。
 通用：不认任何参数名，按 schema 和会话状态判断。
@@ -29,25 +29,46 @@ def _git(repo: str, *args: str) -> str | None:
         return None
 
 
-def board_items(s, repo: str | None) -> list[dict]:
+# 会进固件二进制的路径：这些自烧录那次提交以来没变 = 板上固件就是现在的源码（只改文档/上位机不算）
+FW_PATHS = ("firmware", "ports", "apps", "boards", "examples", "third_party", "tools", "Makefile", "mk")
+
+
+def fw_item(rev: int | None, repo: str | None, strict: bool = False) -> dict:
+    """固件版本判定。默认：板上那次提交到 HEAD 之间固件相关路径没改、工作区这些路径也干净；strict：必须就是 HEAD。"""
+    name = "固件 = 仓库 HEAD 且无未提交改动" if strict else "固件 = 当前固件源码（烧录后固件相关目录没改）"
+    if not rev:
+        return _it("fw_rev", "固件版本", "warn", "板子没报版本（Keil/CCS 编译没传 DZ_FW_REV）", "用 make 编译烧录，或核对 .hex 生成时间")
+    h = f"{rev & 0x0FFFFFFF:07x}"
+    if rev & 0x80000000:
+        return _it("fw_rev", name, "fail", f"板上 {h}+改动：烧的是带未提交改动的固件", "提交后重新编译烧录（带改动的固件复现不了）")
+    head = _git(repo, "rev-parse", "--short=7", "HEAD") if repo else None
+    if head is None:
+        return _it("fw_rev", name, "warn", f"板上 {h}，读不到仓库 HEAD", "")
+    if head.startswith(h):
+        return _it("fw_rev", name, "ok", f"板上 {h} = HEAD")
+    if strict:
+        return _it("fw_rev", name, "fail", f"板上 {h}，仓库 HEAD {head}", "重新编译烧录 HEAD（严格模式）")
+    if _git(repo, "cat-file", "-e", f"{h}^{{commit}}") is None:
+        return _it("fw_rev", name, "fail", f"板上 {h} 不在本仓库历史里", "烧的不是这个仓库的固件，重新编译烧录")
+    paths = [p for p in FW_PATHS if (pathlib.Path(repo) / p).exists()]
+    # 板上那次提交 ↔ 工作区（含已提交和未提交的改动）+ 没跟踪的新文件
+    changed = (_git(repo, "diff", "--name-only", h, "--", *paths) or "").splitlines()
+    changed += (_git(repo, "ls-files", "--others", "--exclude-standard", "--", *paths) or "").splitlines()
+    changed = [c for c in changed if c.strip()]
+    if changed:
+        more = f" 等 {len(changed)} 个" if len(changed) > 3 else ""
+        return _it("fw_rev", name, "fail", f"板上 {h} 之后改过固件相关文件：{'、'.join(changed[:3])}{more}", "重新编译烧录")
+    return _it("fw_rev", name, "ok", f"板上 {h}，HEAD {head}：之后只改了文档/上位机")
+
+
+def board_items(s, repo: str | None, strict: bool = False) -> list[dict]:
     out = []
     st = s.status()
     if not st["connected"] or st.get("replay"):
         return [_it("board", "板子在线", "fail", "没连板子（或在回放）", "连上比赛用的那块板再查")]
     out.append(_it("board", "板子在线", "ok" if st["alive"] else "fail",
                    "心跳正常" if st["alive"] else "连着但没心跳", "" if st["alive"] else "看板子是否上电、跑的是不是工作台固件"))
-    rev = s.fw_rev
-    head = _git(repo, "rev-parse", "--short=7", "HEAD") if repo else None
-    if not rev:
-        out.append(_it("fw_rev", "固件版本", "warn", "板子没报版本（Keil/CCS 编译没传 DZ_FW_REV）", "用 make 编译烧录，或核对 .hex 生成时间"))
-    else:
-        h = f"{rev & 0x0FFFFFFF:07x}"
-        dirty = bool(rev & 0x80000000)
-        same = head is not None and head.startswith(h)
-        lvl = "ok" if same and not dirty else "fail"
-        msg = f"板上 {h}{'+改动' if dirty else ''}，仓库 HEAD {head or '未知'}"
-        out.append(_it("fw_rev", "固件 = 仓库 HEAD 且无未提交改动", lvl, msg,
-                       "" if lvl == "ok" else "提交后重新编译烧录（带改动的固件复现不了）"))
+    out.append(fw_item(s.fw_rev, repo, strict))
     if s.schema:
         diff = [f"{p['name']} 板上 {s.params.get(p['name'])} ≠ 默认 {p['default']}" for p in s.schema.params
                 if s.params.get(p["name"]) is not None and abs(float(s.params[p["name"]]) - float(p["default"])) > 1e-6 * max(1.0, abs(float(p["default"])))]
@@ -83,8 +104,8 @@ def repo_items(repo: str | None) -> list[dict]:
                 "" if not n else "提交后再编译烧录，封箱清单才能对上版本")]
 
 
-def run(s, repo: str | None, doctor_items: list[dict]) -> dict:
-    items = [dict(i, group="电脑") for i in doctor_items] + [dict(i, group="板子") for i in board_items(s, repo)] + \
+def run(s, repo: str | None, doctor_items: list[dict], strict: bool = False) -> dict:
+    items = [dict(i, group="电脑") for i in doctor_items] + [dict(i, group="板子") for i in board_items(s, repo, strict)] + \
             [dict(i, group="工程") for i in repo_items(repo)]
     worst = min((LEVEL_ORDER[i["level"]] for i in items), default=2)
     return {"items": items, "all_green": worst == 2, "fails": sum(i["level"] == "fail" for i in items),
