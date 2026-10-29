@@ -424,6 +424,9 @@ function renderStatus(st: Msg) {
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");
   $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.reconnecting ? "重连中…" : st.baud || ""}</i>` : "未连接";
   $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
+  // 心跳 status 字（dzctl 0.5.0）：复位原因 + 安全态/堵转/急停标志；旧固件没有 → 不显示
+  $("ro-schema").title = st.reset ? `板子复位原因：${st.reset}${st.hb_flags?.length ? "；" + st.hb_flags.join("、") : ""}` : "";
+  if (st.hb_flags?.length) $("ro-schema").innerHTML += `<i class="hb-flag">${esc(st.hb_flags.join("·"))}</i>`;
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
   if (st.log && st.log !== S.lastLog) { S.lastLog = st.log; loadLogs(); }   // 新开的记录马上出现在回放列表

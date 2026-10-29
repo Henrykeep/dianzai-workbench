@@ -63,9 +63,11 @@ class Session:
         self.health = LinkHealth()
         self.timeline = Timeline()
         self._was_alive = False
+        self._pending_marks: list[tuple[str, str]] = []
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
+        self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
         self.samples: collections.deque = collections.deque()
         self._new: list = []
@@ -110,6 +112,7 @@ class Session:
         self.health.reset()
         with self.lock:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
+            self.hb_status = None
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
@@ -249,6 +252,13 @@ class Session:
                         self.board_uid = struct.unpack_from("<I", payload, 4)[0] or None
                     if len(payload) >= 12:
                         self.fw_rev = struct.unpack_from("<I", payload, 8)[0] or None
+                    if len(payload) >= 16:
+                        w = struct.unpack_from("<I", payload, 12)[0]
+                        if w != self.hb_status:
+                            self.hb_status = w
+                            m = hb_status_event(w)
+                            if m:
+                                self._pending_marks.append(m)
                     if h != self.schema_hash:
                         self._bind_schema(h)
             elif kind == DATA and self.schema and id_ == self.schema.telem_id:
@@ -558,7 +568,8 @@ class Session:
             if isinstance(self.tr, ReplayTransport):
                 st.update(replay_pos=round(self.tr.position(), 2), replay_len=round(self.tr.duration, 2),
                           replay_speed=self.tr.speed, replay_paused=self.tr.paused)
-            marks = []
+            marks, self._pending_marks = list(self._pending_marks), []
+            st.update(hb_status_dict(self.hb_status))
             if self.tr is not None:
                 log_t, plot_t = self._times_locked(now)
                 hist = self.health.history()
@@ -578,6 +589,28 @@ class Session:
             st["hint"] = ("收到字节但没有合法帧：波特率可能不对" if self.rx_bytes and not self.parser.good
                           else "超过 1.6 s 没有心跳：板子没上电/没跑工作台固件/线松了")
         return st
+
+
+RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停"}
+
+
+def hb_status_dict(w: int | None) -> dict:
+    """心跳 status 字 → status() 里的 reset / hb_flags（旧固件没有这个字：都为 None）。"""
+    if w is None:
+        return {"reset": None, "hb_flags": None}
+    return {"reset": RESET_NAMES.get(w & 0xFF, f"#{w & 0xFF}"), "hb_flags": [n for b, n in HB_FLAGS.items() if w & b]}
+
+
+def hb_status_event(w: int) -> tuple[str, str] | None:
+    """status 字变化时要不要进时间线：异常复位（看门狗/锁死）、进安全态、堵转 → watchdog 类（严重，进告警条）。"""
+    d = hb_status_dict(w)
+    bad = (w & 0xFF) in (4, 6)
+    if not bad and not (w & ((1 << 8) | (1 << 9))):
+        return None
+    why = f"板子复位原因：{d['reset']}" + (f"；{'、'.join(d['hb_flags'])}" if d["hb_flags"] else "")
+    hint = "（主循环卡住被看门狗复位，板子已进安全态，确认原因后发 R 解除）" if bad else ""
+    return ("watchdog", why + hint)
 
 
 def fw_rev_str(rev: int | None) -> str:

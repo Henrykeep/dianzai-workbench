@@ -8,7 +8,7 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 | 板→PC | PARAM_ACK id=序号 | u8 status（0 OK / 1 已限幅 / 2 序号错 / 3 长度错 / 4 NaN·Inf 拒绝）, f32 生效值 |
 | PC→板 | DATA id=0x7F | 空：急停（应用锁存） |
 | PC→板 | DATA id=0x7E | u8 命令字符（应用自定义） |
-| 板→PC | HEARTBEAT | u32 schema_hash，上位机据此找 `link_schema.json`；0.3.0 起再跟 u32 board_uid（芯片 UID 折成 32 位，0 = 未知；F1/F4 读 UID，MSPM0 读 FACTORYREGION TRACEID/USERID，上板【未测】）。旧上位机只读前 4 字节，兼容；0.4.0 起第 3 个 u32 fw_rev = git 短哈希（低 28 位）| bit31 未提交改动，0 = 未知（Keil/CCS 没传 `DZ_FW_REV`） |
+| 板→PC | HEARTBEAT | u32 schema_hash，上位机据此找 `link_schema.json`；0.3.0 起再跟 u32 board_uid（芯片 UID 折成 32 位，0 = 未知；F1/F4 读 UID，MSPM0 读 FACTORYREGION TRACEID/USERID，上板【未测】）。旧上位机只读前 4 字节，兼容；0.4.0 起第 3 个 u32 fw_rev = git 短哈希（低 28 位）| bit31 未提交改动，0 = 未知（Keil/CCS 没传 `DZ_FW_REV`）；0.5.0 起第 4 个 u32 status：低 8 位复位原因（pal_reset_cause_t，0 = 未知/应用没填），bit8 SAFE_BOOT（异常复位后进安全态）、bit9 STALL、bit10 ESTOP |
 
 参数表、遥测打包函数和 `link_schema.json` 由 `tools/gen_link.py` 从 yaml 的 `link:` 段生成，C 与上位机同源。
 

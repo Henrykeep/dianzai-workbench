@@ -1202,6 +1202,9 @@
   "decls": [
    "dzctl.h: #define DZCTL_ID_CMD 0x7Eu",
    "dzctl.h: #define DZCTL_ID_ESTOP 0x7Fu",
+   "dzctl.h: #define DZCTL_HB_SAFE_BOOT (1u << 8)",
+   "dzctl.h: #define DZCTL_HB_STALL (1u << 9)",
+   "dzctl.h: #define DZCTL_HB_ESTOP (1u << 10)",
    "dzctl.h: typedef enum { DZCTL_F32, DZCTL_U32, DZCTL_I32, DZCTL_U16, DZCTL_I16, DZCTL_U8, DZCTL_BOOL } dzctl_type_t;",
    "dzctl.h: typedef enum { DZCTL_OK = 0, DZCTL_CLAMPED = 1, DZCTL_BAD_ID = 2, DZCTL_BAD_LEN = 3, DZCTL_BAD_VALUE = 4 } dzctl_status_t;",
    "dzctl.h: typedef struct { const char *name;",
@@ -1220,6 +1223,9 @@
    "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
    "dzctl.h: uint32_t dzctl_board_uid(void);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
+   "dzctl.h: void dzctl_set_reset_cause(uint32_t cause);",
+   "dzctl.h: void dzctl_set_flags(uint32_t mask, bool on);",
+   "dzctl.h: uint32_t dzctl_status_word(void);",
    "dzctl.h: void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out);",
    "dzctl.h: typedef struct { uint32_t last_ms, timeout_ms;",
    "dzctl.h: bool armed;",
@@ -1229,8 +1235,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "ffee8a5914c6da02",
-  "version": "0.4.0"
+  "hash": "d568f73d8fda1fd2",
+  "version": "0.5.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

@@ -337,3 +337,4 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 /* 赛前检查 */
 .pre-sum{padding:6px 10px;border-radius:var(--r-xs);font:600 var(--t-sm) var(--f-sans);margin-bottom:8px}
 .pre-sum.ok{background:var(--ok-bg);color:var(--ok)}.pre-sum.warn{background:var(--warn-bg);color:var(--warn)}.pre-sum.fail{background:var(--crit-bg);color:var(--crit)}
+.hb-flag{color:var(--crit)}

@@ -76,7 +76,13 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     (void)dzframe_put_u32(out, t ? t->schema_hash : 0u);
     (void)dzframe_put_u32(out, dzctl_board_uid());
     (void)dzframe_put_u32(out, dzctl_fw_rev());                 /* 0.4.0：第 3 个 u32，旧上位机不读 */
+    (void)dzframe_put_u32(out, dzctl_status_word());            /* 0.5.0：第 4 个 u32 */
 }
+
+static volatile uint32_t s_status;
+void dzctl_set_reset_cause(uint32_t cause) { s_status = (s_status & ~0xFFu) | (cause & 0xFFu); }
+void dzctl_set_flags(uint32_t mask, bool on) { mask &= ~0xFFu; s_status = on ? (s_status | mask) : (s_status & ~mask); }
+uint32_t dzctl_status_word(void) { return s_status; }
 
 #ifndef DZ_FW_REV
 #define DZ_FW_REV 0u
@@ -115,9 +121,17 @@ int dzctl_selftest(void)
     fail += dzctl_set(&t, 3, 1.0f, &v) != DZCTL_BAD_ID;
     memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 0;
     dzctl_heartbeat(&t, 1u, &ack);
-    fail += ack.kind != DZF_HEARTBEAT || ack.len != 12u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
+    fail += ack.kind != DZF_HEARTBEAT || ack.len != 16u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
     fail += !dzctl_handle(&t, &in, &ack) || ack.kind != DZF_PARAM_ACK || dzframe_get_u8(&ack, 0) != DZCTL_OK
             || dzframe_get_f32(&ack, 1) != 1.0f;
+    {   /* status 字：复位原因只占低 8 位，标志不覆盖它 */
+        uint32_t keep = s_status;
+        dzctl_set_reset_cause(4u); dzctl_set_flags(DZCTL_HB_STALL | 0xFFu, true);
+        fail += dzctl_status_word() != (4u | DZCTL_HB_STALL);
+        dzctl_set_flags(DZCTL_HB_STALL, false);
+        fail += dzctl_status_word() != 4u;
+        s_status = keep;
+    }
     {   /* 看门狗：未布防不触发；心跳布防后超时触发一次并撤防 */
         dzctl_wd_t w; dzframe_t hb, d2;
         memset(&hb, 0, sizeof hb); hb.kind = DZF_HEARTBEAT;
