@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.2.0"
+#define PAL_VERSION "1.3.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -73,6 +73,18 @@ pal_reset_cause_t pal_reset_cause(void);
 uint32_t pal_irq_save(void);
 /** 恢复 pal_irq_save() 保存的状态。[ISR-safe] */
 void pal_irq_restore(uint32_t state);
+
+/**
+ * 启动独立看门狗（IWDG 一类：独立时钟，主循环卡死 timeout_ms 后硬件复位，复位原因 = PAL_RESET_WATCHDOG）。
+ *  - 一旦启动不能停止（硬件如此）；重复调用返回 DZ_ESTATE。
+ *  - 调试器暂停内核时，平台支持的话冻结看门狗（Keil/CCS 断点不会被狗咬）。
+ *  - 实际超时按片内低速时钟标称值换算，误差可达 ±30%：timeout 至少取主循环最坏周期的 5 倍。
+ *  - timeout_ms 为 0 或超出硬件上限返回 DZ_EINVAL；本平台没有/没实现返回 DZ_ENOTSUP。
+ * 只在初始化里调用。@since 1.3.0
+ */
+dz_err_t pal_wdg_start(uint32_t timeout_ms);
+/** 喂狗。没启动时什么也不做。只在主循环里调（不要放进定时器中断：中断还在跑不代表主循环没卡死）。@since 1.3.0 */
+void pal_wdg_kick(void);
 
 /* ------------------------------------------------------------------------- */
 /* 时基                                                                      */

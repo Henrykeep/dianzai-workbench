@@ -67,6 +67,9 @@
 - `agent/codemap.py`（仓库地图，git 状态缓存）、`agent/knowledge.py`（触发词知识 + 项目记忆）、`docs/agent-knowledge/`。新增工具 repo_map（AUTO）、remember（LOG，走网关 diff 卡片，人接受才写）。
 - 新知识文件：加 `triggers:` 头即可，不用改代码；README.md 无触发词不会被加载。
 
+### 看门狗（2026-10-29，UTC+8）
+- pal 1.3.0 `pal_wdg_start/kick`；实现只在 stm32-cubemx（寄存器直写），MSPM0 WWDT 待做。复位原因进心跳、被咬后进安全态还没做。
+
 ### 心跳条（2026-10-29，UTC+8）
 - 侧车 `linkhealth.py`（每秒格子，status 里的 `hb` + op `health`），界面 `hbstrip.ts`，曲线 `Plot.jumpTo`（`view` 非空 = 视图钉住，按 P 继续时清掉）。格子同时带 log_t（dzlog 时间）和 plot_t（曲线时间），后面的事件时间线复用同一对时间。
 - 事件时间线：`events.py`（from_broadcast / from_reply 分类表 + Timeline），会话内的看门狗/CRC 突增由 `Session.mark` 在 status() 里记；界面 `timeline.ts`，曲线 `Plot.setMarks`。

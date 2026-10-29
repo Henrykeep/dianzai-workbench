@@ -33,6 +33,7 @@
                                         * 两车同款电机，旧代码约 3.7 倍的 ticks/m 差异疑为倍频/单位换算错误；
                                         * 按 docs/12-参考工程与参数来源.md 的“转 10 圈”标定后填写。 */
 #define ID_CMD   1u
+#define WDG_MS   500u   /* 独立看门狗：主循环卡住 500 ms 硬件复位（主循环最坏约几 ms；改这里要同步 app.yaml protect_fixed） */
 
 typedef struct { motor_dc_t motor; encoder_t enc; pid_ctrl_t pid; } wheel_t;
 
@@ -113,7 +114,9 @@ dz_err_t app_init(void)
     dzframe_parser_init(&s_rx);
     dzctl_wd_init(&s_wd, 1000u);   /* 侧车每 250 ms 发一次心跳 */
     if ((e = car_aux_init()) != DZ_OK) return e;
-    return pal_timer_start(RES_TIMER_CTRL, CTRL_PERIOD_US, ctrl_isr, 0);
+    if ((e = pal_timer_start(RES_TIMER_CTRL, CTRL_PERIOD_US, ctrl_isr, 0)) != DZ_OK) return e;
+    e = pal_wdg_start(WDG_MS);           /* 最后开：初始化慢不会被咬。ENOTSUP（如 MSPM0 未实现）照常运行 */
+    return e == DZ_ENOTSUP ? DZ_OK : e;
 }
 
 static void send(const dzframe_t *f)
@@ -154,6 +157,7 @@ void app_loop(void)
     static uint32_t last_hb = 0u - 500u;   /* 复位后第一拍就发心跳（带 schema 哈希），上位机不用等 500 ms 才认出板子 */
     static uint8_t seq;
     uint32_t now = pal_millis();
+    pal_wdg_kick();
     handle_rx(now);
     if (dzctl_wd_expired(&s_wd, now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
     if (car_aux_poll(now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }   /* 只置不清 */

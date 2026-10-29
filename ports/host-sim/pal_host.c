@@ -18,6 +18,7 @@ static struct {
     bool inited;
     uint64_t now_us;
     pal_reset_cause_t reset;
+    uint32_t wdg_ms; uint64_t wdg_kick_us; bool wdg_bit;
     bool gpio[BOARD_GPIO_COUNT + 1];
     uint16_t pwm[BOARD_PWM_COUNT + 1];
     int32_t enc[BOARD_ENCODER_COUNT + 1];
@@ -168,6 +169,21 @@ unsigned host_sim_events(host_sim_ev_t *out, unsigned max)
 dz_err_t pal_init(void) { if (S.inited) return DZ_ESTATE; S.inited = true; return DZ_OK; }
 const char *pal_board_name(void) { return g_board_name; }
 pal_reset_cause_t pal_reset_cause(void) { return S.reset; }
+/* 看门狗桩：记下超时和最近一次喂狗；到期不真复位（进程里没法复位），由测试/仿真主循环用 host_sim_wdg_bitten() 查 */
+dz_err_t pal_wdg_start(uint32_t timeout_ms)
+{
+    if (S.wdg_ms) return DZ_ESTATE;
+    if (timeout_ms == 0u || timeout_ms > 26000u) return DZ_EINVAL;     /* 与 STM32 IWDG 32 kHz 上限一致 */
+    S.wdg_ms = timeout_ms; S.wdg_kick_us = S.now_us; S.wdg_bit = false;
+    return DZ_OK;
+}
+void pal_wdg_kick(void) { if (S.wdg_ms && !S.wdg_bit) S.wdg_kick_us = S.now_us; }
+bool host_sim_wdg_bitten(void)
+{
+    if (S.wdg_ms && S.now_us - S.wdg_kick_us > (uint64_t)S.wdg_ms * 1000u) S.wdg_bit = true;
+    return S.wdg_bit;
+}
+uint32_t host_sim_wdg_timeout_ms(void) { return S.wdg_ms; }
 uint32_t pal_irq_save(void) { return 0; }
 void pal_irq_restore(uint32_t s) { (void)s; }
 

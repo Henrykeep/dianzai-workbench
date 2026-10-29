@@ -1159,6 +1159,8 @@
    "pal.h: pal_reset_cause_t pal_reset_cause(void);",
    "pal.h: uint32_t pal_irq_save(void);",
    "pal.h: void pal_irq_restore(uint32_t state);",
+   "pal.h: dz_err_t pal_wdg_start(uint32_t timeout_ms);",
+   "pal.h: void pal_wdg_kick(void);",
    "pal.h: uint32_t pal_millis(void);",
    "pal.h: uint32_t pal_micros(void);",
    "pal.h: void pal_delay_us(uint32_t us);",
@@ -1193,8 +1195,8 @@
    "pal.h: dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n);",
    "pal.h: dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);"
   ],
-  "hash": "f75f9f0807e8aee7",
-  "version": "1.2.0"
+  "hash": "aaedfc5715ef4f4c",
+  "version": "1.3.0"
  },
  "firmware/proto/dzctl": {
   "decls": [
@@ -1327,6 +1329,8 @@
    "host_sim.h: bool dir_mode;",
    "host_sim.h: } host_sim_motor_t;",
    "host_sim.h: void host_sim_reset(void);",
+   "host_sim.h: bool host_sim_wdg_bitten(void);",
+   "host_sim.h: uint32_t host_sim_wdg_timeout_ms(void);",
    "host_sim.h: void host_sim_run_us(uint64_t us);",
    "host_sim.h: uint64_t host_sim_now_us(void);",
    "host_sim.h: int host_sim_bind_motor(const host_sim_motor_t *m);",
@@ -1357,8 +1361,8 @@
    "host_sim.h: int host_sim_add_periodic(uint32_t period_us, void (*fn)(void *), void *ctx);",
    "host_sim.h: void host_sim_set_reset_cause(pal_reset_cause_t c);"
   ],
-  "hash": "1c36c8a7b34f5698",
-  "version": "2.2.0"
+  "hash": "4629d8ec31f0c280",
+  "version": "2.3.0"
  },
  "ports/mspm0-driverlib": {
   "decls": [
@@ -1421,7 +1425,7 @@
    "port_mspm0.h: const m0_diag_t *m0_diag(void);"
   ],
   "hash": "8edc107043fa7cda",
-  "version": "0.4.0"
+  "version": "0.4.1"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -1440,6 +1444,16 @@
    "dz_freertos.h: void dz_rtos_monitor_poll(void);",
    "dz_freertos.h: void configureTimerForRunTimeStats(void);",
    "dz_freertos.h: unsigned long getRunTimeCounterValue(void);",
+   "iwdg_calc.h: static inline int iwdg_calc(uint32_t timeout_ms, uint32_t lsi_hz, uint8_t *pr, uint16_t *rlr) { if (timeout_ms == 0u || lsi_hz == 0u) return 0;",
+   "iwdg_calc.h: for (uint8_t k = 0u;",
+   "iwdg_calc.h: k <= 6u;",
+   "iwdg_calc.h: k++) { uint32_t div = 4u << k;",
+   "iwdg_calc.h: uint64_t ticks = ((uint64_t)timeout_ms * lsi_hz + (uint64_t)div * 1000u - 1u) / ((uint64_t)div * 1000u);",
+   "iwdg_calc.h: if (ticks == 0u) ticks = 1u;",
+   "iwdg_calc.h: if (ticks <= 4096u) { *pr = k;",
+   "iwdg_calc.h: *rlr = (uint16_t)(ticks - 1u);",
+   "iwdg_calc.h: return 1;",
+   "iwdg_calc.h: } return 0;",
    "port_cubemx.h: typedef struct { GPIO_TypeDef *port;",
    "port_cubemx.h: uint16_t pin;",
    "port_cubemx.h: uint8_t active_low;",
@@ -1492,8 +1506,8 @@
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "580ea3a8bdf4fb64",
-  "version": "1.4.0"
+  "hash": "04a2087d8d43f192",
+  "version": "1.5.0"
  },
  "ports/stm32f4-hal": {
   "decls": [
@@ -1704,6 +1718,6 @@
    "stm32f4xx_hal_conf.h: void assert_failed(uint8_t* file, uint32_t line);"
   ],
   "hash": "b0214c49a56898f4",
-  "version": "1.2.0"
+  "version": "1.2.1"
  }
 }

@@ -28,6 +28,9 @@ typedef struct {
 
 /** 复位整个仿真（时间清零、所有状态清零、解除电机绑定）。每个测试开始时调用。 */
 void  host_sim_reset(void);
+/** 看门狗桩（2.3.0）：pal_wdg_start 之后超过 timeout 没喂 = 被咬（锁存，host_sim_reset 清）；0 = 没启动。 */
+bool     host_sim_wdg_bitten(void);
+uint32_t host_sim_wdg_timeout_ms(void);
 /** 推进虚拟时间，期间按步长运行电机模型并触发到期的定时器回调。 */
 void  host_sim_run_us(uint64_t us);
 uint64_t host_sim_now_us(void);

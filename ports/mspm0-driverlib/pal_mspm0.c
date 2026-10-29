@@ -116,6 +116,9 @@ dz_err_t pal_init(void) { return s_started ? DZ_OK : DZ_ESTATE; }   /* 初始化
 const char *pal_board_name(void) { return g_board_name; }
 /* TODO：按 DL_SYSCTL_getResetCause() 映射；映射表未对照 TRM 核实前一律返回 UNKNOWN（不编造） */
 pal_reset_cause_t pal_reset_cause(void) { return PAL_RESET_UNKNOWN; }
+/* 看门狗：MSPM0 是窗口看门狗 WWDT（要 SysConfig 配 LFCLK 与窗口），还没做 → 如实返回 ENOTSUP。 */
+dz_err_t pal_wdg_start(uint32_t timeout_ms) { (void)timeout_ms; return DZ_ENOTSUP; }
+void pal_wdg_kick(void) {}
 
 /* ---------- GPIO ---------- */
 dz_err_t pal_gpio_write(pal_id_t id, bool active)

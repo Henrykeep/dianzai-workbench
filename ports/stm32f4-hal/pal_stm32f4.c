@@ -870,3 +870,7 @@ dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info)
     (void)id; (void)info; return DZ_ENODEV;
 #endif
 }
+
+/* 本移植层已冻结（新 STM32 板走 stm32-cubemx，那里有 IWDG 实现）。 */
+dz_err_t pal_wdg_start(uint32_t timeout_ms) { (void)timeout_ms; return DZ_ENOTSUP; }
+void pal_wdg_kick(void) {}

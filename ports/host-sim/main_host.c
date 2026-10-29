@@ -39,6 +39,10 @@ static int stream(double speed)
         host_sim_run_us(1000);
         while ((n = host_sim_uart_take_tx(RES_UART_LINK, buf, sizeof buf)) > 0)
             if (write(1, buf, n) < 0) return 0;
+        if (host_sim_wdg_bitten()) {                            /* 仿真没法真复位：报出来并退出，上位机看到心跳断 */
+            fprintf(stderr, "host-sim: 看门狗 %u ms 没喂，真板此时已复位（复位原因 WATCHDOG）\n", (unsigned)host_sim_wdg_timeout_ms());
+            return 86;
+        }
         ms++;
         clock_gettime(CLOCK_MONOTONIC, &now);
         double ahead_ms = (double)ms / speed - ((double)(now.tv_sec - t0.tv_sec) * 1e3 + (double)(now.tv_nsec - t0.tv_nsec) / 1e6);

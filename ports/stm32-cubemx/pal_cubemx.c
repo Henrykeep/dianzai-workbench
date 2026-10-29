@@ -157,6 +157,47 @@ pal_reset_cause_t pal_reset_cause(void)
     return PAL_RESET_UNKNOWN;
 #endif
 }
+/* ---------- 独立看门狗：直接写 IWDG 寄存器（不要求 CubeMX 勾 IWDG / HAL_IWDG 模块，F1/F4 通用） ---------- */
+#include "iwdg_calc.h"
+#ifndef DZ_LSI_HZ
+#if defined(STM32F1)
+#define DZ_LSI_HZ 40000u
+#else
+#define DZ_LSI_HZ 32000u
+#endif
+#endif
+static bool s_wdg_on;
+dz_err_t pal_wdg_start(uint32_t timeout_ms)
+{
+#if defined(IWDG)
+    uint8_t pr; uint16_t rlr;
+    if (s_wdg_on) return DZ_ESTATE;
+    if (!iwdg_calc(timeout_ms, DZ_LSI_HZ, &pr, &rlr)) return DZ_EINVAL;
+#if defined(DBGMCU_APB1_FZ_DBG_IWDG_STOP)
+    DBGMCU->APB1FZ |= DBGMCU_APB1_FZ_DBG_IWDG_STOP;      /* F4：调试暂停时冻结 */
+#elif defined(DBGMCU_CR_DBG_IWDG_STOP)
+    DBGMCU->CR |= DBGMCU_CR_DBG_IWDG_STOP;               /* F1 */
+#endif
+    IWDG->KR = 0xCCCCu;                                  /* 启动（LSI 由硬件自动打开） */
+    IWDG->KR = 0x5555u;                                  /* 解锁 PR/RLR */
+    IWDG->PR = pr;
+    IWDG->RLR = rlr;
+    uint32_t t0 = HAL_GetTick();
+    while (IWDG->SR != 0u) { if (HAL_GetTick() - t0 > 50u) return DZ_EIO; }
+    IWDG->KR = 0xAAAAu;
+    s_wdg_on = true;
+    return DZ_OK;
+#else
+    (void)timeout_ms; return DZ_ENOTSUP;
+#endif
+}
+void pal_wdg_kick(void)
+{
+#if defined(IWDG)
+    if (s_wdg_on) IWDG->KR = 0xAAAAu;
+#endif
+}
+
 uint32_t pal_irq_save(void) { uint32_t p = __get_PRIMASK(); __disable_irq(); return p; }
 void pal_irq_restore(uint32_t s) { if (!s) __enable_irq(); }
 
