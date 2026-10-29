@@ -29,6 +29,7 @@
             -I${PROJECT_LOC}/../../../firmware/algo/ball_beam
             -I${PROJECT_LOC}/../../../firmware/algo/capfreq
             -I${PROJECT_LOC}/../../../firmware/algo/dds
+            -I${PROJECT_LOC}/../../../firmware/algo/follow
             -I${PROJECT_LOC}/../../../firmware/algo/line_obs
             -I${PROJECT_LOC}/../../../firmware/algo/lpf
             -I${PROJECT_LOC}/../../../firmware/algo/mtspeed
@@ -49,6 +50,7 @@
             -I${PROJECT_LOC}/../../../firmware/proto/dzframe
             -I${PROJECT_LOC}/../../../firmware/proto/dzimu
             -I${PROJECT_LOC}/../../../firmware/proto/dzrtt
+            -I${PROJECT_LOC}/../../../firmware/proto/peerlink
             -I${PROJECT_LOC}/../../../firmware/drivers/battery
             -I${PROJECT_LOC}/../../../firmware/drivers/bmi088
             -I${PROJECT_LOC}/../../../firmware/drivers/bt_serial
@@ -109,6 +111,7 @@
         <file path="../../../firmware/algo/ball_beam/ball_beam.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/capfreq/capfreq.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/dds/dds.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/follow/follow.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/line_obs/line_obs.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/lpf/lpf1.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/mtspeed/mtspeed.c" targetDirectory="dz/firmware" action="link"/>
@@ -129,6 +132,7 @@
         <file path="../../../firmware/proto/dzframe/dzframe.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/proto/dzimu/dzimu.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/proto/dzrtt/dzrtt.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/proto/peerlink/peerlink.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/battery/battery.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/bmi088/bmi088.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/bt_serial/bt_serial.c" targetDirectory="dz/firmware" action="link"/>

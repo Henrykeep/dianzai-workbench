@@ -147,6 +147,25 @@
   "hash": "a42602cee3ace2d5",
   "version": "1.0.0"
  },
+ "firmware/algo/follow": {
+  "decls": [
+   "follow.h: typedef enum { FOLLOW_OK = 0, FOLLOW_TOO_CLOSE = 1, FOLLOW_LINK_LOST = 2 } follow_state_t;",
+   "follow.h: typedef struct { float gap_ref_m, gap_min_m;",
+   "follow.h: float kp, kd;",
+   "follow.h: float v_max;",
+   "follow.h: float accel, decel;",
+   "follow.h: } follow_cfg_t;",
+   "follow.h: typedef struct { follow_cfg_t c;",
+   "follow.h: float v;",
+   "follow.h: follow_state_t st;",
+   "follow.h: } follow_t;",
+   "follow.h: dz_err_t follow_init(follow_t *f, const follow_cfg_t *c);",
+   "follow.h: float follow_step(follow_t *f, bool lead_ok, float gap_m, float v_lead, float v_self, float dt_s);",
+   "follow.h: dz_err_t follow_selftest(void);"
+  ],
+  "hash": "26d1778e8b294c47",
+  "version": "1.0.0"
+ },
  "firmware/algo/line_obs": {
   "decls": [
    "line_obs.h: #define LINE_OBS_DIR_MAX 16u",
@@ -1387,6 +1406,38 @@
   ],
   "hash": "5a51410adaaadbab",
   "version": "0.1.0"
+ },
+ "firmware/proto/peerlink": {
+  "decls": [
+   "peerlink.h: #define PEERLINK_ID_STATE 0x70u",
+   "peerlink.h: #define PEERLINK_ID_ABORT 0x71u",
+   "peerlink.h: #define PEERLINK_STATE_LEN 26u",
+   "peerlink.h: #define PEER_F_RUNNING 0x0001u",
+   "peerlink.h: #define PEER_F_MARK 0x0002u",
+   "peerlink.h: #define PEER_F_STOPPED 0x0004u",
+   "peerlink.h: typedef struct { uint32_t t_ms;",
+   "peerlink.h: float s_m, v_mps, x_m, y_m, yaw_rad;",
+   "peerlink.h: uint16_t flags;",
+   "peerlink.h: } peer_state_t;",
+   "peerlink.h: typedef struct { uint32_t stale_ms;",
+   "peerlink.h: peer_state_t last;",
+   "peerlink.h: bool have, aborted;",
+   "peerlink.h: uint16_t abort_reason;",
+   "peerlink.h: uint8_t last_seq;",
+   "peerlink.h: uint32_t rx_ms;",
+   "peerlink.h: uint32_t good, dup_ooo, bad_len;",
+   "peerlink.h: } peer_rx_t;",
+   "peerlink.h: void peerlink_state_frame(const peer_state_t *s, dzframe_t *out);",
+   "peerlink.h: void peerlink_abort_frame(uint16_t reason, dzframe_t *out);",
+   "peerlink.h: void peer_rx_init(peer_rx_t *r, uint32_t stale_ms);",
+   "peerlink.h: bool peer_rx_feed(peer_rx_t *r, const dzframe_t *f, uint32_t now_ms);",
+   "peerlink.h: bool peer_rx_fresh(const peer_rx_t *r, uint32_t now_ms);",
+   "peerlink.h: uint32_t peer_rx_age_ms(const peer_rx_t *r, uint32_t now_ms);",
+   "peerlink.h: void peer_rx_clear_abort(peer_rx_t *r);",
+   "peerlink.h: dz_err_t peerlink_selftest(void);"
+  ],
+  "hash": "75c360f458e4daea",
+  "version": "1.0.0"
  },
  "ports/host-sim": {
   "decls": [

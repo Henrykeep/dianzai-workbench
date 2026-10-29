@@ -278,11 +278,48 @@ TEST(line_obs_recover_and_timeout)
     CHECK(line_obs_run(false, &n) == LINE_OBS_FAIL && n == 1u);       /* 不找：12 s 后判失败停车 */
 }
 
+/* follow + peerlink：领车按 0.5 m/s 走，跟车从 1.5 m 外起步；中途断链 0.5 s 再恢复；末尾领车中止 */
+#include "follow.h"
+#include "peerlink.h"
+TEST(follow_two_car_link)
+{
+    CHECK(follow_selftest() == DZ_OK && peerlink_selftest() == DZ_OK);
+    follow_cfg_t c = { 0.5f, 0.2f, 1.2f, 0.3f, 1.0f, 1.5f, 3.0f };
+    follow_t f; peer_rx_t r; dzframe_t fr;
+    float s_lead = 1.5f, s_self = 0.0f, v_self = 0.0f, min_gap = 9.0f;
+    uint8_t seq = 0;
+    bool lost_seen = false;
+    CHECK(follow_init(&f, &c) == DZ_OK);
+    peer_rx_init(&r, 300u);
+    for (uint32_t ms = 0; ms < 20000u; ms += 10u) {
+        float v_lead = ms < 15000u ? 0.5f : 0.0f;
+        s_lead += v_lead * 0.01f;
+        bool radio_up = !(ms >= 6000u && ms < 6500u);
+        if (ms % 100u == 0u && radio_up) {                             /* 10 Hz 时隙 */
+            peer_state_t ps = { ms, s_lead, v_lead, 0, 0, 0, PEER_F_RUNNING };
+            peerlink_state_frame(&ps, &fr); fr.seq = seq++;
+            (void)peer_rx_feed(&r, &fr, ms);
+        }
+        if (ms == 18000u) { peerlink_abort_frame(1u, &fr); (void)peer_rx_feed(&r, &fr, ms); }
+        bool ok = peer_rx_fresh(&r, ms);
+        /* 对方里程按收到后的时间外推（帧 10 Hz，控制 100 Hz） */
+        float gap = r.last.s_m + r.last.v_mps * (float)peer_rx_age_ms(&r, ms) * 1e-3f - s_self;
+        v_self = follow_step(&f, ok, gap, r.last.v_mps, v_self, 0.01f);
+        s_self += v_self * 0.01f;
+        if (f.st == FOLLOW_LINK_LOST && ms > 6000u && ms < 7000u) lost_seen = true;
+        if (ms == 5900u) CHECK(fabsf((s_lead - s_self) - 0.5f) < 0.05f);   /* 稳态间距 ≈ 0.5 m */
+        if (ms > 1000u && s_lead - s_self < min_gap) min_gap = s_lead - s_self;
+    }
+    CHECK(lost_seen);                                                    /* 断链期间按 decel 减速 */
+    CHECK(min_gap > 0.2f);                                               /* 全程没撞 */
+    CHECK(v_self == 0.0f && f.st == FOLLOW_LINK_LOST && r.aborted);      /* 领车中止：停车锁存 */
+}
+
 void suite_ctrlparts(void)
 {
     RUN(stall_detect_model);
     RUN(slew_dir_and_mag); RUN(slew_edge_cases); RUN(slew_with_motor_model);
     RUN(mtspeed_low_speed_vs_m_method); RUN(mtspeed_decel_timeout_reverse_wrap);
     RUN(vis_plane_five_point);
-    RUN(line_obs_recover_and_timeout); RUN(accel_ff_basic); RUN(accel_ff_matches_legacy);
+    RUN(line_obs_recover_and_timeout); RUN(follow_two_car_link); RUN(accel_ff_basic); RUN(accel_ff_matches_legacy);
 }
