@@ -81,3 +81,6 @@
 ## 参数写回的门禁口径（2026-10-29，docs/29 F6）
 走查中 pos_k=0.576 在仿真板上能跑，但写回时 `make check` 里 2026H 的玩具闭环测试失败，写回被自动还原。
 问：写回参数默认值时，行为测试失败要不要允许“标注失败原因后仍提交”？现状是一律不提交（更安全，但赛场上真板调好的值可能被玩具模型否决）。
+
+## CubeMX 迁移（2026-10-29）
+56. **天空星 CubeMX 版缺电机 B** [待你在 CubeMX 补]：`stm32f407-skystar-cubemx` 的 .ioc 里没有电机 B（PWM、IN1/IN2、编码器 B），`make BOARD=stm32f407-skystar-cubemx APP=car_2wd` 报 [缺资源] gpio.MOTOR_B_IN1。引脚我不猜，请按你板子的实际接线在 CubeMX 里补上，标签用 MOTOR_B_PWM / MOTOR_B_IN1 / MOTOR_B_IN2 / ENC_B。补完 cross 才能改用 cubemx 版，旧的 ports/stm32f4-hal 才能删。RM C 型的 .ioc 要等 28（HSE）确认后再做。见 docs/notes/implemented/2026-10-29-cubemx-only.md。
