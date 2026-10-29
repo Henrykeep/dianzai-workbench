@@ -6,7 +6,7 @@ import shutil
 import time
 
 from ._dzlink import Parser
-from .transport import ROOT, SIM_PREFIX, sim_elf
+from .transport import SIM_PREFIX, sim_elf, sim_root
 
 # 先试工作台各板默认值（board.yaml 里 LINK 常用），再试常见值
 BAUDS = [460800, 921600, 115200, 230400, 1000000, 500000, 57600, 9600]
@@ -17,7 +17,7 @@ def sim_apps() -> list[str]:
     不写死题目名单：新加一个被控对象，端口列表里自动出现。"""
     found = []
     for base in ("apps", "examples"):
-        d = ROOT / base
+        d = sim_root() / base
         if not d.is_dir():
             continue
         for a in sorted(d.iterdir()):
@@ -27,7 +27,7 @@ def sim_apps() -> list[str]:
             if any(any(ln.startswith("link:") for ln in y.read_text(encoding="utf-8").splitlines()) for y in ymls):
                 found.append(a.name)
     if not found:   # 安装包里没有源码树：只列已经编好的
-        hs = ROOT / "build" / "host-sim"
+        hs = sim_root() / "build" / "host-sim"
         found = sorted(p.name for p in hs.iterdir() if sim_elf(p.name).exists()) if hs.is_dir() else []
     return found
 

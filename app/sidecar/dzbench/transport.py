@@ -62,9 +62,15 @@ class SerialTransport(Transport):
 AS_HW = "+hw"     # 端口后缀：仿真板“当实板”，用来端到端测确认卡 / pre-arm 检查
 
 
+def sim_root() -> pathlib.Path:
+    """仿真板从哪个仓库编：和 Agent / 写回同一个（DZBENCH_REPO > 本仓库）。以前固定用本仓库，
+    DZBENCH_REPO 指向别的克隆时，写回的参数默认值永远到不了仿真板（docs/29 F11）。"""
+    return pathlib.Path(os.environ.get("DZBENCH_REPO") or ROOT)
+
+
 def sim_elf(app: str) -> pathlib.Path:
     exe = ".exe" if os.name == "nt" else ""
-    return ROOT / "build" / "host-sim" / app / f"{app}.elf{exe}"
+    return sim_root() / "build" / "host-sim" / app / f"{app}.elf{exe}"
 
 
 class SimTransport(Transport):
@@ -77,7 +83,7 @@ class SimTransport(Transport):
             raise RuntimeError(f"{who} 起了仿真板却没标 @pytest.mark.needs_sim（Windows CI 会挂）")
         elf = sim_elf(app)
         if build:
-            r = subprocess.run(["make", "-s", "BOARD=host-sim", f"APP={app}"], cwd=ROOT, capture_output=True, text=True,
+            r = subprocess.run(["make", "-s", "BOARD=host-sim", f"APP={app}"], cwd=sim_root(), capture_output=True, text=True,
                                encoding="utf-8", errors="replace", env={**os.environ, "PYTHONUTF8": "1"})
             if r.returncode != 0:
                 raise RuntimeError(f"编译仿真板失败（make BOARD=host-sim APP={app}）：\n{r.stderr[-800:]}")

@@ -115,7 +115,8 @@ class Server:
             return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults"))))
         if op == "doctor":
             from . import doctor
-            return await run(None, lambda: doctor.run(m.get("repo")))
+            # 没指定就查侧车实际在用的工程仓库（DZBENCH_REPO / 配置 repo），以前传 None 会误报“没有 dzbench.json”（docs/29 F12）
+            return await run(None, lambda: doctor.run(m.get("repo") or str(self.svc.gw.root)))
         if op == "log_list":
             d = s.log_dir
             return [{"path": str(f), "size": f.stat().st_size, "header": read_header(f),
