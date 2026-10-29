@@ -58,9 +58,14 @@ static void apply_params(void)
 
 static void ctrl_isr(void *ctx)
 {
+    static uint32_t last_us;
+    uint32_t now_us = pal_micros();
+    float dt_s = (float)(now_us - last_us) * 1e-6f;   /* 断点调试恢复 / 中断被长时间屏蔽后，dt 会异常大 */
     (void)ctx;
+    last_us = now_us;
     for (unsigned i = 0; i < 2; i++) {
         wheel_t *w = &s_w[i];
+        (void)pid_check_gap(&w->pid, dt_s);           /* 异常就清微分历史，不在恢复那拍打出 D 冲击 */
         if (s_gains_dirty) (void)pid_set_gains(&w->pid, g_link_params.kp, g_link_params.ki, 0.0f);
         /* 急停时也要更新编码器：否则遥测里的转速冻结在急停前的值，上位机看着像还在转 */
         dz_err_t ee = encoder_update(&w->enc);

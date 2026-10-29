@@ -126,6 +126,9 @@ def selftest(root):
         assert run(tmp, "update") == 0
         h = os.path.join(dst, "pid.h")
         orig = open(h, encoding="utf-8").read()
+        cur = open(os.path.join(dst, "VERSION")).read().strip()          # 用模块当前版本，不写死
+        M, m, _ = (int(x) for x in cur.split("."))
+        minor = f"{M}.{m + 1}.0"
 
         def case(name, text, version, expect_fail):
             nonlocal ok
@@ -139,11 +142,11 @@ def selftest(root):
 
         changed = re.sub(r'float\s+pid_update\s*\(', 'double pid_update(', orig, count=1)
         assert changed != orig, "pid.h 中找不到 pid_update 声明"
-        case("改函数签名、不升版本", changed, "1.0.0", True)
-        case("改函数签名、只升 MINOR", changed, "1.1.0", True)
+        case("改函数签名、不升版本", changed, cur, True)
+        case("改函数签名、只升 MINOR", changed, minor, True)
         added = orig.replace("#endif", "int pid_new_api(void);\n#endif", 1) if "#endif" in orig else orig + "\nint pid_new_api(void);\n"
-        case("只新增函数、不升版本", added, "1.0.0", True)
-        case("改注释、不升版本", orig.replace("/*", "/* 注释改动 ", 1), "1.0.0", False)
+        case("只新增函数、不升版本", added, cur, True)
+        case("改注释、不升版本", orig.replace("/*", "/* 注释改动 ", 1), cur, False)
     finally:
         shutil.rmtree(tmp)
     return ok

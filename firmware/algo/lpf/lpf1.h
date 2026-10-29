@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include "dz_err.h"
 
-#define LPF1_VERSION "1.0.0"
+#define LPF1_VERSION "1.1.0"
 
 typedef struct {
     float cutoff_hz;  /**< 截止频率，> 0 */
@@ -40,6 +40,10 @@ dz_err_t lpf1_init_alpha(lpf1_t *f, float alpha);
  *  - f 为 NULL 时返回 0。
  */
 float lpf1_update(lpf1_t *f, float x);
+
+/** dt 异常检查：实际采样间隔 actual_dt_s 非法或 > max_dt_s 时，让下一个样本直通重新起步（旧输出已过时）。
+ *  返回 true 表示做了重置。max_dt_s 一般取 5 倍标称周期或 0.5 s 里较小的。 */
+bool lpf1_check_gap(lpf1_t *f, float actual_dt_s, float max_dt_s);
 
 /** 把输出强制设为 y0，下一样本从 y0 开始平滑。 */
 void lpf1_reset(lpf1_t *f, float y0);

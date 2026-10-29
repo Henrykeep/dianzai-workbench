@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] dt 异常重置（restudy P4）：pid 1.1.0 加 `pid_check_gap`（间隔 > 5×dt 或 > 0.5 s：清微分历史 / 微分滤波，保留积分），lpf 1.1.0 加 `lpf1_check_gap`（下个样本直通）；car_2wd 控制中断按 pal_micros 实测间隔调用。自测通过；断点恢复场景真板【未测】。iface_hash 自测改为按模块当前版本算（原来写死 1.0.0）。
 - [仿真] doctor 自检（restudy A7）：`python -m dzbench --doctor [--repo 工程]` 或 UI 顶栏“自检”，查 Python 依赖、arm-gcc / make、dzbench.json、Keil 路径、flash.target、MSPM0 器件包、探针、串口、大模型 Key、数据目录，每项 ✓/!/✗ 加中文修复提示，只读。多探针不猜（A3）：没配 flash.probe 又插了多个探针 → 报 multi_probe 并列出序列号；配置的探针没插 → probe_missing。假 pyOCD 单测；真探针【未测】。
 
 ## [0.10.0] - 2026-10-29 仿真当实板、RTT 链路、走查修复

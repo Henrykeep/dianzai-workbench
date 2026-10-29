@@ -160,6 +160,17 @@ dz_err_t pid_set_cfg(pid_ctrl_t *pid, const pid_cfg_t *cfg)
 
 float pid_output(const pid_ctrl_t *pid) { return pid ? pid->out : 0.0f; }
 
+bool pid_check_gap(pid_ctrl_t *pid, float actual_dt_s)
+{
+    if (pid == 0 || !pid->ready) return false;
+    if (pid_finite(actual_dt_s) && actual_dt_s > 0.0f && actual_dt_s <= PID_GAP_MAX_S &&
+        actual_dt_s <= PID_GAP_FACTOR * pid->cfg.dt_s) return false;
+    pid->first = true;          /* 下一拍重新取 prev_meas/prev_err，不求跨间隔的导数 */
+    pid->d_filt = 0.0f;
+    pid->d_term = 0.0f;
+    return true;
+}
+
 /* ======================= 增量式 ======================= */
 
 dz_err_t pid_inc_init(pid_inc_t *pid, const pid_cfg_t *cfg)
@@ -278,6 +289,17 @@ static bool near(float a, float b, float tol) { float d = a - b; return d < tol 
 
 dz_err_t pid_selftest(void)
 {
+    {   /* dt 异常：正常间隔不动，超长间隔清微分、保留积分 */
+        pid_cfg_t g = pid_cfg_default(0.01f);
+        pid_ctrl_t q;
+        g.kd = 1.0f; g.ki = 1.0f;
+        if (pid_init(&q, &g) != DZ_OK) return DZ_EFAIL;
+        (void)pid_update(&q, 1.0f, 0.0f); (void)pid_update(&q, 1.0f, 0.1f);
+        if (pid_check_gap(&q, 0.01f)) return DZ_EFAIL;
+        float i0 = q.integ;
+        if (!pid_check_gap(&q, 0.8f) || !q.first || q.d_filt != 0.0f || q.integ != i0) return DZ_EFAIL;
+        if (!pid_check_gap(&q, -1.0f)) return DZ_EFAIL;
+    }
     pid_ctrl_t p;
     pid_cfg_t c = pid_cfg_default(0.01f);
 

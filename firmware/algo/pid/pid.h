@@ -23,7 +23,7 @@
 #include <stdint.h>
 #include "dz_err.h"
 
-#define PID_VERSION "1.0.0"
+#define PID_VERSION "1.1.0"
 
 typedef enum {
     PID_D_ON_MEASUREMENT = 0, /**< 微分先行（默认，推荐） */
@@ -100,6 +100,12 @@ dz_err_t pid_set_gains(pid_ctrl_t *pid, float kp, float ki, float kd);
 /** 运行中整体替换配置（dt 不可改，改 dt 请重新 init）。 */
 dz_err_t pid_set_cfg(pid_ctrl_t *pid, const pid_cfg_t *cfg);
 float    pid_output(const pid_ctrl_t *pid);
+/** dt 异常检查（SimpleFOC 思路）：实际两次调用间隔 actual_dt_s 超过 PID_GAP_FACTOR 倍 dt、或超过 PID_GAP_MAX_S、或非法时，
+ *  清掉微分历史和微分滤波（下一拍不会因“很久以前的测量”产生 D 冲击），积分与当前输出保留（不掉载）。
+ *  在 pid_update 之前调用；返回 true 表示刚做了重置。调度卡顿 / 断点调试恢复 / 任务被饿死后都该触发。 */
+#define PID_GAP_FACTOR 5.0f
+#define PID_GAP_MAX_S  0.5f
+bool     pid_check_gap(pid_ctrl_t *pid, float actual_dt_s);
 
 /* ---------------- 增量式 ---------------- */
 dz_err_t pid_inc_init(pid_inc_t *pid, const pid_cfg_t *cfg);

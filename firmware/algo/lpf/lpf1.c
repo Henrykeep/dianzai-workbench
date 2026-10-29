@@ -27,6 +27,14 @@ dz_err_t lpf1_init_alpha(lpf1_t *f, float alpha)
     return DZ_OK;
 }
 
+bool lpf1_check_gap(lpf1_t *f, float actual_dt_s, float max_dt_s)
+{
+    if (f == 0) return false;
+    if (lpf1_finite(actual_dt_s) && actual_dt_s > 0.0f && actual_dt_s <= max_dt_s) return false;
+    f->primed = false;
+    return true;
+}
+
 float lpf1_update(lpf1_t *f, float x)
 {
     if (f == 0) return 0.0f;
@@ -69,8 +77,10 @@ dz_err_t lpf1_selftest(void)
     if (lpf1_init_alpha(&f, 0.5f) != DZ_OK) return DZ_EFAIL;
     if (!near(lpf1_update(&f, 2.0f), 2.0f, 1e-6f)) return DZ_EFAIL;   /* 首样本直通 */
     if (!near(lpf1_update(&f, 4.0f), 3.0f, 1e-6f)) return DZ_EFAIL;   /* 2 + 0.5*(4-2) */
+    if (lpf1_check_gap(&f, 0.01f, 0.05f) || !lpf1_check_gap(&f, 1.0f, 0.05f)) return DZ_EFAIL;
+    if (!near(lpf1_update(&f, 9.0f), 9.0f, 1e-6f)) return DZ_EFAIL;   /* 间隔过长：直通重起 */
     float nan = 0.0f / 0.0f;
-    if (!near(lpf1_update(&f, nan), 3.0f, 1e-6f)) return DZ_EFAIL;    /* NaN 被丢弃 */
+    if (!near(lpf1_update(&f, nan), 9.0f, 1e-6f)) return DZ_EFAIL;    /* NaN 被丢弃 */
     /* 阶跃足够多步后收敛 */
     for (int i = 0; i < 100; i++) lpf1_update(&f, 10.0f);
     if (!near(lpf1_value(&f), 10.0f, 1e-3f)) return DZ_EFAIL;
