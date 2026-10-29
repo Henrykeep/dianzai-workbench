@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 钢珠跟踪器：搜索期连续 3 帧位置一致才锁定（`confirm`，1 = 旧行为）、门限随速度放宽（`gate_vel_k`）、外推时速度逐帧衰减（`coast_damp`）、速度上限。PC 合成数据测过，实机阈值未调。
 - [仿真] 侧车烧录：MSPM0 改走 TI 官方 DFP 包（MSPM0G1X0X_G3X0X_DFP 1.3.1，BSD-3，sha256 校验；`tools/fetch_third_party.sh m0pack`），Windows 安装包内置；缺包时报 `no_pack` 而不是让 pyOCD 猜目标。查找顺序 DZBENCH_PACK → 安装包内 → third_party/packs → ~/.dzbench/packs。真探针未测。
 - [仿真] 变量监视按地址合并成块读（相邻间隔 ≤64 B 合一次读），减少 SWD 往返。真探针提速幅度未测。
 - [编译] MSPM0 移植层 PWM：按计数模式算周期和占空（向下计数默认 / 向上计数 / 中心对齐 2·LOAD），支持 CCPOINV 反相；依据 SDK dl_timer.c。未上板。

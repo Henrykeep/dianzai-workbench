@@ -6,6 +6,7 @@
      硬门限之外的候选（太远、太小、面积突变 3 倍以上、长宽比太离谱）直接丢弃，防止被反光、手、线缆抢走。
   3. 平滑与预测：α-β（与 firmware/algo/abobs 同一公式），漏检时外推，最多外推 max_coast 帧，
      期间置 predicted 标志，主控据此进入 HELD 状态。
+  4. 锁定确认：搜索期需连续 N 帧位置一致才输出；门限随速度放宽；外推时速度逐帧衰减。
 输出 TrackResult(x, y, detected, predicted)，x/y 以画面中心为原点（px）。
 【已实测】PC 合成数据：test_ball_tracker.py。【未验证】实机阈值和帧率。
 """
@@ -34,12 +35,18 @@ class TrackResult:
 
 class BallTracker:
     def __init__(self, width=320, height=240, alpha=0.6, beta=0.2, gate_px=60.0, roi_px=80,
-                 min_pixels=12, max_aspect=2.2, max_coast=4, reacquire_after=6):
+                 min_pixels=12, max_aspect=2.2, max_coast=4, reacquire_after=6,
+                 confirm=3, confirm_px=25.0, coast_damp=0.7, gate_vel_k=1.0, max_speed=80.0):
+        # confirm：搜索模式下要连续 confirm 帧、相邻位移 < confirm_px 才算锁定（防单帧反光被当成球）；1 = 关闭
+        # coast_damp：外推时每帧速度乘这个系数（防止丢球后越推越远）；1 = 不衰减
+        # gate_vel_k：门限 += k·|v|（球快时预测误差大）；max_speed：速度上限 px/帧
         self.W, self.H = width, height
         self.alpha, self.beta = alpha, beta
         self.gate, self.roi_px = gate_px, roi_px
         self.min_pixels, self.max_aspect = min_pixels, max_aspect
         self.max_coast, self.reacquire_after = max_coast, reacquire_after
+        self.confirm, self.confirm_px = max(1, confirm), confirm_px
+        self.coast_damp, self.gate_vel_k, self.max_speed = coast_damp, gate_vel_k, max_speed
         self.reset()
 
     def reset(self):
@@ -47,6 +54,7 @@ class BallTracker:
         self.vx = self.vy = 0.0
         self.area = None
         self.miss = 10 ** 6
+        self.cand = []                  # 搜索期的候选轨迹（待确认）
 
     # ---- 给相机端用：本帧该在哪个 ROI 里找 ----
     def roi(self):
@@ -66,7 +74,8 @@ class BallTracker:
         if px is None:                                   # 搜索模式：挑最大、最圆的
             return -b.pixels / asp
         d = math.hypot(b.cx - px, b.cy - py)
-        if d > self.gate * (1 + 0.5 * min(self.miss, self.max_coast)):   # 外推越久门限略放宽
+        gate = self.gate * (1 + 0.5 * min(self.miss, self.max_coast)) + self.gate_vel_k * math.hypot(self.vx, self.vy)
+        if d > gate:                                     # 外推越久、球越快，门限越宽
             return None
         if self.area and not (self.area / 3 <= b.pixels <= self.area * 3):  # 面积突变（反光、手）硬淘汰
             return None
@@ -82,20 +91,40 @@ class BallTracker:
             s = self._score(b, px, py)
             if s is not None and (best_s is None or s < best_s):
                 best, best_s = b, s
+        if best is not None and searching and self.confirm > 1:
+            if self.cand and math.hypot(best.cx - self.cand[-1].cx, best.cy - self.cand[-1].cy) > self.confirm_px:
+                self.cand = []
+            self.cand.append(best)
+            if len(self.cand) < self.confirm:            # 还没确认：不输出、不动状态
+                self.miss += 1
+                return TrackResult(None, None, False, False)
+        elif searching:
+            self.cand = []
         if best is not None:
             if searching:
-                self.x, self.y, self.vx, self.vy = best.cx, best.cy, 0.0, 0.0
+                c = self.cand
+                self.x, self.y = best.cx, best.cy
+                if len(c) >= 2:                          # 用确认期的位移给初速度
+                    self.vx, self.vy = (c[-1].cx - c[0].cx) / (len(c) - 1), (c[-1].cy - c[0].cy) / (len(c) - 1)
+                else:
+                    self.vx = self.vy = 0.0
+                self.cand = []
             else:
                 rx, ry = best.cx - px, best.cy - py
                 self.x, self.y = px + self.alpha * rx, py + self.alpha * ry
                 self.vx += self.beta * rx
                 self.vy += self.beta * ry
+            sp = math.hypot(self.vx, self.vy)
+            if sp > self.max_speed:
+                self.vx, self.vy = self.vx * self.max_speed / sp, self.vy * self.max_speed / sp
             self.area = best.pixels if self.area is None else 0.7 * self.area + 0.3 * best.pixels
             self.miss = 0
             return TrackResult(self.x - self.W / 2, self.y - self.H / 2, True, False)
         self.miss += 1
         if self.x is not None and self.miss <= self.max_coast:
             self.x, self.y = self.x + self.vx, self.y + self.vy
+            self.vx *= self.coast_damp
+            self.vy *= self.coast_damp
             return TrackResult(self.x - self.W / 2, self.y - self.H / 2, False, True)
         self.vx = self.vy = 0.0
         return TrackResult(None, None, False, False)
