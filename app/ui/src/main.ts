@@ -10,7 +10,7 @@ import { Err, Link, Msg } from "./ws";
 import { Plot, chColor } from "./plot";
 import { matchNames } from "./names";
 import { Param, clampLocal, pendingOf, rangeLabel } from "./params";
-import { AGENT_IDLE, initAgent } from "./agent";
+import { AGENT_IDLE, agentIdle, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
 import { initSend } from "./send";
@@ -112,6 +112,7 @@ function applySchema(s: Schema | null) {
   if (!s) return;
   S.plotted = s.fields.filter(f => f.name !== "t_ms" && !f.enum);
   S.enums = s.fields.filter(f => f.enum);
+  if ($("props").querySelector(":scope > .hint")) $("props").innerHTML = agentIdle(s.fields.map(f => f.name));
   document.querySelectorAll(".ro.pin").forEach(e => e.remove());
   $("stats").insertAdjacentHTML("beforeend", S.enums.filter(f => f.pin).map(f =>
     `<div class="ro pin" title="${esc(f.name)}"><span class="lbl">${esc(f.pin!)}</span><span class="v" id="pin-${f.name}">—</span></div>`).join(""));
@@ -330,6 +331,7 @@ function applyNone() {
   S.schema = null; S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
   plot.setChannels([], [], []); $("chans").innerHTML = emptyState("activity", "连上后列出通道"); $("chan-n").textContent = ""; $("plot-sub").textContent = "";
   $("snaps").innerHTML = ""; renderParams();
+  document.querySelectorAll(".ro.pin").forEach(e => e.remove());   // 断开后不留上一个对象的状态块
   $("props").innerHTML = AGENT_IDLE;
 }
 

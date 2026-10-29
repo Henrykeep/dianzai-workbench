@@ -6,10 +6,18 @@ const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getEleme
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const n = (v: number | null | undefined, d = 2, u = "") => v == null ? "—" : `${(+v).toFixed(d)}${u}`;
 
-export const AGENT_IDLE = `<div class="hint">
+// 引导问题按当前 schema 生成，不写死某个对象（以前固定“速度环”“左轮比右轮慢”，倒立摆 / 云台上也这么问）
+export function agentIdle(fields: string[] = []): string {
+  const set = new Set(fields);
+  const pair = [["_a", "_b"], ["_l", "_r"], ["_x", "_y"]].flatMap(([a, b]) =>
+    fields.filter(f => f.endsWith(a) && set.has(f.slice(0, -a.length) + b)).map(f => [f, f.slice(0, -a.length) + b]))[0];
+  const qs = ["超调好大，怎么办", "帮我把这个环调好",
+    pair ? `为什么 ${pair[0]} 和 ${pair[1]} 不一样` : "最近的数据正常吗", "仿真里调好了，可以上车了吗"];
+  return `<div class="hint">
   点“分析阶跃”离线看超调 / 调节时间；或直接问。改参数和文件都要你确认，碰不到急停。
-  <div class="chips">${["超调好大，怎么办", "帮我把速度环调好", "为什么左轮比右轮慢", "仿真里调好了，可以上车了吗"]
-    .map(q => `<button type="button" class="chip" data-q="${q}">${q}</button>`).join("")}</div></div>`;
+  <div class="chips">${qs.map(q => `<button type="button" class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>`;
+}
+export const AGENT_IDLE = agentIdle();
 
 export function initAgent(call: Call) {
   const feed = $("props");
