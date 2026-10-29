@@ -203,8 +203,10 @@ check:
 	$(PY) tools/test_report.py
 	$(PY) tools/test_req.py
 	$(PY) tools/test_scheme.py
+	$(PY) tools/test_alloc.py
 	for r in examples/*/requirements.yaml; do $(PY) tools/req.py check $$r >/dev/null || { $(PY) tools/req.py check $$r; exit 1; }; done
 	for s in examples/*/scheme.yaml; do $(PY) tools/scheme.py $$(dirname $$s)/requirements.yaml --scheme $$s >/dev/null || { $(PY) tools/scheme.py $$(dirname $$s)/requirements.yaml --scheme $$s; exit 1; }; done
+	for s in examples/*/scheme.yaml; do d=$$(dirname $$s); $(PY) tools/alloc.py $$s -o $$d/alloc --app $$d/app.yaml >/dev/null && git diff --quiet --exit-code -- $$d/alloc 2>/dev/null || { echo "$$d/alloc 与 alloc.py 输出不一致（或分配失败）：重跑 python3 tools/alloc.py $$s -o $$d/alloc --app $$d/app.yaml"; exit 1; }; done
 	$(PY) tools/syscfg_import.py --selftest
 	$(PY) tools/gen_link.py --selftest
 	$(PY) tools/syscfg_import.py boards/mspm0g3507-tianmengxing/ccs/tianmengxing.syscfg --check boards/mspm0g3507-tianmengxing/board.yaml

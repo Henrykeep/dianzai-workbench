@@ -7,6 +7,9 @@
 #   sense.ball_pos 小物体位置（视觉）  sense.object 目标识别/定位（视觉）  compute.vision 视觉算力
 #   act.wheel_drive 轮式驱动  act.beam_angle 精确角度执行（摆杆/云台）  act.servo_angle 普通舵机角度
 #   link.video 图传/录像  link.wireless 无线串口  ui.key 按键  ui.display 显示屏  mcu.main 主控
+# 可选：price_cny（参考价，元，标日期）、power_w（典型功耗）——不填就不显示，填了必须写 price_note 出处
+# res：接到主控要占的资源（tools/alloc.py 用），names 是 board.yaml 逻辑名（docs/05 标签约定），scheme.yaml 的 names 可覆盖；irq = 建议中断优先级（数小优先）
+# mcu：主控的 board.yaml mcu 段
 # 只用于禁用的特征标签（tags）：sense.line_camera 用摄像头循线  ui.display_large 屏 >2 英寸  sense.ball_pos_contact 接触式测位置
 schema_version: 1
 parts:
@@ -22,6 +25,7 @@ parts:
     substitutes: [stm32f407vet6]
     repo: [boards/stm32f103c8t6-car-cubemx]
     status: 编译
+    mcu: { part: STM32F103C8T6, family: stm32f1, core: cortex-m3, fpu: false, flash_kb: 64, ram_kb: 20 }
   - id: stm32f407vet6
     name: STM32F407VET6（立创天空星 / 学长 bldc 板）
     kind: mcu
@@ -33,6 +37,7 @@ parts:
     substitutes: [stm32f407vgt6, mspm0g3507]
     repo: [boards/stm32f407-skystar-cubemx, boards/stm32f407-bldc-freertos-cubemx]
     status: 编译
+    mcu: { part: STM32F407VETx, family: stm32f4, core: cortex-m4f, fpu: true, flash_kb: 512, ram_kb: 192 }
   - id: stm32f407vgt6
     name: STM32F407VGT6（天空星高配）
     kind: mcu
@@ -44,6 +49,7 @@ parts:
     substitutes: [stm32f407vet6]
     repo: [boards/stm32f407-skystar-cubemx]
     status: 编译
+    mcu: { part: STM32F407VGTx, family: stm32f4, core: cortex-m4f, fpu: true, flash_kb: 1024, ram_kb: 192 }
   - id: mspm0g3507
     name: TI MSPM0G3507（立创天猛星 / LaunchPad）
     kind: mcu
@@ -55,6 +61,7 @@ parts:
     substitutes: [stm32f407vet6]
     repo: [boards/mspm0g3507-tianmengxing, boards/mspm0g3507-launchpad]
     status: 编译
+    mcu: { part: MSPM0G3507, family: mspm0, core: cortex-m0plus, fpu: false, flash_kb: 128, ram_kb: 32 }
   # ── 协处理器 / 视觉 ──
   - id: maixcam2
     name: MaixCAM2 / MaixCAM / MaixCAM-Pro（MaixPy）
@@ -68,6 +75,7 @@ parts:
     substitutes: [k230, jetson_nano]
     repo: [boards/maixcam2-vision, host/maixcam/ball_tracker.py, host/python/dzlink]
     status: 仿真
+    res: [{ type: uart, names: [VISION], baud: 115200, irq: 3 }]
   - id: k230
     name: 庐山派 K230（CanMV）
     kind: coproc
@@ -80,6 +88,7 @@ parts:
     substitutes: [maixcam2]
     repo: [host/k230/dzsend.py]
     status: 仿真
+    res: [{ type: uart, names: [VISION], baud: 115200, irq: 3 }]
   - id: jetson_nano
     name: Jetson Nano
     kind: coproc
@@ -92,6 +101,7 @@ parts:
     substitutes: [rpi, rdk_x3]
     repo: [boards/jetson-nano-vision, host/python/dzlink]
     status: 仿真
+    res: [{ type: uart, names: [VISION], baud: 115200, irq: 3 }]
   - id: rpi
     name: 树莓派 4/5
     kind: coproc
@@ -104,6 +114,7 @@ parts:
     substitutes: [rdk_x3, jetson_nano]
     repo: [host/python/dzlink]
     status: 仿真
+    res: [{ type: uart, names: [VISION], baud: 115200, irq: 3 }]
   - id: rdk_x3
     name: 地瓜 RDK X3 / X5
     kind: coproc
@@ -116,6 +127,7 @@ parts:
     substitutes: [jetson_nano, rpi]
     repo: [host/python/dzlink]
     status: 仿真
+    res: [{ type: uart, names: [VISION], baud: 115200, irq: 3 }]
   # ── 传感器 ──
   - id: ir_gray_array
     name: 红外/灰度循迹阵列（1–8 路，数字或模拟）
@@ -129,6 +141,7 @@ parts:
     substitutes: []
     repo: [firmware/drivers/line_sensor]
     status: 仿真
+    res: [{ type: gpio, dir: in, names: [SENSOR1, SENSOR2, SENSOR3, SENSOR4, SENSOR5, SENSOR6, SENSOR7, SENSOR8] }]
   - id: camera_line
     name: 摄像头循线（协处理器识别线）
     kind: sensor
@@ -142,6 +155,7 @@ parts:
     substitutes: [ir_gray_array]
     repo: [host/python/dzlink]
     status: 无驱动
+    res: []
   - id: encoder_ab
     name: 霍尔/光电 AB 相编码器（电机自带）
     kind: sensor
@@ -154,6 +168,7 @@ parts:
     substitutes: []
     repo: [firmware/drivers/encoder, firmware/algo/mtspeed]
     status: 仿真
+    res: [{ type: encoder, names: [MOTOR_A, MOTOR_B] }]
   - id: mpu6050
     name: MPU6050（I2C）
     kind: sensor
@@ -166,6 +181,7 @@ parts:
     substitutes: [bmi088, imu_uart]
     repo: [firmware/drivers/mpu6050]
     status: 仿真
+    res: [{ type: i2c, names: [IMU_I2C], speed_hz: 400000 }]
   - id: bmi088
     name: BMI088（SPI，RM C 型板载）
     kind: sensor
@@ -178,6 +194,7 @@ parts:
     substitutes: [mpu6050]
     repo: [firmware/drivers/bmi088]
     status: 仿真
+    res: [{ type: spi, names: [IMU_ACC, IMU_GYRO] }]
   - id: imu_uart
     name: 串口姿态模块（JY901 / HWT101 类，模块内解算）
     kind: sensor
@@ -190,6 +207,7 @@ parts:
     substitutes: [mpu6050]
     repo: [examples/2026H_ball/io/io_imu.c]
     status: 编译
+    res: [{ type: uart, names: [IMU], baud: 115200, irq: 4 }]
   - id: hcsr04
     name: HC-SR04 超声波
     kind: sensor
@@ -202,6 +220,7 @@ parts:
     substitutes: []
     repo: [firmware/drivers/hcsr04]
     status: 仿真
+    res: [{ type: gpio, dir: out, names: [SONAR_TRIG] }, { type: gpio, dir: in, names: [SONAR_ECHO] }]
   # ── 执行器 ──
   - id: dc_motor_hbridge
     name: 直流减速电机 + TB6612 / DRV8833 等 H 桥
@@ -215,6 +234,7 @@ parts:
     substitutes: [stepper_42]
     repo: [firmware/drivers/motor_dc, firmware/drivers/motor_2pwm]
     status: 仿真
+    res: [{ type: pwm, names: [MOTOR_A, MOTOR_B], freq_hz: 20000 }, { type: gpio, dir: out, names: [MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2] }]
   - id: stepper_42
     name: 42 步进 + A4988 / TMC2209（STEP/DIR）
     kind: actuator
@@ -227,6 +247,7 @@ parts:
     substitutes: [dc_motor_hbridge, qd4310]
     repo: [firmware/drivers/stepper]
     status: 仿真
+    res: [{ type: pwm, names: [STEP], freq_hz: 1000 }, { type: gpio, dir: out, names: [STEP_DIR, STEP_EN] }]
   - id: qd4310
     name: QD4310 无刷关节电机（串口，带编码器闭环）
     kind: actuator
@@ -239,6 +260,7 @@ parts:
     substitutes: [stepper_42, servo_pwm]
     repo: [firmware/drivers/qd4310]
     status: 仿真
+    res: [{ type: uart, names: [BEAM], baud: 921600, irq: 2 }]
   - id: servo_pwm
     name: PWM 舵机（MG996R / 数字舵机）
     kind: actuator
@@ -251,6 +273,7 @@ parts:
     substitutes: [qd4310, stepper_42]
     repo: [firmware/drivers/servo]
     status: 仿真
+    res: [{ type: pwm, names: [SERVO], freq_hz: 50 }]
   # ── 人机 / 通信 ──
   - id: key_gpio
     name: 按键
@@ -264,6 +287,7 @@ parts:
     substitutes: []
     repo: [firmware/drivers/key]
     status: 仿真
+    res: [{ type: gpio, dir: in, names: [KEY1] }]
   - id: oled_ssd1306
     name: 0.96 寸 OLED（SSD1306，I2C）
     kind: ui
@@ -276,6 +300,7 @@ parts:
     substitutes: [tft_st7735]
     repo: [firmware/drivers/ssd1306]
     status: 仿真
+    res: [{ type: i2c, names: [OLED], speed_hz: 400000 }]
   - id: tft_st7735
     name: 1.8 寸 TFT（ST7735，SPI）
     kind: ui
@@ -288,6 +313,7 @@ parts:
     substitutes: [oled_ssd1306]
     repo: [firmware/drivers/st77xx]
     status: 仿真
+    res: [{ type: spi, names: [LCD] }, { type: gpio, dir: out, names: [LCD_DC, LCD_RES, LCD_BL] }]
   - id: tft_st7789_24
     name: 2.4 寸 TFT（ST7789，SPI）
     kind: ui
@@ -301,6 +327,7 @@ parts:
     substitutes: [tft_st7735]
     repo: [firmware/drivers/st77xx]
     status: 仿真
+    res: [{ type: spi, names: [LCD] }, { type: gpio, dir: out, names: [LCD_DC, LCD_RES, LCD_BL] }]
   - id: bt_serial
     name: 蓝牙串口（HC-05 / JDY 类）
     kind: link
@@ -313,3 +340,4 @@ parts:
     substitutes: []
     repo: [firmware/drivers/bt_serial]
     status: 仿真
+    res: [{ type: uart, names: [BT], baud: 9600, irq: 5 }]

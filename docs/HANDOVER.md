@@ -36,4 +36,5 @@
 1. **偏离修复**：加速度前馈 → `firmware/algo/accel_ff` 1.0.0（通用、无板卡依赖）；2026H ball.c 只保留来源选择（编码器/IMU + 超时）。主机单测与提取前公式逐点比对，example 35/35。
 2. **第 1 步 读题拆解**：`tools/req.py` + `schema/requirements.schema.json` + `docs/templates/requirements.yaml`；实例 `examples/2026H_ball/requirements.yaml`。见 docs/31。
 3. **第 2 步 方案选型**：`tools/scheme.py` + `tools/catalog/parts.yaml`；读第 1 步的 needs/constraints；实例 `examples/2026H_ball/scheme.yaml`。见 docs/31。
-仍未做（按清单优先级）：实板验证、第二道例题（建议跟随小车）、机械/3D 模板与参数化零件库、参数预设/掉电保存、last-good 对比、赛前准备清单。第 3 步资源分配目前只有 scheme.py 的串口计数 + validate_board。
+仍未做（按清单优先级）：实板验证、第二道例题（建议跟随小车）、机械/3D 模板与参数化零件库、参数预设/掉电保存、last-good 对比、赛前准备清单。4. **第 3 步 资源分配**：`tools/alloc.py`（器件库 `res` 字段 → stm32f4 贪心分配 → board.yaml 草稿 + cubemx.md + alloc.md，交 boardlib 同一检查；`--fixed` 沿用已有板接线）。实例 `examples/2026H_ball/alloc/`（make check 校验输出未漂移）。stm32f1/mspm0 只出需求清单。器件库加可选 price_cny(+price_note)/power_w，目前一件都没填（不编数）。
+   顺手修：boardlib mspm0 定时器为 TODO 时误报“不存在”。

@@ -1,0 +1,112 @@
+# tools/alloc.py 生成的草稿：CubeMX 配完后用 tools/ioc_import.py 导出的 board.yaml 覆盖它
+schema_version: 1
+name: 2026h-ball-draft
+description: tools/alloc.py 由 examples/2026H_ball/scheme.yaml 生成的草稿，未接线、未上板
+port: stm32-cubemx
+config_source:
+  tool: cubemx
+  file: TODO
+mcu:
+  part: STM32F407VETx
+  family: stm32f4
+  core: cortex-m4f
+  fpu: true
+  flash_kb: 512
+  ram_kb: 192
+todo:
+- 草稿：按 cubemx.md 在 CubeMX 里配一遍、生成后用 ioc_import 重新导出 board.yaml 覆盖本文件
+resources:
+  encoder:
+  - name: MOTOR_A
+    timer: TIM3
+    pin_a: PA6
+    pin_b: PA7
+  - name: MOTOR_B
+    timer: TIM4
+    pin_a: PB6
+    pin_b: PB7
+  pwm:
+  - name: MOTOR_A
+    timer: TIM1
+    channel: 1
+    pin: PA8
+    freq_hz: 20000
+  - name: MOTOR_B
+    timer: TIM1
+    channel: 2
+    pin: PA9
+    freq_hz: 20000
+  uart:
+  - name: VISION
+    instance: USART2
+    tx: PA2
+    rx: PA3
+    baud: 115200
+  - name: BEAM
+    instance: USART3
+    tx: PB10
+    rx: PB11
+    baud: 921600
+  - name: LINK
+    instance: UART4
+    tx: PA0
+    rx: PA1
+    baud: 115200
+  i2c:
+  - name: OLED
+    instance: I2C1
+    scl: PB8
+    sda: PB9
+    speed_hz: 400000
+  gpio:
+  - name: SENSOR1
+    pin: PE0
+    dir: in
+    pull: up
+  - name: SENSOR2
+    pin: PE1
+    dir: in
+    pull: up
+  - name: SENSOR3
+    pin: PE2
+    dir: in
+    pull: up
+  - name: SENSOR4
+    pin: PE3
+    dir: in
+    pull: up
+  - name: SENSOR5
+    pin: PE4
+    dir: in
+    pull: up
+  - name: SENSOR6
+    pin: PE5
+    dir: in
+    pull: up
+  - name: SENSOR7
+    pin: PE6
+    dir: in
+    pull: up
+  - name: SENSOR8
+    pin: PE7
+    dir: in
+    pull: up
+  - name: MOTOR_A_IN1
+    pin: PE8
+    dir: out
+  - name: MOTOR_A_IN2
+    pin: PE9
+    dir: out
+  - name: MOTOR_B_IN1
+    pin: PE10
+    dir: out
+  - name: MOTOR_B_IN2
+    pin: PE11
+    dir: out
+  - name: KEY1
+    pin: PE12
+    dir: in
+    pull: up
+clock:
+  hse_hz: TODO
+  sysclk_hz: 168000000

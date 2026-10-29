@@ -309,6 +309,8 @@ def mspm0_check(board: dict, rep: Report) -> None:
             rep.err(f"[复用] {where}: {p} 没有 {need}* 功能（SDK IOMUX 表）")
 
     def tim(t, where):
+        if t == "TODO" or t is None:   # 还没定（schema 允许 TODO），和引脚的 TODO 一样跳过
+            return False
         if t not in tims:
             rep.err(f"[定时器] {where}: {t} 不存在，可选 {sorted(tims)}"); return False
         return True

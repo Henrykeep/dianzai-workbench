@@ -85,6 +85,16 @@ def weight(items: list[dict]) -> float:
     return sum(i.get("score", 0) for i in items)
 
 
+def price(x: dict) -> str:
+    """可选的参考价/功耗；没填就什么都不显示（不编数）。"""
+    t = []
+    if "price_cny" in x:
+        t.append(f"¥{x['price_cny']:g}（{x['price_note']}）")
+    if "power_w" in x:
+        t.append(f"{x['power_w']:g} W")
+    return f" · {' · '.join(t)}" if t else ""
+
+
 def render_options(r: dict, parts) -> str:
     nd, forb = needs_of(r), forbidden(r)
     L = [f"# {r['problem']['code']} 方案选型 —— 候选", "",
@@ -100,7 +110,7 @@ def render_options(r: dict, parts) -> str:
         else:
             L += ["| 候选 | 仓库支持 | 优点 | 缺点 | 风险 | 替代 |", "|---|---|---|---|---|---|"]
             for x in ok:
-                L.append(f"| {x['name']}（`{x['id']}`） | {x['status']} | {'；'.join(x['pros'])} | {'；'.join(x['cons'])} | "
+                L.append(f"| {x['name']}（`{x['id']}`）{price(x)} | {x['status']} | {'；'.join(x['pros'])} | {'；'.join(x['cons'])} | "
                          f"{'；'.join(x.get('risks', [])) or '—'} | {', '.join(x['substitutes']) or '—'} |")
             L.append("")
         for x, why in banned:
