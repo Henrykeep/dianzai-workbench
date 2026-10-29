@@ -112,6 +112,9 @@ class Server:
             return snapshots.list_all(s.schema.hash) if s.schema else []
         if op == "snapshot_restore":
             return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults"))))
+        if op == "doctor":
+            from . import doctor
+            return await run(None, lambda: doctor.run(m.get("repo")))
         if op == "log_list":
             d = s.log_dir
             return [{"path": str(f), "size": f.stat().st_size, "header": read_header(f),

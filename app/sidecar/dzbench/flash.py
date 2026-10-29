@@ -51,6 +51,24 @@ def find_pack(target: str) -> pathlib.Path | None:
     return next((pathlib.Path(c) for c in cands if c and pathlib.Path(c).is_file()), None)
 
 
+def list_probes() -> list[dict]:
+    """已插的调试探针 [{uid, desc}]（需要 pyOCD）。"""
+    from pyocd.core.helpers import ConnectHelper  # type: ignore
+    return [{"uid": p.unique_id, "desc": p.description} for p in ConnectHelper.get_all_connected_probes(blocking=False)]
+
+
+def choose_probe(want: str | None, probes: list[dict]) -> str | None:
+    """多候选不猜（restudy A3）：配置了就必须在；没配置且插了多个 → 报错列出候选，不随便挑一个刷错板。"""
+    if want:
+        if probes and not any(p["uid"] == want for p in probes):
+            raise FlashError("probe_missing", f"配置的探针 {want} 没插", "现在插着：" + "、".join(p["uid"] for p in probes))
+        return want
+    if len(probes) > 1:
+        raise FlashError("multi_probe", "插了多个探针，不猜用哪个：" + "、".join(f"{p['uid']}（{p['desc']}）" for p in probes),
+                         "在 ~/.dzbench/machine.json 写 flash.probe = 序列号（选定后下次直接用），或拔掉多余的")
+    return probes[0]["uid"] if probes else None
+
+
 class PyOCDBackend:
     """真实探针（需要 `pip install pyocd`）。⚠ 未实测。"""
     def __init__(self, target: str, probe: str | None = None):
@@ -63,6 +81,7 @@ class PyOCDBackend:
             raise FlashError("no_pack", f"找不到 MSPM0 器件包 {M0_PACK}",
                              "运行 tools/fetch_third_party.sh m0pack，或联网执行 pyocd pack install mspm0g3507，或设 DZBENCH_PACK=包路径")
         kw = {"pack": str(pack)} if pack else {}
+        probe = choose_probe(probe, list_probes())
         self.sess = ConnectHelper.session_with_chosen_probe(unique_id=probe, target_override=target, blocking=False, **kw)
         if self.sess is None:
             raise FlashError("no_probe", "没找到调试探针", "插上 DAPLink/ST-Link/XDS110，确认驱动")

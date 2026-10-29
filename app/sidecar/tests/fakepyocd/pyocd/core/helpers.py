@@ -54,3 +54,11 @@ class ConnectHelper:
         if options.get("pack"):
             pyocd.LOG.append(("pack", options["pack"]))
         return Session() if pyocd.BOARD is not None else None
+
+    @staticmethod
+    def get_all_connected_probes(blocking=True, **_):
+        """假探针列表：pyocd.PROBES 可由测试改（默认一个）。"""
+        class P:
+            def __init__(self, uid, desc):
+                self.unique_id, self.description = uid, desc
+        return [P(u, d) for u, d in getattr(pyocd, "PROBES", [("FAKE0001", "Fake CMSIS-DAP")])]

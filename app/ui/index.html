@@ -20,6 +20,7 @@
       </select>
       <label class="lbl" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
       <button id="connect" class="btn pri">连接 <kbd>⌃O</kbd></button>
+      <button id="doctor" class="btn ghost sm" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）">自检</button>
     </div>
     <div class="ro"><span class="lbl"><span id="led" class="led"></span>链路</span><span class="v" id="ro-link">未连接</span></div>
     <div class="ro"><span class="lbl">数据格式</span><span class="v" id="ro-schema">—</span></div>
@@ -113,6 +114,7 @@
         <div id="props" class="feed"></div>
         <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
       </section>
+      <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
       <dialog id="cfg" class="dlg">
         <form method="dialog" id="cfg-form">
           <h3>大模型设置</h3>

@@ -368,3 +368,10 @@ link.onState = async open => {
   renderStatus(h.status); loadLogs();
 };
 renderParams();
+
+$("doctor").onclick = async () => {
+  const items: any[] = await call("doctor", {}).catch(() => null) || [];
+  const mk: Record<string, string> = { ok: "✓", warn: "!", fail: "✗" };
+  $("doc-list").innerHTML = items.map(i => `<li class="d-${i.level}"><b>${mk[i.level]} ${esc(i.name)}</b>：${esc(i.msg)}${i.fix ? `<br><i>→ ${esc(i.fix)}</i>` : ""}</li>`).join("");
+  $<HTMLDialogElement>("doc").show();
+};

@@ -14,7 +14,14 @@ def main() -> None:
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--ui", type=pathlib.Path, help="同时用 HTTP 在 port+1 提供 UI 静态文件（浏览器模式）")
+    ap.add_argument("--doctor", action="store_true", help="自检工具链 / 探针 / 器件包 / 串口 / 配置，打印修复提示后退出")
+    ap.add_argument("--repo", help="--doctor 时检查哪个工程的 dzbench.json")
     a = ap.parse_args()
+    if a.doctor:
+        from . import doctor
+        items = doctor.run(a.repo)
+        print(doctor.render(items))
+        sys.exit(1 if any(i["level"] == "fail" for i in items) else 0)
     import signal
 
     def _term(*_):

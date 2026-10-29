@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] doctor 自检（restudy A7）：`python -m dzbench --doctor [--repo 工程]` 或 UI 顶栏“自检”，查 Python 依赖、arm-gcc / make、dzbench.json、Keil 路径、flash.target、MSPM0 器件包、探针、串口、大模型 Key、数据目录，每项 ✓/!/✗ 加中文修复提示，只读。多探针不猜（A3）：没配 flash.probe 又插了多个探针 → 报 multi_probe 并列出序列号；配置的探针没插 → probe_missing。假 pyOCD 单测；真探针【未测】。
 
 ## [0.10.0] - 2026-10-29 仿真当实板、RTT 链路、走查修复
 - [仿真] 修偶发：阶跃响应良好但窗口内没算出调节时间时，调参提示格式化 None 抛错，离线助手回答“还没法分析”（评测 look_before_conclude 时过时不过）。加单测。
