@@ -46,6 +46,8 @@ class Session:
 
 class ConnectHelper:
     @staticmethod
-    def session_with_chosen_probe(unique_id=None, target_override=None, blocking=True):
+    def session_with_chosen_probe(unique_id=None, target_override=None, blocking=True, **options):
         pyocd.LOG.append(("connect", target_override))
+        if options.get("pack"):
+            pyocd.LOG.append(("pack", options["pack"]))
         return Session() if pyocd.BOARD is not None else None

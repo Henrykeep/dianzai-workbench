@@ -27,7 +27,12 @@ freertos() { get stm32-mw-freertos STMicroelectronics/stm32-mw-freertos v10.6.2_
 # TI MSPM0 SDK：只取 DriverLib、器件头/启动文件/链接脚本、CMSIS Core
 mspm0()    { get mspm0-sdk TexasInstruments/mspm0-sdk mspm0_sdk_2_11_00_07 .metadata \
                source/ti/driverlib source/ti/devices/msp source/third_party/CMSIS/Core/Include; }
-for g in f4 f1 freertos mspm0; do
+# TI MSPM0G1X0X_G3X0X CMSIS 器件包（BSD-3-Clause，pyOCD 烧 MSPM0 要用；随安装包分发，许可证见包内 01_Pack/license.txt）
+m0pack()   { mkdir -p packs; local f=packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack
+             [ -f "$f" ] && { echo "已存在 $f，跳过"; return; }
+             curl -fsSL -o "$f.tmp" https://software-dl.ti.com/msp430/esd/MSPM0-CMSIS/MSPM0G1X0X_G3X0X/latest/exports/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack
+             echo "071bd317fc0f152ded6b2ae594d79c6fc5eb9952370526b4c14ef5b3b9807860  $f.tmp" | sha256sum -c - && mv "$f.tmp" "$f"; }
+for g in f4 f1 freertos mspm0 m0pack; do
   if [ -z "$ALL" ] || [[ " $ALL " == *" $g "* ]]; then $g; fi
 done
 [[ " $ALL " == *" cmsis "* ]] && cmsis

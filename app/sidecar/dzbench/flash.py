@@ -33,14 +33,37 @@ def sha256(p: pathlib.Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()
 
 
+# pyOCD 不内置 MSPM0，要 TI 的 CMSIS 器件包（DFP，BSD-3-Clause）。安装包自带一份（tools/fetch_third_party.sh m0pack），
+# 找不到再用 pyOCD 自己管理的包（pyocd pack install mspm0g3507，需要联网）。
+M0_PACK = "TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack"
+
+
+def find_pack(target: str) -> pathlib.Path | None:
+    import os
+    import sys
+    if not (target or "").lower().startswith("mspm0"):
+        return None
+    here = pathlib.Path(__file__).resolve()
+    cands = [os.environ.get("DZBENCH_PACK", ""),
+             pathlib.Path(getattr(sys, "_MEIPASS", "")) / "packs" / M0_PACK if getattr(sys, "_MEIPASS", None) else "",
+             here.parents[3] / "third_party" / "packs" / M0_PACK,
+             pathlib.Path.home() / ".dzbench" / "packs" / M0_PACK]
+    return next((pathlib.Path(c) for c in cands if c and pathlib.Path(c).is_file()), None)
+
+
 class PyOCDBackend:
     """真实探针（需要 `pip install pyocd`）。⚠ 未实测。"""
     def __init__(self, target: str, probe: str | None = None):
         try:
             from pyocd.core.helpers import ConnectHelper  # type: ignore
         except ImportError as e:
-            raise FlashError("no_pyocd", "没装 pyOCD", "pip install pyocd；MSPM0 还要 pyocd pack install mspm0g3507") from e
-        self.sess = ConnectHelper.session_with_chosen_probe(unique_id=probe, target_override=target, blocking=False)
+            raise FlashError("no_pyocd", "没装 pyOCD", "pip install pyocd") from e
+        pack = find_pack(target)
+        if (target or "").lower().startswith("mspm0") and not pack:
+            raise FlashError("no_pack", f"找不到 MSPM0 器件包 {M0_PACK}",
+                             "运行 tools/fetch_third_party.sh m0pack，或联网执行 pyocd pack install mspm0g3507，或设 DZBENCH_PACK=包路径")
+        kw = {"pack": str(pack)} if pack else {}
+        self.sess = ConnectHelper.session_with_chosen_probe(unique_id=probe, target_override=target, blocking=False, **kw)
         if self.sess is None:
             raise FlashError("no_probe", "没找到调试探针", "插上 DAPLink/ST-Link/XDS110，确认驱动")
         self.sess.open()

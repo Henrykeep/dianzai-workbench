@@ -15,6 +15,21 @@ TYPES = {"f32": "<f", "i32": "<i", "u32": "<I", "i16": "<h", "u16": "<H", "i8": 
 STT = {0: "notype", 1: "object", 2: "func", 3: "section", 4: "file"}
 
 
+
+GAP = 64
+
+
+def spans(items: list[tuple[str, int, str]], gap: int = GAP) -> list[tuple[int, int, list]]:
+    out: list[list] = []
+    for it in sorted(items, key=lambda x: x[1]):
+        a, b = it[1], it[1] + struct.calcsize(TYPES[it[2]])
+        if out and a - out[-1][1] <= gap:
+            out[-1][1] = max(out[-1][1], b)
+            out[-1][2].append(it)
+        else:
+            out.append([a, b, [it]])
+    return [tuple(x) for x in out]
+
 class ElfError(Exception):
     pass
 
@@ -104,9 +119,13 @@ class SymbolWatch:
                 "telemetry": {"id": -1, "period_ms": period_ms, "fields": [{"name": n, "type": "f32"} for n, _, _ in self.items]}}
 
     def sample(self) -> dict:
+        """相邻变量合并成一次块读（间隔 ≤ GAP 字节就并），探针往返次数从“每变量一次”降到“每段一次”。"""
         out = {}
-        for name, addr, ty in self.items:
-            out[name] = float(struct.unpack(TYPES[ty], self.probe.read(addr, struct.calcsize(TYPES[ty])))[0])
+        for start, end, members in spans(self.items):
+            blob = self.probe.read(start, end - start)
+            for name, addr, ty in members:
+                k = addr - start
+                out[name] = float(struct.unpack(TYPES[ty], blob[k:k + struct.calcsize(TYPES[ty])])[0])
         return out
 
     def start(self, spec: list[dict], period_ms: int = 10) -> dict:
