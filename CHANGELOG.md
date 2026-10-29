@@ -6,7 +6,11 @@
 
 ## [未发布]
 
-- Agent 评测一键运行 `make agent-eval`：真大模型 × 两块仿真板 × 8 例 × 重复 N 次，出 report.md/json；没 Key 或中途退回离线时退出码 2、报告标“不算成绩”。运行器 [仿真]，真模型结果 [未测]（docs/18 §3.3）
+- Agent 评测一键运行 `make agent-eval`：真大模型 × 两块仿真板 × 10 例 × 重复 N 次，出 report.md/json；没 Key 或中途退回离线时退出码 2、报告标“不算成绩”。运行器 [仿真]，真模型结果 [未测]（docs/18 §3.3）
+- Agent 计划卡 / 板子记忆 / 一键“撤销 Agent”：计划按 {步骤, 状态} 整表更新（同时只一步进行中，重复/空步骤拒绝）；每块板（schema+UID）记最近 200 条参数与提交；撤销参数改回旧值或 git revert，**那次提交改过的文件有未提交改动时拒绝撤销**，撤销后告诉模型别原样重做。[仿真]（真大模型 [未测]）
+- Agent 工作模式：通用 / 诊断（只读）/ 调参 / 改代码 / 审查，按模式收窄工具白名单，审批分级照旧；没有“全自动”档。评测加 2 例（共 10 例），离线基线全过。[仿真]
+- Agent 护栏（只对真大模型开）：看了数据却一个数字都没引用 → 退回重写一次；同参数重复调用第 3/5 次提醒；空结果明说“成功但没有数据”。[仿真]（真大模型效果 [未测]）
+- docs/24 Agent 框架源码研读（Codex、Gemini CLI、DeepSeek Harness、Aider、Cline、OpenHands、Goose、OpenCode、Continue、SWE-agent、smolagents、嵌入式 MCP），docs/25 v0.9 计划。
 
 ### 修复 / 改进
 - 外壳代码 main.rs 在本机用 rustc 1.99 对 Windows（x86_64-pc-windows-msvc）`cargo check` 通过（debug + release）[编译]。

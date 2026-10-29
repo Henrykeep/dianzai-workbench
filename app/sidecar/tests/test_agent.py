@@ -267,3 +267,14 @@ def test_no_key_falls_back_to_offline(home, tmp_path):
     ev.clear()
     r = svc.ask("你好")
     assert r.startswith("（连不上模型服务") and any(e.get("fallback") for e in ev)
+
+
+def test_rollback_refuses_when_touched_file_dirty(repo):
+    g = Gateway(repo, lambda e: None, runner=Runner())
+    c = g.propose_edit("apps/x/main.c", "int gain = 1;", "int gain = 3;", "t")
+    r = g.decide(c["id"], True)
+    f = repo / "apps/x/main.c"
+    f.write_text(f.read_text(encoding="utf-8") + "// 用户手改\n", encoding="utf-8")
+    with pytest.raises(GatewayError) as e:
+        g.rollback(r["commit"])
+    assert e.value.code == "dirty" and "用户手改" in f.read_text(encoding="utf-8")

@@ -23,7 +23,7 @@ def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
         if x in calls:
             bad.append(f"不该调用 {x}")
     if "max_param_changes_per_turn" in case:
-        names = {c["args"].get("name") for c in tr.get("calls", []) if c["tool"] in PARAM_TOOLS}
+        names = {c["args"].get("name") for c in tr.get("calls", []) if c["tool"] in PARAM_TOOLS and c.get("ok", True)}  # 被模式/审批挡下的不算
         if len(names) > case["max_param_changes_per_turn"]:
             bad.append(f"一轮改了 {len(names)} 个参数（上限 {case['max_param_changes_per_turn']}）")
     if (f := case.get("call_order")):
@@ -77,6 +77,7 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
                 svc.step_start(st)
                 th.start()
                 time.sleep(float(st.get("pre_s", 0.6)) + 0.8 + min(float(st.get("hold_s", 1.5)), 3.0))
+            svc.set_mode(case.get("workmode", "general"))
             if (v := (case.get("context") or {}).get("verdict")):
                 svc.last_verdict = v
             try:
@@ -88,7 +89,7 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
             stop.set()
             if st:
                 th.join()
-            calls = [{"tool": e["name"], "args": e["args"]} for e in ev if e.get("type") == "agent_tool"]
+            calls = [{"tool": e["name"], "args": e["args"], "ok": e.get("ok", True)} for e in ev if e.get("type") == "agent_tool"]
             ok, why = grade(case, {"calls": calls, "text": text})
             mode = next((e["name"] for e in ev if e.get("type") == "agent_mode"), "")
             out.append({"id": case["id"], "ok": ok, "why": why, "calls": [c["tool"] for c in calls], "text": text, "mode": mode})

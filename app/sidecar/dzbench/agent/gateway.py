@@ -230,6 +230,13 @@ class Gateway:
         rc, body = self._git("log", "-1", "--format=%B", commit)
         if rc != 0 or f"{TRAILER}:" not in body:
             raise GatewayError("not_agent_commit", f"{commit} 不是工作台产生的提交，拒绝回滚", "人工提交请用 git 自己处理")
+        _, files = self._git("show", "--name-only", "--format=", commit)
+        files = [f for f in files.splitlines() if f.strip()]
+        if files:   # Aider cmd_undo：那次提交改过的文件现在有未提交改动就拒绝，免得 revert 把用户手改的混进去或冲突
+            _, dirty = self._git("status", "--porcelain", "--", *files)
+            if dirty.strip():
+                raise GatewayError("dirty", f"{', '.join(files[:3])} 有未提交的改动，先保存/提交或丢弃再撤销",
+                                   "git stash 或提交后再点撤销")
         args = ["revert", "--no-edit", commit]
         rc, out = self.runner((["git", "-c", "user.name=dzbench", "-c", "user.email=dzbench@localhost"] if not self._has_identity() else ["git"]) + args, self.root)
         if rc != 0:

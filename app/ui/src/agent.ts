@@ -156,8 +156,10 @@ export function initAgent(call: Call) {
   // ---------------------------------------------------------------- 计划 / 撤销
   let planEl: HTMLElement | null = null;
   function renderPlan(m: Msg) {
-    const html = `<span class="lbl">计划</span><ol class="plan">${(m.steps as string[]).map((s, i) =>
-      `<li class="${i < m.current ? "done" : i === m.current ? "cur" : ""}">${esc(s)}</li>`).join("")}</ol>`;
+    const items = (m.items as { step: string; status: string }[]) ||
+      (m.steps as string[]).map((s, i) => ({ step: s, status: i < m.current ? "completed" : i === m.current ? "in_progress" : "pending" }));
+    const html = `<span class="lbl">计划</span><ol class="plan">${items.map((it) =>
+      `<li class="${it.status === "completed" ? "done" : it.status === "in_progress" ? "cur" : ""}">${esc(it.step)}</li>`).join("")}</ol>`;
     if (planEl && planEl.isConnected) planEl.innerHTML = html; else planEl = add(html);
   }
   const undoBtn = $<HTMLButtonElement>("ag-undo");
@@ -171,6 +173,11 @@ export function initAgent(call: Call) {
     if (r) add(r.undone === "param" ? `已撤销：<b>${esc(r.name)}</b> 改回 ${n(r.value, 4)}（原来 ${n(r.was, 4)}）` : `已撤销提交 ${esc(r.reverted)}（新提交 ${esc(r.commit)}）`);
   };
   call<any[]>("agent_journal").then(renderJournal).catch(() => {});
+  const wm = $<HTMLSelectElement>("ag-workmode");
+  wm.onchange = async () => {
+    const r = await call<any>("agent_set_mode", { mode: wm.value }).catch(() => null);
+    if (r) add(`<span class="lbl">模式</span> 已切到「${esc(r.name)}」`);
+  };
 
   return {
     onMsg(m: Msg) {

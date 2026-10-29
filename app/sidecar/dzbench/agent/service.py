@@ -88,13 +88,32 @@ class AgentService:
             gate=self.gate)
 
     # -------------------------------------------------------------- 计划 / 记忆 / 撤销
-    def update_plan(self, steps: list, current: int = 0) -> dict:
-        """把多步计划显示给用户（思路同 Claude Code 的 todo 列表、Cline 的 Plan 模式）。只显示，不执行任何东西。"""
-        steps = [str(x)[:120] for x in (steps or [])][:8]
-        cur = max(0, min(int(current), len(steps) - 1)) if steps else 0
-        self.plan = {"steps": steps, "current": cur}
+    def update_plan(self, steps: list, current: int | None = None) -> dict:
+        """把多步计划显示给用户（Codex update_plan / DeepSeek Harness todo_write：整表替换，每步带状态，
+        最多一步进行中）。只显示，不执行任何东西。steps 可以是字符串（兼容旧写法，用 current 推状态）或 {step, status}。"""
+        rows, seen = [], set()
+        for i, x in enumerate((steps or [])[:8]):
+            if isinstance(x, dict):
+                text, st = str(x.get("step", "")).strip()[:120], str(x.get("status", "pending"))
+            else:
+                text = str(x).strip()[:120]
+                c = int(current or 0)
+                st = "completed" if i < c else "in_progress" if i == c else "pending"
+            if not text:
+                raise GatewayError("bad_plan", "计划里有空步骤")
+            if text in seen:
+                raise GatewayError("bad_plan", f"计划里步骤重复：{text}")
+            if st not in ("pending", "in_progress", "completed"):
+                raise GatewayError("bad_plan", f"状态只能是 pending / in_progress / completed，收到 {st}")
+            seen.add(text)
+            rows.append({"step": text, "status": st})
+        if sum(r["status"] == "in_progress" for r in rows) > 1:
+            raise GatewayError("bad_plan", "同一时间只能有一步 in_progress")
+        cur = next((i for i, r in enumerate(rows) if r["status"] == "in_progress"),
+                   next((i for i, r in enumerate(rows) if r["status"] == "pending"), len(rows)))
+        self.plan = {"steps": [r["step"] for r in rows], "items": rows, "current": cur}
         self.emit({"type": "agent_plan", **self.plan})
-        return {"shown": len(steps), "current": cur}
+        return {"shown": len(rows), "done": sum(r["status"] == "completed" for r in rows)}
 
     def memory(self) -> BoardMemory:
         return BoardMemory(board_key(self.s.schema_hash, self.s.board_uid))
@@ -115,6 +134,11 @@ class AgentService:
 
     def journal_list(self) -> list[dict]:
         return [{k: v for k, v in e.items() if k != "t"} | {"ago_s": round(time.time() - e["t"])} for e in self.journal.list()]
+
+    def set_mode(self, mode: str) -> dict:
+        r = self.loop.set_mode(mode)
+        self.emit({"type": "agent_workmode", **r})
+        return r
 
     def undo_last(self) -> dict:
         """一键撤销 Agent 最近一次已落地的改动：参数改回旧值 / git revert 那次提交。由人点按钮触发，不给 Agent 用。"""
@@ -137,6 +161,8 @@ class AgentService:
             self.journal.push_back(e)
             raise
         self.memory().add("undo", **{k: v for k, v in out.items() if k != "undone"}, what=out["undone"])
+        self.loop.note(f"用户撤销了你的改动：{'参数 ' + out['name'] + ' 改回 ' + str(out['value']) if out['undone'] == 'param' else '提交 ' + out['reverted'] + '（' + out.get('title', '') + '）已 revert'}。"
+                       "不要再原样重做这次改动；如果仍认为需要，先说明理由。")
         self.emit({"type": "agent_journal", "items": self.journal_list()})
         return out
 
@@ -497,6 +523,7 @@ class AgentService:
         """回答前发 agent_mode（界面标出这次是哪个“脑子”在答）。连不上模型服务时自动退回离线规则助手。"""
         self.loop.llm = self.llm()
         mode = "offline" if isinstance(self.loop.llm, OfflineAssistant) else "llm"
+        self.loop.guards = isinstance(self.loop.llm, llm_mod.OpenAICompat)
         self.emit({"type": "agent_mode", "mode": mode, "name": getattr(self.loop.llm, "name", "") or llm_mod.load_config().get("model", "")})
         try:
             return self.loop.ask(text)

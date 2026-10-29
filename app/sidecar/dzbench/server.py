@@ -179,6 +179,8 @@ class Server:
             return await run(None, self.svc.ask, m["text"])
         if op == "agent_undo":                     # 人点“撤销 Agent 上一步”：参数改回 / git revert
             return await run(None, self.svc.undo_last)
+        if op == "agent_set_mode":                 # 工作模式：通用 / 诊断 / 调参 / 改代码 / 审查（只收窄工具）
+            return self.svc.set_mode(m["mode"])
         if op == "agent_journal":
             return self.svc.journal_list()
         if op == "agent_reset":

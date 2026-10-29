@@ -21,7 +21,7 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
 9. 不覆盖用户没提交的改动：propose_edit 前先 read_file 看当前内容，只改需要的最小片段。
 10. 实验结论看 verdict：steady.reason 是 warming_up/still_drifting 时先 observe 或加长实验，不要据此改参数；asymmetry 显示上下不对称时优先建议前馈/静摩擦补偿，而不是硬拧 PID。
 11. 结束时列出"待实板确认"的事项（仿真通过 ≠ 实机通过）。
-12. 要做两步以上的事，先用 update_plan 列 3~5 步计划给用户看，做完一步再更新 current。
+12. 要做两步以上的事，先用 update_plan 列 3~5 步计划给用户看（每步 {step, status}，同时只有一步 in_progress），做完一步就整表更新一次。
 13. 先看 board_memory（这块板以前改过什么、实验结果如何），不要重复已经被证明变差的改动。
 14. 回答前自查：每个结论至少带一个来自工具的具体数字（如“超调 32%”“调节 0.8 s”）；拿不到数据就直说没有，不要编。"""
 
@@ -57,14 +57,35 @@ TOOLS = [
     {"name": "decode_hardfault", "description": "解码 HardFault 栈帧（按内核：M0+ 无 CFSR）",
      "input_schema": {"type": "object", "required": ["frame"], "properties": {"frame": {"type": "array", "items": {"type": "integer"}},
                       "exc_return": {"type": "integer"}, "regs": {"type": "object"}}}},
-    {"name": "update_plan", "description": "把多步计划显示给用户（只显示，不执行）；steps 3~5 条短句，current 是正在做的那步序号（从 0 起）",
-     "input_schema": {"type": "object", "required": ["steps"], "properties": {"steps": {"type": "array", "items": {"type": "string"}}, "current": {"type": "integer"}}}},
+    {"name": "update_plan", "description": "把多步计划显示给用户（只显示，不执行）。每次传完整列表（整表替换）：3~5 步，每步 {step: 短句, status: pending|in_progress|completed}，同时最多一步 in_progress，步骤不能重复",
+     "input_schema": {"type": "object", "required": ["steps"], "properties": {"steps": {"type": "array", "items": {"type": "object", "required": ["step", "status"],
+         "properties": {"step": {"type": "string"}, "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]}}}}}}},
     {"name": "board_memory", "description": "这块板（按数据格式+芯片 ID 区分）跨会话的记忆：以前改过的参数、实验结论、撤销记录",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "read_symbol", "description": "查 ELF 里变量/函数的地址和大小", "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
 ]
 assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
 
+
+# ---------------------------------------------------------------- 模式（工具白名单）
+# 思路：Gemini CLI 的 plan 策略、Cline Plan/Act、OpenCode build/plan、firework 的分任务提示词；模式只“收窄”工具，
+# 审批分级（risk.py）照旧独立生效。没有“全自动”模式。
+_READ = {"read_telemetry", "list_params", "step_analysis", "tune_context", "board_memory", "list_files", "read_file",
+         "read_symbol", "decode_hardfault", "build_log", "update_plan", "observe"}
+MODES = {
+    "general": {"name": "通用", "tools": None, "prompt": ""},
+    "diagnose": {"name": "诊断（只读）", "tools": _READ,
+                 "prompt": "当前是【诊断】模式：只读，不提议任何修改。给出证据链（数据/文件/符号），区分【实测】【源码】【推断】；证据不足就列出需要实板验证的项。"},
+    "tune": {"name": "调参", "tools": _READ | {"propose_param_change", "run_step_test", "rollback_best", "run_sweep_test"},
+             "prompt": "当前是【调参】模式：先 board_memory + tune_context，再每轮只改一个参数，改完用实验验证。不改代码。"},
+    "edit": {"name": "改代码", "tools": _READ | {"propose_edit", "build", "flash", "flash_rollback"},
+             "prompt": "当前是【改代码】模式：先 read_file 看当前内容，保留用户未提交的改动，只改最小片段；改完要通过 make check。不改板上参数。"},
+    "review": {"name": "审查", "tools": {"list_files", "read_file", "read_symbol", "build_log", "update_plan", "board_memory"},
+               "prompt": "当前是【审查】模式：只报缺陷，按严重度排序，每条给文件和行；没发现问题也要列出还没有测试覆盖的地方。不提议修改。"},
+}
+
+EMPTY = "（执行成功，但没有数据：可能还没连板、没有阶跃或没有匹配项）"
+REPEAT_WARN = (3, 5)         # 同一工具同参数连续第 N 次时提醒（DeepSeek Harness repeat-tool-reminder 的思路）
 
 TOOL_MAX = 16_000   # 回给模型的单条工具结果上限（字符）
 
@@ -79,6 +100,18 @@ def tool_content(res: dict) -> str:
     return json.dumps({"ok": res.get("ok", False), "error": "工具结果太长被截断", "truncated": True}, ensure_ascii=False)
 
 
+_NUM_TOOLS = {"read_telemetry", "step_analysis", "tune_context", "run_step_test", "run_sweep_test", "list_params"}
+
+
+def grounded(text: str, results: list[dict]) -> str | None:
+    """看过数据（遥测/阶跃/实验）却一个数字都没引用 → 退回。没看数据、或回答本来就是拒绝/说明时放过。"""
+    import re
+    saw = any(r["ok"] and r["name"] in _NUM_TOOLS and r["result"] != EMPTY for r in results)
+    if not saw or re.search(r"\d", text):
+        return None
+    return "你调用了数据工具，但回答里没有引用任何具体数字（例如超调 %、调节时间 s、当前参数值）。"
+
+
 class AgentLoop:
     def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8,
                  project_rules: str = "", gate: Callable | None = None):
@@ -86,6 +119,24 @@ class AgentLoop:
         self.gate = gate or (lambda tool, args, run: run())
         sys_ = SYSTEM + (f"\n\n以下是本工程仓库的 AGENTS.md（项目规则，必须遵守）：\n{project_rules[:6000]}" if project_rules else "")
         self.messages: list[dict] = [{"role": "system", "content": sys_}]
+        self.mode = "general"
+        # 下面三项“护栏”（回答数字校验 / 重复提醒 / 空结果说明）只对真大模型开；离线规则助手是确定性的，不需要也读不懂
+        self.guards = False
+        self.answer_checks: list[Callable[[str, list[dict]], str | None]] = [grounded]
+
+    def set_mode(self, mode: str) -> dict:
+        if mode not in MODES:
+            raise GatewayError("bad_mode", f"没有模式 {mode}")
+        self.mode = mode
+        return {"mode": mode, "name": MODES[mode]["name"]}
+
+    def tools(self) -> list[dict]:
+        allow = MODES[self.mode]["tools"]
+        return [t for t in TOOLS if allow is None or t["name"] in allow]
+
+    def note(self, text: str) -> None:
+        """把界面上发生的事告诉模型（例如用户撤销了 Agent 的改动），下一问时它能看到。"""
+        self.messages.append({"role": "user", "content": f"[工作台通知，不是用户提问] {text}"})
 
     def reset(self) -> None:
         self.messages = self.messages[:1]
@@ -110,10 +161,12 @@ class AgentLoop:
 
     def ask(self, text: str) -> str:
         self.condense()
-        self.messages.append({"role": "user", "content": text})
+        mp = MODES[self.mode]["prompt"]
+        self.messages.append({"role": "user", "content": (f"（{mp}）\n" if mp else "") + text})
+        last_key, repeats, results, checked = None, 0, [], False
         for _ in range(self.max_steps):
             try:
-                m = self.llm.chat(self.messages, TOOLS)
+                m = self.llm.chat(self.messages, self.tools())
             except LLMError:
                 if self.messages[-1]["role"] == "user":
                     self.messages.pop()
@@ -122,17 +175,35 @@ class AgentLoop:
             calls = m.get("tool_calls") or []
             self.condense()
             if not calls:
-                return m.get("content") or ""
+                text = m.get("content") or ""
+                if self.guards and not checked:          # 最终回答校验（smolagents final_answer_checks / Claude Code Stop hook 的思路），只退回一次
+                    checked = True
+                    why = next((w for chk in self.answer_checks if (w := chk(text, results))), None)
+                    if why:
+                        self.messages.append({"role": "user", "content": f"[工作台自查] {why} 请据此重写回答。"})
+                        continue
+                return text
             for c in calls:
                 name, args = c["function"]["name"], {}
                 try:
                     args = json.loads(c["function"].get("arguments") or "{}")
                     if name not in self.handlers or any(f in name for f in FORBIDDEN_TOOLS):
                         raise GatewayError("denied", f"没有工具 {name}")
+                    allow = MODES[self.mode]["tools"]
+                    if allow is not None and name not in allow:
+                        raise GatewayError("mode", f"当前是{MODES[self.mode]['name']}模式，不能用 {name}；需要的话请用户切换模式")
                     res = {"ok": True, "result": self.gate(name, args, lambda: self.handlers[name](**args))}
                 except (GatewayError, Exception) as e:   # noqa: BLE001 —— 工具错误回给模型，让它自己改
                     res = {"ok": False, "error": getattr(e, "message", str(e))}
+                if self.guards and res["ok"] and res["result"] in (None, "", [], {}):
+                    res["result"] = EMPTY   # SWE-agent：空输出也要明说
+                results.append({"name": name, "ok": res["ok"], "result": res.get("result")})
+                key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
+                repeats = repeats + 1 if key == last_key else 1
+                last_key = key
+                content = tool_content(res)
+                if self.guards and repeats in REPEAT_WARN and name != "update_plan":
+                    content += f"\n[工作台提醒] 这是第 {repeats} 次用相同参数调用 {name}，结果不会变。请先分析上面的结果，换个做法或直接回答。"
                 self.emit({"type": "agent_tool", "name": name, "args": args, "ok": res["ok"]})
-                self.messages.append({"role": "tool", "tool_call_id": c.get("id", name),
-                                      "content": tool_content(res)})
+                self.messages.append({"role": "tool", "tool_call_id": c.get("id", name), "content": content})
         return "（步数用完，先停在这里。看看上面的提议卡片。）"

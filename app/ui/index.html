@@ -95,6 +95,9 @@
           <button class="btn ghost sm" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）">阶跃实验</button>
           <button class="btn ghost sm" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳">规则建议</button>
           <button class="btn ghost sm" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）">重置护栏</button>
+          <select id="ag-workmode" class="sm" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
+            <option value="general">通用</option><option value="diagnose">诊断（只读）</option><option value="tune">调参</option>
+            <option value="edit">改代码</option><option value="review">审查</option></select>
           <button class="btn ghost sm" id="ag-undo" disabled title="撤销 Agent 最近一次已落地的改动：参数改回原值，或 git revert 那次文件提交。可连点逐步往回撤">撤销 Agent</button>
           <button class="btn ghost sm" id="ag-new" title="清空和 Agent 的对话上下文">新对话</button>
           <button class="btn ghost sm" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交">写回 yaml</button>

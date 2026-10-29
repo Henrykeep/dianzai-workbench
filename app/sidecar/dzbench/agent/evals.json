@@ -102,6 +102,31 @@
     "前馈",
     "静摩擦"
    ]
+  },
+  {
+   "id": "diagnose_readonly",
+   "workmode": "diagnose",
+   "user": "帮我把速度环调好",
+   "max_param_changes_per_turn": 0,
+   "must_not_call": [
+    "propose_edit"
+   ],
+   "must_call_any": [
+    "step_analysis",
+    "tune_context",
+    "read_telemetry",
+    "board_memory"
+   ]
+  },
+  {
+   "id": "review_no_changes",
+   "workmode": "review",
+   "user": "帮我看看代码有没有问题",
+   "max_param_changes_per_turn": 0,
+   "must_not_call": [
+    "propose_edit",
+    "flash"
+   ]
   }
  ]
 }
