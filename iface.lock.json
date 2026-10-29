@@ -97,6 +97,56 @@
   "hash": "22c12e7bc0ac2f81",
   "version": "1.1.0"
  },
+ "firmware/algo/capfreq": {
+  "decls": [
+   "capfreq.h: typedef struct { uint32_t timer_hz;",
+   "capfreq.h: uint32_t wrap;",
+   "capfreq.h: uint8_t periods;",
+   "capfreq.h: uint32_t timeout_ms;",
+   "capfreq.h: } capfreq_cfg_t;",
+   "capfreq.h: typedef struct { capfreq_cfg_t c;",
+   "capfreq.h: uint32_t last_rise, last_edge_ms;",
+   "capfreq.h: uint64_t period_sum, high_sum;",
+   "capfreq.h: uint8_t count;",
+   "capfreq.h: bool have_rise, high_valid;",
+   "capfreq.h: uint32_t freq_mhz;",
+   "capfreq.h: float duty;",
+   "capfreq.h: uint32_t seq;",
+   "capfreq.h: } capfreq_t;",
+   "capfreq.h: dz_err_t capfreq_init(capfreq_t *c, const capfreq_cfg_t *cfg);",
+   "capfreq.h: void capfreq_edge(capfreq_t *c, uint32_t tick, bool rising, uint32_t now_ms);",
+   "capfreq.h: bool capfreq_read(const capfreq_t *c, uint32_t now_ms, uint32_t *freq_mhz, float *duty);",
+   "capfreq.h: void capfreq_reset(capfreq_t *c);",
+   "capfreq.h: dz_err_t capfreq_selftest(void);"
+  ],
+  "hash": "e029db6f3da29f41",
+  "version": "1.0.0"
+ },
+ "firmware/algo/dds": {
+  "decls": [
+   "dds.h: #define DDS_TABLE_N 256u",
+   "dds.h: typedef enum { DDS_SINE = 0, DDS_SQUARE, DDS_TRIANGLE, DDS_SAW } dds_wave_t;",
+   "dds.h: typedef struct { uint32_t fs_hz;",
+   "dds.h: uint16_t lo, hi;",
+   "dds.h: bool square_exact;",
+   "dds.h: } dds_cfg_t;",
+   "dds.h: typedef struct { dds_cfg_t c;",
+   "dds.h: uint16_t table[DDS_TABLE_N];",
+   "dds.h: dds_wave_t wave;",
+   "dds.h: uint32_t phase, inc;",
+   "dds.h: uint32_t half_n, idx;",
+   "dds.h: uint32_t actual_mhz;",
+   "dds.h: } dds_t;",
+   "dds.h: dz_err_t dds_init(dds_t *d, const dds_cfg_t *c);",
+   "dds.h: dz_err_t dds_set(dds_t *d, dds_wave_t w, uint32_t freq_mhz, float phase_deg);",
+   "dds.h: uint32_t dds_actual_mhz(const dds_t *d);",
+   "dds.h: uint16_t dds_next(dds_t *d);",
+   "dds.h: void dds_fill(dds_t *d, uint16_t *buf, uint32_t n);",
+   "dds.h: dz_err_t dds_selftest(void);"
+  ],
+  "hash": "a42602cee3ace2d5",
+  "version": "1.0.0"
+ },
  "firmware/algo/lpf": {
   "decls": [
    "lpf1.h: typedef struct { float cutoff_hz;",
@@ -211,6 +261,31 @@
   "hash": "982222ec4c93dc31",
   "version": "1.1.0"
  },
+ "firmware/algo/sigfilt": {
+  "decls": [
+   "sigfilt.h: typedef struct { int32_t older, newer;",
+   "sigfilt.h: bool primed;",
+   "sigfilt.h: } med3_t;",
+   "sigfilt.h: int32_t med3_of(int32_t a, int32_t b, int32_t c);",
+   "sigfilt.h: void med3_reset(med3_t *m);",
+   "sigfilt.h: int32_t med3_update(med3_t *m, int32_t x);",
+   "sigfilt.h: typedef struct { float q;",
+   "sigfilt.h: float r;",
+   "sigfilt.h: float p0;",
+   "sigfilt.h: } kf1_cfg_t;",
+   "sigfilt.h: typedef struct { kf1_cfg_t c;",
+   "sigfilt.h: float x, p;",
+   "sigfilt.h: bool primed;",
+   "sigfilt.h: } kf1_t;",
+   "sigfilt.h: dz_err_t kf1_init(kf1_t *k, const kf1_cfg_t *c);",
+   "sigfilt.h: void kf1_reset(kf1_t *k);",
+   "sigfilt.h: dz_err_t kf1_update(kf1_t *k, float z, float *out);",
+   "sigfilt.h: float kf1_steady_gain(const kf1_cfg_t *c);",
+   "sigfilt.h: dz_err_t sigfilt_selftest(void);"
+  ],
+  "hash": "15c19e05c60a9cc4",
+  "version": "1.0.0"
+ },
  "firmware/algo/slew": {
   "decls": [
    "slew.h: typedef enum { SLEW_BY_DIR = 0, SLEW_BY_MAG = 1 } slew_mode_t;",
@@ -228,6 +303,39 @@
    "slew.h: dz_err_t slew_selftest(void);"
   ],
   "hash": "864d889c4413cb07",
+  "version": "1.0.0"
+ },
+ "firmware/algo/spectrum": {
+  "decls": [
+   "spectrum.h: #define SPEC_MIN_N 64u",
+   "spectrum.h: #define SPEC_MAX_N 1024u",
+   "spectrum.h: #define SPEC_BANDS 33u",
+   "spectrum.h: #define SPEC_COMP_MAX 16u",
+   "spectrum.h: typedef enum { SPEC_WIN_RECT = 0, SPEC_WIN_HANN = 1 } spec_window_t;",
+   "spectrum.h: typedef struct { float freq_hz;",
+   "spectrum.h: float mag;",
+   "spectrum.h: uint16_t bin;",
+   "spectrum.h: } spec_comp_t;",
+   "spectrum.h: typedef struct { uint16_t n;",
+   "spectrum.h: float fs_hz;",
+   "spectrum.h: float dc;",
+   "spectrum.h: uint16_t peak_bin;",
+   "spectrum.h: float peak_hz, peak_mag;",
+   "spectrum.h: float peak_re, peak_im;",
+   "spectrum.h: float bands[SPEC_BANDS];",
+   "spectrum.h: spec_comp_t comp[SPEC_COMP_MAX];",
+   "spectrum.h: uint8_t ncomp;",
+   "spectrum.h: } spec_result_t;",
+   "spectrum.h: typedef struct { float re[SPEC_MAX_N];",
+   "spectrum.h: float im[SPEC_MAX_N];",
+   "spectrum.h: } spec_work_t;",
+   "spectrum.h: dz_err_t spec_fft(float *re, float *im, uint16_t n);",
+   "spectrum.h: dz_err_t spec_analyze(spec_work_t *w, const float *x, uint16_t n, float fs_hz, spec_window_t win, bool remove_dc, spec_result_t *r);",
+   "spectrum.h: float spec_phase_diff_deg(const spec_result_t *a, const spec_result_t *b);",
+   "spectrum.h: float spec_thd(const spec_work_t *w, const spec_result_t *r, uint8_t harmonics);",
+   "spectrum.h: dz_err_t spectrum_selftest(void);"
+  ],
+  "hash": "fd9ba4c2009244d6",
   "version": "1.0.0"
  },
  "firmware/algo/stall": {
@@ -513,6 +621,32 @@
    "key.h: dz_err_t key_selftest(void);"
   ],
   "hash": "ebed22c92f9785c3",
+  "version": "1.0.0"
+ },
+ "firmware/drivers/keypad4x4": {
+  "decls": [
+   "keypad4x4.h: #define KP_KEYS 16u",
+   "keypad4x4.h: #define KP_NONE (-1)",
+   "keypad4x4.h: typedef struct { pal_id_t row[4];",
+   "keypad4x4.h: pal_id_t col[4];",
+   "keypad4x4.h: uint16_t debounce_ms;",
+   "keypad4x4.h: uint16_t settle_us;",
+   "keypad4x4.h: } kp_cfg_t;",
+   "keypad4x4.h: typedef struct { uint16_t pressed, released, held;",
+   "keypad4x4.h: } kp_event_t;",
+   "keypad4x4.h: typedef struct { kp_cfg_t c;",
+   "keypad4x4.h: uint16_t last_raw, stable;",
+   "keypad4x4.h: uint16_t acc_ms[KP_KEYS];",
+   "keypad4x4.h: } keypad_t;",
+   "keypad4x4.h: dz_err_t kp_init(keypad_t *k, const kp_cfg_t *c);",
+   "keypad4x4.h: dz_err_t kp_debounce(keypad_t *k, uint16_t raw, uint32_t elapsed_ms, kp_event_t *ev);",
+   "keypad4x4.h: dz_err_t kp_scan_raw(keypad_t *k, uint16_t *raw);",
+   "keypad4x4.h: dz_err_t kp_process(keypad_t *k, uint32_t elapsed_ms, kp_event_t *ev);",
+   "keypad4x4.h: char kp_char(int key);",
+   "keypad4x4.h: int kp_first(uint16_t bits);",
+   "keypad4x4.h: dz_err_t keypad4x4_selftest(void);"
+  ],
+  "hash": "d690cde3ebdeac24",
   "version": "1.0.0"
  },
  "firmware/drivers/line_sensor": {
@@ -891,6 +1025,51 @@
   "hash": "167ee87528b00f89",
   "version": "1.1.0"
  },
+ "firmware/framework/menu": {
+  "decls": [
+   "menu.h: #define MENU_MAX_DEPTH 6u",
+   "menu.h: #define MENU_MAX_COLS 31u",
+   "menu.h: typedef struct menu_page menu_page_t;",
+   "menu.h: typedef struct { const char *label;",
+   "menu.h: const menu_page_t *sub;",
+   "menu.h: void (*action)(void *ctx);",
+   "menu.h: void *ctx;",
+   "menu.h: float *value;",
+   "menu.h: float step, min, max;",
+   "menu.h: } menu_item_t;",
+   "menu.h: struct menu_page { const char *title;",
+   "menu.h: const menu_item_t *items;",
+   "menu.h: uint8_t n;",
+   "menu.h: };",
+   "menu.h: typedef struct { uint8_t rows;",
+   "menu.h: uint8_t cols;",
+   "menu.h: void (*clear)(void *ctx);",
+   "menu.h: void (*line)(void *ctx, uint8_t row, const char *text, bool selected);",
+   "menu.h: void (*flush)(void *ctx);",
+   "menu.h: void *ctx;",
+   "menu.h: } menu_view_t;",
+   "menu.h: typedef enum { MENU_IN_UP = 0, MENU_IN_DOWN, MENU_IN_OK, MENU_IN_BACK } menu_in_t;",
+   "menu.h: typedef struct { const menu_page_t *stack[MENU_MAX_DEPTH];",
+   "menu.h: uint8_t sel[MENU_MAX_DEPTH], first[MENU_MAX_DEPTH], depth;",
+   "menu.h: bool editing;",
+   "menu.h: const menu_view_t *view;",
+   "menu.h: } menu_t;",
+   "menu.h: dz_err_t menu_init(menu_t *m, const menu_page_t *root, const menu_view_t *view);",
+   "menu.h: bool menu_next(menu_t *m);",
+   "menu.h: bool menu_prev(menu_t *m);",
+   "menu.h: bool menu_select(menu_t *m);",
+   "menu.h: bool menu_back(menu_t *m);",
+   "menu.h: bool menu_goto(menu_t *m, const menu_page_t *target);",
+   "menu.h: bool menu_input(menu_t *m, menu_in_t in);",
+   "menu.h: uint8_t menu_depth(const menu_t *m);",
+   "menu.h: const menu_item_t *menu_current(const menu_t *m);",
+   "menu.h: const menu_page_t *menu_page(const menu_t *m);",
+   "menu.h: dz_err_t menu_render(const menu_t *m);",
+   "menu.h: dz_err_t menu_selftest(void);"
+  ],
+  "hash": "233b94f674f75ab5",
+  "version": "1.0.0"
+ },
  "firmware/framework/rtosmon": {
   "decls": [
    "rtosmon.h: #define RTOSMON_NA 0xFFFFu",
@@ -1155,6 +1334,8 @@
    "host_sim.h: void host_sim_motor_set_load(int motor, float load_rps);",
    "host_sim.h: bool host_sim_gpio_level(pal_id_t id);",
    "host_sim.h: void host_sim_gpio_set_input(pal_id_t id, bool active);",
+   "host_sim.h: typedef bool (*host_sim_gpio_read_cb_t)(pal_id_t id, const bool *gpio, void *ctx);",
+   "host_sim.h: void host_sim_gpio_read_hook(host_sim_gpio_read_cb_t cb, void *ctx);",
    "host_sim.h: uint16_t host_sim_pwm_duty(pal_id_t id);",
    "host_sim.h: void host_sim_enc_add(pal_id_t id, int32_t counts);",
    "host_sim.h: void host_sim_adc_set(pal_id_t id, uint16_t raw);",
@@ -1176,8 +1357,8 @@
    "host_sim.h: int host_sim_add_periodic(uint32_t period_us, void (*fn)(void *), void *ctx);",
    "host_sim.h: void host_sim_set_reset_cause(pal_reset_cause_t c);"
   ],
-  "hash": "0a570e43b3b1de17",
-  "version": "2.1.0"
+  "hash": "1c36c8a7b34f5698",
+  "version": "2.2.0"
  },
  "ports/mspm0-driverlib": {
   "decls": [

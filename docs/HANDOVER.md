@@ -59,6 +59,10 @@
 - `agent/stuck.py`（OpenHands 移植）、`agent/untrusted.py`（工具结果包 `<工具数据>`）、`AgentLoop._trim_middle`（头尾裁剪）、`gateway.similar_lines`（aider 移植）。说明在 docs/18 末节。
 - 解析工具消息的地方要先 `untrusted.unwrap()`（offline.py、stuck.py、测试已改）。
 
+### 第 14 项：信号类模块 + 板上菜单（2026-10-29，UTC+8）
+- 新模块 algo/spectrum、sigfilt、dds、capfreq，framework/menu，drivers/keypad4x4；测试 tests/host/test_signal.c。来自 firework 的 MIT 代码放在 firmware 树里（逐文件 Source 头），不进 third_party/vendored（那里留给需要隔离的 GPL）。
+- 没做：ADC 定时器触发 + DMA 块采集（pal 要新增接口，各 port 都得实现，单列一项）、AD9833/AD9850 驱动、菜单接进 app 的例子。firework 的 4429 行 display_menu.c 和 2409 行 waveform_measurement.c 没搬（业务耦合太重）。
+
 ### 第 12 项：Agent 上下文（2026-10-29，UTC+8）
 - `agent/codemap.py`（仓库地图，git 状态缓存）、`agent/knowledge.py`（触发词知识 + 项目记忆）、`docs/agent-knowledge/`。新增工具 repo_map（AUTO）、remember（LOG，走网关 diff 卡片，人接受才写）。
 - 新知识文件：加 `triggers:` 头即可，不用改代码；README.md 无触发词不会被加载。

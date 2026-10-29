@@ -44,7 +44,8 @@ static void log_ev(host_sim_ev_type_t t, pal_id_t id, uint32_t v)
 }
 
 /* ---------------------------------------------------------------- 仿真控制 */
-void host_sim_reset(void) { memset(&S, 0, sizeof S); }
+static host_sim_gpio_read_cb_t g_rd_cb; static void *g_rd_ctx;
+void host_sim_reset(void) { memset(&S, 0, sizeof S); g_rd_cb = NULL; g_rd_ctx = NULL; }
 uint64_t host_sim_now_us(void) { return S.now_us; }
 
 static void step(void)
@@ -182,12 +183,14 @@ dz_err_t pal_gpio_write(pal_id_t id, bool a)
     S.gpio[id] = a; log_ev(HS_EV_GPIO, id, a);
     return DZ_OK;
 }
+void host_sim_gpio_read_hook(host_sim_gpio_read_cb_t cb, void *ctx) { g_rd_cb = cb; g_rd_ctx = ctx; }
+
 dz_err_t pal_gpio_read(pal_id_t id, bool *a)
 {
     if (id >= BOARD_GPIO_COUNT) return DZ_ENODEV;
     if (!a) return DZ_EINVAL;
     if (take_fail(HS_FAIL_GPIO)) return DZ_EIO;
-    *a = S.gpio[id];
+    *a = g_rd_cb ? g_rd_cb(id, S.gpio, g_rd_ctx) : S.gpio[id];
     return DZ_OK;
 }
 dz_err_t pal_gpio_toggle(pal_id_t id)

@@ -27,14 +27,19 @@
             -I${PROJECT_LOC}/../../../firmware/algo/accel_ff
             -I${PROJECT_LOC}/../../../firmware/algo/attitude
             -I${PROJECT_LOC}/../../../firmware/algo/ball_beam
+            -I${PROJECT_LOC}/../../../firmware/algo/capfreq
+            -I${PROJECT_LOC}/../../../firmware/algo/dds
             -I${PROJECT_LOC}/../../../firmware/algo/lpf
             -I${PROJECT_LOC}/../../../firmware/algo/mtspeed
             -I${PROJECT_LOC}/../../../firmware/algo/pid
+            -I${PROJECT_LOC}/../../../firmware/algo/sigfilt
             -I${PROJECT_LOC}/../../../firmware/algo/slew
+            -I${PROJECT_LOC}/../../../firmware/algo/spectrum
             -I${PROJECT_LOC}/../../../firmware/algo/stall
             -I${PROJECT_LOC}/../../../firmware/algo/vision
             -I${PROJECT_LOC}/../../../firmware/framework/blackbox
             -I${PROJECT_LOC}/../../../firmware/framework/coord
+            -I${PROJECT_LOC}/../../../firmware/framework/menu
             -I${PROJECT_LOC}/../../../firmware/framework/rtosmon
             -I${PROJECT_LOC}/../../../firmware/framework/spsc
             -I${PROJECT_LOC}/../../../firmware/framework/subsys
@@ -49,6 +54,7 @@
             -I${PROJECT_LOC}/../../../firmware/drivers/encoder
             -I${PROJECT_LOC}/../../../firmware/drivers/hcsr04
             -I${PROJECT_LOC}/../../../firmware/drivers/key
+            -I${PROJECT_LOC}/../../../firmware/drivers/keypad4x4
             -I${PROJECT_LOC}/../../../firmware/drivers/line_sensor
             -I${PROJECT_LOC}/../../../firmware/drivers/motor_2pwm
             -I${PROJECT_LOC}/../../../firmware/drivers/motor_dc
@@ -99,14 +105,19 @@
         <file path="../../../firmware/algo/accel_ff/accel_ff.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/attitude/attitude.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/ball_beam/ball_beam.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/capfreq/capfreq.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/dds/dds.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/lpf/lpf1.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/mtspeed/mtspeed.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/pid/pid.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/sigfilt/sigfilt.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/slew/slew.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/spectrum/spectrum.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/stall/stall.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/vision/vis.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/blackbox/blackbox.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/coord/coord.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/framework/menu/menu.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/rtosmon/rtosmon.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/spsc/spsc.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/subsys/subsys.c" targetDirectory="dz/firmware" action="link"/>
@@ -121,6 +132,7 @@
         <file path="../../../firmware/drivers/encoder/encoder.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/hcsr04/hcsr04.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/key/key.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/keypad4x4/keypad4x4.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/line_sensor/line_sensor.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/motor_2pwm/motor_2pwm.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/motor_dc/motor_dc.c" targetDirectory="dz/firmware" action="link"/>

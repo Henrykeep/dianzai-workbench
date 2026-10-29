@@ -22,6 +22,14 @@ resources:
     - { name: BUZZER, pin: SIM32, dir: out, note: 有源蜂鸣器（三极管驱动） }
     - { name: STEP, pin: SIM33, dir: out, note: A4988/DRV8825/TMC2209 STEP }
     - { name: STEP_DIR, pin: SIM34, dir: out }
+    - { name: KP_R0, pin: SIM65, dir: out, note: 4x4 键盘行 }
+    - { name: KP_R1, pin: SIM66, dir: out, note: 4x4 键盘行 }
+    - { name: KP_R2, pin: SIM67, dir: out, note: 4x4 键盘行 }
+    - { name: KP_R3, pin: SIM68, dir: out, note: 4x4 键盘行 }
+    - { name: KP_C0, pin: SIM69, dir: in, note: 4x4 键盘列 }
+    - { name: KP_C1, pin: SIM70, dir: in, note: 4x4 键盘列 }
+    - { name: KP_C2, pin: SIM71, dir: in, note: 4x4 键盘列 }
+    - { name: KP_C3, pin: SIM72, dir: in, note: 4x4 键盘列 }
     - { name: STEP_EN, pin: SIM35, dir: out, active_low: true, note: 驱动器 EN 低有效 }
     - { name: LINE0, pin: SIM36, dir: in }
     - { name: LINE1, pin: SIM37, dir: in }

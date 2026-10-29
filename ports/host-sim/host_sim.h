@@ -39,6 +39,9 @@ void  host_sim_motor_set_load(int motor, float load_rps);
 /* 观测与注入 */
 bool     host_sim_gpio_level(pal_id_t id);              /**< 物理电平（已考虑 active_low 前的逻辑值） */
 void     host_sim_gpio_set_input(pal_id_t id, bool active);
+/** 输入脚读钩子：设了之后 pal_gpio_read 返回 cb(id, 当前所有 GPIO 逻辑值, ctx)，用来模拟矩阵键盘这类“读数取决于输出脚”的外设。NULL 取消。 */
+typedef bool (*host_sim_gpio_read_cb_t)(pal_id_t id, const bool *gpio, void *ctx);
+void     host_sim_gpio_read_hook(host_sim_gpio_read_cb_t cb, void *ctx);
 uint16_t host_sim_pwm_duty(pal_id_t id);
 void     host_sim_enc_add(pal_id_t id, int32_t counts);
 void     host_sim_adc_set(pal_id_t id, uint16_t raw);
