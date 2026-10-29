@@ -63,3 +63,21 @@ def test_pendulum_rest_is_quantisation_only(home):
         assert max(p) - min(p) <= 0.5, (min(p), max(p))
     finally:
         s.disconnect()
+
+
+def test_line_car_lost_search_recover_blackbox(home):
+    """line_car 1.1.0：被撞偏丢线 → line_obs 判丢（SEARCH=3）→ 朝丢线一侧找回（RUNNING=1）；丢线记黑匣子 BB_EV_LINE_LOST(5)。"""
+    s = Session()
+    s.connect("sim:line_car")
+    try:
+        assert wait(lambda: s.schema and len(s.window(0.5)) > 5, 30)
+        time.sleep(1.0)
+        assert s.window(0.3)[-1][1]["mode"] == 1
+        s.cmd("O", 70)                                   # 往左挪 70 mm：超出 8 路灰度量程（±42 mm）
+        assert wait(lambda: any(v["mode"] == 3 for _, v in s.window(0.5)), 3), "没进入找线"
+        assert wait(lambda: s.window(0.3) and all(v["mode"] == 1 for _, v in s.window(0.3)), 8), "没找回线"
+        recs = s.blackbox()
+        lost = [r for r in recs if r["code"] == 5]
+        assert lost and lost[0]["arg"] == 2, recs        # arg = LINE_OBS_LOST
+    finally:
+        s.disconnect()

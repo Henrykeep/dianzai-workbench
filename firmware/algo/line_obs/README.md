@@ -13,3 +13,7 @@
 
 默认参数 3 / 4 / 10 / 12000 ms 来自 DS-land-and-air（2026 电赛 D 题省一车）的实车值，[仿真] 本仓库只做了模型测试
 （tests/host/test_ctrlparts.c `line_obs_recover_and_timeout`）。来源见 docs/参考来源.md。
+
+## 用法示例
+
+`apps/line_car/app_main.c`（1.1.0）：`line_obs_update` 每 5 ms 一拍；LOST 时朝 `line_obs_dir` 原地转、方向为 0 时左右扫；`line_obs_just_lost` → 写黑匣子 `BB_EV_LINE_LOST`。

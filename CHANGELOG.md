@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] line_car 1.1.0 接 `algo/line_obs`：丢线不再立刻停车，遥测 mode 新增 SEARCH(3)，朝最后看到线的一侧原地找线（正前方突然丢 → 原地左右扫、每段 300·k ms 加大），10 拍稳定找回，12 s 没找回 → 停车锁存（'R' 解急停或 'L' 复位）；新参数 `v_search`；每次丢线/失败写黑匣子 `BB_EV_LINE_LOST`（arg = 阶段，a = 最后线位置，b = 累计次数）。`apps/include/link_app.h` 加可选 `L.bb`：所有 link_app 应用设上就能被上位机“导出黑匣子”。测试 `test_line_car_lost_search_recover_blackbox`（撞偏 70 mm → 找回 + 黑匣子有记录）
 - [仿真] 掉电保存：pal 1.5.0 可选存储接口 `pal_nvm_info/erase/write/read`（没有 → DZ_ENOTSUP）；host-sim 2.4.0 8 KB NOR 模拟（不随复位清，`DZ_SIM_NVM` 落盘，故障注入）；新增 `framework/persist` 1.0.0（双 bank 追加写键值区：CRC、掉电不坏旧值、同值不写、满了才擦；连续失败自动停用；黑匣子冻结区适配 `persist_bb_store`）和 `drivers/nvm_pal` 1.0.0（把板上存储切成黑匣子区 + 参数区）。测试：500 次保存只擦 18 页次、复位后参数和黑匣子都在、flash 坏了不挡运行。[未做] MSPM0/F4/CubeMX 片内 flash 实现（目前返回 DZ_ENOTSUP），应用还没接“保存参数”。
 - [仿真] 新增 `proto/peerlink` 1.0.0 两车状态链路（STATE 0x70 里程/速度/位姿/标志，ABORT 0x71 三帧中止锁存；丢重复/乱序/坏长度，stale 超时）和 `algo/follow` 1.0.0 跟车间距控制（太近立停、断链按减速度停、限幅限加速）。思路来自 DS-land-and-air 的 LoRa 联调规范。双车模型测试：稳态间距 0.5 m、断链 0.5 s 不撞、领车中止停车。
 - [仿真] 新增 `algo/line_obs` 1.0.0 丢线观测与找线恢复（TRACK/WIDE/LOST/FAIL，全白确认 3 拍、最近 4 帧定找线方向、10 拍稳定找回、12 s 超时锁存停车），默认参数与思路来自 DS-land-and-air；横向偏差模型测试“急弯甩线能找回 / 不找则超时失败”。

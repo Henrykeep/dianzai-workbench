@@ -1,7 +1,7 @@
 # 仿真被控对象：循线小车。8 路数字灰度 → 线位置 PD → 两轮速度差；内环两轮速度 PI（同 car_2wd 的轮速环）。
 name: line_car
-version: 1.0.0
-description: 两轮差速循线：8 路灰度 + 双编码器，外环线位置 PD、内环轮速 PI，丢线停车
+version: 1.1.0
+description: 两轮差速循线：8 路灰度 + 双编码器，外环线位置 PD、内环轮速 PI，丢线按 line_obs 原地找线、超时停车、记黑匣子
 requires:
   gpio: [MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2, LINE0, LINE1, LINE2, LINE3, LINE4, LINE5, LINE6, LINE7]
   pwm: [MOTOR_A, MOTOR_B]
@@ -20,7 +20,7 @@ link:
       - { name: spd_a,     type: float, unit: rps }
       - { name: sp_b,      type: float, unit: rps, ref_for: spd_b }
       - { name: spd_b,     type: float, unit: rps }
-      - { name: mode,      type: uint8, enum: [LOST, RUNNING, ESTOP], pin: 循线 }
+      - { name: mode,      type: uint8, enum: [LOST, RUNNING, ESTOP, SEARCH], pin: 循线 }
   # 串级分层（内环在前）：界面台账“层”下拉按这个切，读数/台账/参数筛选跟着换。调法见 docs/30
   loops:
     - { name: 轮速, y: spd_a, gains: [kp, ki], note: 内环；左右轮同参，看 spd_a }
@@ -34,3 +34,4 @@ link:
     - { name: kd_line, type: float, default: 0.0,  min: 0,  max: 0.05, desc: 线位置微分（每 mm/s） }
     - { name: kp,      type: float, default: 0.08, min: 0,  max: 2,   desc: 轮速 PI }
     - { name: ki,      type: float, default: 1.5,  min: 0,  max: 20 }
+    - { name: v_search, type: float, default: 1.0, min: 0, max: 4, unit: rps, desc: 丢线找线时的轮速 }

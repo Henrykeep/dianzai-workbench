@@ -8,6 +8,7 @@
  *   link_app_init(&L, apply_params, on_cmd);          // 回调可为 NULL
  *   app_loop: if (link_app_poll(&L, now)) { link_telem_t t = {...}; link_app_send_telem(&L, &t); }
  *   急停：L.estop 为 true 时应用必须让输出归零（控制中断里读）。
+ *   黑匣子：L.bb = &my_bb（可选）后，上位机“导出黑匣子”（DATA 0x7D len=0）由这里统一回 BB 帧。
  *   设定值约定：上位机 DATA id=1 = 1..4 个 f32 设定值（工作台阶跃 / 扫频实验就发它），存到 L.sp[]，L.sp_ms 为收到时刻。
  */
 #ifndef LINK_APP_H
@@ -18,16 +19,18 @@
 #include "dzctl.h"
 #include "link_gen.h"
 #include "dz_compiler.h"
+#include "blackbox.h"
 
 typedef struct {
     dzframe_parser_t rx;
     dzctl_wd_t wd;
     uint32_t last_tx, last_hb;
-    uint8_t seq;
+    uint8_t seq, bb_seq;
     volatile bool estop;
     volatile float sp[4];
     volatile uint32_t sp_ms;
     void (*on_params)(void);
+    const bb_t *bb;                         /**< 可选：非 NULL 时响应黑匣子导出请求 */
     void (*on_cmd)(uint8_t c, uint8_t n);   /**< 'R' 以外的单字节命令；n = 第二字节（没有为 0） */
 } link_app_t;
 
@@ -42,7 +45,7 @@ static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*
     L->last_tx = 0; L->last_hb = 0u - 500u; /* 复位后第一拍就发心跳（带 schema 哈希） */
     L->seq = 0; L->estop = false; L->sp_ms = 0;
     for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
-    L->on_params = on_params; L->on_cmd = on_cmd;
+    L->on_params = on_params; L->on_cmd = on_cmd; L->bb = 0;
 }
 
 static inline void link_app_send(const dzframe_t *f)
@@ -63,6 +66,13 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
             if (!dzframe_feed(&L->rx, buf[i], &f)) continue;
             dzctl_wd_feed(&L->wd, &f, now);
             if (dzctl_is_estop(&f)) L->estop = true;
+            else if (dzctl_is_bb_request(&f)) {
+                for (uint16_t k = 0; L->bb && k < bb_count(L->bb); k++) {
+                    const bb_rec_t *r = bb_get(L->bb, k);
+                    dzctl_bb_frame(r->t_ms, r->code, r->arg, r->a, r->b, L->bb_seq++, &ack);
+                    link_app_send(&ack);
+                }
+            }
             else if (dzctl_handle(&t, &f, &ack)) { if (L->on_params) L->on_params(); link_app_send(&ack); }
             else if (f.kind == DZF_DATA && f.id == 1u && f.len >= 4u && f.len % 4u == 0u) {
                 for (unsigned k = 0; k < 4u && 4u * k < f.len; k++) L->sp[k] = dzframe_get_f32(&f, 4u * k);

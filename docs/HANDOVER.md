@@ -77,7 +77,7 @@
 - 心跳 status 字（dzctl 0.5.0）：应用在 app_init 里 `dzctl_set_reset_cause(pal_reset_cause())`，安全态/堵转/急停用 `dzctl_set_flags`；car_2wd 是范例。侧车 `hb_status_event` 决定哪些进时间线。
 - 掉电保存：`framework/persist` + `drivers/nvm_pal`；硬件 port 的 pal_nvm 还是 DZ_ENOTSUP（要在链接脚本留扇区），car_2wd 还没接“保存参数/黑匣子冻结”。
 - 跟车：`proto/peerlink`（帧）+ `algo/follow`（控制），还没有应用接（D 类例题接）。
-- 丢线恢复 `algo/line_obs`：还没接进 line_car（跟车/循迹例题接）。
+- 丢线恢复 `algo/line_obs`：已接进 line_car 1.1.0（找线 + 黑匣子）；找线速度/扫幅只在仿真里调过，真车 [未测]。
 - 安全通用件 `framework/safety`：新应用照 car_2wd 或 2026H_ball/io/io_safety.c 接（init/boot/update/clear 四个调用 + 心跳标志 + 0x7D 导出）。黑匣子只有 RAM 环。
 - MSPM0 看门狗：WWDT0，`wwdt_calc.h` 档位粗；复位原因映射【编译】未上板核实。
 
