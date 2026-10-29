@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [未测] docs/26：改为 17 条设计原则、v3 审计和 v4 原则→决定映射（只改文档，应用代码未动）
 
 ## [0.11.0] - 2026-10-29 通用仿真对象、界面改版、评测 13 例、MSPM0 走查
 - [编译] MSPM0 走查：干净克隆里 `make BOARD=mspm0g3507-* gen` 因缺 SDK 退出、没生成 link_gen.c，CCS 导入 projectspec 会缺文件 → gen / vars 不再要求 SDK。DFP 包能被 pyOCD 识别出 mspm0g3507【离线】；CCS 导入 / 真烧【未测】。走查表见 docs/15。
