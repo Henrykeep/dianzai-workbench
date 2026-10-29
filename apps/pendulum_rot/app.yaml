@@ -1,0 +1,28 @@
+# 仿真被控对象：旋转倒立摆（Furuta 摆）。不稳定对象——没有开环实验，只做闭环阶跃（摆杆角设定）。
+# 状态反馈 u = k_al·α + k_ald·α' + k_th·(θ−θsp) + k_thd·θ'（弧度制；θ 项同号是非最小相位对象的特点）。
+name: pendulum_rot
+version: 1.0.0
+description: 旋转倒立摆：摆臂电机 + 摆臂 / 摆杆双编码器，平衡 + 摆臂定位（起摆未实现）
+requires:
+  gpio: [MOTOR_A_IN1, MOTOR_A_IN2]
+  pwm: [MOTOR_A]
+  encoder: [MOTOR_A, MOTOR_B]
+  uart: [LINK]
+  timer: [CTRL]
+link:
+  telemetry:
+    id: 2
+    period_ms: 10
+    fields:
+      - { name: t_ms,       type: uint32, unit: ms }
+      - { name: sp_arm_deg, type: float, unit: deg }
+      - { name: arm_deg,    type: float, unit: deg }
+      - { name: pend_deg,   type: float, unit: deg }
+      - { name: u,          type: float }
+      - { name: mode,       type: uint8, enum: [FALLEN, RUNNING, ESTOP], pin: 平衡 }
+  params:
+    - { name: k_al,     type: float, default: 0.8,  min: 0, max: 5,   desc: 摆角增益（每弧度占空比，仿真起步值） }
+    - { name: k_ald,    type: float, default: 0.07, min: 0, max: 0.5, desc: 摆角速度增益 }
+    - { name: k_th,     type: float, default: 0.08, min: 0, max: 1,   desc: 摆臂角增益 }
+    - { name: k_thd,    type: float, default: 0.08, min: 0, max: 1,   desc: 摆臂角速度增益 }
+    - { name: fall_deg, type: float, default: 25,   min: 5, max: 45,  unit: deg, desc: 超过就判倒下、输出归零 }

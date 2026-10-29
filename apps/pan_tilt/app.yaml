@@ -1,0 +1,29 @@
+# 仿真被控对象：视觉云台跟踪。相机经 VISION 串口发目标像素误差（通用帧，见 app_main.c），两路舵机转云台把目标拉到瞄准点。
+# 视觉链路有延迟、丢帧、断流（HELD / LOST），云台在 LOST 时保持不动。
+name: pan_tilt
+version: 1.0.0
+description: 二轴舵机云台 + 相机目标跟踪（像素误差 PI，视觉时效判定）
+requires:
+  pwm: [SERVO_X, SERVO_Y]
+  uart: [LINK, VISION]
+  timer: [CTRL]
+link:
+  telemetry:
+    id: 2
+    period_ms: 20
+    fields:
+      - { name: t_ms,      type: uint32, unit: ms }
+      - { name: aim_x_px,  type: float, unit: px }
+      - { name: tgt_x_px,  type: float, unit: px }
+      - { name: tgt_y_px,  type: float, unit: px }
+      - { name: pan_deg,   type: float, unit: deg }
+      - { name: tilt_deg,  type: float, unit: deg }
+      - { name: vis_state, type: uint8, enum: [LOST, HELD, VALID], pin: 视觉, pin_with: [vis_age_ms, vis_drops] }
+      - { name: vis_age_ms, type: uint32, unit: ms }
+      - { name: vis_drops, type: uint32 }
+  params:
+    - { name: kp,         type: float,  default: 0.5,  min: 0,  max: 1.5, desc: 每帧把误差角的多少比例补上（1 = 一步到位，延迟大时会振） }
+    - { name: ki,         type: float,  default: 0.0,  min: 0,  max: 0.5 }
+    - { name: px_per_deg, type: float,  default: 10,   min: 1,  max: 50,  unit: px/deg, desc: 相机标定（320 px / 32° 视场） }
+    - { name: hold_ms,    type: uint32, default: 100,  min: 20, max: 1000, unit: ms, desc: 超过就 HELD（沿用上一帧） }
+    - { name: lost_ms,    type: uint32, default: 500,  min: 50, max: 5000, unit: ms, desc: 超过就 LOST（云台停住） }

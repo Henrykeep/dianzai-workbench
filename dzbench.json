@@ -67,6 +67,87 @@
         "kp": "pos_k",
         "ki": "ball_ki"
       }
+    },
+    "motor_pos": {
+      "kind": "data",
+      "id": 1,
+      "fmt": "<f",
+      "low": [
+        0
+      ],
+      "high": [
+        90
+      ],
+      "pre_s": 0.5,
+      "hold_s": 1.5,
+      "y": "pos_deg",
+      "sp": "sp_deg",
+      "_doc": "电机位置环：DATA id=1 = 位置设定（f32 度）；0 → 90°。仿真电机是一阶模型",
+      "gains": {
+        "kp": "kp",
+        "ki": "ki",
+        "kd": "kd"
+      }
+    },
+    "pendulum_rot": {
+      "kind": "data",
+      "id": 1,
+      "fmt": "<f",
+      "low": [
+        0
+      ],
+      "high": [
+        30
+      ],
+      "pre_s": 1.0,
+      "hold_s": 3.0,
+      "y": "arm_deg",
+      "sp": "sp_arm_deg",
+      "_doc": "旋转倒立摆：DATA id=1 = 摆臂角设定（f32 度）；平衡状态下 0 → 30°。不稳定对象，没有开环实验。仿真是近似模型",
+      "gains": {
+        "kp": "k_th",
+        "kd": "k_thd"
+      }
+    },
+    "pan_tilt": {
+      "kind": "data",
+      "id": 1,
+      "fmt": "<f",
+      "low": [
+        0
+      ],
+      "high": [
+        40
+      ],
+      "pre_s": 1.0,
+      "hold_s": 2.0,
+      "y": "tgt_x_px",
+      "sp": "aim_x_px",
+      "_doc": "视觉云台：DATA id=1 = 瞄准点 x（f32 px）；0 → 40 px，看目标像素多快被拉到瞄准点。仿真相机 30 fps、延迟 50 ms",
+      "gains": {
+        "kp": "kp",
+        "ki": "ki"
+      }
+    },
+    "line_car": {
+      "kind": "data",
+      "id": 1,
+      "fmt": "<f",
+      "low": [
+        0
+      ],
+      "high": [
+        12
+      ],
+      "pre_s": 1.0,
+      "hold_s": 2.0,
+      "y": "line_mm",
+      "sp": "line_sp_mm",
+      "_doc": "循线：DATA id=1 = 线位置设定（f32 mm）；0 → 12 mm（让车偏一个探头间距跑）。8 路数字灰度量化 12 mm，指标按此看。仿真赛道是正弦线",
+      "gains": {
+        "kp": "kp_line",
+        "kd": "kd_line"
+      }
     }
   }
 }

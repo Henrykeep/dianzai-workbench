@@ -310,15 +310,29 @@ class AgentService:
         return out
 
     def step_cfg(self) -> dict | None:
-        """按对象选阶跃实验配置：dzbench.json 的 step_test（单个或列表）+ step_tests（按工程名的字典），
-        取第一个 y/sp 两个通道都在当前遥测里的；还没识别出 schema 时取第一个。"""
+        """按对象选阶跃实验配置：dzbench.json 的 step_test（单个或列表，优先）+ step_tests（按工程名的字典）。
+        只考虑 y/sp 两个通道都在当前遥测里的；多个都符合时（例如好几个对象都有 sp_a/spd_a）不靠顺序猜：
+        step_test > 名字等于当前仿真应用的 step_tests 项 > gains 里的参数在板上都存在的 > 先出现的。
+        还没识别出 schema 时取第一个。"""
         st = self.cfg.get("step_test")
-        cands = (st if isinstance(st, list) else [st] if st else []) + list((self.cfg.get("step_tests") or {}).values())
+        cands = [(200, c) for c in (st if isinstance(st, list) else [st] if st else [])]
+        app = (getattr(self.s, "port", "") or "").split(":", 1)[-1].split("+")[0] if str(getattr(self.s, "port", "")).startswith("sim:") else ""
+        cands += [(100 if k == app else 0, c) for k, c in (self.cfg.get("step_tests") or {}).items()]
         fields = {f["name"] for f in self.s.schema.fields} if self.s.schema else set()
-        for c in cands:
-            if isinstance(c, dict) and (not fields or (c.get("y") in fields and c.get("sp") in fields)):
+        params = {p["name"] for p in self.s.schema.params} if self.s.schema else set()
+        best, best_sc = None, -1
+        for pri, c in cands:
+            if not isinstance(c, dict):
+                continue
+            if not fields:
                 return c
-        return None
+            if c.get("y") not in fields or c.get("sp") not in fields:
+                continue
+            g = list((c.get("gains") or {}).values())
+            sc = pri + (10 if g and all(x in params for x in g) else 0)
+            if sc > best_sc:
+                best, best_sc = c, sc
+        return best
 
     START_CMDS = ("T", "P", "G", "S")     # 'R' 不在里面：它同时是“解除急停”，Agent/自动实验永远不发
 
