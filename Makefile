@@ -128,7 +128,9 @@ SERIES_U := $(shell echo $(SERIES) | tr a-z A-Z)
 CUBE_HAL ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/STM32$(SERIES_U)xx_HAL_Driver third_party/stm32$(SERIES)xx-hal-driver))
 CUBE_DEV ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/Device/ST/STM32$(SERIES_U)xx third_party/cmsis-device-$(SERIES)))
 CMSIS   ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/Include) third_party/CMSIS_5/CMSIS/Core/Include)
-ifeq ($(CUBE_HAL),)
+# vars / gen 不需要 HAL（keil_inject 只要模块清单；Keil 工程自带 HAL）：没 HAL 时只在真编译时报错
+ifeq ($(CUBE_HAL)$(filter-out vars gen,$(or $(MAKECMDGOALS),all)),)
+else ifeq ($(CUBE_HAL),)
 $(error 找不到 STM32$(SERIES_U) HAL：在 CubeMX 里 Project Manager > Code Generator 选 "Copy all used libraries"，或设置 CUBE_HAL/CUBE_DEV)
 endif
 MCU     := $(BOARD_CPU)
@@ -280,7 +282,7 @@ check:
 	$(PY) tools/ioc_import.py --selftest
 	$(PY) tools/test_ioc_import.py
 	$(PY) tools/keil_inject.py --selftest
-	$(PY) tools/test_keil_inject.py
+	CUBE_HAL= $(PY) tools/test_keil_inject.py   # 故意不给 HAL：CI 上没有 third_party，本地也按同样条件测
 	$(PY) tools/test_module_ide.py
 	$(PY) tools/test_mspm0_board.py
 	$(PY) tools/test_new_subsys.py
