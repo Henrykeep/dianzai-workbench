@@ -211,3 +211,13 @@ def test_agent_evals_offline_sim_2026h(home):
     assert [r["id"] for r in res if not r["ok"]] == [], [(r["id"], r["why"]) for r in res if not r["ok"]]
     tune = next(r for r in res if r["id"] == "one_gain_per_round")
     assert "pos_k" in tune["text"] and "chassis_kp" not in tune["text"]
+
+
+def test_step_in_window_is_pure_data():
+    """评测等阶跃用板子时间判定：没跳变 / 刚跳 / 保持够久。"""
+    from dzbench.agent.evals import step_in_window
+    mk = lambda pts: [(t, {"sp": v}) for t, v in pts]
+    assert not step_in_window(mk([(i * 0.1, 0.0) for i in range(30)]), "sp", 1.0)
+    assert not step_in_window(mk([(i * 0.1, 0.0 if i < 25 else 2.0) for i in range(30)]), "sp", 1.0)
+    assert step_in_window(mk([(i * 0.1, 0.0 if i < 10 else 2.0) for i in range(30)]), "sp", 1.0)
+    assert step_in_window(mk([(i * 0.1, 5.0 if i < 10 else -1.0) for i in range(30)]), "sp", 1.0)

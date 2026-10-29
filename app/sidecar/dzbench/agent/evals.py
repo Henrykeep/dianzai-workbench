@@ -42,6 +42,36 @@ def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
 
 
 # ---------------------------------------------------------------- 在仿真板上真跑评测集
+def step_in_window(w: list, sp: str, hold_s: float) -> bool:
+    """窗口里（板子时间）设定值先在一个水平、后跳到另一水平并已保持 hold_s = 阶跃已完整录下。
+    纯数据判定（不看墙钟，也不假设遥测单位和 step_test.high 一致）。"""
+    xs = [(t, float(v[sp])) for t, v in w if sp in v]
+    if len(xs) < 3:
+        return False
+    lo, hi = min(v for _, v in xs), max(v for _, v in xs)
+    if hi - lo <= 1e-9 * max(1.0, abs(hi)):
+        return False
+    mid, first_low = (lo + hi) / 2, xs[0][1] < (lo + hi) / 2
+    k = next((i for i in range(1, len(xs)) if (xs[i][1] >= mid) == first_low and (xs[i - 1][1] >= mid) != first_low), None)
+    return k is not None and xs[-1][0] - xs[k][0] >= hold_s
+
+
+def wait_step_in_window(s, st: dict, hold_s: float, timeout: float = 60.0) -> None:
+    """等仿真板（按它自己的板子时间）把整段阶跃录进最近 4 s 窗口；机器忙、仿真跑慢也只是等久一点，不会提前开问。
+    以前是固定 sleep，preflight 满载时偶发“没找到设定值阶跃”。"""
+    import time
+    sp = st.get("sp")
+    if not sp:
+        time.sleep(float(st.get("pre_s", 0.6)) + 0.8 + hold_s)
+        return
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < timeout:
+        if step_in_window(s.window(4.0), sp, hold_s):
+            return
+        time.sleep(0.05)
+    raise TimeoutError(f"{timeout:g} s 内仿真板没录到完整阶跃（{sp}）")
+
+
 def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | None = None, log=print) -> list[dict]:
     """连仿真板，每个用例前给一次设定值阶跃（后台一直发，防断线停车），用 AgentService 真跑一轮对话再打分。
 
@@ -79,7 +109,7 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
             if st:
                 svc.step_start(st)
                 th.start()
-                time.sleep(float(st.get("pre_s", 0.6)) + 0.8 + min(float(st.get("hold_s", 1.5)), 3.0))
+                wait_step_in_window(s, st, min(float(st.get("hold_s", 1.5)), 3.0))
             svc.set_mode(case.get("workmode", "general"))
             port0 = s.port
             if case.get("as_hw") and not (s.port or "").endswith("+hw"):
