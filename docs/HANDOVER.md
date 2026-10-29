@@ -73,7 +73,7 @@
 ### 保护表 / 告警条 / 赛前检查（2026-10-29，UTC+8）
 - 保护表：app.yaml 参数加 `protect:` 分类、`protect_fixed:` 列编译期常量（都不进 schema 哈希）；界面 `protect.ts`，撤销栈 UndoLog 只记“保护”页下发。堵转电流行没有——algo/stall 还没接进任何 app。
 - 告警条：`alerts.ts`；确认位置存侧车 `Timeline.acked`（op alert_ack，广播同步多窗口）。
-- 赛前检查：`precontest.py`；判定项加在 board_items，人工项改 MANUAL 列表；“哪些路径算固件”改 FW_PATHS。
+- 赛前检查：`precontest.py`；判定项加在 board_items，人工项改 MANUAL 列表；“哪些路径算固件”改 FW_PATHS（tools/ 只算 gen_* / boardlib / families / syscfg_gen.sh 这些生成代码的）。
 - 心跳 status 字（dzctl 0.5.0）：应用在 app_init 里 `dzctl_set_reset_cause(pal_reset_cause())`，安全态/堵转/急停用 `dzctl_set_flags`；car_2wd 是范例。侧车 `hb_status_event` 决定哪些进时间线。
 - 安全通用件 `framework/safety`：新应用照 car_2wd 或 2026H_ball/io/io_safety.c 接（init/boot/update/clear 四个调用 + 心跳标志 + 0x7D 导出）。黑匣子只有 RAM 环。
 - MSPM0 看门狗：WWDT0，`wwdt_calc.h` 档位粗；复位原因映射【编译】未上板核实。

@@ -79,6 +79,17 @@ def test_fw_item_relaxed_vs_strict(tmp_path):
     assert precontest.fw_item(None, r)["level"] == "warn"
 
 
+def test_fw_item_tools_only_generators(tmp_path):
+    g, rev = _repo(tmp_path)
+    r = str(tmp_path)
+    (tmp_path / "tools").mkdir()
+    (tmp_path / "tools" / "check_x.py").write_text("1", encoding="utf-8")
+    assert precontest.fw_item(rev, r)["level"] == "ok"                       # 检查脚本：不影响固件
+    (tmp_path / "tools" / "gen_board.py").write_text("1", encoding="utf-8")
+    it = precontest.fw_item(rev, r)
+    assert it["level"] == "fail" and "tools/gen_board.py" in it["msg"]       # 代码生成器：影响
+
+
 @pytest.mark.needs_sim
 def test_sim_blackbox(home):
     from dzbench.session import Session

@@ -30,7 +30,10 @@ def _git(repo: str, *args: str) -> str | None:
 
 
 # 会进固件二进制的路径：这些自烧录那次提交以来没变 = 板上固件就是现在的源码（只改文档/上位机不算）
-FW_PATHS = ("firmware", "ports", "apps", "boards", "examples", "third_party", "tools", "Makefile", "mk")
+# 会改变烧进去的固件的路径。tools/ 只算构建时生成代码的那几个（gen_* 生成 board_gen/project_gen/link/协处理器头，
+# boardlib/families 是它们的库，syscfg_gen.sh 生成 MSPM0 引脚）；检查/测试/报告脚本改了不影响板上固件。
+FW_PATHS = ("firmware", "ports", "apps", "boards", "examples", "third_party", "Makefile", "mk",
+            "tools/gen_*", "tools/boardlib.py", "tools/families", "tools/syscfg_gen.sh")
 
 
 def fw_item(rev: int | None, repo: str | None, strict: bool = False) -> dict:
@@ -44,13 +47,14 @@ def fw_item(rev: int | None, repo: str | None, strict: bool = False) -> dict:
     head = _git(repo, "rev-parse", "--short=7", "HEAD") if repo else None
     if head is None:
         return _it("fw_rev", name, "warn", f"板上 {h}，读不到仓库 HEAD", "")
-    if head.startswith(h):
-        return _it("fw_rev", name, "ok", f"板上 {h} = HEAD")
-    if strict:
+    at_head = head.startswith(h)
+    if strict and not at_head:
         return _it("fw_rev", name, "fail", f"板上 {h}，仓库 HEAD {head}", "重新编译烧录 HEAD（严格模式）")
-    if _git(repo, "cat-file", "-e", f"{h}^{{commit}}") is None:
+    if not at_head and _git(repo, "cat-file", "-e", f"{h}^{{commit}}") is None:
         return _it("fw_rev", name, "fail", f"板上 {h} 不在本仓库历史里", "烧的不是这个仓库的固件，重新编译烧录")
-    paths = [p for p in FW_PATHS if (pathlib.Path(repo) / p).exists()]
+    paths = [p for p in FW_PATHS if "*" in p or (pathlib.Path(repo) / p).exists()]
+    if strict:
+        paths = ["."]                                         # 严格：任何未提交改动都算
     # 板上那次提交 ↔ 工作区（含已提交和未提交的改动）+ 没跟踪的新文件
     changed = (_git(repo, "diff", "--name-only", h, "--", *paths) or "").splitlines()
     changed += (_git(repo, "ls-files", "--others", "--exclude-standard", "--", *paths) or "").splitlines()
@@ -58,6 +62,8 @@ def fw_item(rev: int | None, repo: str | None, strict: bool = False) -> dict:
     if changed:
         more = f" 等 {len(changed)} 个" if len(changed) > 3 else ""
         return _it("fw_rev", name, "fail", f"板上 {h} 之后改过固件相关文件：{'、'.join(changed[:3])}{more}", "重新编译烧录")
+    if at_head:
+        return _it("fw_rev", name, "ok", f"板上 {h} = HEAD" + ("，工作区干净" if strict else "，固件相关文件没改"))
     return _it("fw_rev", name, "ok", f"板上 {h}，HEAD {head}：之后只改了文档/上位机")
 
 
