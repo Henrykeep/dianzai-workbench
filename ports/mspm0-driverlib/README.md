@@ -26,3 +26,7 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 - GPIO 中断：.syscfg 里引脚设成输入即可；`pal_gpio_irq_attach` 运行时设 RISE_FALL、开引脚中断和 GROUP1。
   板子有输入脚时 board_gen.c 生成 `GROUP1_IRQHandler`（编码器软件解码 + 边沿中断分发共用）。
 - 【编译】两者都只交叉编译过，未上板。天猛星的 VBAT（PA25 / ADC0 CH2）和 US_TRIG/US_ECHO（PB8/PB9）是我挑的空闲脚，【未验证】未对照原理图。
+
+## 掉电保存（0.7.0）
+
+board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：Flash 末尾，扇区 1 KB，64 位 + 硬件 ECC 编程（DriverLib `*FromRAM`）。不改 SDK 链接脚本，另传 `nvm_guard.ld` 做越界 ASSERT；只有 make 构建带 `-DDZ_NVM_KB`（BOARD_NVM_DEFS）；CCS/Keil 工程不带，pal_nvm_* 返回 ENOTSUP，存参数报“不支持”，不影响开机。[编译]

@@ -673,7 +673,97 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
 }
 
 /* 掉电存储（pal 1.5.0）：本移植层尚未实现（片内 flash 要先在链接脚本里留出扇区），应用退回只用 RAM。 */
+/* ---- 掉电保存（pal 1.5.0）：board.yaml mcu.nvm_kb > 0 才有（gen_board 传 -DDZ_NVM_KB）；否则 DZ_ENOTSUP ----
+ * F1：Flash 末尾 nvm_kb，页 1 KB（≥256 KB 型号 2 KB），按半字编程。
+ * F4：扇区 1..3（各 16 KB，0x08004000 起；链接脚本让 .text 跳过），按字编程，VoltageRange 3（2.7–3.6 V）。
+ * 擦除期间 CPU 取指停顿（F1 页 ~20 ms，F4 16 KB 扇区 ~0.3 s）：应用只在停车/急停时写。
+ * 运行时再核对一次程序没伸进保存区（IDE 工程用了别的链接脚本时）：重叠 → 永远 DZ_ENOTSUP，绝不擦到代码。 */
+#if defined(DZ_NVM_KB) && DZ_NVM_KB > 0 && (defined(STM32F1) || defined(STM32F4))
+extern uint32_t _sidata, _sdata, _edata;
+#if defined(STM32F4)
+#define NVM_BASE 0x08004000u
+#define NVM_UNIT 0x4000u
+#else
+#define NVM_BASE (0x08000000u + (DZ_FLASH_KB - DZ_NVM_KB) * 1024u)
+#define NVM_UNIT (DZ_FLASH_KB >= 256u ? 2048u : 1024u)
+#endif
+#define NVM_SIZE (DZ_NVM_KB * 1024u)
+static int8_t s_nvm_ok = -1;
+static bool nvm_ok(void)
+{
+    if (s_nvm_ok < 0) {
+        uint32_t img_end = (uint32_t)&_sidata + (uint32_t)((uint8_t *)&_edata - (uint8_t *)&_sdata);
+        uint32_t code = (uint32_t)(uintptr_t)&nvm_ok;
+        bool overlap = (code >= NVM_BASE && code < NVM_BASE + NVM_SIZE) || (img_end > NVM_BASE && (uint32_t)&_sidata < NVM_BASE + NVM_SIZE);
+#if defined(STM32F4)
+        overlap = overlap || code < NVM_BASE + NVM_SIZE || (DZ_NVM_KB != 32u && DZ_NVM_KB != 48u);
+#endif
+        s_nvm_ok = (!overlap && NVM_SIZE % NVM_UNIT == 0u) ? 1 : 0;
+    }
+    return s_nvm_ok == 1;
+}
+static bool nvm_range(uint32_t off, uint32_t n) { return off <= NVM_SIZE && n <= NVM_SIZE - off; }
+
+dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit)
+{
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (size) *size = NVM_SIZE;
+    if (erase_unit) *erase_unit = NVM_UNIT;
+    return DZ_OK;
+}
+
+dz_err_t pal_nvm_erase(uint32_t off, uint32_t n)
+{
+    FLASH_EraseInitTypeDef ei = { 0 };
+    uint32_t bad = 0;
+    HAL_StatusTypeDef st;
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (!nvm_range(off, n) || off % NVM_UNIT || n % NVM_UNIT || !n) return DZ_EINVAL;
+#if defined(STM32F4)
+    ei.TypeErase = FLASH_TYPEERASE_SECTORS; ei.Sector = 1u + off / NVM_UNIT; ei.NbSectors = n / NVM_UNIT;
+    ei.VoltageRange = FLASH_VOLTAGE_RANGE_3;
+#else
+    ei.TypeErase = FLASH_TYPEERASE_PAGES; ei.PageAddress = NVM_BASE + off; ei.NbPages = n / NVM_UNIT;
+#endif
+    if (HAL_FLASH_Unlock() != HAL_OK) return DZ_EIO;
+    st = HAL_FLASHEx_Erase(&ei, &bad);
+    (void)HAL_FLASH_Lock();
+    return st == HAL_OK ? DZ_OK : DZ_EIO;
+}
+
+dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n)
+{
+    const uint8_t *b = p;
+    dz_err_t rc = DZ_OK;
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (!p || !nvm_range(off, n) || off % 8u || n % 8u) return DZ_EINVAL;
+    if (HAL_FLASH_Unlock() != HAL_OK) return DZ_EIO;
+#if defined(STM32F4)
+    for (uint32_t i = 0; i < n && rc == DZ_OK; i += 4u) {
+        uint32_t w; memcpy(&w, b + i, 4);
+        if (w != 0xFFFFFFFFu && HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, NVM_BASE + off + i, w) != HAL_OK) rc = DZ_EIO;
+    }
+#else
+    for (uint32_t i = 0; i < n && rc == DZ_OK; i += 2u) {
+        uint16_t h; memcpy(&h, b + i, 2);
+        if (h != 0xFFFFu && HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD, NVM_BASE + off + i, h) != HAL_OK) rc = DZ_EIO;
+    }
+#endif
+    (void)HAL_FLASH_Lock();
+    if (rc == DZ_OK && memcmp((const void *)(uintptr_t)(NVM_BASE + off), p, n) != 0) rc = DZ_EIO;   /* 回读校验 */
+    return rc;
+}
+
+dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n)
+{
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (!p || !nvm_range(off, n)) return DZ_EINVAL;
+    memcpy(p, (const void *)(uintptr_t)(NVM_BASE + off), n);
+    return DZ_OK;
+}
+#else
 dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit) { (void)size; (void)erase_unit; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_erase(uint32_t off, uint32_t n) { (void)off; (void)n; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
+#endif

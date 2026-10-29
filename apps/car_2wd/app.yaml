@@ -1,7 +1,7 @@
 # 验收用例“只改引脚”：同一份代码在 F103C8T6 / F407(天空星) / MSPM0G3507 / 电脑仿真上编译，
 # 换板 = 换 BOARD=xxx，只有各板 board.yaml 不同。LED 是可选资源（有就闪，没有不影响）。
 name: car_2wd
-version: 1.2.0
+version: 1.3.0
 description: 两轮差速小车底盘：TB6612 双电机 + 双编码器速度闭环 + dzframe 串口遥测/指令
 requires:
   gpio: [MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2]

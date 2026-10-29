@@ -607,7 +607,7 @@ class Session:
 
 
 ID_BB = 0x7D
-BB_NAMES = {1: "上电", 2: "堵转", 3: "急停", 4: "人工解除", 5: "丢线"}
+BB_NAMES = {1: "上电", 2: "堵转", 3: "急停", 4: "人工解除", 5: "丢线", 6: "参数存 flash", 7: "上电读参数", 8: "上次运行记录"}
 
 
 def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
@@ -620,6 +620,12 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
         text = "人工解除" + (f"（之前堵转通道位图 {arg:#x}）" if arg else "")
     elif code == 5:
         text = f"丢线（阶段 {arg}，最后线位置 {a:.3g}）"
+    elif code == 6:
+        text = "参数已存进 flash" if arg == 0 else f"参数存 flash 失败（错误 {arg}）"
+    elif code == 7:
+        text = "上电读参数：" + {0: "用了 flash 里存的", 1: "没存过，用默认值", 2: "结构变了或越界，用默认值", 3: "这块板没有存储，用默认值"}.get(arg, f"#{arg}")
+    elif code == 8:
+        text = f"——以下 {arg} 条是上次运行冻结的记录——"
     else:
         text = f"{BB_NAMES.get(code, f'应用事件 {code:#x}')} arg={arg} a={a:.3g} b={b:.3g}"
     return {"t_ms": t_ms, "code": code, "arg": arg, "a": a, "b": b, "text": text}

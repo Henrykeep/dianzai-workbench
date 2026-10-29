@@ -33,6 +33,8 @@
 #include "car_aux.h"
 #include "safety.h"
 #include "blackbox.h"
+#include "persist.h"
+#include "nvm_pal.h"
 
 /* ---- 机械参数：换电机/轮子改这里 ---- */
 #define CTRL_PERIOD_US   1000u
@@ -57,6 +59,15 @@ static volatile bool s_gains_dirty;
 static safety_t s_safe;
 static bb_t s_bb;
 static bb_rec_t s_bb_ring[32];
+/* 掉电保存（板子 board.yaml mcu.nvm_kb > 0 才有；没有/坏了 → 全部照常跑，只是不保存） */
+#define KEY_PARAMS 1u
+#define KEY_BB     2u
+static persist_flash_t s_nvf;
+static persist_kv_t s_kv;
+static persist_kvbb_t s_kvbb;
+static bb_store_t s_bbst;
+static bool s_have_kv;
+static volatile bool s_save_req;
 #if defined(RES_ADC_ISENSE_A) && defined(RES_ADC_ISENSE_B)
 #define HAVE_ISENSE 1
 static volatile float s_amp[2];   /* 主循环采样换算（ADC 不放进 1 kHz 中断） */
@@ -128,17 +139,60 @@ static dz_err_t wheel_init(wheel_t *w, pal_id_t pwm, pal_id_t in1, pal_id_t in2,
     return pid_init(&w->pid, &pc);
 }
 
+/* 上电读参数：结构哈希对得上、每个值都在 app.yaml 范围内才用；否则全部用默认值。返回 BB_EV_PARAM_LOAD 的 arg。 */
+static uint16_t load_params(void)
+{
+    link_params_t tmp;
+    uint16_t n0 = 0;
+    if (!s_have_kv) return 3u;
+    dz_err_t rc = persist_blob_load(&s_kv, KEY_PARAMS, LINK_SCHEMA_HASH, &tmp, (uint16_t)sizeof tmp);
+    if (rc != DZ_OK) return rc == DZ_EFAIL && persist_kv_get(&s_kv, KEY_PARAMS, &tmp, 0u, &n0) == DZ_EFAIL ? 1u : 2u;
+    dzctl_table_t src = link_param_table(&tmp), dst = link_param_table(&g_link_params);
+    for (uint8_t i = 0; i < src.n; i++) {
+        float v;
+        if (dzctl_set(&dst, i, dzctl_get(&src, i), &v) != DZCTL_OK) { g_link_params = g_link_params_default; return 2u; }
+    }
+    return 0u;
+}
+
+static uint16_t nvm_boot(void)
+{
+    s_have_kv = nvm_pal_layout(&s_nvf, NULL, 0u) == DZ_OK && persist_kv_init(&s_kv, &s_nvf) == DZ_OK
+                && persist_kv_bb_store(&s_bbst, &s_kvbb, &s_kv, KEY_BB) == DZ_OK;
+    return load_params();
+}
+
+/* 'W'：只在停着（急停锁存或指令为 0 且轮子不转）时写——F4 擦扇区会让 CPU 停顿约 0.3 s */
+static void save_params(void)
+{
+    float sa = encoder_speed_rps(&s_w[0].enc), sb = encoder_speed_rps(&s_w[1].enc);
+    bool still = s_estop || (s_state.cmd_v_mps == 0.0f && s_state.cmd_w_rps == 0.0f && sa * sa + sb * sb < 0.01f);
+    dz_err_t rc = !s_have_kv ? DZ_ENOTSUP : !still ? DZ_EBUSY
+                : persist_blob_save(&s_kv, KEY_PARAMS, LINK_SCHEMA_HASH, &g_link_params, (uint16_t)sizeof g_link_params);
+    bb_log(&s_bb, pal_millis(), BB_EV_PARAM_SAVE, (uint16_t)(rc < 0 ? -rc : rc), 0.0f, 0.0f);
+}
+
 dz_err_t app_init(void)
 {
     static const subsys_t *const list[] = { &g_drive_plan };
     dz_err_t e;
     pal_reset_cause_t rc = pal_reset_cause();
+    uint16_t pl = nvm_boot();   /* 先读参数：下面的堵转配置要用 */
     stall_cfg_t sc = { .load_on = g_link_params.stall_duty, .speed_on = STALL_SPEED_RPS,
                        .hold_ms = g_link_params.stall_ms, .start_ignore_ms = 200u, .retry_ms = 0u };   /* 只人工解除 */
-    (void)bb_init(&s_bb, s_bb_ring, (uint16_t)(sizeof s_bb_ring / sizeof s_bb_ring[0]), NULL);
+    (void)bb_init(&s_bb, s_bb_ring, (uint16_t)(sizeof s_bb_ring / sizeof s_bb_ring[0]), s_have_kv ? &s_bbst : NULL);
+    if (s_have_kv) {   /* 上次急停/堵转时冻结的记录放回环里（在本次“上电”之前），上位机导出一起看到 */
+        static bb_rec_t prev[15];
+        uint16_t n = 0;
+        if (bb_load_frozen(&s_bb, prev, (uint16_t)(sizeof prev / sizeof prev[0]), &n) == DZ_OK && n) {
+            bb_log(&s_bb, 0u, BB_EV_FROZEN, n, 0.0f, 0.0f);
+            for (uint16_t k = 0; k < n; k++) bb_log(&s_bb, prev[k].t_ms, prev[k].code, prev[k].arg, prev[k].a, prev[k].b);
+        }
+    }
     if ((e = safety_init(&s_safe, &sc, 2u, &s_bb)) != DZ_OK) return e;
     dzctl_set_reset_cause((uint32_t)rc);
     if (safety_boot(&s_safe, (uint32_t)rc, PAL_RESET_IS_FAULT(rc), pal_millis())) s_estop = true;   /* 卡死过：等人看 */
+    bb_log(&s_bb, pal_millis(), BB_EV_PARAM_LOAD, pl, 0.0f, 0.0f);
     apply_params();
     if ((e = wheel_init(&s_w[0], RES_PWM_MOTOR_A, RES_GPIO_MOTOR_A_IN1, RES_GPIO_MOTOR_A_IN2, RES_ENCODER_MOTOR_A)) != DZ_OK) return e;
     if ((e = wheel_init(&s_w[1], RES_PWM_MOTOR_B, RES_GPIO_MOTOR_B_IN1, RES_GPIO_MOTOR_B_IN2, RES_ENCODER_MOTOR_B)) != DZ_OK) return e;
@@ -180,6 +234,8 @@ static void handle_rx(uint32_t now)
             s_estop = false;
             safety_clear(&s_safe, now);
             pal_irq_restore(st);
+        } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'W') {
+            s_save_req = true;                                   /* 主循环里写（不在收帧循环里卡住） */
         } else if (dzctl_is_bb_request(&f)) {
             static uint8_t bseq;
             for (uint16_t k = 0; k < bb_count(&s_bb); k++) {
@@ -218,6 +274,12 @@ void app_loop(void)
     }
 #endif
     if (safety_latched(&s_safe) && !s_estop) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
+    {   /* 进急停（电机已刹）那一刻把黑匣子冻进 flash：下次上电还能看到为什么停的；失败不影响别的 */
+        static bool was;
+        if (s_estop && !was && s_have_kv) (void)bb_freeze(&s_bb);
+        was = s_estop;
+    }
+    if (s_save_req) { s_save_req = false; save_params(); }
     dzctl_set_flags(SAFETY_F_SAFE_BOOT | SAFETY_F_STALL, false);
     dzctl_set_flags(safety_flags(&s_safe), true);
     dzctl_set_flags(DZCTL_HB_ESTOP, s_estop);

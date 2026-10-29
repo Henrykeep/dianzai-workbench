@@ -329,12 +329,21 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
         "BOARD_SERIES": family,
         "BOARD_CPU": CPU_FLAGS[core],
         "BOARD_DEFS": f"-D{cube_define(mcu['part'])} -DUSE_HAL_DRIVER{defs}",
+        "BOARD_NVM_DEFS": nvm_defs(mcu).strip(),
+        "BOARD_NVM_KB": str(mcu.get("nvm_kb", 0)),
         "BOARD_RTOS": cs.get("rtos", ""),
         "BOARD_FLASH_KB": str(mcu.get("flash_kb", 0)),
         "BOARD_PART": mcu["part"],
         "CUBE_DIR": cube_dir,
     }
     return "\n".join(c), mk
+
+
+def nvm_defs(mcu: dict) -> str:
+    """掉电保存区（pal 1.5.0 pal_nvm_*）：mcu.nvm_kb > 0 才编进去；没写 = 0 = pal_nvm_* 返回 DZ_ENOTSUP。
+    单独放 BOARD_NVM_DEFS、只有 make 构建用：CCS/Keil 工程的链接脚本没让出这块，不给它们开。"""
+    n = int(mcu.get("nvm_kb", 0) or 0)
+    return f" -DDZ_NVM_KB={n}u -DDZ_FLASH_KB={int(mcu.get('flash_kb', 0) or 0)}u" if n else ""
 
 
 def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
@@ -407,6 +416,8 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
         "BOARD_FAMILY": "mspm0-driverlib",
         "BOARD_CPU": CPU_FLAGS[core],
         "BOARD_DEFS": f"-D__{part}__",
+        "BOARD_NVM_DEFS": nvm_defs(mcu).strip(),
+        "BOARD_NVM_KB": str(mcu.get("nvm_kb", 0)),
         "BOARD_PART": part,
         "BOARD_PART_LC": part.lower(),
         "SYSCFG_DIR": (pathlib.Path(src).parent / "syscfg").as_posix(),

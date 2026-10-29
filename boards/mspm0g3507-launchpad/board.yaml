@@ -17,6 +17,7 @@ mcu:
   core: cortex-m0plus
   fpu: false
   flash_kb: 128         # 与 SDK linker_files/gcc/mspm0g3507.lds 一致（0x20000）
+  nvm_kb: 4   # 掉电保存区（参数 + 黑匣子，pal_nvm_*）：Flash 末尾 4 扇区（4 KB）；0 或不写 = 不用
   ram_kb: 32            # 同上（SRAM 0x8000）
 clock:
   sysclk_hz: 32000000   # 合成配置用 SYSOSC 32 MHz、不开 PLL（最高 80 MHz，换成真实 .syscfg 后以其为准）

@@ -138,7 +138,7 @@
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
       <dialog id="predlg" class="dlg"><form method="dialog"><h3>赛前检查</h3><div id="pre-sum" class="pre-sum"></div><ul id="pre-list" class="doc"></ul><ul id="pre-bb" class="doc" hidden></ul>
         <p class="hint">板上参数要等于固件默认值：调好的值先“定稿”重烧，不然一复位就丢。人工项（电池、螺丝、线束…）在导出的清单里打勾。</p>
-        <div class="act"><label class="hint" title="勾上：板上固件必须就是仓库 HEAD；不勾：烧录之后只改了文档/上位机也算一致"><input type="checkbox" id="pre-strict"> 严格</label><button class="btn" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；固件 RAM 环，断电即清）">读黑匣子</button><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
+        <div class="act"><label class="hint" title="勾上：板上固件必须就是仓库 HEAD；不勾：烧录之后只改了文档/上位机也算一致"><input type="checkbox" id="pre-strict"> 严格</label><button class="btn" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；板子有掉电保存区时急停那刻冻进 flash，下次上电还在）">读黑匣子</button><button class="btn" type="button" id="pre-save" title="把板上当前参数存进 flash（board.yaml mcu.nvm_kb；只在停车/急停时写），下次上电自动用">存参数</button><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
       <dialog id="cfg" class="dlg">
         <form method="dialog" id="cfg-form">
           <h3>大模型设置</h3>

@@ -700,7 +700,80 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
 }
 
 /* 掉电存储（pal 1.5.0）：本移植层尚未实现（片内 flash 要先在链接脚本里留出扇区），应用退回只用 RAM。 */
+/* ---- 掉电保存（pal 1.5.0）：board.yaml mcu.nvm_kb > 0 才有（-DDZ_NVM_KB）；否则 DZ_ENOTSUP ----
+ * Flash 末尾 nvm_kb，扇区 1 KB；按 64 位 + 硬件生成 ECC 编程（G350x 主 Flash 带 ECC，同一个 64 位字只能写一次——persist 只往擦过的地方追加）。
+ * 擦/写用 DriverLib 的 *FromRAM 版本（命令执行在 .ramfunc 里），每次命令前解保护扇区（命令完自动恢复保护）。
+ * 擦一个扇区约 4 ms，期间关中断：应用只在停车/急停时写。运行时核对程序没伸进保存区，重叠 → 永远 DZ_ENOTSUP。 */
+#if defined(DZ_NVM_KB) && DZ_NVM_KB > 0
+extern uint32_t __data_load__, __data_start__, __data_end__;
+#define NVM_UNIT 1024u
+#define NVM_SIZE (DZ_NVM_KB * 1024u)
+#define NVM_BASE ((DZ_FLASH_KB - DZ_NVM_KB) * 1024u)
+static int8_t s_nvm_ok = -1;
+static bool nvm_ok(void)
+{
+    if (s_nvm_ok < 0) {
+        uint32_t img_end = (uint32_t)&__data_load__ + (uint32_t)((uint8_t *)&__data_end__ - (uint8_t *)&__data_start__);
+        uint32_t code = (uint32_t)(uintptr_t)&nvm_ok;
+        s_nvm_ok = (img_end <= NVM_BASE && code < NVM_BASE && DZ_FLASH_KB > DZ_NVM_KB) ? 1 : 0;
+    }
+    return s_nvm_ok == 1;
+}
+static bool nvm_range(uint32_t off, uint32_t n) { return off <= NVM_SIZE && n <= NVM_SIZE - off; }
+
+dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit)
+{
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (size) *size = NVM_SIZE;
+    if (erase_unit) *erase_unit = NVM_UNIT;
+    return DZ_OK;
+}
+
+dz_err_t pal_nvm_erase(uint32_t off, uint32_t n)
+{
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (!nvm_range(off, n) || off % NVM_UNIT || n % NVM_UNIT || !n) return DZ_EINVAL;
+    for (uint32_t a = NVM_BASE + off; a < NVM_BASE + off + n; a += NVM_UNIT) {
+        uint32_t st = pal_irq_save();
+        DL_FlashCTL_executeClearStatus(FLASHCTL);
+        DL_FlashCTL_unprotectSector(FLASHCTL, a, DL_FLASHCTL_REGION_SELECT_MAIN);
+        DL_FLASHCTL_COMMAND_STATUS r = DL_FlashCTL_eraseMemoryFromRAM(FLASHCTL, a, DL_FLASHCTL_COMMAND_SIZE_SECTOR);
+        pal_irq_restore(st);
+        if (r != DL_FLASHCTL_COMMAND_STATUS_PASSED) return DZ_EIO;
+    }
+    return DZ_OK;
+}
+
+dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n)
+{
+    const uint8_t *b = p;
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (!p || !nvm_range(off, n) || off % 8u || n % 8u) return DZ_EINVAL;
+    for (uint32_t i = 0; i < n; i += 8u) {
+        uint32_t w[2];
+        memcpy(w, b + i, 8);
+        if (w[0] == 0xFFFFFFFFu && w[1] == 0xFFFFFFFFu) continue;        /* 擦后本来就是这个值：不写（ECC 字只能写一次） */
+        uint32_t st = pal_irq_save();
+        DL_FlashCTL_executeClearStatus(FLASHCTL);
+        DL_FlashCTL_unprotectSector(FLASHCTL, NVM_BASE + off + i, DL_FLASHCTL_REGION_SELECT_MAIN);
+        DL_FLASHCTL_COMMAND_STATUS r = DL_FlashCTL_programMemoryFromRAM64WithECCGenerated(FLASHCTL, NVM_BASE + off + i, w);
+        pal_irq_restore(st);
+        if (r != DL_FLASHCTL_COMMAND_STATUS_PASSED) return DZ_EIO;
+    }
+    if (memcmp((const void *)(uintptr_t)(NVM_BASE + off), p, n) != 0) return DZ_EIO;   /* 回读校验 */
+    return DZ_OK;
+}
+
+dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n)
+{
+    if (!nvm_ok()) return DZ_ENOTSUP;
+    if (!p || !nvm_range(off, n)) return DZ_EINVAL;
+    memcpy(p, (const void *)(uintptr_t)(NVM_BASE + off), n);
+    return DZ_OK;
+}
+#else
 dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit) { (void)size; (void)erase_unit; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_erase(uint32_t off, uint32_t n) { (void)off; (void)n; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
+#endif

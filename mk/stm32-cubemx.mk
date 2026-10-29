@@ -15,7 +15,7 @@ else ifeq ($(CUBE_HAL),)
 $(error 找不到 STM32$(SERIES_U) HAL：在 CubeMX 里 Project Manager > Code Generator 选 "Copy all used libraries"，或设置 CUBE_HAL/CUBE_DEV)
 endif
 MCU     := $(BOARD_CPU)
-CFLAGS  := -std=c11 -Os -g3 $(MCU) $(WARN) -ffunction-sections -fdata-sections $(BOARD_DEFS)
+CFLAGS  := -std=c11 -Os -g3 $(MCU) $(WARN) -ffunction-sections -fdata-sections $(BOARD_DEFS) $(BOARD_NVM_DEFS)
 HAL_INC := $(CUBE_DIR)/Core/Inc $(CUBE_HAL)/Inc $(CUBE_DEV)/Include $(CMSIS)
 CUBE_SYS := $(firstword $(wildcard $(CUBE_DIR)/Core/Src/system_stm32*.c) $(CUBE_DEV)/Source/Templates/system_stm32$(SERIES)xx.c)
 # CubeMX 生成代码与 HAL 都按第三方代码编译（不套 -Werror，永远不手改）
@@ -33,7 +33,7 @@ HAL_SRC += $(wildcard $(RTOS_DIR)/*.c) $(RTOS_DIR)/CMSIS_RTOS_V2/cmsis_os2.c \
            $(RTOS_DIR)/portable/GCC/$(RTOS_PORT)/port.c $(RTOS_DIR)/portable/MemMang/heap_4.c
 endif
 LDSCRIPT = $(firstword $(wildcard $(CUBE_DIR)/*_FLASH.ld))
-LDFLAGS  = $(MCU) -T$(LDSCRIPT) -Wl,--defsym=__flash_kb=$(BOARD_FLASH_KB) -Wl,--gc-sections \
+LDFLAGS  = $(MCU) -T$(LDSCRIPT) -Wl,--defsym=__flash_kb=$(BOARD_FLASH_KB) -Wl,--defsym=__nvm_kb=$(or $(BOARD_NVM_KB),0) -Wl,--gc-sections \
            -Wl,-Map=$(OUT)/$(APP).map -Wl,--print-memory-usage -Wl,--no-warn-rwx-segments --specs=nano.specs --specs=nosys.specs -lm
 PORT_SRC = $(PORT_DIR)/pal_cubemx.c $(if $(filter freertos,$(BOARD_RTOS)),$(PORT_DIR)/dz_freertos.c)
 TARGET   = $(OUT)/$(APP).elf

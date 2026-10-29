@@ -17,13 +17,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "dz_err.h"
-#define BLACKBOX_VERSION "1.1.0"
+#define BLACKBOX_VERSION "1.2.0"
 /* 通用事件码（1.1.0）：上位机按这些码翻译成文字；应用自定义码从 BB_EV_APP 开始 */
 #define BB_EV_RESET     1u   /**< 上电：arg = 复位原因（pal_reset_cause_t） */
 #define BB_EV_STALL     2u   /**< 堵转锁存：arg = 通道，a = 负载，b = 转速 */
 #define BB_EV_ESTOP     3u   /**< 急停：arg = 来源（应用定义） */
 #define BB_EV_CLEAR     4u   /**< 人工解除：arg = 解除前的堵转通道位图 */
 #define BB_EV_LINE_LOST 5u   /**< 丢线：arg = 恢复阶段，a = 最后线位置 */
+#define BB_EV_PARAM_SAVE 6u  /**< 参数存 flash（1.2.0）：arg = 结果（dz_err_t 取负，0 = 成功） */
+#define BB_EV_PARAM_LOAD 7u  /**< 上电读参数（1.2.0）：arg = 0 用了存的 / 1 没存过 / 2 结构变了或越界 → 默认值 / 3 没有存储 */
+#define BB_EV_FROZEN     8u  /**< 上电时读回上次冻结的记录（1.2.0）：arg = 条数；后面紧跟的 arg 条是上次运行的 */
 #define BB_EV_APP       0x100u
 #define BB_STORE_MAX_FAIL 3u
 #define BB_MAGIC 0x31424244u       /**< "DBB1" */

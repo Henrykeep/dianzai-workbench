@@ -531,6 +531,10 @@ $("pre-bbtn").onclick = async () => {
   $("pre-bb").innerHTML = r.length ? r.map((e) => `<li><b>${(e.t_ms / 1000).toFixed(3)} s</b> ${esc(e.text)}</li>`).join("")
     : "<li>板子没回黑匣子记录（固件 dzctl < 0.6.0，或应用没接 blackbox）</li>";
 };
+$("pre-save").onclick = async () => {
+  const ok = await call("cmd", { c: "W" }).catch(() => false);
+  toast(ok ? "已让板子存参数：读黑匣子看“参数已存进 flash”（没有保存区/没停车会写失败原因）" : "没连板子", ok ? "ok" : "warn", 8000);
+};
 $("pre-exp").onclick = async () => { const r = await call("precontest_export", { strict: $<HTMLInputElement>("pre-strict").checked }).catch(() => null); if (r) { renderPre(r); toast(`封箱清单已导出 → ${r.path}`, r.all_green ? "ok" : "warn", 12000); } };
 
 $("doctor").onclick = async () => {

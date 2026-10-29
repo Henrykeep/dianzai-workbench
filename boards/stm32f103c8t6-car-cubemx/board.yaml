@@ -28,6 +28,7 @@ mcu:
   family: stm32f1
   core: cortex-m3
   flash_kb: 64
+  nvm_kb: 4   # 掉电保存区（参数 + 黑匣子，pal_nvm_*）：Flash 末尾 4 页（4 KB）；0 或不写 = 不用
 clock:
   hse_hz: 8000000
   sysclk_hz: 72000000

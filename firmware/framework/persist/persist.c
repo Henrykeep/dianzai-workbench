@@ -178,6 +178,58 @@ dz_err_t persist_bb_store(bb_store_t *out, const persist_flash_t *f)
     return DZ_OK;
 }
 
+/* ---- 黑匣子进键值区 ---- */
+static dz_err_t kb_erase(void *c) { persist_kvbb_t *k = c; memset(k->buf, 0xFF, sizeof k->buf); return persist_kv_usable(k->kv) ? DZ_OK : DZ_ENOTSUP; }
+static dz_err_t kb_write(void *c, uint32_t off, const void *p, uint32_t n)
+{
+    persist_kvbb_t *k = c;
+    if (off > sizeof k->buf || n > sizeof k->buf - off) return DZ_EINVAL;
+    memcpy(k->buf + off, p, n);
+    if (off != 0u) return DZ_OK;                       /* 头最后写 = 提交点 */
+    return persist_kv_put(k->kv, k->key, k->buf, (uint16_t)sizeof k->buf);
+}
+static dz_err_t kb_read(void *c, uint32_t off, void *p, uint32_t n)
+{
+    persist_kvbb_t *k = c;
+    uint16_t len = 0;
+    if (off > sizeof k->buf || n > sizeof k->buf - off) return DZ_EINVAL;
+    memset(k->buf, 0xFF, sizeof k->buf);
+    dz_err_t rc = persist_kv_get(k->kv, k->key, k->buf, (uint16_t)sizeof k->buf, &len);
+    if (rc != DZ_OK && rc != DZ_EFAIL) return rc;      /* 没存过 = 全 0xFF，blackbox 当“空” */
+    memcpy(p, k->buf + off, n);
+    return DZ_OK;
+}
+
+dz_err_t persist_kv_bb_store(bb_store_t *out, persist_kvbb_t *ctx, persist_kv_t *kv, uint16_t key)
+{
+    if (!out || !ctx || !kv || key == 0xFFFFu) return DZ_EINVAL;
+    ctx->kv = kv; ctx->key = key; memset(ctx->buf, 0xFF, sizeof ctx->buf);
+    out->erase = kb_erase; out->write = kb_write; out->read = kb_read; out->ctx = ctx; out->size = sizeof ctx->buf;
+    return DZ_OK;
+}
+
+/* ---- 带哈希的整块参数 ---- */
+dz_err_t persist_blob_save(persist_kv_t *kv, uint16_t key, uint32_t hash, const void *p, uint16_t len)
+{
+    uint8_t d[PERSIST_MAX_LEN];
+    if (!kv || !p || len > PERSIST_MAX_LEN - 4u) return DZ_EINVAL;
+    memcpy(d, &hash, 4); memcpy(d + 4, p, len);
+    return persist_kv_put(kv, key, d, (uint16_t)(len + 4u));
+}
+
+dz_err_t persist_blob_load(persist_kv_t *kv, uint16_t key, uint32_t hash, void *p, uint16_t len)
+{
+    uint8_t d[PERSIST_MAX_LEN];
+    uint16_t n = 0; uint32_t h;
+    dz_err_t rc;
+    if (!kv || !p || len > PERSIST_MAX_LEN - 4u) return DZ_EINVAL;
+    if ((rc = persist_kv_get(kv, key, d, sizeof d, &n)) != DZ_OK) return rc;
+    memcpy(&h, d, 4);
+    if (h != hash || n != len + 4u) return DZ_EFAIL;
+    memcpy(p, d + 4, len);
+    return DZ_OK;
+}
+
 /* ---- 自测：RAM 假 flash（NOR 语义 + 故障注入） ---- */
 typedef struct { uint8_t m[2048]; int fail_at; int ops; uint32_t erases; } ram_t;
 static dz_err_t r_erase(void *c, uint32_t off, uint32_t n) { ram_t *r = c; if (++r->ops == r->fail_at) return DZ_EIO; memset(r->m + off, 0xFF, n); r->erases++; return DZ_OK; }
@@ -217,6 +269,20 @@ dz_err_t persist_selftest(void)
         ram_t *rr = &r; int k;
         for (k = 0; k < 3; k++) { rr->fail_at = rr->ops + 1; v = 400u + (uint32_t)k; (void)persist_kv_put(&kv, 1, &v, 4); }
         fail += persist_kv_usable(&kv) || persist_kv_put(&kv, 1, &v, 4) != DZ_ENOTSUP;
+    }
+    {   /* 1.1.0：参数块 + 黑匣子进键值区 */
+        float pa[3] = { 1.5f, 2.5f, 3.5f }, pb[3] = { 0 };
+        static persist_kvbb_t kb; bb_store_t st; bb_t bb; bb_rec_t ring[8], out[15]; uint16_t nb = 0;
+        memset(&r, 0xFF, sizeof r.m); r.fail_at = -1;
+        fail += persist_kv_init(&kv, &f) != DZ_OK;
+        fail += persist_blob_save(&kv, 10, 0xABCDu, pa, sizeof pa) != DZ_OK;
+        fail += persist_blob_load(&kv, 10, 0xABCEu, pb, sizeof pb) != DZ_EFAIL || pb[0] != 0.0f;     /* 结构变了：不加载 */
+        fail += persist_blob_load(&kv, 10, 0xABCDu, pb, sizeof pb) != DZ_OK || pb[2] != 3.5f;
+        fail += persist_kv_bb_store(&st, &kb, &kv, 11) != DZ_OK || bb_init(&bb, ring, 8, &st) != DZ_OK;
+        fail += bb_load_frozen(&bb, out, 15, &nb) != DZ_EFAIL;                                     /* 空 */
+        bb_log(&bb, 5u, 3u, 1u, 0.5f, 0.0f);
+        fail += bb_freeze(&bb) != DZ_OK;
+        fail += persist_kv_init(&kv, &f) != DZ_OK || bb_load_frozen(&bb, out, 15, &nb) != DZ_OK || nb != 1u || out[0].code != 3u;
     }
     f.size = 64u; fail += persist_kv_init(&kv, &f) != DZ_EINVAL;
     return fail ? DZ_EINVAL : DZ_OK;

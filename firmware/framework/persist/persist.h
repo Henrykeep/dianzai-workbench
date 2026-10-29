@@ -9,6 +9,8 @@
  *  - 写：和现有值一样就不写（省擦写次数）；当前 bank 满了 → 擦另一个 bank，把每个 key 的最新值搬过去再写新的（整个 bank 才擦一次 = 磨损均衡）。
  *  - 铁律：init 只读不写，失败也返回（应用用默认值继续跑）；连续失败 PERSIST_MAX_FAIL 次后停用，后续调用立即返回 DZ_ENOTSUP。
  * 冻结区（persist_bb_store）：把一段区域包成 blackbox 的 bb_store_t（bb_freeze 一次擦 + 两次写，头最后写）。
+ * 1.1.0：persist_kv_bb_store（黑匣子冻结进键值区的一个 key，不再要独立擦除单位：F4 16 KB 扇区也只要 2 个）；
+ *        persist_blob_load/save（带结构哈希的整块参数，结构变了 → 不加载，用默认值）。
  * 版本：PERSIST_VERSION
  */
 #ifndef PERSIST_H
@@ -18,7 +20,7 @@
 #include "dz_err.h"
 #include "blackbox.h"
 #include "dz_flash.h"
-#define PERSIST_VERSION "1.0.0"
+#define PERSIST_VERSION "1.1.0"
 #define PERSIST_MAX_FAIL 3u
 #define PERSIST_MAX_KEYS 16u
 #define PERSIST_MAX_LEN  256u
@@ -47,5 +49,13 @@ bool persist_kv_usable(const persist_kv_t *kv);
 
 /** 把 f 描述的整段区域（黑匣子专用，别和键值区重叠）包成 bb_store_t。f 必须一直有效（out 只存指针）。 */
 dz_err_t persist_bb_store(bb_store_t *out, const persist_flash_t *f);
+
+/** 黑匣子存进键值区 key（最多 (PERSIST_MAX_LEN-16)/16 = 15 条）。bb_freeze 写头（off 0）那一下才真正落 flash，一次冻结 = 一次 put。 */
+typedef struct { persist_kv_t *kv; uint16_t key; uint8_t buf[PERSIST_MAX_LEN]; } persist_kvbb_t;
+dz_err_t persist_kv_bb_store(bb_store_t *out, persist_kvbb_t *ctx, persist_kv_t *kv, uint16_t key);
+
+/** 整块参数：存 [hash u32][len 字节]。load 时 hash 或长度对不上 → DZ_EFAIL，p 不动（调用方保持默认值）。 */
+dz_err_t persist_blob_save(persist_kv_t *kv, uint16_t key, uint32_t hash, const void *p, uint16_t len);
+dz_err_t persist_blob_load(persist_kv_t *kv, uint16_t key, uint32_t hash, void *p, uint16_t len);
 dz_err_t persist_selftest(void);
 #endif

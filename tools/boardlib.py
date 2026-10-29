@@ -458,6 +458,17 @@ def check_board(board: dict) -> Report:
     fk = stm32_flash_kb(mcu.get("part"))
     if fk and isinstance(mcu.get("flash_kb"), int) and mcu["flash_kb"] > fk:
         rep.err(f"[mcu] flash_kb={mcu['flash_kb']} 大于型号 {mcu['part']} 的实际 Flash {fk}KB：链接脚本会越界")
+    nk = mcu.get("nvm_kb", 0) or 0
+    if nk:
+        fam0, fkb = mcu.get("family"), mcu.get("flash_kb")
+        if fam0 == "stm32f4" and nk not in (32, 48):
+            rep.err(f"[mcu] nvm_kb={nk}：F4 只能 32 或 48（扇区 1..3，每个 16 KB；后面的扇区 128 KB 放不起）")
+        elif fam0 in ("stm32f1", "mspm0g") or str(mcu.get("part", "")).upper().startswith("MSPM0"):
+            unit = 2 if (fam0 == "stm32f1" and isinstance(fkb, int) and fkb >= 256) else 1
+            if nk % unit or nk < 2 * unit:
+                rep.err(f"[mcu] nvm_kb={nk}：要是 {unit} KB 的整数倍、至少 2 页（键值区双 bank）")
+        if isinstance(fkb, int) and nk >= fkb:
+            rep.err(f"[mcu] nvm_kb={nk} ≥ flash_kb={fkb}")
     fam = board["mcu"]["family"]
     if fam in FAMILY_CHECKS:
         FAMILY_CHECKS[fam](board, rep)

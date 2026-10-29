@@ -103,3 +103,41 @@ def test_sim_blackbox(home):
         assert recs and recs[0]["code"] == 1 and "上电" in recs[0]["text"]
     finally:
         s.disconnect()
+
+
+@pytest.mark.needs_sim
+def test_sim_param_save_and_blackbox_survive_power_cycle(home, tmp_path, monkeypatch):
+    """car_2wd 1.3.0 + persist 1.1.0：'W' 存参数 → 断电（换进程，DZ_SIM_NVM 文件当 flash）→ 上电参数还是存的值；
+    急停那刻冻结的黑匣子下次上电读回（BB_EV_FROZEN 8 之后跟着上次的记录）。"""
+    from dzbench.session import Session
+    monkeypatch.setenv("DZ_SIM_NVM", str(tmp_path / "nvm.bin"))
+
+    def up():
+        s = Session()
+        s.connect("sim:car_2wd")
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 8 and not (s.status()["alive"] and s.schema and len(s.params) == len(s.schema.params)):
+            time.sleep(0.05)
+        return s
+
+    s = up()
+    try:
+        recs = s.blackbox()
+        assert any(r["code"] == 7 and r["arg"] == 1 for r in recs), recs        # 没存过 → 默认值
+        s.set_param("kp", 0.37)
+        assert s.cmd("W")
+        time.sleep(0.3)
+        assert any(r["code"] == 6 and r["arg"] == 0 for r in s.blackbox())
+        s.estop()                                                               # 急停 → 冻结黑匣子
+        time.sleep(0.3)
+    finally:
+        s.disconnect()
+    s = up()
+    try:
+        assert abs(s.read_all_params()["kp"] - 0.37) < 1e-4
+        recs = s.blackbox()
+        assert any(r["code"] == 7 and r["arg"] == 0 for r in recs), recs        # 用了存的
+        assert any(r["code"] == 8 for r in recs), recs                          # 上次运行的记录回来了
+        assert any(r["code"] == 6 for r in recs)                                # 包括上次的“参数已存”
+    finally:
+        s.disconnect()

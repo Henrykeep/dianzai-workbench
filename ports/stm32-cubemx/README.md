@@ -24,3 +24,8 @@ CubeMX 是唯一配置源，本层只包装 CubeMX 生成的句柄（htimX/huart
 
 本层提供 `HAL_GPIO_EXTI_Callback`（G0/C0/L5/U5/H5 提供 Rising/Falling 两个回调）。工程里已有自己的回调：编译加 `-DDZ_CM_NO_EXTI_CALLBACK`，
 在你的回调里调用 `dz_cm_gpio_exti(GPIO_Pin)`。同号引脚共用一条 EXTI 线（PA3 与 PB3 不能同时挂，返回 DZ_EBUSY）。【编译】未上板。
+
+## 掉电保存（1.7.0）
+只有 make 构建带 `-DDZ_NVM_KB`（BOARD_NVM_DEFS）；Keil/CCS 工程不带 = ENOTSUP，不影响开机。
+
+board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：F1 = Flash 末尾（页 1 KB，≥256 KB 型号 2 KB），F4 = 扇区 1..3（0x08004000 起，nvm_kb 只能 32/48；仓库里的 F4 链接脚本把 `.text` 放到保存区之后）。用你自己 CubeMX 生成的链接脚本时要照着留出这块，否则运行时检查到重叠会一直返回 ENOTSUP（不会擦到代码）。擦除期间 CPU 停顿（F4 扇区约 0.3 s），应用只在停车/急停时写。[编译]

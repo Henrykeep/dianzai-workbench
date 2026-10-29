@@ -1,8 +1,9 @@
 /* STM32F103C8 链接脚本（自写，最小化，结构同天空星）。Flash 长度由 Makefile 通过 -Wl,--defsym=__flash_kb=N 传入，
- * 取 board.yaml 的 mcu.flash_kb。SRAM 20KB。 */
+ * 取 board.yaml 的 mcu.flash_kb。掉电保存区 mcu.nvm_kb（--defsym=__nvm_kb）放 Flash 末尾（F103x8/xB 每页 1 KB）。SRAM 20KB。 */
 ENTRY(Reset_Handler)
 
 __flash_kb = DEFINED(__flash_kb) ? __flash_kb : 64;
+__nvm_kb = DEFINED(__nvm_kb) ? __nvm_kb : 0;
 _Min_Heap_Size  = 0x400;
 _Min_Stack_Size = 0x800;
 
@@ -66,6 +67,7 @@ SECTIONS
   } >RAM
 
   ASSERT(_etext - ORIGIN(FLASH) + SIZEOF(.data) <= __flash_kb * 1024, "程序超出本板 Flash 容量（board.yaml mcu.flash_kb）")
+  ASSERT(_etext - ORIGIN(FLASH) + SIZEOF(.data) <= (__flash_kb - __nvm_kb) * 1024, "程序侵占了掉电保存区（board.yaml mcu.nvm_kb）")
 
   .ARM.attributes 0 : { *(.ARM.attributes) }
 }

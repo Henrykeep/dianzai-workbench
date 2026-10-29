@@ -29,6 +29,7 @@ mcu:
   family: stm32f4
   core: cortex-m4f
   flash_kb: 512
+  nvm_kb: 32   # 掉电保存区（参数 + 黑匣子，pal_nvm_*）：扇区 1..2（0x08004000，2×16 KB）；0 或不写 = 不用
 clock:
   hse_hz: 8000000
   sysclk_hz: 168000000

@@ -23,3 +23,9 @@ if (nvm_pal_layout(&kvf, &bbf, 1) == DZ_OK) {          /* 第 1 个擦除单位�
 
 移植层：host-sim 有 8 KB 模拟 flash（`DZ_SIM_NVM=文件` 可跨进程保留）；MSPM0 / STM32F4 / CubeMX 目前返回 DZ_ENOTSUP
 （片内 flash 要先在链接脚本里留扇区，[未做]）。[仿真]
+
+## 1.1.0
+
+- `persist_kv_bb_store`：黑匣子冻进键值区的一个 key（≤15 条），F4 16 KB 扇区也只要 2 个（不用给黑匣子单独留擦除单位）。
+- `persist_blob_load/save`：整块参数带结构哈希（例如 `LINK_SCHEMA_HASH`），app.yaml 参数表改了 → 不加载，用默认值。
+- 真板：stm32-cubemx（F1/F4）、mspm0-driverlib 按 board.yaml `mcu.nvm_kb` 开（见 ports/*/README）。示例：apps/car_2wd。

@@ -1015,6 +1015,9 @@
    "blackbox.h: #define BB_EV_ESTOP 3u",
    "blackbox.h: #define BB_EV_CLEAR 4u",
    "blackbox.h: #define BB_EV_LINE_LOST 5u",
+   "blackbox.h: #define BB_EV_PARAM_SAVE 6u",
+   "blackbox.h: #define BB_EV_PARAM_LOAD 7u",
+   "blackbox.h: #define BB_EV_FROZEN 8u",
    "blackbox.h: #define BB_EV_APP 0x100u",
    "blackbox.h: #define BB_STORE_MAX_FAIL 3u",
    "blackbox.h: #define BB_MAGIC 0x31424244u",
@@ -1046,8 +1049,8 @@
    "blackbox.h: uint16_t bb_dump(const bb_rec_t *r, uint16_t n, void (*put)(void *ctx, const char *line), void *ctx);",
    "blackbox.h: dz_err_t bb_selftest(void);"
   ],
-  "hash": "999c74e19aad50de",
-  "version": "1.1.0"
+  "hash": "bad1a2fe397e86e9",
+  "version": "1.2.0"
  },
  "firmware/framework/coord": {
   "decls": [
@@ -1153,10 +1156,17 @@
    "persist.h: dz_err_t persist_kv_put(persist_kv_t *kv, uint16_t key, const void *data, uint16_t len);",
    "persist.h: bool persist_kv_usable(const persist_kv_t *kv);",
    "persist.h: dz_err_t persist_bb_store(bb_store_t *out, const persist_flash_t *f);",
+   "persist.h: typedef struct { persist_kv_t *kv;",
+   "persist.h: uint16_t key;",
+   "persist.h: uint8_t buf[PERSIST_MAX_LEN];",
+   "persist.h: } persist_kvbb_t;",
+   "persist.h: dz_err_t persist_kv_bb_store(bb_store_t *out, persist_kvbb_t *ctx, persist_kv_t *kv, uint16_t key);",
+   "persist.h: dz_err_t persist_blob_save(persist_kv_t *kv, uint16_t key, uint32_t hash, const void *p, uint16_t len);",
+   "persist.h: dz_err_t persist_blob_load(persist_kv_t *kv, uint16_t key, uint32_t hash, void *p, uint16_t len);",
    "persist.h: dz_err_t persist_selftest(void);"
   ],
-  "hash": "ecb1bd32773b0841",
-  "version": "1.0.0"
+  "hash": "08bbc1d483ceb90b",
+  "version": "1.1.0"
  },
  "firmware/framework/rtosmon": {
   "decls": [
@@ -1601,7 +1611,7 @@
    "wwdt_calc.h: return 1;"
   ],
   "hash": "19636263ee0f1d5d",
-  "version": "0.6.0"
+  "version": "0.7.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -1683,7 +1693,7 @@
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
   "hash": "04a2087d8d43f192",
-  "version": "1.6.0"
+  "version": "1.7.0"
  },
  "ports/stm32f4-hal": {
   "decls": [
