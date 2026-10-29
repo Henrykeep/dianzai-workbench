@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import traceback
 import os
 import pathlib
 
@@ -249,6 +250,7 @@ class Server:
                            "error": {"type": "error", "code": getattr(e, "code", type(e).__name__),
                                      "message": getattr(e, "message", str(e)), "fix": getattr(e, "fix", "")}}
                 except Exception as e:  # noqa: BLE001
+                    traceback.print_exc()          # 侧车日志里留完整堆栈，toast 只给一行
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
                            "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",
                                      "fix": "请把这条信息和日志文件发给维护者"}}
