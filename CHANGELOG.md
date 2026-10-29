@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] G3 Makefile 按芯片系列拆成 `mk/<BOARD_FAMILY>.mk`（host / stm32f4 / stm32-cubemx / mspm0-driverlib），顶层 327→228 行。拆分前后 11 个 板×应用（含 LINK=rtt）的 .bin 与 `make vars` md5 全部相同。
 - [未测] G2 `skills/dz-firmware/SKILL.md`（5 个决策、换板 5 步、加题 6 步、踩过的坑）+ 文件级改法纪律表（改什么只动哪里、哪条检查会拦）。纪律唯一来源 `skills/dz-firmware/edit-rules.md`，`check_ai_docs.py --sync` 写进 AGENTS.md 与 SKILL.md，`--check` 在 make check 里校验一致（思路学 SerialWeb，代码自写）。工作台内置 Agent 提示词尚未接入同一来源（app 线在改界面，未动）。
 - [编译] check_deps 新规则 F1：禁止手写控制频率常量（examples 的 subsys/io 只能用 period_ms 生成的 PERIOD_MS_*；apps 的周期宏必须同时交给调度），例外 `DZ-FREQ-OK:`。夹具复刻用户 p1 的 `CONTROL_FREQUENCY 300` 被拦；现有仓库 0 违规。
 - [编译] G1 生成物一致性检查 `tools/check_gen_consistency.py`（进 make check / CI）：CubeMX `MX_GPIO_Init` 引脚与 .ioc 的 GPIO 双向对比（改 .ioc 没重新 GENERATE、残留旧引脚即报错），链接脚本必须有 `__flash_kb` ASSERT。复现换板实测：LED PA8→PC13 只改 .ioc 时报出两条。复核更正 docs/27：flash 超限早已由 ASSERT 拦住（`BOARD_FLASH_KB=8` 实测链接报错），初稿误判。新增 docs/notes/。[未测] 真 CubeMX 生成的 gpio.c 分文件布局、Keil。
