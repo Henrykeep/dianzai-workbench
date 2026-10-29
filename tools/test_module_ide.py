@@ -84,8 +84,7 @@ def check_ccs(board: str, app: str) -> int:
 
 
 def main() -> int:
-    if not (SIM_GEN / "board_gen.h").exists():
-        subprocess.run(["make", "-s", "BOARD=host-sim", "APP=car_2wd", "gen"], cwd=ROOT, check=True, capture_output=True)
+    subprocess.run(["make", "-s", "BOARD=host-sim", "APP=car_2wd", "gen"], cwd=ROOT, check=True, capture_output=True)  # 每次都跑（增量）：不用本机残留的旧 gen
     uv = sorted((ROOT / "tools/testdata/real").glob("*.uvprojx"))[0]
     fail = check_keil(uv)
     for b in ("mspm0g3507-tianmengxing", "mspm0g3507-launchpad"):

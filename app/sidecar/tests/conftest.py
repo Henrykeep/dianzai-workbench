@@ -35,7 +35,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
-def _sim_guard(request, monkeypatch):
+def _sim_guard(request, monkeypatch, _hermetic_env):
     if request.node.get_closest_marker("needs_sim"):
         return
     from dzbench import transport
@@ -47,7 +47,18 @@ def _sim_guard(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _hermetic_pack(tmp_path_factory, monkeypatch):
+def _hermetic_env(tmp_path_factory, monkeypatch):
+    """测试与本机状态无关：清掉 DZBENCH_* / PYOCD_* 环境变量，DZBENCH_HOME 指到空目录
+    （不读本机 ~/.dzbench 的 machine.json、LLM Key、快照、器件包）。要用固定目录的测试请求 `home` fixture。"""
+    import os
+    for k in list(os.environ):
+        if k.startswith(("DZBENCH_", "PYOCD_")):
+            monkeypatch.delenv(k)
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path_factory.mktemp("dzhome")))
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_pack(tmp_path_factory, monkeypatch, _hermetic_env):
     """测试不依赖本机有没有下过 TI 器件包（CI 的 sidecar-test 不下载）：统一给一个假包，fakepyocd 只记录路径。
     要测“缺包”的用例自己 delenv / 打桩 find_pack。"""
     p = tmp_path_factory.getbasetemp() / "fake_m0.pack"

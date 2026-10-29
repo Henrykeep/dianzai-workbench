@@ -25,6 +25,7 @@ def build_sim(app: str) -> pathlib.Path:
 
 
 def schema_of(app: str) -> Schema:
+    build_sim(app)          # 不依赖本机之前编过（干净克隆里 build/ 是空的）
     return Schema(json.loads((ROOT / "build/host-sim" / app / "linkgen/link_schema.json").read_text(encoding="utf-8")))
 
 

@@ -47,7 +47,7 @@ def find_pack(target: str) -> pathlib.Path | None:
     cands = [os.environ.get("DZBENCH_PACK", ""),
              pathlib.Path(getattr(sys, "_MEIPASS", "")) / "packs" / M0_PACK if getattr(sys, "_MEIPASS", None) else "",
              here.parents[3] / "third_party" / "packs" / M0_PACK,
-             pathlib.Path.home() / ".dzbench" / "packs" / M0_PACK]
+             snapshots.base_dir() / "packs" / M0_PACK]
     return next((pathlib.Path(c) for c in cands if c and pathlib.Path(c).is_file()), None)
 
 
