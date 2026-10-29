@@ -246,10 +246,17 @@
    "vis.h: } vis_calib_t;",
    "vis.h: dz_err_t vis_calib_init(vis_calib_t *c, const float *px, const float *val, uint8_t n);",
    "vis.h: float vis_calib_apply(const vis_calib_t *c, float px, bool *out_of_range);",
+   "vis.h: typedef struct { float h[9];",
+   "vis.h: float hi[9];",
+   "vis.h: float check_err;",
+   "vis.h: } vis_plane_t;",
+   "vis.h: dz_err_t vis_plane_init(vis_plane_t *p, const float px[4], const float py[4], const float wx[4], const float wy[4], const float chk[4]);",
+   "vis.h: dz_err_t vis_plane_to_world(const vis_plane_t *p, float u, float v, float *x, float *y);",
+   "vis.h: dz_err_t vis_plane_to_pixel(const vis_plane_t *p, float x, float y, float *u, float *v);",
    "vis.h: dz_err_t vis_selftest(void);"
   ],
-  "hash": "de1f93202fb16e9c",
-  "version": "1.0.0"
+  "hash": "7b47b7573925b91a",
+  "version": "1.1.0"
  },
  "firmware/drivers/battery": {
   "decls": [

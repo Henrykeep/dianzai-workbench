@@ -78,6 +78,74 @@ float vis_calib_apply(const vis_calib_t *c, float px, bool *out_of_range)
     return c->val[i - 1u] + k * (px - c->px[i - 1u]);
 }
 
+/* ---------------- 平面五点标定 ---------------- */
+/* 4 点求单应：8×8 线性方程组，列主元高斯消元。只在标定时跑一次，用 double 保精度（M4 上是软件双精度，约几百 µs）。 */
+static bool homography(const float *sx, const float *sy, const float *dx, const float *dy, float h[9])
+{
+    double A[8][9];
+    for (int i = 0; i < 4; i++) {
+        double x = sx[i], y = sy[i], X = dx[i], Y = dy[i];
+        double r0[9] = { x, y, 1, 0, 0, 0, -x * X, -y * X, X };
+        double r1[9] = { 0, 0, 0, x, y, 1, -x * Y, -y * Y, Y };
+        for (int k = 0; k < 9; k++) { A[2 * i][k] = r0[k]; A[2 * i + 1][k] = r1[k]; }
+    }
+    double scale = 0;
+    for (int r = 0; r < 8; r++) for (int k = 0; k < 8; k++) if (fabs(A[r][k]) > scale) scale = fabs(A[r][k]);
+    if (!(scale > 0) || !isfinite(scale)) return false;
+    for (int c = 0; c < 8; c++) {
+        int piv = c;
+        for (int r = c + 1; r < 8; r++) if (fabs(A[r][c]) > fabs(A[piv][c])) piv = r;
+        if (fabs(A[piv][c]) < 1e-9 * scale) return false;          /* 三点共线 / 点重复 */
+        if (piv != c) for (int k = 0; k < 9; k++) { double t = A[c][k]; A[c][k] = A[piv][k]; A[piv][k] = t; }
+        for (int r = 0; r < 8; r++) {
+            if (r == c) continue;
+            double f = A[r][c] / A[c][c];
+            for (int k = c; k < 9; k++) A[r][k] -= f * A[c][k];
+        }
+    }
+    for (int i = 0; i < 8; i++) { h[i] = (float)(A[i][8] / A[i][i]); if (!isfinite(h[i])) return false; }
+    h[8] = 1.0f;
+    return true;
+}
+
+static dz_err_t apply_h(const float h[9], float u, float v, float *x, float *y)
+{
+    if (!x || !y || !isfinite(u) || !isfinite(v)) return DZ_EINVAL;
+    float w = h[6] * u + h[7] * v + h[8];
+    if (fabsf(w) < 1e-6f) return DZ_EINVAL;
+    *x = (h[0] * u + h[1] * v + h[2]) / w;
+    *y = (h[3] * u + h[4] * v + h[5]) / w;
+    return DZ_OK;
+}
+
+dz_err_t vis_plane_init(vis_plane_t *p, const float px[4], const float py[4],
+                        const float wx[4], const float wy[4], const float chk[4])
+{
+    if (!p || !px || !py || !wx || !wy) return DZ_EINVAL;
+    for (int i = 0; i < 4; i++)
+        if (!isfinite(px[i]) || !isfinite(py[i]) || !isfinite(wx[i]) || !isfinite(wy[i])) return DZ_EINVAL;
+    vis_plane_t t;
+    if (!homography(px, py, wx, wy, t.h) || !homography(wx, wy, px, py, t.hi)) return DZ_EINVAL;
+    t.check_err = -1.0f;
+    if (chk) {
+        float x, y;
+        if (apply_h(t.h, chk[0], chk[1], &x, &y) != DZ_OK) return DZ_EINVAL;
+        t.check_err = sqrtf((x - chk[2]) * (x - chk[2]) + (y - chk[3]) * (y - chk[3]));
+    }
+    *p = t;
+    return DZ_OK;
+}
+
+dz_err_t vis_plane_to_world(const vis_plane_t *p, float u, float v, float *x, float *y)
+{
+    return p ? apply_h(p->h, u, v, x, y) : DZ_EINVAL;
+}
+
+dz_err_t vis_plane_to_pixel(const vis_plane_t *p, float x, float y, float *u, float *v)
+{
+    return p ? apply_h(p->hi, x, y, u, v) : DZ_EINVAL;
+}
+
 dz_err_t vis_selftest(void)
 {
     vis_link_t l; vis_link_cfg_t cfg = { 50u, 200u, 0u };

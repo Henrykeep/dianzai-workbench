@@ -1,9 +1,10 @@
-/* G7 控制环常用件：不对称变化率限制、变周期 M/T 测速。 */
+/* G7 控制环常用件：不对称变化率限制、变周期 M/T 测速、平面五点标定。 */
 #include "tt.h"
 #include <math.h>
 #include <stdint.h>
 #include "slew.h"
 #include "mtspeed.h"
+#include "vis.h"
 
 TEST(slew_dir_and_mag)
 {
@@ -119,8 +120,58 @@ TEST(mtspeed_decel_timeout_reverse_wrap)
     CHECK(mtspeed_selftest() == DZ_OK);
 }
 
+/* 平面标定：用一个已知透视变换生成"相机看到的像素"，再反求 */
+static void persp(float x, float y, float *u, float *v)
+{
+    /* 600×600 mm 屏幕，相机偏左下斜看：一个任意的非仿射单应 */
+    const float H[9] = { 0.42f, 0.06f, 40.0f, -0.03f, 0.38f, 25.0f, 0.00021f, 0.00012f, 1.0f };
+    float w = H[6] * x + H[7] * y + H[8];
+    *u = (H[0] * x + H[1] * y + H[2]) / w;
+    *v = (H[3] * x + H[4] * y + H[5]) / w;
+}
+
+TEST(vis_plane_five_point)
+{
+    float wx[4] = { 0, 600, 600, 0 }, wy[4] = { 0, 0, 600, 600 }, px[4], py[4];
+    for (int i = 0; i < 4; i++) persp(wx[i], wy[i], &px[i], &py[i]);
+    float cu, cv; persp(300, 300, &cu, &cv);
+    float chk[4] = { cu, cv, 300, 300 };
+    vis_plane_t p;
+    CHECK(vis_plane_init(&p, px, py, wx, wy, chk) == DZ_OK);
+    CHECK(p.check_err >= 0.0f && p.check_err < 0.05f);
+    float worst = 0, worst_rt = 0;
+    for (int i = 0; i <= 12; i++) for (int j = 0; j <= 12; j++) {
+        float X = 50.0f * i, Y = 50.0f * j, u, v, x, y, u2, v2;
+        persp(X, Y, &u, &v);
+        CHECK(vis_plane_to_world(&p, u, v, &x, &y) == DZ_OK);
+        worst = fmaxf(worst, hypotf(x - X, y - Y));
+        CHECK(vis_plane_to_pixel(&p, x, y, &u2, &v2) == DZ_OK);
+        worst_rt = fmaxf(worst_rt, hypotf(u2 - u, v2 - v));
+    }
+    printf("    网格 169 点：像素→平面最大误差 %.4f mm，往返最大误差 %.5f px\n", worst, worst_rt);
+    CHECK(worst < 0.1f);
+    CHECK(worst_rt < 0.01f);
+    /* 只用四角做"双线性/仿射"会错多少：对照，说明为什么要单应 */
+    float u, v; persp(300, 300, &u, &v);
+    float aff_x = (u - px[0]) / (px[1] - px[0]) * 600.0f;   /* 按上边两角线性插值 */
+    printf("    对照：中心点按上边两角线性插值得 x=%.1f mm（真值 300）\n", aff_x);
+    /* 中心点点错 8 像素：验收误差要明显变大 */
+    chk[0] += 8.0f;
+    CHECK(vis_plane_init(&p, px, py, wx, wy, chk) == DZ_OK);
+    printf("    中心点偏 8 px → check_err = %.1f mm\n", p.check_err);
+    CHECK(p.check_err > 10.0f);
+    CHECK(vis_plane_init(&p, px, py, wx, wy, 0) == DZ_OK && p.check_err == -1.0f);
+    /* 三点共线 / 重复点拒绝 */
+    float bx[4] = { 0, 100, 200, 0 }, by[4] = { 0, 0, 0, 100 };
+    CHECK(vis_plane_init(&p, bx, by, wx, wy, 0) == DZ_EINVAL);
+    float nx[4] = { NAN, 1, 2, 3 };
+    CHECK(vis_plane_init(&p, nx, py, wx, wy, 0) == DZ_EINVAL);
+    CHECK(vis_selftest() == DZ_OK);
+}
+
 void suite_ctrlparts(void)
 {
     RUN(slew_dir_and_mag); RUN(slew_edge_cases); RUN(slew_with_motor_model);
     RUN(mtspeed_low_speed_vs_m_method); RUN(mtspeed_decel_timeout_reverse_wrap);
+    RUN(vis_plane_five_point);
 }

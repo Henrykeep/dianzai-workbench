@@ -24,7 +24,7 @@
 #include <stdint.h>
 #include "dz_err.h"
 
-#define VIS_VERSION "1.0.0"
+#define VIS_VERSION "1.1.0"
 #define VIS_CALIB_MAX 9u
 
 typedef enum { VIS_LOST = 0, VIS_HELD = 1, VIS_VALID = 2 } vis_state_t;
@@ -63,6 +63,26 @@ typedef struct {
 /** px 必须严格递增、2 ≤ n ≤ VIS_CALIB_MAX、全部有限，否则 DZ_EINVAL。 */
 dz_err_t vis_calib_init(vis_calib_t *c, const float *px, const float *val, uint8_t n);
 float    vis_calib_apply(const vis_calib_t *c, float px, bool *out_of_range);
+
+/* ---------------- 平面五点标定（1.1.0） ----------------
+ * 相机斜看一个平面（屏幕、靶纸、地面）时，像素→平面坐标是透视变换（单应），分段线性做不对。
+ * 用平面上 4 个已知点（通常是四个角）求单应矩阵 H，第 5 个已知点（通常是中心）只用来验收：
+ * 把它的像素坐标代进去，和真实坐标的距离 = check_err，超过你的容差说明点错了 / 相机动了 / 镜头畸变太大。
+ * 4 个点要求任意 3 点不共线（实际是凸四边形、按顺序给），否则 DZ_EINVAL。
+ * 反向（平面→像素）也一起算好：激光打到屏幕某点、云台要转到像素目标时用。 */
+typedef struct {
+    float h[9];        /**< 像素 → 平面，行主序，h[8] = 1 */
+    float hi[9];       /**< 平面 → 像素 */
+    float check_err;   /**< 第 5 点的验收误差（平面单位）；没给第 5 点时为 -1 */
+} vis_plane_t;
+
+/** px/py：4 个点的像素坐标；wx/wy：对应平面坐标；chk 为 NULL 表示不验收，否则 chk = {px, py, wx, wy}。 */
+dz_err_t vis_plane_init(vis_plane_t *p, const float px[4], const float py[4],
+                        const float wx[4], const float wy[4], const float chk[4]);
+/** 像素 → 平面。点在相机地平线外（分母≈0）返回 DZ_EINVAL。 */
+dz_err_t vis_plane_to_world(const vis_plane_t *p, float u, float v, float *x, float *y);
+/** 平面 → 像素。 */
+dz_err_t vis_plane_to_pixel(const vis_plane_t *p, float x, float y, float *u, float *v);
 
 dz_err_t vis_selftest(void);
 
