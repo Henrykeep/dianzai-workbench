@@ -41,7 +41,7 @@ def test_sim_events(home):
     s.connect("sim:car_2wd")
     try:
         t0 = time.monotonic()
-        while time.monotonic() - t0 < 5 and not (s.schema and len(s.params) == 5):
+        while time.monotonic() - t0 < 5 and not (s.schema and len(s.params) == len(s.schema.params)):
             s.status(); time.sleep(0.05)
         s.set_param("kp", 0.3)
         e = s.mark(*events.from_broadcast({"type": "param", "name": "kp", "value": 0.3}))

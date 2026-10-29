@@ -25,7 +25,7 @@ def test_car_2wd_params(home):
     s = Session()
     s.connect("sim:car_2wd")
     try:
-        assert wait(lambda: s.schema and len(s.params) == 5)
+        assert wait(lambda: s.schema and len(s.params) == len(s.schema.params))
         assert s.params["kp"] == pytest.approx(0.08)
         assert wait(lambda: len(s.window(1)) > 10)
         r = s.set_param("kp", 9)
@@ -50,7 +50,7 @@ def test_readback_fw_rev_and_last_good_diff(home, tmp_path):
     s = Session()
     s.connect("sim:car_2wd")
     try:
-        assert wait(lambda: s.schema and len(s.params) == 5 and s.fw_rev)
+        assert wait(lambda: s.schema and len(s.params) == len(s.schema.params) and s.fw_rev)
         head = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], cwd=repo, capture_output=True, text=True).stdout.strip()
         if head:
             assert fw_rev_str(s.fw_rev).startswith(head), (fw_rev_str(s.fw_rev), head)
@@ -136,7 +136,7 @@ def test_tune_analyze_on_sim_step(home, tmp_path):
     s = Session()
     s.connect("sim:car_2wd")
     try:
-        assert wait(lambda: s.schema and len(s.params) == 5)
+        assert wait(lambda: s.schema and len(s.params) == len(s.schema.params))
         t_end = time.monotonic() + 2.0
         while time.monotonic() < t_end:            # 0.6 s 静止后阶跃到 3 r/s，持续发（cmd_timeout 200 ms）
             v = 0.0 if t_end - time.monotonic() > 1.4 else 3.0

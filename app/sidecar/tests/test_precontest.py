@@ -26,7 +26,7 @@ def test_sim_board_checks_and_export(home, tmp_path):
     s.connect("sim:car_2wd")
     try:
         t0 = time.monotonic()
-        while time.monotonic() - t0 < 5 and not (s.schema and len(s.params) == 5 and s.status()["alive"]):
+        while time.monotonic() - t0 < 5 and not (s.schema and len(s.params) == len(s.schema.params) and s.status()["alive"]):
             time.sleep(0.05)
         r = precontest.run(s, None, [])
         b = by_id(r)

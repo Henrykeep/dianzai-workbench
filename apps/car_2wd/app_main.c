@@ -12,6 +12,8 @@
  *   板 -> 上位机  HEARTBEAT  每 500 ms（带 schema 哈希）
  *   参数读写 / 急停 / 命令：dzctl（firmware/proto/dzctl），字段与参数表见 app.yaml 的 link: 段（自动生成 link_gen.h）。
  *   急停锁存：电机刹车、忽略速度指令，直到收到命令 'R'。
+ *   堵转（algo/stall）：没有电流采样，负载用 PID 输出占空比；|占空比| ≥ stall_duty 且 |转速| ≤ 0.2 rps 持续 stall_ms → 锁急停（心跳 STALL 标志）。
+ *   安全态：上次复位原因是看门狗/内核锁死 → 上电直接锁急停（心跳 SAFE_BOOT），人看过原因发 'R' 才动。
  *   可选外设（car_aux.c）：板子有 VBAT 就监测电池（过放 → 急停），有 US_TRIG/US_ECHO 就测前方距离（太近 → 不许前进）。
  */
 #include "board_gen.h"
@@ -26,6 +28,7 @@
 #include "subsys.h"
 #include "drive_plan.h"
 #include "car_aux.h"
+#include "stall.h"
 
 /* ---- 机械参数：换电机/轮子改这里 ---- */
 #define CTRL_PERIOD_US   1000u
@@ -35,7 +38,8 @@
 #define ID_CMD   1u
 #define WDG_MS   500u   /* 独立看门狗：主循环卡住 500 ms 硬件复位（主循环最坏约几 ms；改这里要同步 app.yaml protect_fixed） */
 
-typedef struct { motor_dc_t motor; encoder_t enc; pid_ctrl_t pid; } wheel_t;
+typedef struct { motor_dc_t motor; encoder_t enc; pid_ctrl_t pid; stall_t stall; } wheel_t;
+#define STALL_SPEED_RPS 0.2f   /* “转速近零”：编码器噪声之上、正常最低巡航（约 0.04 m/s）之下 */
 
 static wheel_t s_w[2];
 static car_state_t s_state;
@@ -46,6 +50,7 @@ static volatile uint32_t s_ctrl_errors;
 static drive_params_t s_params = { .wheel_diam_m = 0.065f, .track_m = 0.15f };   /* 其余字段来自 g_link_params */
 static volatile bool s_estop;
 static volatile bool s_gains_dirty;
+static volatile bool s_stalled;   /* ISR 置，主循环转成急停 + 心跳标志；'R' 清 */
 static dzctl_wd_t s_wd;   /* 上位机心跳看门狗：调参时上位机崩溃/拔线 -> 输出归零并锁存急停 */
 
 /* 上位机改了参数：同步到 drive_plan 参数；PID 增益交给控制中断在自己的节拍里换（不在两次 update 之间撕裂）。 */
@@ -55,6 +60,10 @@ static void apply_params(void)
     s_params.accel_rps2 = g_link_params.accel_rps2;
     s_params.cmd_timeout_ms = g_link_params.cmd_timeout_ms;
     s_gains_dirty = true;
+    for (unsigned i = 0; i < 2; i++) {   /* 门限只改数值不改状态：调参不会把已锁存的堵转清掉 */
+        s_w[i].stall.c.load_on = g_link_params.stall_duty;
+        s_w[i].stall.c.hold_ms = g_link_params.stall_ms;
+    }
 }
 
 static void ctrl_isr(void *ctx)
@@ -72,7 +81,9 @@ static void ctrl_isr(void *ctx)
         dz_err_t ee = encoder_update(&w->enc);
         if (s_estop) { motor_dc_stop(&w->motor, MOTOR_DC_BRAKE); pid_reset(&w->pid); continue; }
         if (ee != DZ_OK) { s_ctrl_errors++; motor_dc_stop(&w->motor, MOTOR_DC_COAST); continue; }
-        if (motor_dc_set(&w->motor, pid_update(&w->pid, s_sp[i], encoder_speed_rps(&w->enc))) != DZ_OK) s_ctrl_errors++;
+        float spd = encoder_speed_rps(&w->enc), u = pid_update(&w->pid, s_sp[i], spd);
+        if (stall_update(&w->stall, u, spd, pal_millis()) == STALL_STALLED) { s_stalled = true; motor_dc_stop(&w->motor, MOTOR_DC_BRAKE); continue; }
+        if (motor_dc_set(&w->motor, u) != DZ_OK) s_ctrl_errors++;
     }
     s_gains_dirty = false;
 }
@@ -98,13 +109,22 @@ static dz_err_t wheel_init(wheel_t *w, pal_id_t pwm, pal_id_t in1, pal_id_t in2,
     pc.out_min = -1.0f; pc.out_max = 1.0f;
     pc.i_min = -1.0f; pc.i_max = 1.0f;
     pc.out_rate_max = 20.0f;
-    return pid_init(&w->pid, &pc);
+    if ((e = pid_init(&w->pid, &pc)) != DZ_OK) return e;
+    stall_cfg_t sc = { .load_on = g_link_params.stall_duty, .speed_on = STALL_SPEED_RPS,
+                       .hold_ms = g_link_params.stall_ms, .start_ignore_ms = 200u, .retry_ms = 0u };   /* 只人工解除 */
+    return stall_init(&w->stall, &sc);
 }
 
 dz_err_t app_init(void)
 {
     static const subsys_t *const list[] = { &g_drive_plan };
     dz_err_t e;
+    pal_reset_cause_t rc = pal_reset_cause();
+    dzctl_set_reset_cause((uint32_t)rc);
+    if (rc == PAL_RESET_WATCHDOG || rc == PAL_RESET_LOCKUP) {   /* 主循环卡死过：不自己接着跑，等人看 */
+        s_estop = true;
+        dzctl_set_flags(DZCTL_HB_SAFE_BOOT, true);
+    }
     apply_params();
     if ((e = wheel_init(&s_w[0], RES_PWM_MOTOR_A, RES_GPIO_MOTOR_A_IN1, RES_GPIO_MOTOR_A_IN2, RES_ENCODER_MOTOR_A)) != DZ_OK) return e;
     if ((e = wheel_init(&s_w[1], RES_PWM_MOTOR_B, RES_GPIO_MOTOR_B_IN1, RES_GPIO_MOTOR_B_IN2, RES_ENCODER_MOTOR_B)) != DZ_OK) return e;
@@ -142,7 +162,11 @@ static void handle_rx(uint32_t now)
             apply_params();
             send(&ack);
         } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'R') {
-            s_estop = false;
+            uint32_t st = pal_irq_save();
+            s_estop = false; s_stalled = false;
+            stall_clear(&s_w[0].stall); stall_clear(&s_w[1].stall);
+            pal_irq_restore(st);
+            dzctl_set_flags(DZCTL_HB_SAFE_BOOT | DZCTL_HB_STALL, false);
         } else if (!s_estop && f.kind == DZF_DATA && f.id == ID_CMD && f.len == 8u) {
             s_state.cmd_v_mps = car_aux_limit_v(dzframe_get_f32(&f, 0));
             s_state.cmd_w_rps = dzframe_get_f32(&f, 4);
@@ -161,6 +185,8 @@ void app_loop(void)
     handle_rx(now);
     if (dzctl_wd_expired(&s_wd, now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
     if (car_aux_poll(now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }   /* 只置不清 */
+    if (s_stalled && !s_estop) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; dzctl_set_flags(DZCTL_HB_STALL, true); }
+    dzctl_set_flags(DZCTL_HB_ESTOP, s_estop);
     s_state.cmd_v_mps = car_aux_limit_v(s_state.cmd_v_mps);
     subsys_sched_poll(&s_sched, now);
     uint32_t st = pal_irq_save();

@@ -8,6 +8,7 @@
 
 void host_sim_app_setup(void);
 static int fails;
+static uint32_t hb_status = 0xFFFFFFFFu;   /* 最近一次心跳的 status 字（dzctl 0.5.0） */
 #define CHECK(c) do { if (!(c)) { fails++; printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static void send_cmd(float v, float w)
@@ -35,12 +36,20 @@ static int run(uint32_t ms, bool cmd, float v, float w, float t[4])
                 for (int j = 0; j < 4; j++) t[j] = dzframe_get_f32(&f, 4 + 4 * (size_t)j);
                 CHECK(dzframe_get_u32(&f, 20) == 0);   /* ctrl_err */
                 frames++;
-            }
+            } else if (f.kind == DZF_HEARTBEAT && f.len >= 16u) hb_status = dzframe_get_u32(&f, 12);
     }
     return frames;
 }
 
 /* 板上分压 1:11、3.3 V 12 位 ADC（与 battery_cfg_default 一致） */
+static void send_reset(void)
+{
+    dzframe_t f = { .kind = DZF_DATA, .id = 0x7E };
+    dzframe_put_u8(&f, 'R');
+    uint8_t b[DZFRAME_MAX_FRAME]; size_t n = dzframe_encode(b, sizeof b, &f);
+    host_sim_uart_inject_rx(RES_UART_LINK, b, (uint16_t)n);
+}
+
 static uint16_t vbat_raw(float mv_pack) { return (uint16_t)(mv_pack / 11.0f / 3300.0f * 4095.0f + 0.5f); }
 
 int main(void)
@@ -85,6 +94,25 @@ int main(void)
     CHECK(t[0] > 1.0f);
     printf("  障碍移走: sp_a=%.3f\n", t[0]);
 
+    /* 堵转：A 轮卡死（负载远大于电机能力）→ PID 顶到 0.9 占空比、转速近零 → 500 ms 后锁急停，心跳带 STALL；
+     * 卡死解除也不自己动，发 'R' 才恢复 */
+    CHECK(hb_status != 0xFFFFFFFFu && (hb_status & 0xFFu) == 0u && !(hb_status & (1u << 9)));   /* 仿真复位原因 = 未知 */
+    host_sim_motor_set_load(0, 50.0f);
+    run(2000, true, 0.3f, 0.0f, t);
+    CHECK(t[0] == 0.0f && (hb_status & (1u << 9)) && (hb_status & (1u << 10)));
+    printf("  堵转: sp_a=%.3f status=0x%X\n", t[0], (unsigned)hb_status);
+    host_sim_motor_set_load(0, 0.3f);
+    run(1000, true, 0.3f, 0.0f, t);
+    CHECK(t[0] == 0.0f);
+    send_reset();
+    run(1500, true, 0.3f, 0.0f, t);
+    CHECK(t[0] > 1.0f && fabsf(t[1] - t[0]) < 0.2f && !(hb_status & ((1u << 9) | (1u << 10))));
+    printf("  R 解除: sp_a=%.3f spd_a=%.3f\n", t[0], t[1]);
+    /* 起步不误判：从静止猛给 0.6 m/s，PID 会短暂顶满 */
+    run(1500, false, 0, 0, t);
+    run(1500, true, 0.6f, 0.0f, t);
+    CHECK(t[0] > 2.5f && !(hb_status & (1u << 9)));
+
     /* car_aux 电池：先见过 OK（8.2 V，2S）再掉到 CRIT（6.0 V）→ 锁急停，之后再发前进指令也不动；电压回升也不自动解除 */
     host_sim_adc_set(RES_ADC_VBAT, vbat_raw(8200.0f));
     run(3000, true, 0.3f, 0.0f, t);
@@ -97,6 +125,19 @@ int main(void)
     run(1500, true, 0.3f, 0.0f, t);
     CHECK(t[0] == 0.0f && fabsf(t[1]) < 0.1f);
     printf("  电压回升: sp_a=%.3f spd_a=%.3f（急停保持，只能人工解除）\n", t[0], t[1]);
+
+    /* 安全态：上次是看门狗复位 → 上电锁急停、心跳 SAFE_BOOT + 复位原因 4；发 'R' 才走 */
+    send_reset();
+    host_sim_reset();
+    host_sim_set_reset_cause(PAL_RESET_WATCHDOG);
+    host_sim_app_setup();
+    CHECK(app_init() == DZ_OK);
+    run(1500, true, 0.3f, 0.0f, t);
+    CHECK(t[0] == 0.0f && (hb_status & 0xFFu) == 4u && (hb_status & (1u << 8)));
+    printf("  看门狗复位后: sp_a=%.3f status=0x%X（安全态）\n", t[0], (unsigned)hb_status);
+    send_reset();
+    run(1500, true, 0.3f, 0.0f, t);
+    CHECK(t[0] > 1.0f && !(hb_status & (1u << 8)) && (hb_status & 0xFFu) == 4u);   /* 复位原因留着，标志清掉 */
 
     printf(fails ? "car_2wd: %d 项失败\n" : "car_2wd: 全部通过\n", fails);
     return fails != 0;
