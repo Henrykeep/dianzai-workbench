@@ -15,7 +15,7 @@ link:
     period_ms: 10
     fields:
       - { name: t_ms,       type: uint32, unit: ms }
-      - { name: sp_arm_deg, type: float, unit: deg }
+      - { name: sp_arm_deg, type: float, unit: deg, ref_for: arm_deg }
       - { name: arm_deg,    type: float, unit: deg }
       - { name: pend_deg,   type: float, unit: deg }
       - { name: u,          type: float }

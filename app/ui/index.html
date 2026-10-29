@@ -36,16 +36,20 @@
   <nav class="rail" id="rail">
     <button class="ri on" data-side="chans" title="通道"><i data-lucide="activity"></i></button>
     <button class="ri" data-side="agent" title="Agent"><i data-lucide="sparkles"></i><span class="pip" id="ag-pip" hidden></span></button>
+    <button class="ri" data-side="meas" title="测量：A/B 光标读数"><i data-lucide="ruler"></i><span class="pip" id="meas-pip" hidden></span></button>
+    <button class="ri" data-side="hist" title="历史：每轮阶跃实验的曲线与参数"><i data-lucide="history"></i><span class="pip" id="hist-pip" hidden></span></button>
     <div class="sp"></div>
     <button id="doctor" class="ri" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
-    <button id="theme" class="ri" title="切换深色 / 浅色（户外强光下用浅色）"><i data-lucide="sun-moon"></i></button>
+    <button id="theme" class="ri" title="切换主题：深色 → 浅色 → 高对比（户外强光下用浅色或高对比）"><i data-lucide="sun-moon"></i></button>
   </nav>
   <main class="work">
     <section class="scope">
       <div class="vh"><div class="tabs" id="view"><span data-v="plot" class="on">示波</span><span data-v="raw" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备">原始</span><span data-v="fft" title="频谱：按固件遥测周期做 FFT（去直流 + Hann 窗），找振荡频率">频谱</span></div>
-        <span class="lbl mono" id="plot-sub"></span><div class="sp"></div>
-        <div class="seg" id="win"><span data-w="2">2 s</span><span data-w="5" class="on">5 s</span><span data-w="10">10 s</span><span data-w="30">30 s</span></div>
-        <div class="seg" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
+        <span class="lbl mono" id="plot-sub"></span><span class="lbl mono po" id="xdiv"></span><div class="sp"></div>
+        <button class="btn ghost sm po" id="t0-mark" title="把现在标为阶跃起点 t0（T）；再标一次时上一轮进历史并显示成余辉"><i data-lucide="flag"></i>t0 <kbd>T</kbd></button>
+        <button class="ib po" id="cur-clr" title="清除 A/B 光标、t0 和余辉"><i data-lucide="eraser"></i></button>
+        <div class="seg po" id="win"><span data-w="2">2 s</span><span data-w="5" class="on">5 s</span><span data-w="10">10 s</span><span data-w="30">30 s</span></div>
+        <div class="seg po" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
       </div>
       <div class="plotbox" id="pb"><div id="empty" class="empty"></div>
         <div id="raw" class="raw" hidden>
@@ -118,6 +122,14 @@
       <div class="fwst"><span class="lbl" id="fw-st"></span></div>
       <div id="props" class="feed"></div>
       <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
+    </section>
+    <section class="pane" data-side="meas" hidden>
+      <div class="vh"><span class="ttl">测量</span><div class="sp"></div><span class="lbl mono" id="meas-t0"></span></div>
+      <div id="meas" class="meas"></div>
+    </section>
+    <section class="pane" data-side="hist" hidden>
+      <div class="vh"><span class="ttl">历史</span><div class="sp"></div><span class="lbl mono" id="hist-n"></span></div>
+      <div id="hist" class="hist"></div>
     </section>
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
       <dialog id="cfg" class="dlg">

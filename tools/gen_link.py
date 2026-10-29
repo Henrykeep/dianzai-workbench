@@ -55,6 +55,11 @@ def check(spec: dict, params: list) -> list[str]:
         errs.append("telemetry.id 须在 1..125（0x7E/0x7F 留给命令/急停）")
     if len(params) > 125:
         errs.append("参数超过 125 个")
+    names = {f.get("name") for f in tel.get("fields", [])}
+    for f in tel.get("fields", []):
+        r = f.get("ref_for")
+        if r and (r not in names or r == f.get("name")):
+            errs.append(f"telemetry.{f.get('name')}: ref_for 指向不存在的字段 {r}")
     for p in params:
         if "min" not in p or "max" not in p:
             errs.append(f"参数 {p['name']}: 缺 min/max（上位机写参数必须限幅）")
@@ -71,7 +76,9 @@ def schema(spec: dict, params: list) -> dict:
                                    **({"enum": f["enum"]} if f.get("enum") else {}),
                                    **({"na": int(f["na"])} if f.get("na") is not None else {}),
                                    # pin：顶栏状态块的标签（任何题目通用，界面不认具体字段名）；pin_with：块里附带显示的数值字段
-                                   **({"pin": str(f["pin"]), "pin_with": list(f.get("pin_with") or [])} if f.get("pin") else {})}    # 这个值表示“无数据”，界面显示 —
+                                   **({"pin": str(f["pin"]), "pin_with": list(f.get("pin_with") or [])} if f.get("pin") else {}),
+                                   # ref_for：本字段是哪个字段的设定值——界面把它画成那条曲线上的虚线（显式声明，不按名字猜）
+                                   **({"ref_for": str(f["ref_for"])} if f.get("ref_for") else {})}    # 这个值表示“无数据”，界面显示 —
                                   for f in tel.get("fields", [])]},
          "params": [{"name": p["name"], "type": WIRE[p["type"]], "min": p["min"], "max": p["max"],
                      "unit": p.get("unit", "")} for p in params]}

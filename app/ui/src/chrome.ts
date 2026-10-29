@@ -10,9 +10,10 @@ export function applyTheme(t: string): void {
 
 export function initChrome(): void {
   const saved = localStorage.getItem(KEY);
-  applyTheme(saved === "light" ? "light" : "dark");
+  const order = ["dark", "light", "hc"];
+  applyTheme(order.includes(saved ?? "") ? saved! : "dark");
   document.getElementById("theme")?.addEventListener("click", () => {
-    const t = document.documentElement.dataset.theme === "light" ? "dark" : "light";
+    const t = order[(order.indexOf(document.documentElement.dataset.theme ?? "dark") + 1) % order.length];
     localStorage.setItem(KEY, t);
     applyTheme(t);
   });

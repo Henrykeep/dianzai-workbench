@@ -43,3 +43,17 @@
   --ch1:#b58a00; --ch2:#0a8aa6; --ch3:#2c9a52; --ch4:#c7611c;
   --ch5:#444a52; --ch6:#2d63c8; --ch7:#8a6440; --ch8:#5f7479;
 }
+/* 高对比（户外强光 / 投影 / 视力）：纯黑底、纯白字、线和网格加亮，通道色提饱和；仍不用紫。
+ * 参照 WCAG 2.2 AAA 正文 7:1、VS Code High Contrast 主题的做法：靠边框而不是靠底色区分层级。 */
+[data-theme="hc"]{
+  color-scheme:dark;
+  --s0:oklch(0 0 0); --s1:oklch(0 0 0); --s2:oklch(.1 0 0); --s3:oklch(.16 0 0); --s-hover:oklch(.24 0 0);
+  --ink:oklch(1 0 0); --text:oklch(.95 0 0); --muted:oklch(.85 0 0); --dim:oklch(.75 0 0); --faint:oklch(.6 0 0);
+  --line:oklch(.62 0 0); --hair:oklch(.42 0 0); --line2:oklch(.8 0 0);
+  --grid:oklch(.3 0 0); --grid-2:oklch(.5 0 0);
+  --acc:#5c9dff; --acc-t:#9cc2ff; --acc-bg:oklch(.7 .14 262 / .22); --focus:0 0 0 2px #9cc2ff;
+  --go:#2fbf6a; --ok:#5fe39a; --warn:#ffc24a; --crit:#ff6b60; --info:#7cc4ff; --estop:#ff4d42;
+  --ch1:#ffd84a; --ch2:#4ae0ff; --ch3:#6cf08f; --ch4:#ff9c4a;
+  --ch5:#ffffff; --ch6:#8ab4ff; --ch7:#e8c08f; --ch8:#b0c4c8;
+  --setpoint:oklch(.85 0 0);
+}
