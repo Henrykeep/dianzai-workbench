@@ -136,7 +136,7 @@ class Server:
             return snapshots.list_all(s.schema.hash) if s.schema else []
         if op == "snapshot_restore":
             return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults"))))
-        if op in ("precontest", "precontest_export"):
+        if op == "precontest" or op == "precontest_export":
             from . import doctor, precontest
             repo = m.get("repo") or str(self.svc.gw.root)
             r = await run(None, lambda: precontest.run(s, repo, doctor.run(repo)))
