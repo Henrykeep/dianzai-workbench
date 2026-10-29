@@ -28,7 +28,7 @@
 | 14-Keil工作流.md | AC6/AC5 要求、keil_inject.py 注入模块、掉电保存区 .sct |
 | 15-CCS工作流.md | 天猛星导入 CCS（projectspec + .syscfg，tiarmclang） |
 | 16-VSCode工作流.md | tasks/launch（Cortex-Debug，OpenOCD/pyOCD）、EIDE 可选 |
-| 17-桌面工作台.md | dzbench：曲线/参数/急停/回放、自定义帧结构（JustFloat/FireWater/HEX 表），侧车 WebSocket 协议，Agent 接缝 |
+| 17-桌面工作台.md | dzbench：曲线/参数/急停/回放、自定义帧结构（JustFloat/FireWater/HEX 表），侧车 WebSocket 协议，Agent 接缝；仿真 PSO/分阶段 PID 搜索（tuning/search.py，实机只验 top-k） |
 | 18-内置Agent.md | 分层写权限网关、diff 确认 + make check + git 提交/回滚、可插拔大模型、离线阶跃整定 |
 | agent-knowledge/ | 内置 Agent 按触发词加载的知识（堵转/极性/阶跃辨识）与人工接受后写入的项目记忆 |
 | 19-赛题覆盖矩阵.md | 历年控制题 × 所需能力 × 仓库现状（有/部分/缺），用于排模块 |

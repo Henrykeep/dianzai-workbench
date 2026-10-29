@@ -88,3 +88,4 @@
 
 ## 2026-10-30（UTC+8）：参考仓库 15 项缺口（/workspace/refs/REFS_REVIEW.md“优先级”表，按顺序做）
 1. 自定义 HEX/文本帧结构表 → `app/sidecar/dzbench/framedef.py` + 连接设置“非工作台帧”。[仿真]
+2. 完整 PSO + 分阶段搜索（仿真跑，实机只验 top-k）→ `app/sidecar/dzbench/tuning/search.py` + vendored `pid_helper_pso.py`。[仿真]；没加侧车 op / 界面，下一步可把 identify 的 FOPDT 直接喂给它。
