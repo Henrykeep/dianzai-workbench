@@ -1,0 +1,30 @@
+# 2026H 方案选型结果（第 2 步）。核对：python3 tools/scheme.py requirements.yaml --scheme scheme.yaml -o out/
+# 选定项是用户比赛时的实际方案（docs/12、HANDOVER），理由按复盘补写；备选是调不动时的退路。
+mcu: stm32f407vet6
+mcu_reason: 学长 bldc 板（F407 + FreeRTOS）是参赛版；FPU 跑串级 float、6 个串口够视觉/QD4310/IMU/调试同时用
+picks:
+  sense.line: ir_gray_array
+  sense.wheel_speed: encoder_ab
+  act.wheel_drive: dc_motor_hbridge
+  sense.ball_pos: maixcam2
+  act.beam_angle: qd4310
+  sense.accel: encoder_ab
+  link.video: jetson_nano
+  ui.key: key_gpio
+  ui.display: oled_ssd1306
+offboard: [link.video]    # 图传是独立链路（摄像头→Jetson→接收端），不接 F407
+fallback:
+  sense.ball_pos: k230
+  act.beam_angle: stepper_42
+  sense.accel: imu_uart
+  ui.display: tft_st7735
+reasons:
+  sense.line: 规则 R4 只允许红外
+  sense.wheel_speed: 电机自带，停车偏差 ≤2 cm 要靠里程
+  act.wheel_drive: 现成底盘
+  sense.ball_pos: 规则 R8 必须摄像头；MaixCAM2 小、找色块帧率够
+  act.beam_angle: 弯道扰动只相当于 0.5–1.1° 摆角，要高分辨率角度执行，QD4310 闭环在电机里
+  sense.accel: 轮速差分即可估加速度给前馈（algo/accel_ff），IMU 作为备选
+  link.video: 用户实际用 Jetson Nano 做图传和录像（B1 要每次完整录像）
+  ui.key: 规则 R5 必须有启动按键
+  ui.display: 规则 R5 屏 ≤2 英寸；只显示时间，OLED 够

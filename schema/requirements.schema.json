@@ -22,7 +22,7 @@
         "properties": {
           "id": { "type": "string", "pattern": "^R[0-9]+$" },
           "text": { "type": "string" },
-          "forbid": { "type": "array", "items": { "type": "string" }, "description": "禁用的能力/器件标签（tools/select.py 据此排除候选）" },
+          "forbid": { "type": "array", "items": { "type": "string" }, "description": "禁用的能力/器件标签（tools/scheme.py 据此排除候选）" },
           "require": { "type": "array", "items": { "type": "string" } },
           "confirmed_by": { "type": "array", "items": { "type": "string" }, "description": "读题时三人各自确认，空 = 未确认" }
         }

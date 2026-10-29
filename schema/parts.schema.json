@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "器件/方案库 tools/catalog/parts.yaml（tools/scheme.py）",
+  "type": "object", "required": ["schema_version", "parts"], "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "parts": { "type": "array", "items": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "kind", "provides", "pros", "cons", "substitutes", "repo", "status"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_]+$" }, "name": { "type": "string" },
+        "kind": { "enum": ["mcu", "coproc", "sensor", "actuator", "ui", "link"] },
+        "provides": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "bus": { "enum": ["uart", "i2c", "spi", "pwm", "gpio", "adc", "qei", "usb"] },
+        "specs": { "type": "object" },
+        "pros": { "type": "array", "items": { "type": "string" } },
+        "cons": { "type": "array", "items": { "type": "string" } },
+        "risks": { "type": "array", "items": { "type": "string" } },
+        "substitutes": { "type": "array", "items": { "type": "string" } },
+        "repo": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["上板", "仿真", "编译", "无驱动"] }
+      } } }
+  }
+}

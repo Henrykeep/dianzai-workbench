@@ -1,0 +1,11 @@
+# 方案选型模板（第 2 步）。起稿：python3 tools/scheme.py requirements.yaml --init-scheme scheme.yaml
+# 核对：python3 tools/scheme.py requirements.yaml --scheme scheme.yaml -o out/   实例：examples/2026H_ball/scheme.yaml
+mcu: stm32f407vet6            # tools/catalog/parts.yaml 里 kind: mcu 的 id
+mcu_reason: 为什么选这块（算力 / 串口数 / 队里熟不熟 / 题目是否指定 TI）
+picks:                        # 能力标签 → 器件 id（每个 needs 都要有）
+  sense.line: ir_gray_array
+reasons:
+  sense.line: 理由（写进报告“方案论证”）
+fallback:                     # 调不动时切换的备选（牵涉 ≥20 分的能力建议都写）
+  act.wheel_drive: stepper_42
+offboard: []                  # 不接主控的能力（独立图传等），不占主控串口

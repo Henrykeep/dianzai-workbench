@@ -6,7 +6,7 @@
   checklist <requirements.yaml> -o 目录         生成 checklist.md（贴墙、比赛当天逐项打勾）+ checklist.csv
 
 不编数据：init 只做文字切分和数字/单位抓取，分值、指标、子系统都要人填；没有指标的评分项 check 会报"不可验收"。
-格式定义：schema/requirements.schema.json。第 2 步 tools/select.py 读同一个文件的 needs / constraints。
+格式定义：schema/requirements.schema.json。第 2 步 tools/scheme.py 读同一个文件的 needs / constraints。
 """
 from __future__ import annotations
 
@@ -216,7 +216,7 @@ def render(d: dict) -> tuple[str, list[list[str]]]:
         L += [f"| {e['what']} | {e['value']} | {e['basis']} |" for e in d["estimates"]]
     needs = sorted({n for i in items for n in i.get("needs", [])})
     if needs:
-        L += ["", f"## 下一步：方案选型（tools/select.py 读本文件）", "", "需要的能力：" + "、".join(f"`{n}`" for n in needs)]
+        L += ["", f"## 下一步：方案选型（tools/scheme.py 读本文件）", "", "需要的能力：" + "、".join(f"`{n}`" for n in needs)]
     return "\n".join(L) + "\n", rows
 
 

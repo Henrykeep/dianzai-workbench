@@ -1,0 +1,315 @@
+# 器件/方案库（第 2 步选型 tools/scheme.py 读）。格式：schema/parts.schema.json。
+# 规格是常见型号的典型值，**以手册和实物为准**；status 指本仓库里的支持程度，不是器件本身好坏：
+#   上板 = 本仓库驱动在实物上验过；仿真 = 主机单测/仿真通过；编译 = 只交叉编译过；无驱动 = 仓库里没有，要自己写
+# repo 里的路径 make check 会检查存在（tools/test_scheme.py），删了模块这里会报错，不会悄悄过期。
+# 能力标签（provides / needs）：
+#   sense.line 循线  sense.wheel_speed 轮速  sense.accel 线加速度  sense.attitude 姿态角  sense.distance 测距
+#   sense.ball_pos 小物体位置（视觉）  sense.object 目标识别/定位（视觉）  compute.vision 视觉算力
+#   act.wheel_drive 轮式驱动  act.beam_angle 精确角度执行（摆杆/云台）  act.servo_angle 普通舵机角度
+#   link.video 图传/录像  link.wireless 无线串口  ui.key 按键  ui.display 显示屏  mcu.main 主控
+# 只用于禁用的特征标签（tags）：sense.line_camera 用摄像头循线  ui.display_large 屏 >2 英寸  sense.ball_pos_contact 接触式测位置
+schema_version: 1
+parts:
+  # ── 主控 ──
+  - id: stm32f103c8t6
+    name: STM32F103C8T6（蓝/黑丸板、自制底板）
+    kind: mcu
+    provides: [mcu.main]
+    specs: { core: "Cortex-M3 72 MHz，无 FPU", flash_kb: 64, ram_kb: 20, uart: 3, ide: "Keil / EIDE（CubeMX 生成）" }
+    pros: [便宜、资料最多, 引脚少好布线]
+    cons: [无 FPU（float 控制律慢一个量级）, 64 KB flash 加屏幕字库后紧张, 只有 3 个串口]
+    risks: [市面大量兼容/打磨片，烧录 ID 不对 Keil 会报错]
+    substitutes: [stm32f407vet6]
+    repo: [boards/stm32f103c8t6-car-cubemx]
+    status: 编译
+  - id: stm32f407vet6
+    name: STM32F407VET6（立创天空星 / 学长 bldc 板）
+    kind: mcu
+    provides: [mcu.main]
+    specs: { core: "Cortex-M4F 168 MHz", flash_kb: 512, ram_kb: 192, uart: 6, ide: "Keil / EIDE（CubeMX 生成）" }
+    pros: [FPU、串口多、定时器多, 用户主力板，现成工程最多]
+    cons: [100 脚，飞线多时布线乱]
+    risks: []
+    substitutes: [stm32f407vgt6, mspm0g3507]
+    repo: [boards/stm32f407-skystar-cubemx, boards/stm32f407-bldc-freertos-cubemx]
+    status: 编译
+  - id: stm32f407vgt6
+    name: STM32F407VGT6（天空星高配）
+    kind: mcu
+    provides: [mcu.main]
+    specs: { core: "Cortex-M4F 168 MHz", flash_kb: 1024, ram_kb: 192, uart: 6, ide: "Keil / EIDE" }
+    pros: [与 VET6 引脚兼容，flash 翻倍]
+    cons: [比 VET6 贵、货少]
+    risks: []
+    substitutes: [stm32f407vet6]
+    repo: [boards/stm32f407-skystar-cubemx]
+    status: 编译
+  - id: mspm0g3507
+    name: TI MSPM0G3507（立创天猛星 / LaunchPad）
+    kind: mcu
+    provides: [mcu.main]
+    specs: { core: "Cortex-M0+ 80 MHz，无 FPU", flash_kb: 128, ram_kb: 32, uart: 4, ide: "CCS + SysConfig（DriverLib）" }
+    pros: [TI 杯常指定/加分时用, 价格低]
+    cons: [无 FPU, RAM 32 KB（彩屏不能整帧缓冲）, 资料比 STM32 少]
+    risks: [SDK 版本与 SysConfig 版本要配对]
+    substitutes: [stm32f407vet6]
+    repo: [boards/mspm0g3507-tianmengxing, boards/mspm0g3507-launchpad]
+    status: 编译
+  # ── 协处理器 / 视觉 ──
+  - id: maixcam2
+    name: MaixCAM2 / MaixCAM / MaixCAM-Pro（MaixPy）
+    kind: coproc
+    provides: [compute.vision, sense.ball_pos, sense.object]
+    bus: uart
+    specs: { os: "Linux + MaixPy", camera: 板载, fps: "颜色块 60+（分辨率相关）" }
+    pros: [小、带屏带摄像头, 找色块/AprilTag 现成, 2026H 用户实际方案]
+    cons: [复杂模型帧率掉得快]
+    risks: [供电不足会重启，单独供电]
+    substitutes: [k230, jetson_nano]
+    repo: [boards/maixcam2-vision, host/maixcam/ball_tracker.py, host/python/dzlink]
+    status: 仿真
+  - id: k230
+    name: 庐山派 K230（CanMV）
+    kind: coproc
+    provides: [compute.vision, sense.ball_pos, sense.object]
+    bus: uart
+    specs: { os: "MicroPython（CanMV）", npu: 有 }
+    pros: [NPU 跑小模型, 国产资料多]
+    cons: [MicroPython 生态比 CPython 小]
+    risks: [UART 引脚要 FPIOA 配]
+    substitutes: [maixcam2]
+    repo: [host/k230/dzsend.py]
+    status: 仿真
+  - id: jetson_nano
+    name: Jetson Nano
+    kind: coproc
+    provides: [compute.vision, sense.object, link.video, sense.ball_pos]
+    bus: uart
+    specs: { os: "Ubuntu + CPython", gpu: "128 CUDA" }
+    pros: [算力最强、OpenCV/YOLO 都能跑, 可当图传/录像端]
+    cons: [体积大、功耗 5–10 W, 启动慢（约 30 s+）]
+    risks: [40-pin 不耐 5 V, 电源要 4 A 以上]
+    substitutes: [rpi, rdk_x3]
+    repo: [boards/jetson-nano-vision, host/python/dzlink]
+    status: 仿真
+  - id: rpi
+    name: 树莓派 4/5
+    kind: coproc
+    provides: [compute.vision, sense.object, link.video]
+    bus: uart
+    specs: { os: "Raspberry Pi OS + CPython" }
+    pros: [资料最多, 摄像头生态好]
+    cons: [无 NPU，深度模型慢]
+    risks: [要关串口登录、开硬件串口]
+    substitutes: [rdk_x3, jetson_nano]
+    repo: [host/python/dzlink]
+    status: 仿真
+  - id: rdk_x3
+    name: 地瓜 RDK X3 / X5
+    kind: coproc
+    provides: [compute.vision, sense.object, link.video]
+    bus: uart
+    specs: { os: "Ubuntu + CPython", npu: "BPU 5/10 TOPS" }
+    pros: [NPU 跑检测模型快]
+    cons: [模型转换工具链门槛高]
+    risks: [串口设备名 X3/X5 不同]
+    substitutes: [jetson_nano, rpi]
+    repo: [host/python/dzlink]
+    status: 仿真
+  # ── 传感器 ──
+  - id: ir_gray_array
+    name: 红外/灰度循迹阵列（1–8 路，数字或模拟）
+    kind: sensor
+    provides: [sense.line]
+    bus: gpio
+    specs: { channels: "1–8", output: "比较器数字 / ADC 模拟" }
+    pros: [便宜、快、不受环境光太多影响, 多数循迹题规定只能用它]
+    cons: [只看车头一小段，弯道要靠控制补]
+    risks: [离地高度和阈值要现场标定]
+    substitutes: []
+    repo: [firmware/drivers/line_sensor]
+    status: 仿真
+  - id: camera_line
+    name: 摄像头循线（协处理器识别线）
+    kind: sensor
+    provides: [sense.line]
+    tags: [sense.line_camera]
+    bus: uart
+    specs: {}
+    pros: [看得远，能前瞻]
+    cons: [延迟大、受光照影响]
+    risks: [很多题明令禁止]
+    substitutes: [ir_gray_array]
+    repo: [host/python/dzlink]
+    status: 无驱动
+  - id: encoder_ab
+    name: 霍尔/光电 AB 相编码器（电机自带）
+    kind: sensor
+    provides: [sense.wheel_speed, sense.accel]
+    bus: qei
+    specs: { note: "加速度由轮速差分得到，噪声大，要滤波" }
+    pros: [轮速、里程、差分加速度一套搞定]
+    cons: [低线数时低速测不准（用 algo/mtspeed）]
+    risks: [是否 4 倍频、左右对应要实测]
+    substitutes: []
+    repo: [firmware/drivers/encoder, firmware/algo/mtspeed]
+    status: 仿真
+  - id: mpu6050
+    name: MPU6050（I2C）
+    kind: sensor
+    provides: [sense.accel, sense.attitude]
+    bus: i2c
+    specs: {}
+    pros: [便宜、资料多]
+    cons: [零漂大，偏航角会漂]
+    risks: [I2C 线长易受电机干扰]
+    substitutes: [bmi088, imu_uart]
+    repo: [firmware/drivers/mpu6050]
+    status: 仿真
+  - id: bmi088
+    name: BMI088（SPI，RM C 型板载）
+    kind: sensor
+    provides: [sense.accel, sense.attitude]
+    bus: spi
+    specs: {}
+    pros: [抗振好、噪声低]
+    cons: [比 MPU6050 贵]
+    risks: []
+    substitutes: [mpu6050]
+    repo: [firmware/drivers/bmi088]
+    status: 仿真
+  - id: imu_uart
+    name: 串口姿态模块（JY901 / HWT101 类，模块内解算）
+    kind: sensor
+    provides: [sense.accel, sense.attitude]
+    bus: uart
+    specs: {}
+    pros: [直接输出角度，省 MCU 算力]
+    cons: [多占一个串口, 协议因型号而异]
+    risks: []
+    substitutes: [mpu6050]
+    repo: [examples/2026H_ball/io/io_imu.c]
+    status: 编译
+  - id: hcsr04
+    name: HC-SR04 超声波
+    kind: sensor
+    provides: [sense.distance]
+    bus: gpio
+    specs: { range: "2–400 cm（典型）" }
+    pros: [便宜]
+    cons: [刷新慢、波束宽]
+    risks: [多个同时用会串扰]
+    substitutes: []
+    repo: [firmware/drivers/hcsr04]
+    status: 仿真
+  # ── 执行器 ──
+  - id: dc_motor_hbridge
+    name: 直流减速电机 + TB6612 / DRV8833 等 H 桥
+    kind: actuator
+    provides: [act.wheel_drive]
+    bus: pwm
+    specs: {}
+    pros: [最常用, 两种驱动接法都有模块（motor_dc / motor_2pwm）]
+    cons: [死区、左右不一致要标定]
+    risks: [电机电源和逻辑电源要分开、共地]
+    substitutes: [stepper_42]
+    repo: [firmware/drivers/motor_dc, firmware/drivers/motor_2pwm]
+    status: 仿真
+  - id: stepper_42
+    name: 42 步进 + A4988 / TMC2209（STEP/DIR）
+    kind: actuator
+    provides: [act.wheel_drive, act.beam_angle]
+    bus: pwm
+    specs: {}
+    pros: [开环定位准, 低速力矩大]
+    cons: [重、耗电, 失步无反馈]
+    risks: [加速度给大了会丢步]
+    substitutes: [dc_motor_hbridge, qd4310]
+    repo: [firmware/drivers/stepper]
+    status: 仿真
+  - id: qd4310
+    name: QD4310 无刷关节电机（串口，带编码器闭环）
+    kind: actuator
+    provides: [act.beam_angle]
+    bus: uart
+    specs: {}
+    pros: [角度闭环在电机里，分辨率高, 2026H 用户实际方案]
+    cons: [贵, 多占一个串口]
+    risks: [CRC/协议版本未实测（MORNING.md）]
+    substitutes: [stepper_42, servo_pwm]
+    repo: [firmware/drivers/qd4310]
+    status: 仿真
+  - id: servo_pwm
+    name: PWM 舵机（MG996R / 数字舵机）
+    kind: actuator
+    provides: [act.servo_angle, act.beam_angle]
+    bus: pwm
+    specs: { note: "普通舵机分辨率/死区约 0.5–1°，精确角度题慎用" }
+    pros: [最简单, 便宜]
+    cons: [死区大、回差大]
+    risks: [堵转电流大，单独供电]
+    substitutes: [qd4310, stepper_42]
+    repo: [firmware/drivers/servo]
+    status: 仿真
+  # ── 人机 / 通信 ──
+  - id: key_gpio
+    name: 按键
+    kind: ui
+    provides: [ui.key]
+    bus: gpio
+    specs: {}
+    pros: [消抖/长按在驱动里]
+    cons: []
+    risks: []
+    substitutes: []
+    repo: [firmware/drivers/key]
+    status: 仿真
+  - id: oled_ssd1306
+    name: 0.96 寸 OLED（SSD1306，I2C）
+    kind: ui
+    provides: [ui.display]
+    bus: i2c
+    specs: { size_in: 0.96 }
+    pros: [便宜、省引脚]
+    cons: [小，只能显示几行]
+    risks: []
+    substitutes: [tft_st7735]
+    repo: [firmware/drivers/ssd1306]
+    status: 仿真
+  - id: tft_st7735
+    name: 1.8 寸 TFT（ST7735，SPI）
+    kind: ui
+    provides: [ui.display]
+    bus: spi
+    specs: { size_in: 1.8 }
+    pros: [彩色、能画曲线]
+    cons: [占 SPI + 3 个 GPIO]
+    risks: []
+    substitutes: [oled_ssd1306]
+    repo: [firmware/drivers/st77xx]
+    status: 仿真
+  - id: tft_st7789_24
+    name: 2.4 寸 TFT（ST7789，SPI）
+    kind: ui
+    provides: [ui.display]
+    tags: [ui.display_large]
+    bus: spi
+    specs: { size_in: 2.4 }
+    pros: [大、清楚]
+    cons: [超过 2 英寸的题不能用]
+    risks: []
+    substitutes: [tft_st7735]
+    repo: [firmware/drivers/st77xx]
+    status: 仿真
+  - id: bt_serial
+    name: 蓝牙串口（HC-05 / JDY 类）
+    kind: link
+    provides: [link.wireless]
+    bus: uart
+    specs: {}
+    pros: [调试时无线看曲线]
+    cons: [比赛中遥控通常禁止，只用于调试]
+    risks: []
+    substitutes: []
+    repo: [firmware/drivers/bt_serial]
+    status: 仿真
