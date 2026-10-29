@@ -31,7 +31,18 @@ export class Link {
 
   on(f: (m: Msg) => void) { this.subs.push(f); }
 
-  rpc<T = any>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+  /** 启动瞬间 / 重连中最多等 3 s 再报“未连接”，免得一打开就弹假错误 */
+  private ready(ms = 3000): Promise<boolean> {
+    if (this.open) return Promise.resolve(true);
+    return new Promise(r => {
+      const t0 = Date.now();
+      const tick = () => (this.open ? r(true) : Date.now() - t0 > ms ? r(false) : setTimeout(tick, 50));
+      tick();
+    });
+  }
+
+  async rpc<T = any>(op: string, args: Record<string, unknown> = {}): Promise<T> {
+    await this.ready();
     return new Promise((res, rej) => {
       if (!this.open || !this.ws) return rej({ code: "ws_closed", message: "侧车未连接", fix: "稍等自动重连；开发模式下先运行 python -m dzbench" } as Err);
       const rid = ++this.rid;
