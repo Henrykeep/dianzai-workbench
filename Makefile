@@ -40,6 +40,13 @@ endif
 $(GEN)/board_gen.mk: $(BOARD_YML) $(wildcard $(APP_DIR)/app.yaml) tools/gen_board.py tools/boardlib.py $(wildcard tools/families/*.py)
 	$(PY) tools/gen_board.py $(BOARD_YML) -o $(GEN) $(if $(VARIANT),--variant $(VARIANT)) $(if $(wildcard $(APP_DIR)/app.yaml),--app $(APP_DIR)/app.yaml)
 $(GEN)/board_gen.h $(GEN)/board_gen.c: $(GEN)/board_gen.mk
+# gen/ 按板共享，换 APP 时 board_gen.mk 不一定重新生成 → requires 检查会被跳过、变成编译期 "RES_xxx undeclared"。
+# 每个 板×应用 单独打一个检查戳，缺资源时给出 [缺资源] 而不是编译错误。
+REQ_OK := $(OUT)/.requires_ok
+$(REQ_OK): $(BOARD_YML) $(wildcard $(APP_DIR)/app.yaml) tools/boardlib.py
+	@mkdir -p $(dir $@)
+	$(Q)$(if $(wildcard $(APP_DIR)/app.yaml),$(PY) tools/validate_board.py $(BOARD_YML) --app $(APP_DIR)/app.yaml -q >$@.log || { cat $@.log; echo "✗ 板卡 $(BOARD) 不满足应用 $(APP) 的 requires（见上面的 [缺资源]）"; exit 1; })
+	@touch $@
 # 构建目标必须 include（生成失败要报错，-include 会把失败吞掉，曾导致 CI 里“成功”但没有 elf）
 NO_GEN_GOALS := clean check test compat selftest fetch ioc-check
 ifeq ($(if $(MAKECMDGOALS),$(filter-out $(NO_GEN_GOALS),$(MAKECMDGOALS)),all),)
@@ -200,7 +207,8 @@ all: $(TARGET)
 CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm32f103c8t6-car-cubemx:car_2wd \
          stm32f407-bldc-freertos-cubemx:2026H_ball mspm0g3507-tianmengxing:car_2wd mspm0g3507-launchpad:car_2wd \
          host-sim:car_2wd host-sim:2026H_ball dji-rm-c:imu_module host-sim:imu_module \
-         mspm0g3507-tianmengxing:imu_module
+         mspm0g3507-tianmengxing:imu_module host-sim:motor_pos host-sim:pendulum_rot host-sim:pan_tilt host-sim:line_car \
+         stm32f407-skystar:motor_pos mspm0g3507-tianmengxing:pendulum_rot stm32f407-skystar:pan_tilt
 cross:
 	@for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done
 	@$(MAKE) -s BOARD=mspm0g3507-launchpad APP=car_2wd LINK=rtt >/dev/null 2>&1 || { echo "✗ cross LINK=rtt mspm0g3507-launchpad/car_2wd"; exit 1; }; echo "✓ mspm0g3507-launchpad/car_2wd LINK=rtt"
@@ -210,7 +218,7 @@ compdb: $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $
 	@$(PY) -c 'import json,os,sys; d=os.getcwd(); a=sys.argv[1:]; i=a.index("--"); fl,src=a[:i],a[i+1:]; json.dump([{"directory":d,"file":f,"arguments":["$(CC)"]+fl+["-c",f]} for f in src],open("build/compile_commands.json","w"),indent=1); print("✓ build/compile_commands.json:",len(src),"个文件")' \
 	  $(CFLAGS) $(INC) -- $(SRCS)
 
-$(OUT)/obj/%.c.o: %.c $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
+$(OUT)/obj/%.c.o: %.c $(REQ_OK) $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
 	@mkdir -p $(dir $@)
 	@echo "  CC  $<"
 	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
