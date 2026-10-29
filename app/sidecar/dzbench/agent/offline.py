@@ -169,7 +169,8 @@ class OfflineAssistant:
             if pe:
                 return head + f"【源码】已读当前文件，只改了一行，diff 在右侧卡片：确认后会跑 make check，通过才 git 提交，随时可回滚。"
             return head + "没能定位要改的那一行" + (f"（{e}）" if e else "") + "：要么格式认不出（请写成“把 app.yaml 里 kp 默认值改成 0.1”），" \
-                          "要么当前板子跑的工程里没有这个参数（例如 2026H 的球环比例增益叫 pos_k）。"
+                          "要么当前板子跑的工程里没有这个参数" + \
+                          (f"（板上参数：{'、'.join(p['name'] for p in (self.ok(done, 'list_params') or [])[:8])}）。" if self.ok(done, "list_params") else "。")
         if it == "loss":
             return head + "【实测】已看最近 2 s 遥测。传感器/视觉信号丢失时的数据不能拿来调参：先把信号找回来" \
                           "（目标回到视野、线回到传感器下、链路恢复），状态栏里的信号状态恢复正常后再做阶跃。这一轮不改参数。"

@@ -68,7 +68,7 @@
 - 用例可带 `user_if_param`：板上有某参数时换一种问法（2026H 没有 kp，改问 pos_k）；`user_generic`：点名的参数板上没有时，换成板上第一个参数（倒立摆没有 kp）。
 - `as_hw: true`：这一例把仿真板当实机（端口加 `+hw`），配合 `expect_action` 检查实验类工具变成确认卡而不是直接执行。
 - 离线对照组 2026-10-29 在 6 个仿真对象上：13 例全过（edit_reads_first 曾因只读前 12 个 yaml、当前工程被截掉而失败，已修）。
-- `make test` 里 car_2wd、2026H_ball 两块仿真板都跑整套评测，均 8/8。2026H 的球物理是简化模型（τ=30 ms 一阶舵机 + 5/7·g·sinθ），**不代表实机参数**。
+- `make test` 里 car_2wd、2026H_ball 两块仿真板跑整套评测（快速默认）；全部 6 个对象用 `--ports all`。2026H 的球物理是简化模型（τ=30 ms 一阶舵机 + 5/7·g·sinθ），**不代表实机参数**。
 - 最后由 `grade()` 按调用序列和回答打分。用例里的 `context.verdict` 会注入为“上一轮实验结果”，tune_context 里的字段是 `last_verdict`。
 - 离线助手 8/8 通过，`test_e2e_sim.py::test_agent_evals_offline_sim` 守着这个结果。
 - 真实大模型还没跑过这套评测（**[未测]**）。

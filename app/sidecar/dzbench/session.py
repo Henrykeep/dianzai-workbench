@@ -96,7 +96,7 @@ class Session:
             tr = ReplayTransport(port[7:]) if port.startswith("replay:") else self._open(port, baud or 0)
         except Exception as e:  # noqa: BLE001
             if port.startswith(SIM_PREFIX):
-                raise LinkError("open_failed", f"仿真板起不来：{e}", "在仓库根目录跑一次 make BOARD=host-sim APP=car_2wd 看报错") from e
+                raise LinkError("open_failed", f"仿真板起不来：{e}", f"在仓库根目录跑一次 make BOARD=host-sim APP={port[len(SIM_PREFIX):].split('+')[0]} 看报错") from e
             what, fix = explain_open_error(port, e)
             raise LinkError("open_failed", what, fix) from e
         self.ident = identity(port) if not port.startswith((SIM_PREFIX, "replay:")) else None
