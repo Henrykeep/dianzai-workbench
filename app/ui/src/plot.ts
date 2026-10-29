@@ -30,6 +30,7 @@ export class Plot {
   t0: number | null = null;      // 阶跃锚点（绝对时间）；有它时时间刻度相对 t0
   cur: [number | null, number | null] = [null, null];   // A/B 光标（绝对时间）
   view: number | null = null;    // 非空 = 视图中心钉在这个时间（心跳条/时间线点过来）；恢复运行时清掉
+  marks: { t: number; tag: string; color: string }[] = [];   // 事件竖线（timeline.ts）
   ghost: Ghost | null = null;    // 余辉：上一轮相对 t0 的数据
   private lanes: Lane[] = [];
   private host: HTMLElement;
@@ -58,6 +59,7 @@ export class Plot {
   now() { return this.t.length ? this.t[this.t.length - 1] : 0; }
   laneIdx() { return this.lanes.map(l => l.i); }
   setCursor(k: 0 | 1, x: number | null) { this.cur[k] = x; this.repaint(); window.dispatchEvent(new Event("dz-cursor")); }
+  setMarks(m: { t: number; tag: string; color: string }[]) { this.marks = m; this.repaint(); }
   jumpTo(x: number) { this.view = x; this.redraw(); this.setCursor(0, x); }
   inBuffer(x: number) { return this.t.length > 0 && x >= this.t[0] && x <= this.t[this.t.length - 1]; }
   setAnchor(x: number | null) { this.t0 = x; this.repaint(); }
@@ -109,6 +111,7 @@ export class Plot {
       c.beginPath(); c.moveTo(Math.round(p) + .5, top); c.lineTo(Math.round(p) + .5, top + height); c.stroke(); c.setLineDash([]);
       if (first) { c.fillStyle = color; c.font = `500 ${11 * devicePixelRatio}px ${css("--f-mono")}`; c.fillText(tag, p + 4 * devicePixelRatio, top + 12 * devicePixelRatio); }
     };
+    for (const m of this.marks) vline(m.t, css(m.color), [1, 3], m.tag);
     if (this.t0 != null) vline(this.t0, css("--warn"), [3, 3], "t0");
     if (A != null) vline(A, css("--acc-t"), [], "A");
     if (B != null) vline(B, css("--acc-t"), [], "B");

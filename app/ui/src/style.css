@@ -318,3 +318,7 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .hbstrip i.hb-bad{background:var(--crit)}
 .hbstrip i.hb-off{background:var(--line, #8884)}
 .hbstrip i:hover{outline:1px solid currentColor}
+/* 事件时间线（timeline.ts） */
+.tl{display:flex;gap:6px;overflow-x:auto;padding:4px 0;font:var(--t-xs) var(--f-sans);white-space:nowrap}
+.tl-e{display:inline-flex;gap:4px;align-items:center;padding:1px 6px;border:1px solid var(--line);border-left:3px solid var(--c);border-radius:var(--r-xs);cursor:pointer}
+.tl-e b{color:var(--c);font-weight:600}.tl-e i{font-style:normal;color:var(--muted);font-family:var(--f-mono)}

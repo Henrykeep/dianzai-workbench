@@ -13,7 +13,7 @@ import pathlib
 
 import websockets
 
-from . import lastsession, snapshots
+from . import events, lastsession, snapshots
 from .agent import llm as agent_llm
 from .agent.gateway import GatewayError
 from .agent.guard import GuardError
@@ -50,6 +50,9 @@ class Server:
             self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._broadcast(msg)))
 
     async def _broadcast(self, msg: dict) -> None:
+        ev = events.from_broadcast(msg)
+        if ev:
+            self.session.mark(*ev)                    # mark 再走 emit → 下一轮广播出 {"type": "event"}
         if not self.clients:
             return
         data = json.dumps(msg, ensure_ascii=False)
@@ -152,6 +155,8 @@ class Server:
             return await run(None, self.agent.call, m["tool"], m.get("args", {}))
         if op == "health":
             return s.health.history()
+        if op == "timeline":
+            return s.timeline.history()
         if op == "replay_ctl":
             r = self.session.replay_ctl(m.get("seek"), m.get("speed"), m.get("pause"))
             if m.get("seek") is not None:
@@ -265,6 +270,9 @@ class Server:
                 rid = m.get("rid")
                 try:
                     data = await self._op(m)
+                    ev = events.from_reply(m.get("op"), data)
+                    if ev:
+                        self.session.mark(*ev)
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": True, "data": data}
                 except (LinkError, GatewayError) as e:
                     rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False, "error": e.as_dict()}

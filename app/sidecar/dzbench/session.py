@@ -15,6 +15,7 @@ from typing import Callable
 from . import lastsession, snapshots
 from ._dzlink import DATA, HEARTBEAT, PARAM_ACK, PARAM_SET, Parser, encode
 from .textparse import KvParser
+from .events import Timeline, crc_spike
 from .linkhealth import LinkHealth
 from .logfile import RX, TX, LogWriter
 from . import ports as _ports
@@ -60,6 +61,8 @@ class Session:
         self.baud = 0
         self.parser = Parser()
         self.health = LinkHealth()
+        self.timeline = Timeline()
+        self._was_alive = False
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
@@ -526,6 +529,20 @@ class Session:
         return str(self.log.path)
 
     # ------------------------------------------------------------------ 状态
+    def _times_locked(self, now: float) -> tuple[float | None, float | None]:
+        """(dzlog 时间, 曲线时间)：回放 = 回放位置；实时在记录 = 距记录开头；曲线时间 = 最新样本的 t。"""
+        log_t = (self.tr.position() if isinstance(self.tr, ReplayTransport)
+                 else now - self.log.t0 if self.log else None)
+        return log_t, (self.samples[-1][0] if self.samples else None)
+
+    def mark(self, kind: str, text: str) -> dict:
+        """往事件时间线记一条（带两种时间）并广播。"""
+        with self.lock:
+            log_t, plot_t = self._times_locked(time.monotonic())
+        e = self.timeline.add(kind, text, log_t, plot_t)
+        self.emit(e)
+        return e
+
     def status(self) -> dict:
         now = time.monotonic()
         with self.lock:
@@ -541,11 +558,17 @@ class Session:
             if isinstance(self.tr, ReplayTransport):
                 st.update(replay_pos=round(self.tr.position(), 2), replay_len=round(self.tr.duration, 2),
                           replay_speed=self.tr.speed, replay_paused=self.tr.paused)
+            marks = []
             if self.tr is not None:
-                log_t = (self.tr.position() if isinstance(self.tr, ReplayTransport)
-                         else now - self.log.t0 if self.log else None)
-                plot_t = self.samples[-1][0] if self.samples else None
+                log_t, plot_t = self._times_locked(now)
+                hist = self.health.history()
                 st["hb"] = self.health.tick(now, self.parser.good, self.parser.bad, self.rx_bytes, log_t, plot_t)
+                marks += [("crc", f"CRC 坏帧突增：1 秒 {c['crc']} 帧") for c in st["hb"] if crc_spike(c, hist)]
+                if self._was_alive and not alive and not self.reconnecting:
+                    marks.append(("watchdog", f"{HB_TIMEOUT_S} s 没收到板子心跳（板端看门狗应已急停）"))
+            self._was_alive = alive
+        for k, txt in marks:
+            self.mark(k, txt)
         if self.reconnecting:
             st["hint"] = "连接断开，正在自动重连…（线插回去即可；急停此时送不到板子，板子 1 秒没收到心跳会自己急停）"
         elif connected and self.parser.good >= 20 and self.parser.bad * 10 > self.parser.good:
