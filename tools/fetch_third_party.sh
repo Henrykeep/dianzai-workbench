@@ -26,7 +26,7 @@ f1()       { get stm32f1xx-hal-driver STMicroelectronics/stm32f1xx-hal-driver v1
 freertos() { get stm32-mw-freertos STMicroelectronics/stm32-mw-freertos v10.6.2_20241011; }
 # TI MSPM0 SDK：只取 DriverLib、器件头/启动文件/链接脚本、CMSIS Core
 mspm0()    { get mspm0-sdk TexasInstruments/mspm0-sdk mspm0_sdk_2_11_00_07 .metadata \
-               source/ti/driverlib source/ti/devices/msp source/third_party/CMSIS/Core/Include; }
+               source/ti/driverlib source/ti/devices/msp source/ti/project_config source/third_party/CMSIS/Core/Include; }   # project_config：.syscfg 的 ProjectConfig.genLinker（掉电保存区 .cmd）
 # TI MSPM0G1X0X_G3X0X CMSIS 器件包（BSD-3-Clause，pyOCD 烧 MSPM0 要用；随安装包分发，许可证见包内 01_Pack/license.txt）
 m0pack()   { mkdir -p packs; local f=packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack
              [ -f "$f" ] && { echo "已存在 $f，跳过"; return; }
