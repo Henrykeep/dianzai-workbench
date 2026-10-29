@@ -524,6 +524,13 @@ function renderPre(r: any) {
 const runPre = async () => { const r = await call("precontest", { strict: $<HTMLInputElement>("pre-strict").checked }).catch(() => null); if (r) renderPre(r); };
 $("pre").onclick = async () => { $("pre-list").innerHTML = "<li>检查中…</li>"; $<HTMLDialogElement>("predlg").show(); await runPre(); };
 $("pre-re").onclick = runPre;
+$("pre-bbtn").onclick = async () => {
+  const r: any[] | null = await call("blackbox", {}).catch(() => null);
+  if (!r) return;
+  $("pre-bb").hidden = false;
+  $("pre-bb").innerHTML = r.length ? r.map((e) => `<li><b>${(e.t_ms / 1000).toFixed(3)} s</b> ${esc(e.text)}</li>`).join("")
+    : "<li>板子没回黑匣子记录（固件 dzctl < 0.6.0，或应用没接 blackbox）</li>";
+};
 $("pre-exp").onclick = async () => { const r = await call("precontest_export", { strict: $<HTMLInputElement>("pre-strict").checked }).catch(() => null); if (r) { renderPre(r); toast(`封箱清单已导出 → ${r.path}`, r.all_green ? "ok" : "warn", 12000); } };
 
 $("doctor").onclick = async () => {

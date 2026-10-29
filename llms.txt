@@ -30,6 +30,7 @@
 - [内置 Agent](docs/18-内置Agent.md)
 - [Agent 触发知识说明](docs/agent-knowledge/README.md)
 - [知识：堵转](docs/agent-knowledge/stall.md)
+- [通用安全件 safety（堵转/安全态/黑匣子）](firmware/framework/safety/README.md)
 - [知识：极性](docs/agent-knowledge/polarity.md)
 - [知识：阶跃辨识](docs/agent-knowledge/step-identify.md)
 - [赛题覆盖矩阵](docs/19-赛题覆盖矩阵.md)

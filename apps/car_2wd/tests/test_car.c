@@ -8,7 +8,8 @@
 
 void host_sim_app_setup(void);
 static int fails;
-static uint32_t hb_status = 0xFFFFFFFFu;   /* 最近一次心跳的 status 字（dzctl 0.5.0） */
+static uint32_t hb_status = 0xFFFFFFFFu;
+static uint16_t bb_codes[64]; static int bb_n;   /* 黑匣子导出收到的事件码 */   /* 最近一次心跳的 status 字（dzctl 0.5.0） */
 #define CHECK(c) do { if (!(c)) { fails++; printf("  FAIL %s:%d: %s\n", __FILE__, __LINE__, #c); } } while (0)
 
 static void send_cmd(float v, float w)
@@ -31,12 +32,15 @@ static int run(uint32_t ms, bool cmd, float v, float w, float t[4])
         app_loop();
         uint8_t b[256]; uint16_t n = host_sim_uart_take_tx(RES_UART_LINK, b, sizeof b);
         dzframe_t f;
-        for (uint16_t k = 0; k < n; k++)
-            if (dzframe_feed(&p, b[k], &f) && f.kind == DZF_DATA && f.id == 2 && f.len == 24) {
+        for (uint16_t k = 0; k < n; k++) {
+            if (!dzframe_feed(&p, b[k], &f)) continue;   /* 没出完整帧时 f 是上一帧：不能往下判 */
+            if (f.kind == DZF_DATA && f.id == 2 && f.len == 24) {
                 for (int j = 0; j < 4; j++) t[j] = dzframe_get_f32(&f, 4 + 4 * (size_t)j);
                 CHECK(dzframe_get_u32(&f, 20) == 0);   /* ctrl_err */
                 frames++;
             } else if (f.kind == DZF_HEARTBEAT && f.len >= 16u) hb_status = dzframe_get_u32(&f, 12);
+            else if (f.kind == DZF_DATA && f.id == 0x7D && f.len == 16u && bb_n < 64) bb_codes[bb_n++] = dzframe_get_u16(&f, 4);
+        }
     }
     return frames;
 }
@@ -49,6 +53,16 @@ static void send_reset(void)
     uint8_t b[DZFRAME_MAX_FRAME]; size_t n = dzframe_encode(b, sizeof b, &f);
     host_sim_uart_inject_rx(RES_UART_LINK, b, (uint16_t)n);
 }
+
+static void send_frame(dzframe_t *f)
+{
+    uint8_t b[DZFRAME_MAX_FRAME]; size_t n = dzframe_encode(b, sizeof b, f);
+    host_sim_uart_inject_rx(RES_UART_LINK, b, (uint16_t)n);
+}
+static void set_param(uint8_t idx, float v) { dzframe_t f = { .kind = DZF_PARAM_SET, .id = idx }; dzframe_put_f32(&f, v); send_frame(&f); }
+static int bb_has(uint16_t code) { for (int i = 0; i < bb_n; i++) if (bb_codes[i] == code) return 1; return 0; }
+/* 电流采样：3.3 V 12 位、灵敏度 500 mV/A（默认参数）→ raw */
+static uint16_t amp_raw(float a) { return (uint16_t)(a * 500.0f / 3300.0f * 4095.0f + 0.5f); }
 
 static uint16_t vbat_raw(float mv_pack) { return (uint16_t)(mv_pack / 11.0f / 3300.0f * 4095.0f + 0.5f); }
 
@@ -112,6 +126,31 @@ int main(void)
     run(1500, false, 0, 0, t);
     run(1500, true, 0.6f, 0.0f, t);
     CHECK(t[0] > 2.5f && !(hb_status & (1u << 9)));
+
+    /* 黑匣子导出：上电（复位原因）、堵转、解除都在 */
+    bb_n = 0;
+    { dzframe_t f = { .kind = DZF_DATA, .id = 0x7D }; send_frame(&f); }
+    run(50, false, 0, 0, t);
+    CHECK(bb_has(1) && bb_has(2) && bb_has(4));
+    printf("  黑匣子: %d 条", bb_n); for (int i = 0; i < bb_n && i < 12; i++) printf(" %u", bb_codes[i]); printf("\n");
+
+    /* 可选电流采样（host-sim 板有 ISENSE_A/B）：stall_src=1（参数序号 6）后按电流判，占空比顶满但电流小不算堵转 */
+    run(1500, false, 0, 0, t);
+    set_param(6, 1.0f);
+    host_sim_adc_set(RES_ADC_ISENSE_A, amp_raw(0.5f)); host_sim_adc_set(RES_ADC_ISENSE_B, amp_raw(0.5f));
+    host_sim_motor_set_load(0, 50.0f);
+    run(2000, true, 0.3f, 0.0f, t);
+    CHECK(t[0] > 1.0f && !(hb_status & (1u << 9)));       /* 0.5 A < 2 A：不判（这就是“电流模式”的意义：卡住但电流不大说明不是堵转） */
+    host_sim_adc_set(RES_ADC_ISENSE_A, amp_raw(3.0f));
+    run(2000, true, 0.3f, 0.0f, t);
+    CHECK(t[0] == 0.0f && (hb_status & (1u << 9)));        /* 3 A + 不转：堵转 */
+    printf("  电流模式堵转: sp_a=%.3f status=0x%X\n", t[0], (unsigned)hb_status);
+    host_sim_motor_set_load(0, 0.3f);
+    host_sim_adc_set(RES_ADC_ISENSE_A, amp_raw(0.0f)); host_sim_adc_set(RES_ADC_ISENSE_B, amp_raw(0.0f));
+    set_param(6, 0.0f);
+    send_reset();
+    run(1500, true, 0.3f, 0.0f, t);
+    CHECK(t[0] > 1.0f);
 
     /* car_aux 电池：先见过 OK（8.2 V，2S）再掉到 CRIT（6.0 V）→ 锁急停，之后再发前进指令也不动；电压回升也不自动解除 */
     host_sim_adc_set(RES_ADC_VBAT, vbat_raw(8200.0f));

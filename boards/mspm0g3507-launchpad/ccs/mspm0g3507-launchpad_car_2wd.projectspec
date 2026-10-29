@@ -41,6 +41,7 @@
             -I${PROJECT_LOC}/../../../firmware/framework/coord
             -I${PROJECT_LOC}/../../../firmware/framework/menu
             -I${PROJECT_LOC}/../../../firmware/framework/rtosmon
+            -I${PROJECT_LOC}/../../../firmware/framework/safety
             -I${PROJECT_LOC}/../../../firmware/framework/spsc
             -I${PROJECT_LOC}/../../../firmware/framework/subsys
             -I${PROJECT_LOC}/../../../firmware/proto/dzctl
@@ -119,6 +120,7 @@
         <file path="../../../firmware/framework/coord/coord.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/menu/menu.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/rtosmon/rtosmon.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/framework/safety/safety.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/spsc/spsc.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/framework/subsys/subsys.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/proto/dzctl/dzctl.c" targetDirectory="dz/firmware" action="link"/>

@@ -64,6 +64,7 @@ class Session:
         self.timeline = Timeline()
         self._was_alive = False
         self._pending_marks: list[tuple[str, str]] = []
+        self.bb_recs: list[dict] = []             # 最近一次黑匣子导出（DATA 0x7D）
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
@@ -261,6 +262,10 @@ class Session:
                                 self._pending_marks.append(m)
                     if h != self.schema_hash:
                         self._bind_schema(h)
+            elif kind == DATA and id_ == ID_BB and len(payload) == 16:
+                t_ms, code, arg, a, b = struct.unpack("<IHHff", payload)
+                with self.lock:
+                    self.bb_recs.append(bb_record(t_ms, code, arg, a, b))
             elif kind == DATA and self.schema and id_ == self.schema.telem_id:
                 v = self.schema.decode(payload)
                 if v is not None:
@@ -420,6 +425,16 @@ class Session:
         if id_ in (ID_CMD, ID_ESTOP) or not 0 <= id_ <= 0xFF or len(payload) > 64:
             raise LinkError("bad_frame", f"DATA id={id_} 长度={len(payload)} 不允许", "急停/命令请用专用按钮；payload ≤ 64 字节")
         return self._send(DATA, id_, payload)
+
+    def blackbox(self, wait_s: float = 0.6) -> list[dict]:
+        """请求板子导出黑匣子（dzctl 0.6.0 DATA 0x7D len=0），收 wait_s 秒。只读，急停锁存时也允许（事后查原因正需要）。"""
+        with self.lock:
+            self.bb_recs = []
+        if not self._send(DATA, ID_BB):
+            raise LinkError("not_connected", "没连板子", "")
+        time.sleep(wait_s)
+        with self.lock:
+            return list(self.bb_recs)
 
     def cmd(self, c: str, n: int | None = None) -> bool:
         ok = self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
@@ -589,6 +604,25 @@ class Session:
             st["hint"] = ("收到字节但没有合法帧：波特率可能不对" if self.rx_bytes and not self.parser.good
                           else "超过 1.6 s 没有心跳：板子没上电/没跑工作台固件/线松了")
         return st
+
+
+ID_BB = 0x7D
+BB_NAMES = {1: "上电", 2: "堵转", 3: "急停", 4: "人工解除", 5: "丢线"}
+
+
+def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
+    """黑匣子一条 → 人话（码见 firmware/framework/blackbox BB_EV_*；≥0x100 是应用自定义）。"""
+    if code == 1:
+        text = f"上电，复位原因：{RESET_NAMES.get(arg, f'#{arg}')}"
+    elif code == 2:
+        text = f"第 {arg} 路堵转（负载 {a:.3g}，转速 {b:.3g}）"
+    elif code == 4:
+        text = "人工解除" + (f"（之前堵转通道位图 {arg:#x}）" if arg else "")
+    elif code == 5:
+        text = f"丢线（阶段 {arg}，最后线位置 {a:.3g}）"
+    else:
+        text = f"{BB_NAMES.get(code, f'应用事件 {code:#x}')} arg={arg} a={a:.3g} b={b:.3g}"
+    return {"t_ms": t_ms, "code": code, "arg": arg, "a": a, "b": b, "text": text}
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}

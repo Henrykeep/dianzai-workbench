@@ -20,9 +20,10 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.5.0"
+#define DZCTL_VERSION "0.6.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
+#define DZCTL_ID_BB    0x7Du   /**< 0.6.0 黑匣子：上位机 len=0 请求；板子每条记录回一帧 u32 t_ms, u16 code, u16 arg, f32 a, f32 b */
 
 typedef enum { DZCTL_F32, DZCTL_U32, DZCTL_I32, DZCTL_U16, DZCTL_I16, DZCTL_U8, DZCTL_BOOL } dzctl_type_t;
 typedef enum { DZCTL_OK = 0, DZCTL_CLAMPED = 1, DZCTL_BAD_ID = 2, DZCTL_BAD_LEN = 3, DZCTL_BAD_VALUE = 4 } dzctl_status_t;
@@ -64,6 +65,10 @@ uint32_t dzctl_fw_rev(void);
 #define DZCTL_HB_SAFE_BOOT (1u << 8)   /**< 异常复位（看门狗/锁死）后进了安全态：输出关、锁急停，等人发 'R' */
 #define DZCTL_HB_STALL     (1u << 9)   /**< 堵转锁存 */
 #define DZCTL_HB_ESTOP     (1u << 10)  /**< 急停锁存中（任何原因） */
+/** 是不是黑匣子导出请求。 */
+bool dzctl_is_bb_request(const dzframe_t *f);
+/** 填一帧黑匣子记录（字段同 blackbox 的 bb_rec_t；proto 层不依赖 framework，所以按字段传）。 */
+void dzctl_bb_frame(uint32_t t_ms, uint16_t code, uint16_t arg, float a, float b, uint8_t seq, dzframe_t *out);
 void dzctl_set_reset_cause(uint32_t cause);
 void dzctl_set_flags(uint32_t mask, bool on);
 uint32_t dzctl_status_word(void);

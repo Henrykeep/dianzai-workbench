@@ -7,3 +7,4 @@ triggers: 堵转, stall, 卡住不转, 电机不转, 过流
 - 先排除：编码器没接/方向反（看 polarity_check）、PWM 没输出（逻辑分析仪看引脚）、机械卡死。
 - 代码：`firmware/algo/stall/stall.h`；主机测试 `tests/host/test_ctrlparts.c` 的 stall_detect_model（一阶电机模型）。
 - 安全对照与缺口（没开 IWDG 等）：`docs/32-控制安全对照.md`。
+- 整车接法（多路 + 安全态 + 黑匣子）用 `framework/safety`，见 firmware/framework/safety/README.md。

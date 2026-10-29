@@ -103,6 +103,8 @@ class Server:
             return r
         if op == "cmd":
             return s.cmd(m["c"], m.get("n"))
+        if op == "blackbox":
+            return await run(None, s.blackbox)
         if op == "send_data":
             return s.send_data(int(m["id"]), bytes.fromhex(m.get("hex", "")))
         if op == "param_set":

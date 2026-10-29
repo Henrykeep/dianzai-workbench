@@ -77,3 +77,18 @@ def test_fw_item_relaxed_vs_strict(tmp_path):
     assert precontest.fw_item(rev, r)["level"] == "fail"                     # 已提交但没重烧
     assert precontest.fw_item(0x0abcdef, r)["level"] == "fail"               # 不在本仓库历史
     assert precontest.fw_item(None, r)["level"] == "warn"
+
+
+@pytest.mark.needs_sim
+def test_sim_blackbox(home):
+    from dzbench.session import Session
+    s = Session()
+    s.connect("sim:car_2wd")
+    try:
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 5 and not s.status()["alive"]:
+            time.sleep(0.05)
+        recs = s.blackbox()
+        assert recs and recs[0]["code"] == 1 and "上电" in recs[0]["text"]
+    finally:
+        s.disconnect()

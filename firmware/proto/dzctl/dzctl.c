@@ -79,6 +79,16 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     (void)dzframe_put_u32(out, dzctl_status_word());            /* 0.5.0：第 4 个 u32 */
 }
 
+bool dzctl_is_bb_request(const dzframe_t *f) { return f && f->kind == DZF_DATA && f->id == DZCTL_ID_BB && f->len == 0u; }
+
+void dzctl_bb_frame(uint32_t t_ms, uint16_t code, uint16_t arg, float a, float b, uint8_t seq, dzframe_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->kind = DZF_DATA; out->id = DZCTL_ID_BB; out->seq = seq;
+    (void)dzframe_put_u32(out, t_ms); (void)dzframe_put_u16(out, code); (void)dzframe_put_u16(out, arg);
+    (void)dzframe_put_f32(out, a); (void)dzframe_put_f32(out, b);
+}
+
 static volatile uint32_t s_status;
 void dzctl_set_reset_cause(uint32_t cause) { s_status = (s_status & ~0xFFu) | (cause & 0xFFu); }
 void dzctl_set_flags(uint32_t mask, bool on) { mask &= ~0xFFu; s_status = on ? (s_status | mask) : (s_status & ~mask); }
@@ -124,6 +134,14 @@ int dzctl_selftest(void)
     fail += ack.kind != DZF_HEARTBEAT || ack.len != 16u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
     fail += !dzctl_handle(&t, &in, &ack) || ack.kind != DZF_PARAM_ACK || dzframe_get_u8(&ack, 0) != DZCTL_OK
             || dzframe_get_f32(&ack, 1) != 1.0f;
+    {   /* 黑匣子帧 */
+        dzframe_t q, r;
+        memset(&q, 0, sizeof q); q.kind = DZF_DATA; q.id = DZCTL_ID_BB;
+        fail += !dzctl_is_bb_request(&q);
+        dzctl_bb_frame(7u, 2u, 1u, 0.9f, 0.0f, 3u, &r);
+        fail += r.len != 16u || dzframe_get_u32(&r, 0) != 7u || dzframe_get_u16(&r, 4) != 2u || dzframe_get_u16(&r, 6) != 1u
+                || dzframe_get_f32(&r, 8) != 0.9f || dzctl_is_bb_request(&r);
+    }
     {   /* status 字：复位原因只占低 8 位，标志不覆盖它 */
         uint32_t keep = s_status;
         dzctl_set_reset_cause(4u); dzctl_set_flags(DZCTL_HB_STALL | 0xFFu, true);

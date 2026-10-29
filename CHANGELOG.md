@@ -5,6 +5,8 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 新增 `framework/safety` 1.0.0（多路堵转 + 异常复位安全态 + 写黑匣子，一个锁存）；blackbox 1.1.0 通用事件码 `BB_EV_*`；pal 1.4.0 `PAL_RESET_IS_FAULT`；dzctl 0.6.0 黑匣子导出帧 DATA 0x7D（请求 len=0、每条 16 字节）。侧车 op `blackbox` 翻成人话，赛前检查对话框“读黑匣子”。
+- [仿真] car_2wd 1.2.0 改用 framework/safety：复位原因/堵转/解除进黑匣子（32 条 RAM 环）；可选电流采样（board.yaml 有 ADC ISENSE_A/B 且参数 `stall_src=1`，`stall_amp` / `isense_mv_per_a` / `isense_zero_mv`），默认仍按占空比。host-sim 板加 ISENSE_A/B。test_car：黑匣子导出 3 条、电流模式下“卡住但电流小”不判、3 A 判堵转。修 test_car 帧循环“没出完整帧也拿旧帧判断”的测试 bug。[未测] 实车电流采样。
 - [仿真] 赛前检查固件项放宽：板上固件那次提交之后固件相关目录没改（含未提交、未跟踪文件）即算一致，只改文档/上位机不再变红；对话框“严格”勾选 = 旧规则（必须是 HEAD），op 参数 `strict`。test_precontest 加 git 临时仓库用例（文档提交 ok、固件改动/提交未重烧/不在历史 ✗、严格 ✗）。
 - [编译] mspm0-driverlib 0.5.0：`pal_wdg_start/kick` 用 WWDT0（LFCLK 32.768 kHz，窗口 0%，调试暂停时停，`wwdt_calc.h` 取 ≥ 要求的最短档）；`pal_reset_cause` 读 RSTCAUSE 映射（看门狗/锁死/欠压/复位键/软件/上电，其余未知）。test_wdg 加 wwdt_calc 手算用例。[未测] 上板咬一次、复位原因实读。
 - [仿真] car_2wd 1.1.0 接入 algo/stall：负载用 PID 输出占空比（无电流采样），新参数 `stall_duty` / `stall_ms`（保护页“堵转”行）；堵转 → 刹车 + 锁急停 + 心跳 STALL。看门狗/锁死复位后上电进安全态（锁急停 + SAFE_BOOT），发 R 解除。test_car 新增堵转、解除、起步不误判、看门狗复位后安全态。[未测] 实车阈值。

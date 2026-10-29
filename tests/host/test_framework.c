@@ -4,6 +4,7 @@
 #include "coord.h"
 #include "rtosmon.h"
 #include "blackbox.h"
+#include "safety.h"
 #include <string.h>
 
 typedef struct { int a_steps, b_steps, a_out; subsys_mode_t last_mode; int mode_calls; } st_t;
@@ -148,6 +149,7 @@ static uint32_t bb_boot(bbf_t *f, bb_t *bb, bb_rec_t *ring)
 TEST(blackbox_ring_freeze_reload)
 {
     CHECK(bb_selftest() == DZ_OK);
+    CHECK(safety_selftest() == DZ_OK);
     static bbf_t f; memset(&f, 0, sizeof f); memset(f.mem, 0xFF, sizeof f.mem);
     bb_t bb; bb_rec_t ring[8], out[8]; uint16_t n;
     CHECK(bb_boot(&f, &bb, ring) == 100u && bb_count(&bb) == 8u && bb_get(&bb, 0)->t_ms == 92u);

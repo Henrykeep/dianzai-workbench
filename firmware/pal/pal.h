@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.3.0"
+#define PAL_VERSION "1.4.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -68,6 +68,8 @@ const char *pal_board_name(void);
 
 /** 最近一次复位原因。pal_init() 之后调用有效。 */
 pal_reset_cause_t pal_reset_cause(void);
+/** 是不是“程序出了问题”的复位（看门狗/内核锁死）：是的话应用上电应进安全态，等人确认。@since 1.4.0 */
+#define PAL_RESET_IS_FAULT(c) ((c) == PAL_RESET_WATCHDOG || (c) == PAL_RESET_LOCKUP)
 
 /** 关中断并返回之前的状态。[ISR-safe] */
 uint32_t pal_irq_save(void);

@@ -18,3 +18,10 @@ def test_events():
     assert k == "watchdog" and "看门狗" in t and "R" in t
     k, t = hb_status_event(1 | (1 << 9))
     assert k == "watchdog" and "堵转" in t
+
+
+def test_bb_record_text():
+    from dzbench.session import bb_record
+    assert "看门狗" in bb_record(0, 1, 4, 0, 0)["text"]
+    assert "第 1 路堵转" in bb_record(5, 2, 1, 0.9, 0.01)["text"]
+    assert "应用事件 0x100" in bb_record(5, 0x100, 0, 0, 0)["text"]

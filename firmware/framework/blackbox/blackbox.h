@@ -17,7 +17,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "dz_err.h"
-#define BLACKBOX_VERSION "1.0.0"
+#define BLACKBOX_VERSION "1.1.0"
+/* 通用事件码（1.1.0）：上位机按这些码翻译成文字；应用自定义码从 BB_EV_APP 开始 */
+#define BB_EV_RESET     1u   /**< 上电：arg = 复位原因（pal_reset_cause_t） */
+#define BB_EV_STALL     2u   /**< 堵转锁存：arg = 通道，a = 负载，b = 转速 */
+#define BB_EV_ESTOP     3u   /**< 急停：arg = 来源（应用定义） */
+#define BB_EV_CLEAR     4u   /**< 人工解除：arg = 解除前的堵转通道位图 */
+#define BB_EV_LINE_LOST 5u   /**< 丢线：arg = 恢复阶段，a = 最后线位置 */
+#define BB_EV_APP       0x100u
 #define BB_STORE_MAX_FAIL 3u
 #define BB_MAGIC 0x31424244u       /**< "DBB1" */
 
