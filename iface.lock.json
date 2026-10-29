@@ -1428,10 +1428,24 @@
    "port_mspm0.h: uint32_t spi_timeout;",
    "port_mspm0.h: uint32_t adc_timeout;",
    "port_mspm0.h: } m0_diag_t;",
-   "port_mspm0.h: const m0_diag_t *m0_diag(void);"
+   "port_mspm0.h: const m0_diag_t *m0_diag(void);",
+   "wwdt_calc.h: static const uint8_t WWDT_PER_BITS[8] = { 6u, 8u, 10u, 12u, 15u, 18u, 21u, 25u };",
+   "wwdt_calc.h: static inline int wwdt_calc(uint32_t timeout_ms, uint32_t lfclk_hz, uint8_t *div, uint8_t *per, uint32_t *actual_ms) { uint64_t best = 0u;",
+   "wwdt_calc.h: if (timeout_ms == 0u || lfclk_hz == 0u) return 0;",
+   "wwdt_calc.h: for (uint8_t p = 0u;",
+   "wwdt_calc.h: p < 8u;",
+   "wwdt_calc.h: p++) for (uint8_t d = 1u;",
+   "wwdt_calc.h: d <= 8u;",
+   "wwdt_calc.h: d++) { uint64_t ms = ((uint64_t)d << WWDT_PER_BITS[p]) * 1000u / lfclk_hz;",
+   "wwdt_calc.h: if (ms >= timeout_ms && (best == 0u || ms < best)) { best = ms;",
+   "wwdt_calc.h: *div = d;",
+   "wwdt_calc.h: *per = p;",
+   "wwdt_calc.h: } if (best == 0u || best > 0xFFFFFFFFu) return 0;",
+   "wwdt_calc.h: *actual_ms = (uint32_t)best;",
+   "wwdt_calc.h: return 1;"
   ],
-  "hash": "8edc107043fa7cda",
-  "version": "0.4.1"
+  "hash": "19636263ee0f1d5d",
+  "version": "0.5.0"
  },
  "ports/stm32-cubemx": {
   "decls": [

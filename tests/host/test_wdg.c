@@ -3,6 +3,7 @@
 #include "board_gen.h"
 #include "host_sim.h"
 #include "../../ports/stm32-cubemx/iwdg_calc.h"
+#include "../../ports/mspm0-driverlib/wwdt_calc.h"
 
 static void calc(void)
 {
@@ -14,6 +15,17 @@ static void calc(void)
     CHECK(!iwdg_calc(33000, 32000, &pr, &rlr));                            /* 超上限 */
     CHECK(!iwdg_calc(0, 32000, &pr, &rlr));
     CHECK(iwdg_calc(1, 32000, &pr, &rlr) && pr == 0 && rlr == 7);          /* 1 ms = 8 拍 */
+}
+
+static void wcalc(void)
+{
+    uint8_t d = 0, p = 0; uint32_t a = 0;
+    CHECK(wwdt_calc(500, 32768, &d, &p, &a) && d == 4 && WWDT_PER_BITS[p] == 12 && a == 500);    /* 4096 × 4 / 32768 = 0.5 s */
+    CHECK(wwdt_calc(100, 32768, &d, &p, &a) && a >= 100 && a == 125);                         /* 粗档：向上取 125 ms */
+    CHECK(wwdt_calc(1, 32768, &d, &p, &a) && d == 1 && WWDT_PER_BITS[p] == 6 && a == 1);       /* 64 拍 ≈ 1.95 ms，向下报 1 */
+    CHECK(wwdt_calc(26000, 32768, &d, &p, &a) && a >= 26000 && a <= 32000);
+    CHECK(!wwdt_calc(0, 32768, &d, &p, &a));
+    CHECK(!wwdt_calc(9000000, 32768, &d, &p, &a));                                             /* 上限 8 × 2^25 / 32768 ≈ 8192 s */
 }
 
 static void stub(void)
@@ -33,4 +45,4 @@ static void stub(void)
     CHECK(!host_sim_wdg_bitten());
 }
 
-void suite_wdg(void) { RUN(calc); RUN(stub); }
+void suite_wdg(void) { RUN(calc); RUN(wcalc); RUN(stub); }

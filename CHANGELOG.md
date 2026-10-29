@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] mspm0-driverlib 0.5.0：`pal_wdg_start/kick` 用 WWDT0（LFCLK 32.768 kHz，窗口 0%，调试暂停时停，`wwdt_calc.h` 取 ≥ 要求的最短档）；`pal_reset_cause` 读 RSTCAUSE 映射（看门狗/锁死/欠压/复位键/软件/上电，其余未知）。test_wdg 加 wwdt_calc 手算用例。[未测] 上板咬一次、复位原因实读。
 - [仿真] car_2wd 1.1.0 接入 algo/stall：负载用 PID 输出占空比（无电流采样），新参数 `stall_duty` / `stall_ms`（保护页“堵转”行）；堵转 → 刹车 + 锁急停 + 心跳 STALL。看门狗/锁死复位后上电进安全态（锁急停 + SAFE_BOOT），发 R 解除。test_car 新增堵转、解除、起步不误判、看门狗复位后安全态。[未测] 实车阈值。
 - [仿真] dzctl 0.5.0：心跳第 4 个 u32 = status 字（低 8 位复位原因，bit8 安全态 / bit9 堵转 / bit10 急停），`dzctl_set_reset_cause` / `dzctl_set_flags`；旧上位机只读前 12 字节，兼容。侧车 status() 加 `reset` / `hb_flags`，看门狗/锁死复位、安全态、堵转进时间线（watchdog 类，挂告警条）；状态栏 schema 旁显示标志，悬停看复位原因。
 - [仿真] 赛前全绿检查 + 封箱清单（docs/17）：`dzbench/precontest.py` 在自检之外查板子在线、固件版本 = 仓库 HEAD 且无未提交改动、板上参数 = 固件默认值（调了没定稿 = ✗）、急停未锁、无未确认告警、链路 60 s 0 坏 0 丢、仓库已提交；界面赛前检查对话框，导出 Markdown 封箱清单（带人工打勾项与签字栏）。test_precontest 3 项（host-sim：改 kp 后参数项 ✗、急停后 ✗、导出内容）。[未测] 真板、Windows。

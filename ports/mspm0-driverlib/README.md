@@ -11,6 +11,7 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 | encoder (gpio_isr) | GPIO 组 `ENC_<名>`，引脚 `A` / `B`，双边沿中断 | GROUP1 中断里格雷码表 4 倍频 |
 | uart | UART 实例 `UART_<名>` | RX/TX 中断 + 环形缓冲（无 DMA） |
 | timer | Timer 实例 `TIMER_<名>`，Periodic + ZERO 中断，`_CLK_FREQ` 整 MHz | 运行时改装载值 |
+| 看门狗 | 不用在 SysConfig 配，`pal_wdg_start` 直接开 WWDT0（LFCLK 32.768 kHz，窗口 0%，断点暂停时停） | 档位粗（2^6..2^25 拍 × 1..8 分频），取 ≥ 要求的最短档；500 ms 恰好一档。复位原因读 RSTCAUSE（读清，缓存）【编译】 |
 | adc | — | 未实现（返回 DZ_ENOTSUP，有 adc 资源时编译报错） |
 | i2c | I2C 实例 `I2C_<名>`，Controller，速率/上拉/滤波在 SysConfig | 轮询（参照 TI 例程 i2c_controller_rw_multibyte_fifo_poll）：写寄存器号不发 STOP + 重复起始读；写时边发边补 8 字节 FIFO；每步 5 ms 超时，出错/超时复位控制器状态机，计数进 `m0_diag()` |
 | spi | 总线实例 `SPI_BUS<n>`（SPIn，MOTO3 三线，模式/速率在 SysConfig）+ 片选 GPIO 组 `GPIO_CS_SPI<n>_<名>`、引脚 `CS`（初值 SET） | 轮询逐字节收发配对，等 BUSY 清零再拉高片选；同一总线多个设备 = 多个片选组；n ≤ 64 |

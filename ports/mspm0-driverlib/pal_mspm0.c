@@ -114,11 +114,59 @@ dz_err_t dz_m0_start(void)
 
 dz_err_t pal_init(void) { return s_started ? DZ_OK : DZ_ESTATE; }   /* 初始化由 SYSCFG_DL_init 完成 */
 const char *pal_board_name(void) { return g_board_name; }
-/* TODO：按 DL_SYSCTL_getResetCause() 映射；映射表未对照 TRM 核实前一律返回 UNKNOWN（不编造） */
-pal_reset_cause_t pal_reset_cause(void) { return PAL_RESET_UNKNOWN; }
-/* 看门狗：MSPM0 是窗口看门狗 WWDT（要 SysConfig 配 LFCLK 与窗口），还没做 → 如实返回 ENOTSUP。 */
-dz_err_t pal_wdg_start(uint32_t timeout_ms) { (void)timeout_ms; return DZ_ENOTSUP; }
-void pal_wdg_kick(void) {}
+/* 复位原因：RSTCAUSE 读一次就清（TRM），所以缓存。映射按 SDK dl_sysctl 的 DL_SYSCTL_RESET_CAUSE_* 名字，【编译】未上板逐项核实；
+ * 调试器触发、BSL、ECC、唤醒等归 UNKNOWN（不硬塞）。 */
+pal_reset_cause_t pal_reset_cause(void)
+{
+    static int8_t cached = -1;
+    if (cached < 0) {
+        pal_reset_cause_t r = PAL_RESET_UNKNOWN;
+        switch (DL_SYSCTL_getResetCause()) {
+        case DL_SYSCTL_RESET_CAUSE_POR_HW_FAILURE:          r = PAL_RESET_POWER_ON; break;
+        case DL_SYSCTL_RESET_CAUSE_POR_EXTERNAL_NRST:
+        case DL_SYSCTL_RESET_CAUSE_BOOTRST_EXTERNAL_NRST:   r = PAL_RESET_PIN; break;
+        case DL_SYSCTL_RESET_CAUSE_BOR_SUPPLY_FAILURE:      r = PAL_RESET_BROWNOUT; break;
+        case DL_SYSCTL_RESET_CAUSE_SYSRST_WWDT0_VIOLATION:
+        case DL_SYSCTL_RESET_CAUSE_SYSRST_WWDT1_VIOLATION:  r = PAL_RESET_WATCHDOG; break;
+        case DL_SYSCTL_RESET_CAUSE_SYSRST_CPU_LOCKUP_VIOLATION: r = PAL_RESET_LOCKUP; break;
+        case DL_SYSCTL_RESET_CAUSE_POR_SW_TRIGGERED:
+        case DL_SYSCTL_RESET_CAUSE_BOOTRST_SW_TRIGGERED:
+        case DL_SYSCTL_RESET_CAUSE_SYSRST_SW_TRIGGERED:
+        case DL_SYSCTL_RESET_CAUSE_CPURST_SW_TRIGGERED:     r = PAL_RESET_SOFTWARE; break;
+        default: break;
+        }
+        cached = (int8_t)r;
+    }
+    return (pal_reset_cause_t)cached;
+}
+
+/* ---------- 看门狗：WWDT0 当普通看门狗用（窗口 0% = 任何时候喂都行），时钟 LFCLK 32.768 kHz（上电默认 LFOSC） ---------- */
+#include "wwdt_calc.h"
+#ifndef DZ_LFCLK_HZ
+#define DZ_LFCLK_HZ 32768u
+#endif
+static bool s_wdg_on;
+dz_err_t pal_wdg_start(uint32_t timeout_ms)
+{
+    static const DL_WWDT_TIMER_PERIOD per_tab[8] = {
+        DL_WWDT_TIMER_PERIOD_6_BITS, DL_WWDT_TIMER_PERIOD_8_BITS, DL_WWDT_TIMER_PERIOD_10_BITS, DL_WWDT_TIMER_PERIOD_12_BITS,
+        DL_WWDT_TIMER_PERIOD_15_BITS, DL_WWDT_TIMER_PERIOD_18_BITS, DL_WWDT_TIMER_PERIOD_21_BITS, DL_WWDT_TIMER_PERIOD_25_BITS };
+    uint8_t div = 1u, per = 0u; uint32_t actual = 0u;
+    if (s_wdg_on) return DZ_ESTATE;
+    if (!wwdt_calc(timeout_ms, DZ_LFCLK_HZ, &div, &per, &actual)) return DZ_EINVAL;
+    if (!DL_WWDT_isPowerEnabled(WWDT0)) {
+        DL_WWDT_reset(WWDT0);
+        DL_WWDT_enablePower(WWDT0);
+        for (volatile int i = 0; i < 32; i++) {}                  /* 上电后等几拍再写寄存器（SDK 例程 delay_cycles(16)） */
+    }
+    DL_WWDT_setCoreHaltBehavior(WWDT0, DL_WWDT_CORE_HALT_STOP);   /* CCS/Keil 断点暂停时不计数 */
+    DL_WWDT_initWatchdogMode(WWDT0, (DL_WWDT_CLOCK_DIVIDE)(div - 1u), per_tab[per], DL_WWDT_RUN_IN_SLEEP,
+                             DL_WWDT_WINDOW_PERIOD_0, DL_WWDT_WINDOW_PERIOD_0);
+    s_wdg_on = true;
+    (void)actual;   /* 档位粗：500 ms 恰好一档（2^12 × 4 / 32768）；其他值会向上取档 */
+    return DZ_OK;
+}
+void pal_wdg_kick(void) { if (s_wdg_on) DL_WWDT_restart(WWDT0); }
 
 /* ---------- GPIO ---------- */
 dz_err_t pal_gpio_write(pal_id_t id, bool active)
