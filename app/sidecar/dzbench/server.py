@@ -150,6 +150,8 @@ class Server:
             return await run(None, self.agent.decide, int(m["id"]), bool(m["accept"]))
         if op == "agent_tool":
             return await run(None, self.agent.call, m["tool"], m.get("args", {}))
+        if op == "health":
+            return s.health.history()
         if op == "replay_ctl":
             r = self.session.replay_ctl(m.get("seek"), m.get("speed"), m.get("pause"))
             if m.get("seek") is not None:

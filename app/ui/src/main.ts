@@ -13,6 +13,7 @@ import { initSend } from "./send";
 import { initAnalysis, Loop } from "./analysis";
 import { Cal, calMap } from "./calib";
 import { AcceptSpec } from "./accept";
+import { initHbStrip } from "./hbstrip";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[] };
@@ -25,6 +26,13 @@ const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isN
 const q = new URLSearchParams(location.search);
 const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
 const plot = new Plot($("pb"));
+// 心跳条点格子：回放按 dzlog 时间跳；实时把曲线停在那一秒（缓冲里还有的话）
+const hb = initHbStrip($("hbstrip"), async c => {
+  if (S.status.replay && c.log_t != null) { await call("replay_ctl", { seek: Math.max(c.log_t - 1, 0) }); return; }
+  const where = c.log_t != null ? `dzlog ${c.log_t.toFixed(1)} s` : "（当时没在记录）";
+  if (c.plot_t != null && plot.inBuffer(c.plot_t - 0.5)) { setRun(false); plot.jumpTo(c.plot_t - 0.5); toast(`已暂停在这一秒 · ${where}；按 P 继续`, "info", 4000); }
+  else toast(`这一秒已滚出曲线缓冲：${where}，可以在底栏回放这份记录再点`, "warn", 6000);
+});
 const ana = initAnalysis(plot, () => S.applied, notifySide);
 const showXDiv = () => { const d = plot.xDiv(); $("xdiv").textContent = `${d < 1 ? d * 1000 + " ms" : d + " s"}/div`; };
 
@@ -325,7 +333,7 @@ $("cmd-send").onclick = () => { const c = $<HTMLInputElement>("cmd-c").value, n 
 $("win").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => {
   $("win").querySelectorAll("span").forEach(x => x.classList.toggle("on", x === s)); plot.win = +s.dataset.w!; showXDiv(); plot.redraw();
 });
-function setRun(on: boolean) { plot.running = on; $("run").querySelectorAll<HTMLElement>("span").forEach(x => x.classList.toggle("on", (x.dataset.r === "1") === on)); }
+function setRun(on: boolean) { plot.running = on; if (on) plot.view = null; $("run").querySelectorAll<HTMLElement>("span").forEach(x => x.classList.toggle("on", (x.dataset.r === "1") === on)); }
 $("run").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => setRun(s.dataset.r === "1"));
 // 回放列表只列当前端口 / 仿真应用的记录（文件名带端口标签，见 session.start_log）；“其他端口”收在最后一项
 let logsAll = false;
@@ -387,7 +395,8 @@ function renderStatus(st: Msg) {
   $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = $<HTMLSelectElement>("lines").disabled = !!st.connected;
   $("empty").hidden = !!st.connected && !!S.schema;
   $("empty").innerHTML = `<div>${st.connected ? (st.hint ? esc(st.hint) : "等待板子心跳…") : "选端口，点 <b>连接</b>。<br>没有硬件？选 <b>仿真板</b> 先熟悉界面。"}</div>`;
-  if (was && !st.connected) { applyNone(); loadLogs(); }
+  if (!was && st.connected) call("health").then(h => hb.set(h)).catch(() => {});   // 刷新页面/新窗口：补回已有的格子
+  if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); }
 }
 function applyNone() {
   S.schema = null; S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
@@ -424,7 +433,7 @@ link.on(m => {
       S.enums.forEach(f => { const a = m.y[f.name]; if (a?.length) S.enumVal[f.name] = a[a.length - 1]; });
       break;
     }
-    case "status": renderStatus(m); break;
+    case "status": renderStatus(m); hb.add(m.hb); break;
     case "schema": applySchema(m.schema); break;
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;

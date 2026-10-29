@@ -29,6 +29,7 @@ export class Plot {
   dirty = false;
   t0: number | null = null;      // 阶跃锚点（绝对时间）；有它时时间刻度相对 t0
   cur: [number | null, number | null] = [null, null];   // A/B 光标（绝对时间）
+  view: number | null = null;    // 非空 = 视图中心钉在这个时间（心跳条/时间线点过来）；恢复运行时清掉
   ghost: Ghost | null = null;    // 余辉：上一轮相对 t0 的数据
   private lanes: Lane[] = [];
   private host: HTMLElement;
@@ -57,6 +58,8 @@ export class Plot {
   now() { return this.t.length ? this.t[this.t.length - 1] : 0; }
   laneIdx() { return this.lanes.map(l => l.i); }
   setCursor(k: 0 | 1, x: number | null) { this.cur[k] = x; this.repaint(); window.dispatchEvent(new Event("dz-cursor")); }
+  jumpTo(x: number) { this.view = x; this.redraw(); this.setCursor(0, x); }
+  inBuffer(x: number) { return this.t.length > 0 && x >= this.t[0] && x <= this.t[this.t.length - 1]; }
   setAnchor(x: number | null) { this.t0 = x; this.repaint(); }
   // 截取 [t0, t0+dur] 的数据，时间换成相对 t0（给历史 / 余辉用）
   capture(t0: number, dur: number): Ghost {
@@ -168,7 +171,7 @@ export class Plot {
   redraw() {
     if (!this.lanes.length) return;
     this.dirty = false;
-    const tEnd = this.t.length ? this.t[this.t.length - 1] : this.win, t0 = tEnd - this.win;
+    const tEnd = this.view != null ? this.view + this.win / 2 : this.t.length ? this.t[this.t.length - 1] : this.win, t0 = tEnd - this.win;
     const [a, b] = windowSlice(this.t, t0, tEnd);
     const px = Math.round(this.lanes[0].u.bbox.width / devicePixelRatio) || 800;
     const [dt, dy] = minmax(this.t, this.ys, a, b, t0, tEnd, px);

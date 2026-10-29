@@ -15,6 +15,7 @@ from typing import Callable
 from . import lastsession, snapshots
 from ._dzlink import DATA, HEARTBEAT, PARAM_ACK, PARAM_SET, Parser, encode
 from .textparse import KvParser
+from .linkhealth import LinkHealth
 from .logfile import RX, TX, LogWriter
 from . import ports as _ports
 from .ports import PortOpenError, explain_open_error, identity, probe_baud
@@ -58,6 +59,7 @@ class Session:
         self.port = ""
         self.baud = 0
         self.parser = Parser()
+        self.health = LinkHealth()
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
@@ -102,6 +104,7 @@ class Session:
             raise LinkError("open_failed", what, fix) from e
         self.ident = identity(port) if not port.startswith((SIM_PREFIX, "replay:")) else None
         lastsession.mark(port, baud or 0)
+        self.health.reset()
         with self.lock:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
@@ -204,6 +207,7 @@ class Session:
                 self.tr, self.reconnecting = tr, False
                 self.reconnects += 1
                 self.parser = Parser()
+                self.health.rebase()
                 t_open = time.monotonic()
             tr.start(self._on_bytes, lambda msg: self._on_transport_error(msg, gen))
             self.emit({"type": "reconnected", "port": port, "attempts": k, "message": f"已自动重连 {port}（第 {k} 次尝试），正在重读参数"})
@@ -233,6 +237,7 @@ class Session:
         if text_mode:
             self._on_text(data, now)
         for kind, id_, seq, payload in frames:
+            self.health.on_frame(seq)
             if kind == HEARTBEAT:
                 self.last_hb = now
                 if len(payload) >= 4:
@@ -340,6 +345,7 @@ class Session:
                 self.samples.clear()
                 self._new.clear()
                 self.parser = Parser()
+            self.health.rebase()
         if speed is not None:
             tr.set_speed(speed)
         if pause is not None:
@@ -535,6 +541,11 @@ class Session:
             if isinstance(self.tr, ReplayTransport):
                 st.update(replay_pos=round(self.tr.position(), 2), replay_len=round(self.tr.duration, 2),
                           replay_speed=self.tr.speed, replay_paused=self.tr.paused)
+            if self.tr is not None:
+                log_t = (self.tr.position() if isinstance(self.tr, ReplayTransport)
+                         else now - self.log.t0 if self.log else None)
+                plot_t = self.samples[-1][0] if self.samples else None
+                st["hb"] = self.health.tick(now, self.parser.good, self.parser.bad, self.rx_bytes, log_t, plot_t)
         if self.reconnecting:
             st["hint"] = "连接断开，正在自动重连…（线插回去即可；急停此时送不到板子，板子 1 秒没收到心跳会自己急停）"
         elif connected and self.parser.good >= 20 and self.parser.bad * 10 > self.parser.good:

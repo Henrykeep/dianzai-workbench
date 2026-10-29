@@ -66,3 +66,7 @@
 ### 第 12 项：Agent 上下文（2026-10-29，UTC+8）
 - `agent/codemap.py`（仓库地图，git 状态缓存）、`agent/knowledge.py`（触发词知识 + 项目记忆）、`docs/agent-knowledge/`。新增工具 repo_map（AUTO）、remember（LOG，走网关 diff 卡片，人接受才写）。
 - 新知识文件：加 `triggers:` 头即可，不用改代码；README.md 无触发词不会被加载。
+
+### 心跳条（2026-10-29，UTC+8）
+- 侧车 `linkhealth.py`（每秒格子，status 里的 `hb` + op `health`），界面 `hbstrip.ts`，曲线 `Plot.jumpTo`（`view` 非空 = 视图钉住，按 P 继续时清掉）。格子同时带 log_t（dzlog 时间）和 plot_t（曲线时间），后面的事件时间线复用同一对时间。
+- 已知：一个 status() 被 hello 先拿走的格子不会再广播，界面连上时用 op health 补齐（按 i 去重）。

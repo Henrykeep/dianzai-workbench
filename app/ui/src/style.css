@@ -311,3 +311,10 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .rd.acc .v{font-weight:300} .rd.acc.ok .v{color:var(--ok)} .rd.acc.bad .v{color:var(--warn,var(--ink))}
 .acc-sum{font:400 var(--t-sm)/18px var(--f-mono);color:var(--muted);margin:0 0 var(--sp2)} .acc-sum.ok{color:var(--ok)}
 #layer{font-size:var(--t-xs);max-width:120px;margin-right:var(--sp2)}
+/* 链路心跳条（hbstrip.ts）：每格 1 秒 */
+.hbstrip{display:flex;align-items:stretch;gap:1px;height:12px;cursor:pointer}
+.hbstrip i{width:4px;border-radius:1px;background:var(--ok)}
+.hbstrip i.hb-warn{background:var(--warn)}
+.hbstrip i.hb-bad{background:var(--crit)}
+.hbstrip i.hb-off{background:var(--line, #8884)}
+.hbstrip i:hover{outline:1px solid currentColor}
