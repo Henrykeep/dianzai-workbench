@@ -39,6 +39,9 @@ static qd4310_t BEAM;
 shared_state_t *io_state(void) { return &S; }
 coord_t *io_coord(void) { return &COORD; }
 
+/* io 层节拍：app_loop 每 IO_TICK_MS 读一次输入，编码器 dt 用同一个数（改一处两边都跟） */
+#define IO_TICK_MS 1u
+
 static dz_err_t motor_enc(motor_dc_t *m, pal_id_t pwm, pal_id_t in1, pal_id_t in2, encoder_t *e, pal_id_t enc)
 {
     const params_t *p = &g_project_params[PROFILE_BASE];
@@ -48,7 +51,7 @@ static dz_err_t motor_enc(motor_dc_t *m, pal_id_t pwm, pal_id_t in1, pal_id_t in
     mc.pwm = pwm; mc.in1 = in1; mc.in2 = in2; mc.max_duty = 0.9f;
     if ((r = motor_dc_init(m, &mc)) != DZ_OK) return r;
     ec.enc = enc; ec.counts_per_rev = p->counts_per_rev;   /* 1456：来自非最终版比赛代码，未验证（10 圈标定见 docs/12） */
-    ec.dt_s = 0.001f; ec.speed_lpf_hz = 30.0f;
+    ec.dt_s = (float)IO_TICK_MS * 1e-3f; ec.speed_lpf_hz = 30.0f;
     return encoder_init(e, &ec);
 }
 
@@ -129,7 +132,7 @@ void app_loop(void)
 {
     static uint32_t last = UINT32_MAX, last_tx;   /* last_tx：LED 闪烁节拍 */
     uint32_t now = pal_millis();
-    if (now == last) return;
+    if ((uint32_t)(now - last) < IO_TICK_MS) return;
     last = now;
     read_inputs(now);
     coord_poll(&COORD, now);

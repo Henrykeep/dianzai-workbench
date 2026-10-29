@@ -360,6 +360,24 @@ class Checker:
             elif not re.search(rf"(pal_timer_start\s*\([^;]*\b{name}\b|\.period_ms\s*=\s*{name}\b|period_ms[^;]*\b{name}\b)", src):
                 self.err("F1", path, ln, f"周期宏 {name} 没有在本文件交给调度（pal_timer_start / .period_ms）——调度和 dt 可能用的不是同一个数")
 
+    # dt 写成数字字面量：`ec.dt_s = 0.001f;`、`float dt = 0.01f;`——和调度周期是两份数，改一边另一边不跟（p1 速度错 3 倍同类）
+    DT_LITERAL = re.compile(r'(?<![\w.])((?:[\w]+(?:\.|->))*\w*\bdt(?:_s)?|\w+_dt(?:_s)?)\s*=\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?[fF]?\s*[;,)]')
+
+    def check_dt_literal(self, path):
+        rel = os.path.relpath(path, self.root).replace(os.sep, "/")
+        if not rel.startswith(("apps/", "examples/")) or "/tests/" in rel or not rel.endswith(".c"):
+            return
+        if os.path.basename(rel) == "sim_setup.c":   # 仿真对象的积分步长是物理模型的，不是控制周期
+            return
+        raw = open(path, encoding="utf-8", errors="replace").read()
+        src = strip_comments(raw)
+        raw_lines = raw.splitlines()
+        for m in self.DT_LITERAL.finditer(src):
+            ln = lineno(src, m.start())
+            if ln - 1 < len(raw_lines) and "DZ-FREQ-OK:" in raw_lines[ln - 1]:
+                continue
+            self.err("F1", path, ln, f"dt 写成数字 `{m.group(0).strip()}`；从调度用的同一个周期宏算（例 PERIOD_MS_X * 1e-3f），不要另写一份")
+
     def run(self):
         self.index_headers()
         for top in ("firmware", "apps", "examples", "ports", "boards"):
@@ -373,6 +391,7 @@ class Checker:
                 self.check_file(p)
                 self.check_port(p)
                 self.check_freq(p)
+                self.check_dt_literal(p)
                 if not p.startswith(os.path.join(self.root, "ports")) and p.endswith(".c"):
                     self.check_isr(p, strip_comments(open(p, encoding="utf-8", errors="replace").read()))
         ex = os.path.join(self.root, "examples")
