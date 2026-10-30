@@ -20,6 +20,7 @@ import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
 import { humanize, humanHtml } from "./errors";
 import { conn, onLinkState, linkStateActive } from "./conn";
+import { linkView, runState, modeLabel } from "./linkmsg";
 import { initPjAsk } from "./pjask";
 import { estopText } from "./estop";
 import { fetchProgress, render as renderProgress } from "./progress";
@@ -289,7 +290,7 @@ function renderParams() {
   // 参数（docs/26 §6）：名字 + 数值同一行；下面一把刻度尺：板上值（实线）、默认值（○）、草稿（黄铜，连一段改动范围）、量程两端。
   // 全部来自 schema 的 params（名字 / 量程 / 单位 / 说明），界面不认任何题目的参数名。
   $("plist").innerHTML = ps.length ? ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(p.desc ?? "")}">
-    <div class="pr"><span class="k mono">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
+    <div class="pr"><span class="k mono" title="${esc(p.name)}">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
       <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off"><span class="u">${esc(p.unit ?? "")}</span></div>
     ${p.desc ? `<div class="pdesc">${esc(p.desc)}</div>` : ""}
     <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div>
@@ -598,14 +599,14 @@ link.on(m => {
       S.enums.forEach(f => { const a = m.y[f.name]; if (a?.length) S.enumVal[f.name] = a[a.length - 1]; });
       break;
     }
-    case "status": renderStatus(m); hb.add(m.hb); break;
+    case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); break;
     case "event": tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
     case "alert_ack": AL.ack(m.upto); renderAlerts(); break;   // 另一个窗口点了“知道了”
     case "schema": applySchema(m.schema); break;
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
-    case "link.state": onLinkState(m as any); break;
+    case "link.state": onLinkState(m as any); showLink(m as any); break;
     case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
@@ -618,7 +619,7 @@ link.onState = async open => {
   if (!open && S.status.connected) renderStatus({ ...S.status });   // 状态栏同步成未连接
   if (!open) return;
   const h = await link.rpc("hello");
-  if ((h as any)?.link) onLinkState((h as any).link);
+  if ((h as any)?.link) { onLinkState((h as any).link); showLink((h as any).link); }
   S.ports = h.ports; renderPorts(false);
   const applyFramedef = () => {
     const kind = $<HTMLSelectElement>("framedef").value;
@@ -697,6 +698,15 @@ conn.on(c => {
   $("banner").hidden = c.sidecar;
   $("banner").innerHTML = "侧车无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
 });
+// link.state reason 横幅（中性/告警）+ 端口下拉高亮；急停锁存告警在 #alerts，独立于连接状态，重连后照常显示
+function showLink(m: any) {
+  runState.onLink(m.board);
+  const v = linkView(m), b = $("lk-banner");
+  b.hidden = !v.text; b.textContent = v.text; b.className = "lk-banner" + (v.tone ? " " + v.tone : "");
+  $("port").classList.toggle("attn", v.portAttn);
+  const md = modeLabel(m); $("ro-mode").hidden = !md; $("ro-mode").textContent = md;
+  renderAlerts();
+}
 const goStep = initSteps(() => !!S.status.connected);
 // 项目进度：接口优先、否则前端推断；每秒或切步时刷新
 const refreshProgress = async () => renderProgress(await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错

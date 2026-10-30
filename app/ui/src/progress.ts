@@ -21,12 +21,12 @@ export interface Progress {
 // fix_action / next.action 都是 entrypoints.yaml 的动作 id；这里只记“去哪一步、点哪个已有元素”，不新增入口
 export const ACTIONS: Record<string, { step?: Step; ui: string }> = {
   connect: { ui: "connect" }, estop_clear: { ui: "cmd-r" }, doctor: { ui: "doctor" },
-  project_flow: { step: "项目", ui: "pflow" }, flash: { step: "烧录", ui: "fw-flash" },
+  project_flow: { step: "项目", ui: "pflow" }, project_ask: { step: "项目", ui: "pj-ask-go" }, flash: { step: "烧录", ui: "fw-flash" },
   tune_relay: { step: "调参", ui: "ag-relay" }, params: { step: "调参", ui: "p-send" },
   params_flash: { step: "封箱", ui: "pre-save" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
 };
 // 每步“主动作”：下一步提示里的那个按钮跳到哪
-const MAIN: Record<Step, string> = { 项目: "project_flow", 烧录: "flash", 模块: "connect", 联调: "connect", 标定: "connect", 调参: "params", 评分: "score", 封箱: "precontest" };
+const MAIN: Record<Step, string> = { 项目: "project_ask", 烧录: "flash", 模块: "connect", 联调: "connect", 标定: "connect", 调参: "params", 评分: "score", 封箱: "precontest" };
 
 export interface Ctx { current: Step; connected: boolean; estop: boolean; gainsZero: boolean; paramsDirty: boolean; selftestFail: boolean; visited: Set<Step> }
 
@@ -66,7 +66,32 @@ export async function fetchProgress(call: (op: string) => Promise<any>, c: Ctx):
   return infer(c);
 }
 
+// 每页顶部「一句话说明 + 一个主按钮」：说明这一步做什么、做完产出什么；按钮与 progress.next 同源
+export const PURPOSE: Record<StepId, string> = {
+  req: "把题目或需求整理成需求表与技术方案；产出 requirements.yaml、scheme.yaml。",
+  project: "生成或导入工程并编译、烧录到目标板；产出可运行的固件。",
+  sim: "在仿真板上跑通控制回路，确认信号与参数结构；产出可用的参数初值。",
+  bringup: "逐个模块上板收发并完成标定；产出极性、零偏等标定值。",
+  tune: "用阶跃实验与自整定调整参数；产出满足指标的一组参数。",
+  score: "按评分项逐项实测并保存证据；产出每项的测试记录与得分。",
+  seal: "赛前全绿检查并持久化参数；产出写入 Flash 与 yaml 的定稿参数。",
+};
+export const ACTION_LABEL: Record<string, string> = {
+  project_flow: "开始读需求", project_ask: "新建工程", flash: "烧录固件", connect: "连接目标板", params: "下发参数",
+  score: "开始评分", precontest: "开始检查", tune_relay: "自整定", estop_clear: "解除急停", doctor: "运行自检",
+};
+export function pageHead(p: Progress): { text: string; label: string; action?: string; goto?: StepId } {
+  const cur = p.steps.find(s => s.id === p.current)!;
+  const text = PURPOSE[cur.id];
+  if (p.next && p.next.title === cur.title) return { text, label: ACTION_LABEL[p.next.action] ?? "开始", action: p.next.action };
+  const nx = p.next && p.steps.find(s => s.title === p.next!.title);
+  if (nx) return { text, label: `前往${nx.title}`, goto: nx.id };
+  return { text, label: "已完成" };
+}
 const LABEL: Record<State, string> = { todo: "未开始", doing: "进行中", done: "已完成", blocked: "已阻塞" };
+export function runAction(a: string, go: (s: Step) => void) {
+  const t = ACTIONS[a]; if (!t) return; if (t.step) go(t.step); setTimeout(() => document.getElementById(t.ui)?.click(), 0);
+}
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
 export function render(p: Progress, go: (s: Step) => void) {
   document.querySelectorAll<HTMLElement>("#steps [data-step]").forEach(b => {
@@ -77,8 +102,16 @@ export function render(p: Progress, go: (s: Step) => void) {
     b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
     b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
   });
+  const ph = document.getElementById("pg-head");
+  if (ph) {
+    const hd = pageHead(p);
+    ph.innerHTML = `<p class="pg-t"></p><button class="btn pri" type="button"></button>`;
+    ph.querySelector("p")!.textContent = hd.text;
+    const b = ph.querySelector("button")!; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto;
+    b.onclick = () => { if (hd.action) runAction(hd.action, go); else if (hd.goto) go(JOURNEY.find(j => j.id === hd.goto)!.pages[0] as Step); };
+  }
   const h = document.getElementById("step-hint"); if (!h) return;
-  const run = (a: string) => { const t = ACTIONS[a]; if (!t) return; if (t.step) go(t.step); setTimeout(() => document.getElementById(t.ui)?.click(), 0); };
+  const run = (a: string) => runAction(a, go);
   h.replaceChildren();
   if (p.next) { const n = document.createElement("span"); n.className = "nx"; n.textContent = `下一步：${p.next.title} — ${p.next.hint}`; h.append(n); }
   for (const b of p.blockers) {

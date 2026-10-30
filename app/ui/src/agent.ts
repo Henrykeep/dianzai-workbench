@@ -1,6 +1,8 @@
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
 import { Msg } from "./ws";
+import { Watch, timeoutCard, errorCard, Card } from "./agentwatch";
+import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -341,24 +343,47 @@ export function initAgent(call: Call) {
 
   // ---------------------------------------------------------------- 对话
   let tools: HTMLElement | null = null, mode: HTMLElement | null = null;
+  let turnUsage: Usage | null = null, timeEl: HTMLElement | null = null;
   // 示例问题：点一下直接问（第一次打开时最省事的入口）
   feed.addEventListener("click", e => {
     const q = (e.target as HTMLElement).closest<HTMLElement>(".chip")?.dataset.q;
     if (q) { $<HTMLInputElement>("ag-in").value = q; $<HTMLFormElement>("ag-form").requestSubmit(); }
   });
+  // 等待看门狗：发出即计时；任何 agent_* 事件都算“有响应”；60 s 无事件 → 超时卡
+  const watch = new Watch(); let lastText = "", thinkEl: HTMLElement | null = null;
+  setInterval(() => {
+    if (!watch.on) return;
+    const t = watch.tick(performance.now());
+    if (thinkEl?.isConnected) thinkEl.textContent = t.label;
+    if (t.timeout) showCard(timeoutCard());
+  }, 1000);
+  function showCard(k: Card) {
+    const c = add(`<div class="down"><span class="dot"></span><div><b>${esc(k.title)}</b><p>原因：${esc(k.why)}</p><p class="fix">处理：${esc(k.fix)}</p>
+      <details class="raw"><summary>查看详情</summary><pre class="mono">${esc(k.detail)}</pre></details></div></div>
+      <div class="act">${k.settings ? `<button class="btn" data-r="cfg">大模型设置</button>` : ""}${k.retry ? `<button class="btn pri" data-r="retry">重试</button>` : ""}</div>`, "card down-card ag-err");
+    c.querySelector<HTMLElement>("[data-r=cfg]")?.addEventListener("click", () => openCfg());
+    c.querySelector<HTMLElement>("[data-r=retry]")?.addEventListener("click", () => {
+      c.remove(); watch.stop(); $<HTMLInputElement>("ag-in").value = lastText; $<HTMLButtonElement>("ag-send").disabled = false; $<HTMLFormElement>("ag-form").requestSubmit();
+    });
+  }
   $("ag-form").onsubmit = async e => {
     e.preventDefault();
     const inp = $<HTMLInputElement>("ag-in"), text = inp.value.trim();
     if (!text) return;
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
     const me = add(esc(text), "msg me");
-    const w = add(`<span class="lbl">思考中…</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
+    const t0 = performance.now(); turnUsage = null; timeEl = null;
+    lastText = text; watch.start(performance.now());
+    const w = add(`<span class="lbl">思考中… 0 s</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
+    thinkEl = w.firstElementChild as HTMLElement;
     tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
     try {
       const r = await call<any>("agent_ask", { text });
       const txt = typeof r === "string" ? r : r?.text ?? "";
       if (txt.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
       else w.firstElementChild!.outerHTML = `<div>${esc(txt).replace(/\n/g, "<br>")}</div>`;
+      const u = parseUsage(r); if (u) { usageLog.push(u); turnUsage = u; }
+      if (w.isConnected) { const t = document.createElement("div"); t.className = "lbl ag-time"; timeEl = t; t.textContent = fmtElapsed(elapsedOf(turnUsage, performance.now() - t0)); w.append(t); }
       // 步数用完：给「继续执行」。侧车返回 continue 操作时用它，否则发一条「继续」
       if (/步数用完/.test(txt) || r?.continue) {
         const c = add(`<div class="act"><button class="btn pri">继续执行</button></div>`, "card cont-card");
@@ -378,7 +403,7 @@ export function initAgent(call: Call) {
       me.after(f);
     }
     // 不清 tools/mode：工具事件会比回答晚到（侧车线程 → 事件循环），留给这条消息直到下一问
-    finally { live = null; $<HTMLButtonElement>("ag-send").disabled = !(document.getElementById("st-ws")?.textContent ?? "").includes("已连接"); }
+    finally { watch.stop(); live = null; $<HTMLButtonElement>("ag-send").disabled = !(document.getElementById("st-ws")?.textContent ?? "").includes("已连接"); }
   };
 
   // ---------------------------------------------------------------- 设置
@@ -532,7 +557,7 @@ export function initAgent(call: Call) {
       mode.classList.toggle("local", m.mode === "local");
       badge(m.mode === "local" ? "local" : "cloud");
     }
-    if (m.type === "agent_usage") mode.dataset.use = ` · ${(m.prompt + m.completion).toLocaleString()} tokens${m.cost != null ? ` · ¥${m.cost.toFixed(4)}` : ""}`;
+    if (m.type === "agent_usage") { const u = parseUsage(m); if (u) { usageLog.push(u); turnUsage = u; if (timeEl && u.elapsed_ms != null) timeEl.textContent = fmtElapsed(u.elapsed_ms); } }   // agent_usage 事件（llm-ua e697b86）可能晚于回复到达：到了就用 elapsed_ms 改写本轮耗时   // 只存，不显示 token
     if (m.type === "agent_retry") mode.dataset.use = ` · 服务忙，第 ${m.attempt} 次重试…`;
     if (m.type === "agent_toolmode") mode.dataset.use = ` · ${m.model} 不支持原生工具调用，已改 JSON 兜底`;
     mode.textContent = (mode.dataset.base ?? "") + (mode.dataset.use ?? "");
@@ -547,6 +572,8 @@ export function initAgent(call: Call) {
 
   return {
     onMsg(m: Msg) {
+      if (typeof m.type === "string" && m.type.startsWith("agent_")) watch.touch(performance.now());
+      if (m.type === "agent_error") { watch.stop(); live?.remove(); showCard(errorCard(m as any)); }
       if (m.type === "agent_delta") onDelta(m.text);
       if (m.type === "agent_tool") streamed = "";
       if (["agent_mode", "agent_usage", "agent_retry", "agent_toolmode"].includes(m.type)) modeLine(m);
