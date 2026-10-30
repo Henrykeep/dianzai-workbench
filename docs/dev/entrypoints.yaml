@@ -2,6 +2,7 @@
 # tools/check_entrypoints.py 在 make check 里检查：动作/标签/界面元素不重复；侧车每个 op 有界面或 Agent 调用方
 # （或写进 script_ops 并说明为什么）；界面调用的每个 op 都在这里登记；Agent 工具都有归属步。
 # 依据：/workspace/walk/LOGIC_AUDIT.md §3.1（时间线导航）、§3.3（入口唯一 + op 无孤儿）。
+# ready: false = 入口已登记、功能未就绪（如等固件支持）；不写 = 已就绪。
 # at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件>。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
 
 # 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（读题定方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
@@ -22,6 +23,9 @@ actions:
   - {id: symptoms,     label: 按症状排查,       at: always:排障, ui: sym-open,   ops: []}
   - {id: doctor,       label: 自检,             at: always:排障, ui: doctor,     ops: [doctor]}
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
+  # 进度阻塞项的修复按钮（进度条按 fix_action 动态生成）。ready: false = 入口已登记但功能未就绪（界面置灰，侧车返回 not_ready）
+  - {id: fetch_deps,   label: 一键安装依赖,     at: always:排障, ui: fix-deps, dynamic: true, ops: [fetch_deps]}
+  - {id: run_selftest, label: 板上自检,         at: always:排障, ui: fix-selftest, dynamic: true, ready: false, ops: [run_selftest]}
   # ── 项目 ──
   - {id: project_ask,  label: 一句话新建工程,   at: step:项目,   ui: pj-ask-go,  ops: []}   # 只读 agent_config 判断是否已配置，配置入口仍是 llm_cfg
   - {id: project_sample, label: 打开示例项目,   at: step:项目,   ui: pj-sample,  ops: []}
@@ -93,7 +97,6 @@ script_ops:
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
-  progress.get: 项目进度（时间线各步状态 + 阻塞项 fix_action，推送事件 progress.changed）的后端；进度条由前端接，接上后从这里移走；内置 Agent 走 progress_get 工具
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）

@@ -104,6 +104,8 @@ def check(spec, src):
             if v in seen[k]:
                 err.append(f"重复入口：{k}={v!r} 同时出现在 {seen[k][v]} 和 {a['id']}")
             seen[k][v] = a["id"]
+        if "ready" in a and not isinstance(a["ready"], bool):
+            err.append(f"{a['id']}: ready 只能是 true / false，收到 {a['ready']!r}")
         if a.get("at") not in places:
             err.append(f"{a['id']}: at={a.get('at')!r} 不是已登记的步 / 工具箱类 / 常驻件")
         if not a.get("dynamic") and a.get("ui") not in src["html_ids"]:
@@ -157,6 +159,7 @@ def selftest():
         ("html", lambda s: s["actions"][0].update(ui="nope"), "找不到"),
         ("tool", lambda s: s["agent_tools"]["step:调参"].remove("t2"), "t2 没写归属"),
         ("script", lambda s: s["script_ops"].update(gone="x"), "gone 侧车已没有"),
+        ("ready", lambda s: s["actions"][0].update(ready="no"), "ready 只能是"),
     ]
     for name, mut, want in cases:
         s = copy.deepcopy(base)
