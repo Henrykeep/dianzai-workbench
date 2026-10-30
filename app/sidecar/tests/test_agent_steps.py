@@ -290,3 +290,11 @@ def test_quick_start_one_sentence_e2e(repo):
         svc.s.disconnect()
     with pytest.raises(Exception):
         svc.quick_start("做一个温度报警器")
+
+
+def test_same_pending_card_not_duplicated(repo):
+    """真模型 e2e：quick_start 出了 project_apply 卡后模型又调 project_apply → 第二张卡。挂着的同一操作只出一张。"""
+    svc, ev = _svc(repo, FakeLLM([]))
+    a = svc.gate("project_apply", {"code": "X"}, lambda: None)
+    b = svc.gate("project_apply", {"code": "X"}, lambda: None)
+    assert a["action_id"] == b["action_id"] and len(_cards(ev)) == 1

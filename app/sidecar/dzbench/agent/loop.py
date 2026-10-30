@@ -114,7 +114,7 @@ TOOLS = [
                       "mcu": {"type": "string"}, "uvprojx": {"type": "string", "description": "要注入的 Keil .uvprojx（导入的工程会自动找）"},
                       "app": {"type": "string", "description": "Keil 注入按哪个应用挑模块（默认 = code）"}, "hand_edit": {"type": "string", "enum": ["merge", "keep"], "description": "dz/ 组被手改过时用户的选择"}}, "required": ["code"]}},
     {"name": "quick_start", "description": "一句话起项目（电机速度环/位置环）：解析题型和主控 → ①–⑤ 整链预览 → 一张确认卡（方案+引脚表）；用户确认后自动写项目、连仿真板、一键起步调参、评分",
-     "parameters": {"type": "object", "properties": {"text": {"type": "string", "description": "用户原话，如“两轮车速度环，STM32F1”"}}, "required": ["text"]}},
+     "input_schema": {"type": "object", "properties": {"text": {"type": "string", "description": "用户原话，如“两轮车速度环，STM32F1”"}}, "required": ["text"]}},
     {"name": "project_apply", "description": "把 project_chain 预览过的所有步一次写入仓库（一张确认卡）",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}},
     {"name": "polarity_check", "description": "标定：只读遥测判方向（step=push 人推一下 / jog 小幅点动）",
