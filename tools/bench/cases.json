@@ -49,20 +49,21 @@
   {
    "id": "2026H",
    "kind": "contest",
-   "title": "2026 H 车载平衡滚球（钢珠 0→60 px）",
+   "title": "2026 H 车载平衡滚球（小车静止，钢球 0→60 px = 10 cm）",
    "app": "2026H_ball",
    "src": "examples/2026H_ball",
    "tune": "none",
    "accept": {
     "band": 6.0,
     "hold_s": 0.5,
-    "t_max_s": 4.0
+    "t_max_s": 5.0
    },
    "plant_files": [
     "sim_setup.c",
     "io/sim_setup.c",
     "tests"
-   ]
+   ],
+   "source": "/workspace/nuedc/H题_车载平衡滚球运动控制系统.pdf 基本要求 3（13 分）：运行时间 ≤5 s，误差绝对值 ≤1 cm；仿真 600 px/m → 1 cm = 6 px（examples/2026H_ball/io/sim_setup.c）。题目是 +5→−5 cm 两段，这里先用单段阶跃近似"
   }
  ]
 }
