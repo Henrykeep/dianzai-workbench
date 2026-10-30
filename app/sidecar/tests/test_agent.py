@@ -375,3 +375,9 @@ def test_preload_first_turn_read_cap_and_continue_action():
     big = AgentLoop(FakeLLM([{"role": "assistant", "tool_calls": [call("x")]}] * 40), {"x": lambda: 1}, ev.append, max_steps=3)
     big.ask("帮我从新建工程一路做到仿真跑通")
     assert [e for e in ev if e.get("type") == "agent_continue"][0]["steps"] == 6
+
+
+def test_every_tool_has_input_schema():
+    """8f57870 的 quick_start 写成了 parameters → 真模型每轮 KeyError 'input_schema'；脚本化测试测不到，这里兜住。"""
+    from dzbench.agent.loop import TOOLS
+    assert [t["name"] for t in TOOLS if "input_schema" not in t] == []

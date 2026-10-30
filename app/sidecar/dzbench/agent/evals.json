@@ -291,6 +291,19 @@
     "?"
    ],
    "category": "state"
+  },
+  {
+   "id": "r4_new_project",
+   "user": "帮我新建一个项目：两轮小车速度环，主控 STM32F103，编码器测速 + PID，从零做到仿真跑通并把参数调好，代号 2026R4",
+   "must_call_any": [
+    "project_chain",
+    "quick_start"
+   ],
+   "must_not_call": [
+    "flash",
+    "raw_cmd"
+   ],
+   "category": "act"
   }
  ]
 }
