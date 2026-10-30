@@ -192,6 +192,8 @@ class Server:
             if r and m["c"] == "R" and was:      # 解除急停：只发 'R'，不重发运动/设定值，不恢复调参（已取消的保持取消）
                 await self._broadcast(cleared_notice())
             return r
+        if op == "set_cloud_enabled":              # 比赛模式启用云端：只认界面确认卡的 confirmed=true（与 set_run_mode 同一校验）；Agent 无此工具
+            return await run(None, agent_llm.set_cloud_enabled, bool(m.get("enabled")), m.get("confirmed") is True)
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
@@ -456,7 +458,7 @@ class Server:
             r = await run(None, lambda: agent_llm.discover_models(m.get("form") or {}))
             if r.get("reason") == "contest_mode":      # 比赛模式拦下外部请求：同时推 agent_error，界面统一提示
                 await self._broadcast({"type": "agent_error", "code": "contest_mode", "message": r["message_zh"], "message_zh": r["message_zh"],
-                                       "fix_action": r["fix_action"], "retryable": False})
+                                       "fix_action": r["fix_action"], "human_only": True, "goto": r["goto"], "retryable": False})
             return r
         if op == "agent_ollama":
             return agent_llm.ollama(m.get("action", "check"), m.get("model", ""))

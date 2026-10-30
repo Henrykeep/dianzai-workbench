@@ -80,7 +80,7 @@ class AgentTools:
         from .agent.gateway import human_only_error
         ho = human_only_error(tool)
         if ho:
-            raise LinkError(ho["code"], ho["message"], ho["fix"])
+            raise LinkError(ho["code"], ho["message"], ho["fix"], ho["fix_action"], {"human_only": True, "goto": ho["goto"]})
         if tool not in {t["name"] for t in TOOLS}:
             raise LinkError("bad_tool", f"未知工具 {tool}")
         return getattr(self, tool)(**args)

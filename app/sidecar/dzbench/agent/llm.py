@@ -125,16 +125,12 @@ def save_config(update: dict) -> dict:
     if "provider" in update and update["provider"] != cfg.get("provider"):
         base = PROVIDERS.get(update["provider"], PROVIDERS["custom"])
         cfg.update(base_url=base["base_url"], model=base["model"])
-    for k in KEYS:
+    for k in KEYS:                                   # 只认 KEYS：contest_mode / cloud_enabled（GUARDED_KEYS）传了也忽略
         if k in update and (k != "api_key" or update[k]):     # 空 key 不覆盖已存的
             cfg[k] = update[k]
     p = config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({k: v for k, v in cfg.items() if k in KEYS}, ensure_ascii=False, indent=1), encoding="utf-8")
-    try:
-        os.chmod(p, 0o600)
-    except OSError:
-        pass
+    old = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    _write_raw({k: v for k, v in cfg.items() if k in KEYS} | {k: old[k] for k in GUARDED_KEYS if k in old})   # 合规开关原样保留
     return public_config(cfg)
 
 
@@ -171,7 +167,7 @@ def _is_local(url: str) -> bool:
 
 def contest_blocks_cloud(cfg: dict) -> bool:
     """比赛模式且没启用云端 → 不许连外部服务。
-    TODO(contest_mode)：仓库里还没有设置入口；暂读 ~/.dzbench/config.json 里的同名开关 contest_mode / cloud_enabled（默认关 / 开）。"""
+    TODO(contest_mode)：contest_mode 还没有设置入口，暂读 ~/.dzbench/config.json；cloud_enabled 只能经 set_cloud_enabled(confirmed=True) 改。"""
     return bool(cfg.get("contest_mode")) and not cfg.get("cloud_enabled", False)
 
 
@@ -201,7 +197,39 @@ def _models_log(line: str, key: str) -> None:
 
 
 def _models_fail(reason: str, message_zh: str) -> dict:
-    return {"ok": False, "models": [], "reason": reason, "fix_action": MODELS_FIX[reason], "message_zh": message_zh}
+    r = {"ok": False, "models": [], "reason": reason, "fix_action": MODELS_FIX[reason], "message_zh": message_zh}
+    if r["fix_action"] == "enable_cloud":          # 合规底线：启用云端只能由人做 → human_only + goto settings:cloud
+        from ..human_only import mark
+        r = mark(r, "enable_cloud")
+    return r
+
+
+# 合规开关：不在 KEYS 里，save_config / agent_config 改不动（但会原样保留）；唯一写入口是 set_cloud_enabled(confirmed=True)
+GUARDED_KEYS = ("contest_mode", "cloud_enabled")
+
+
+def set_cloud_enabled(enabled: bool, confirmed=False) -> dict:
+    """比赛模式下启用 / 关闭云端。只能由人：界面确认卡确认后带 confirmed=True 调用（op set_cloud_enabled）。
+    Agent 工具表、script_ops、自动流程都不得调用这里（tests/test_cloud_guard.py 守着）。"""
+    from ..human_only import require_confirmed
+    nc = require_confirmed(confirmed, "启用云端需要确认：比赛模式下启用后会把数据发往外部模型服务" if enabled else "关闭云端需要确认")
+    if nc:
+        return nc
+    p = config_path()
+    raw = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    raw["cloud_enabled"] = bool(enabled)
+    _write_raw(raw)
+    return {"ok": True, "cloud_enabled": bool(enabled), "message_zh": "已启用云端" if enabled else "已关闭云端"}
+
+
+def _write_raw(raw: dict) -> None:
+    p = config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        os.chmod(p, 0o600)
+    except OSError:
+        pass
 
 
 def discover_models(form: dict, timeout: float = 8) -> dict:

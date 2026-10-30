@@ -36,12 +36,12 @@ HB_TIMEOUT_S = 2.0          # = linkstate.LOST_AFTER_S；板子心跳 500 ms，�
 class LinkError(Exception):
     """带“怎么修”的错误：UI 原样显示 message 和 fix。"""
 
-    def __init__(self, code: str, message: str, fix: str = "", fix_action: str | None = None):
+    def __init__(self, code: str, message: str, fix: str = "", fix_action: str | None = None, extra: dict | None = None):
         super().__init__(message)
-        self.code, self.message, self.fix, self.fix_action = code, message, fix, fix_action
+        self.code, self.message, self.fix, self.fix_action, self.extra = code, message, fix, fix_action, extra or {}
 
     def as_dict(self) -> dict:
-        d = {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        d = {"type": "error", "code": self.code, "message": self.message, "fix": self.fix} | self.extra
         if self.fix_action:
             d["fix_action"] = self.fix_action
         return d
@@ -822,9 +822,10 @@ class Session:
         没确认就不发（板子那边也要确认字节，缺了拒切）。"""
         if mode not in ("tethered", "standalone"):
             raise ValueError(f"mode 只能是 tethered / standalone，收到 {mode!r}")
-        if not confirmed:
-            return {"ok": False, "result": None, "needs_confirm": True,
-                    "message_zh": "切换运行模式需要确认：" + ("脱机后板子不再要求上位机心跳，只靠板上保护" if mode == "standalone" else "联机后上位机断线会急停")}
+        from .human_only import require_confirmed
+        nc = require_confirmed(confirmed, "切换运行模式需要确认：" + ("脱机后板子不再要求上位机心跳，只靠板上保护" if mode == "standalone" else "联机后上位机断线会急停"))
+        if nc:
+            return nc
         self._check_tx()
         self.mode_ack = None
         if not self._send(DATA, ID_CMD, bytes([ord("M"), 1 if mode == "standalone" else 0, self.MODE_MAGIC])):

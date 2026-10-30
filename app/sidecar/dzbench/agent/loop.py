@@ -141,7 +141,7 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"rounds": {"type": "integer"}}}},
 ]
 assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
-assert not any(human_only_error(t["name"]) for t in TOOLS)   # 切换运行模式等只能由人做的操作不进工具表
+assert not any(human_only_error(t["name"]) or "cloud" in t["name"] or "contest" in t["name"] for t in TOOLS)   # 切换运行模式等只能由人做的操作不进工具表
 
 
 # ---------------------------------------------------------------- 模式（工具白名单）
@@ -310,7 +310,8 @@ class AgentLoop:
                     args = json.loads(c["function"].get("arguments") or "{}")
                     ho = human_only_error(name)
                     if ho:
-                        raise GatewayError("human_only", ho["message"], ho["fix"])
+                        raise GatewayError("human_only", ho["message"], ho["fix"],
+                                           {k: ho[k] for k in ("fix_action", "human_only", "goto")})
                     if name not in self.handlers or any(f in name for f in FORBIDDEN_TOOLS):
                         raise GatewayError("denied", f"没有工具 {name}")
                     allow = MODES[self.mode]["tools"]
@@ -329,6 +330,7 @@ class AgentLoop:
                     res = {"ok": False, "error": getattr(e, "message", str(e))}
                     if getattr(e, "fix", ""):
                         res["fix"] = e.fix               # 改法提示（如 SEARCH 没匹配时最像的几行）也要回给模型
+                    res |= getattr(e, "extra", None) or {}   # human_only：只给 fix_action + goto（界面入口），不执行
                 if self.guards and res["ok"] and res["result"] in (None, "", [], {}):
                     res["result"] = EMPTY   # SWE-agent：空输出也要明说
                 results.append({"name": name, "ok": res["ok"], "result": res.get("result")})

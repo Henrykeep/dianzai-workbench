@@ -32,7 +32,9 @@ def cfg(tmp_path, monkeypatch):
 
 
 def _keys_ok(r):
-    assert set(r) == llm.MODELS_KEYS, set(r)                 # 返回键集合精确等于约定（docs/dev/events.md），没有 message
+    from dzbench.human_only import HUMAN_ONLY_KEYS
+    want = llm.MODELS_KEYS | (HUMAN_ONLY_KEYS if r.get("fix_action") == "enable_cloud" else set())
+    assert set(r) == want, set(r)                            # 返回键集合精确等于约定（docs/dev/events.md），没有 message；enable_cloud 另带 human_only/goto
     assert r["fix_action"] == (None if r["ok"] else llm.MODELS_FIX[r["reason"]])
 
 
@@ -117,6 +119,7 @@ def test_contest_mode_blocks_before_request(cfg, tmp_path, monkeypatch):
     r = llm.discover_models({"base_url": "https://api.example.com/v1", "api_key": KEY})
     _keys_ok(r)
     assert r["reason"] == "contest_mode" and r["fix_action"] == "enable_cloud" and calls == []     # 零调用
+    assert r["human_only"] is True and r["goto"] == "settings:cloud"                               # 合规底线：只给跳转
     assert KEY not in json.dumps(r, ensure_ascii=False)
     for local in ("http://localhost:11434/v1", "http://127.0.0.1:11434/v1", "http://[::1]:11434/v1"):   # 本机不拦：照常请求
         assert llm.discover_models({"base_url": local})["reason"] != "contest_mode"
@@ -138,8 +141,10 @@ def test_server_agent_models_contest_mode_pushes_agent_error(cfg, tmp_path, monk
         sent.append(ev)
     sv._broadcast = bc
     r = asyncio.run(sv._op({"op": "agent_models", "form": {"base_url": "https://api.example.com/v1", "api_key": KEY}}))
-    assert set(r) == llm.MODELS_KEYS and r["reason"] == "contest_mode"
-    assert [e for e in sent if e["type"] == "agent_error" and e["code"] == "contest_mode" and e["fix_action"] == "enable_cloud"]
+    _keys_ok(r)
+    assert r["reason"] == "contest_mode"
+    assert [e for e in sent if e["type"] == "agent_error" and e["code"] == "contest_mode" and e["fix_action"] == "enable_cloud"
+            and e["human_only"] is True and e["goto"] == "settings:cloud"]
     assert KEY not in json.dumps(sent + [r], ensure_ascii=False)
 
 
