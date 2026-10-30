@@ -88,7 +88,6 @@ def test_keil_needs_second_confirm(tmp_path):
     assert e.value.code == "need_confirm" and ".bak" in e.value.fix
 
 
-@pytest.mark.needs_third_party("stm32f4xx-hal-driver", "stm32f1xx-hal-driver", "cmsis-device-f4", "cmsis-device-f1")
 def test_scratch_allocs_and_writes_ioc(tmp_path):
     """从零新建：选项按方案主控排序、MSPM0 标不可用；预览生成 .ioc 且 ioc_import 反导无错；确认写到 CubeMX 目录。"""
     import shutil
