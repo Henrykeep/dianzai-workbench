@@ -5,7 +5,7 @@ TC      ?= arm-none-eabi-
 CC      := $(TC)gcc
 F4_HAL  ?= third_party/stm32f4xx-hal-driver
 F4_DEV  ?= third_party/cmsis-device-f4
-CMSIS   ?= third_party/CMSIS_5/CMSIS/Core/Include
+CMSIS   ?= third_party/CMSIS_6/CMSIS/Core/Include
 ifeq ($(wildcard $(F4_HAL)/Inc/stm32f4xx_hal.h),)
 $(error 缺少 STM32CubeF4 HAL。先运行 tools/fetch_stm32f4.sh（或设置 F4_HAL/F4_DEV/CMSIS 路径）)
 endif

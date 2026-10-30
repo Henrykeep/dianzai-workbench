@@ -8,7 +8,7 @@ SERIES_U := $(shell echo $(SERIES) | tr a-z A-Z)
 # HAL 优先用 CubeMX 复制进工程的 Drivers/；没有则退回 third_party（tools/fetch_third_party.sh 备有 F1/F4）
 CUBE_HAL ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/STM32$(SERIES_U)xx_HAL_Driver third_party/stm32$(SERIES)xx-hal-driver))
 CUBE_DEV ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/Device/ST/STM32$(SERIES_U)xx third_party/cmsis-device-$(SERIES)))
-CMSIS   ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/Include) third_party/CMSIS_5/CMSIS/Core/Include)
+CMSIS   ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/Include) third_party/CMSIS_6/CMSIS/Core/Include)
 # vars / gen 不需要 HAL（keil_inject 只要模块清单；Keil 工程自带 HAL）：没 HAL 时只在真编译时报错
 ifeq ($(CUBE_HAL)$(filter-out vars gen,$(or $(MAKECMDGOALS),all)),)
 else ifeq ($(CUBE_HAL),)
@@ -27,7 +27,7 @@ STARTUP := $(firstword $(wildcard $(CUBE_DIR)/startup_*.s $(CUBE_DIR)/Core/Start
 ifeq ($(BOARD_RTOS),freertos)
 RTOS_DIR ?= $(firstword $(wildcard $(CUBE_DIR)/Middlewares/Third_Party/FreeRTOS/Source third_party/stm32-mw-freertos/Source))
 RTOS_PORT := $(if $(findstring cortex-m4,$(BOARD_CPU)),ARM_CM4F,$(if $(findstring cortex-m7,$(BOARD_CPU)),ARM_CM7/r0p1,$(if $(findstring cortex-m0,$(BOARD_CPU)),ARM_CM0,ARM_CM3)))
-RTOS2_INC ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/RTOS2/Include third_party/CMSIS_5/CMSIS/RTOS2/Include))
+RTOS2_INC ?= $(firstword $(wildcard $(CUBE_DIR)/Drivers/CMSIS/RTOS2/Include third_party/CMSIS_6/CMSIS/RTOS2/Include))
 HAL_INC += $(RTOS_DIR)/include $(RTOS_DIR)/CMSIS_RTOS_V2 $(RTOS_DIR)/portable/GCC/$(RTOS_PORT) $(RTOS2_INC)
 HAL_SRC += $(wildcard $(RTOS_DIR)/*.c) $(RTOS_DIR)/CMSIS_RTOS_V2/cmsis_os2.c \
            $(RTOS_DIR)/portable/GCC/$(RTOS_PORT)/port.c $(RTOS_DIR)/portable/MemMang/heap_4.c
