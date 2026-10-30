@@ -529,8 +529,8 @@ function renderProposal(m: Msg) {
 function renderStatus(st: Msg) {
   renderBoard(st);
   const was = S.status.connected;
-  if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
   const relock = S.status?.tx_locked !== st.tx_locked;
+  if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
   S.status = st;
   if (!linkStateActive()) conn.set({ board: !!st.connected, alive: !!st.alive });   // 有 link.state 时以它为准
   if (relock) renderAlerts();   // 急停锁存变化：告警条上的“解除急停 R”跟着出现/消失
@@ -686,10 +686,6 @@ $("pre-bbtn").onclick = async () => {
   $("pre-bb").innerHTML = r.length ? r.map((e) => `<li><b>${(e.t_ms / 1000).toFixed(3)} s</b> ${esc(e.text)}</li>`).join("")
     : "<li>板子没回黑匣子记录（固件 dzctl < 0.6.0，或应用没接 blackbox）</li>";
 };
-$("pre-save").onclick = async () => {
-  const ok = await call("cmd", { c: "W" }).catch(() => false);
-  toast(ok ? "已让板子存参数：读黑匣子看“参数已存进 flash”（没有保存区/没停车会写失败原因）" : "没连板子", ok ? "ok" : "warn", 8000);
-};
 $("pre-exp").onclick = async () => { const r = await call("precontest_export", { strict: $<HTMLInputElement>("pre-strict").checked }).catch(() => null); if (r) { renderPre(r); toast(`封箱清单已导出 → ${r.path}`, r.all_green ? "ok" : "warn", 12000); } };
 
 $("doctor").onclick = async () => {
@@ -742,6 +738,16 @@ $("tb-save").onclick = async () => {
   if (r.ok) savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   else if (r.disable) noSave = r.note!; else toast({ code: "save_params", message: r.note!, fix: "" }, "warn", 6000);
   renderBoard(S.status);
+};
+// 封箱页「读取自检」：读心跳上报的上电自检结果；固件没报（selftest_unreported）时照写侧车给的原因 + 处理
+$("seal-selftest").onclick = async () => {
+  const note = $("st-note");
+  try {
+    const r: any = await link.rpc("run_selftest", {});
+    note.textContent = r?.pass ? "自检通过" : "";
+    const items: string[] = (r?.failed_items ?? []).map((i: any) => i.message_zh);
+    $("st-fail").hidden = !items.length; $("st-fail-l").innerHTML = items.map(m => `<li>${esc(m)}</li>`).join("");
+  } catch (e: any) { note.textContent = [e?.message, e?.fix].filter(Boolean).join(" · "); }
 };
 $("seal-mode").onclick = async () => {
   const st: any = S.status;

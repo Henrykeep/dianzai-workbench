@@ -14,7 +14,7 @@ export class Watch {
     return { label: `思考中… ${Math.floor((now - this.t0) / 1000)} s`, timeout };
   }
 }
-export type AgentErr = { code?: string; message?: string; detail?: string; fix_action?: string | null; retryable?: boolean };
+export type AgentErr = { code?: string; message?: string; detail?: string; fix?: string; fix_action?: string | null; retryable?: boolean };
 export type Card = { title: string; why: string; fix: string; detail: string; retry: boolean; settings?: boolean; other?: Fix | null; otherId?: string };
 export const timeoutCard = (): Card => ({
   title: "Agent 超过 60 秒未响应",
@@ -26,6 +26,9 @@ export const timeoutCard = (): Card => ({
 // fix_action 对照表（取值 = entrypoints.yaml 入口 id）：llm_cfg → 「大模型设置」；agent_chat 与 retryable 合并为一个「重试」；null → 无修复按钮
 export const FIX_ACTIONS = { llm_cfg: "settings", agent_chat: "retry" } as const;
 export function errorCard(m: AgentErr, has: (ui: string) => boolean = ui => typeof document !== "undefined" && !!document.getElementById(ui)): Card {
+  // 只能由人做的操作（如切换运行模式）：不当成出错，写明要人确认，只给一个跳到封箱页的按钮（跳过去聚焦，不替人点）
+  if (m.code === "human_only") return { title: "需在封箱页由人确认", why: m.message || "这个操作只能由人执行", fix: m.fix || "到封箱页由你本人确认",
+    detail: "code: human_only", retry: false, settings: false, other: resolveFix("set_run_mode", has), otherId: "set_run_mode" };
   const fa = m.fix_action ? FIX_ACTIONS[m.fix_action as keyof typeof FIX_ACTIONS] : undefined;
   // 对照表以外的入口 id：交给统一的 resolveFix（未就绪置灰「等待固件支持」，未登记置灰写明原因）
   const other = m.fix_action && !fa ? resolveFix(m.fix_action, has) : null;
