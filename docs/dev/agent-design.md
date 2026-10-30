@@ -49,3 +49,27 @@
 |---|---|---|
 | 项目：读题 + 方案 | 4（运行、确认 ×2） | 3（一句话 + 2 张卡；方案卡是自动备好的） |
 | 仿真调参一轮 | 4（阶跃实验、规则建议、采纳、阶跃实验） | 2（一句话 + 采纳；验证阶跃自动） |
+
+## 第二轮（project_chain / 评分 / 自动调参 / 标定联调工具）
+
+| 步 | 新工具 | 风险级 | 说明 |
+|---|---|---|---|
+| 项目 | `project_chain` | log | 依次预览 读题→方案→（导入 或 从零新建，芯片取 scratch_options 第一个可用项）→分配→生成；前一步在沙盒 `~/.dzbench/flow/<code>/sandbox` 里 accept，后一步才看得到；仓库不动 |
+| 项目 | `project_apply` | human | 一张卡按顺序调 `Flow.accept`（暂存区就是卡上审过的内容）；某步失败就停、报告已写的 |
+| 项目 | `project_state` | auto | 现在认本题自己的板子（project.yaml boards.main / alloc/board.yaml 草稿名）、.ioc 是否写了、CubeMX 是否已 GENERATE |
+| 标定 | `polarity_check` | auto | 与标定页同一函数 `dzbench/pageops.py` |
+| 联调 | `fft`、`wave_measure` | auto | 同上（server.py 的内联实现搬进 pageops，op 和工具共用） |
+| 评分 | `score_run` | 实机 human / 仿真 log | 按 step_test 跑 N 次，用 accept.py（=accept.ts）判；只认评分项点名的规格或题目原文给的 band，不拿示例规格凑数 |
+| 评分 | `score_save`、`score_writeback` | human | 调 scoring.save / writeback；回写卡上展示 diff，执行时用同一 sha |
+| 调参 | `tune_autopilot` | 仿真 log，实机拒绝 | rule_round→采纳→阶跃→护栏判，到 done/stop/rollback 或 N 轮；没 done 就回到最好一轮 |
+
+点击（一次发消息或点按钮记 1 下）：
+
+| 流程 | 页面手动 | 第一轮 Agent | 第二轮 Agent |
+|---|---|---|---|
+| 新题：读题→方案→从零新建→生成 | ≥8 | 1 + 每步 1 张卡（≥5） | **2**（问 + 一张总卡） |
+| 仿真调参到护栏通过 | 每轮 4 | 每轮 2 | **1**（问，0 张卡） |
+| 评分一项 ×3 → 证据 → 回写 | 6 | — | **3**（问 + 保存卡 + 回写卡） |
+
+测试：tests/test_agent_steps.py（脚本化模型，离线）。真模型：本机没有 ~/.dzbench/config.json、没有 DZBENCH_API_KEY、没有本地 ollama，**没测真模型**。
+已知不足：确认卡预览还是 JSON 原样展示；离线助手还不会触发 tune_autopilot / score_run（只有接了大模型时可用）。
