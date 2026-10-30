@@ -663,3 +663,6 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 .card.down-card p{margin-top:var(--sp1);font-size:var(--t-sm);color:var(--muted);line-height:1.5}
 .card.down-card p.fix{color:var(--text)} .card.down-card p.ok{color:var(--ok)}
 .card.down-card .act{display:flex;gap:var(--sp2);justify-content:flex-end;margin-top:var(--sp3)}
+/* 对话框不超出视口：内容滚动，按钮行（主按钮/取消）始终可见 */
+.dlg{max-height:calc(100vh - 96px);overflow:auto}
+.dlg .act{position:sticky;bottom:calc(-1 * var(--sp5));margin:0 calc(-1 * var(--sp5)) calc(-1 * var(--sp5));padding:var(--sp3) var(--sp5);background:inherit;box-shadow:0 -1px 0 var(--hair)}
