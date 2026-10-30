@@ -1,9 +1,18 @@
 """心跳 status 字（dzctl 0.5.0）：复位原因 + 标志的解析与时间线事件。"""
-from dzbench.session import hb_status_dict, hb_status_event
+from dzbench.session import hb_status_dict, hb_status_event, run_mode_dict
 
 
 def test_old_firmware_none():
-    assert hb_status_dict(None) == {"reset": None, "hb_flags": None}
+    assert hb_status_dict(None) == {"reset": None, "hb_flags": None, "boot": None}
+    assert run_mode_dict(None) is None
+
+
+def test_run_mode_bits():
+    assert run_mode_dict(1)["mode"] == "tethered" and run_mode_dict(1)["started"] is False
+    d = run_mode_dict(1 | (1 << 14))
+    assert d["mode"] == "standalone" and d["started"] is False and "按键" in d["label_zh"]
+    assert run_mode_dict(1 | (1 << 14) | (1 << 15))["started"] is True
+    assert run_mode_dict(1 | (1 << 15))["started"] is False          # 联机下 bit15 无意义
 
 
 def test_decode():
