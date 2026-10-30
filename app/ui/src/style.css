@@ -801,3 +801,19 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .msg.me.undelivered{opacity:.6}
 .undel{display:flex;align-items:center;justify-content:flex-end;gap:var(--sp2);font-size:var(--t-xs);color:var(--warn)}
 .toast details.raw{margin-top:var(--sp1);font-size:var(--t-xs)} .toast details.raw pre{max-height:160px;overflow:auto;white-space:pre-wrap;margin:var(--sp1) 0 0}
+/* 1366：参数名不截断——参数列加宽、数值框收窄；仍放不下时省略号 + 悬停看全名 */
+.prow .pr .k{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-width:1500px){
+  .app[data-step="调参"],.app[data-step="模块"]{--w-left:304px}
+  .prow .in{width:6ch}
+  .prow .pr{gap:var(--sp1)}
+}
+/* 每页顶部：一句话说明 + 一个主按钮（progress.ts pageHead，与导航「下一步」同源） */
+.pg-head{order:-2;display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) var(--sp5);border-bottom:1px solid var(--hair);min-height:52px;flex:none}
+.pg-head:empty{display:none}
+.pg-head .pg-t{flex:1;margin:0;font-size:var(--t-md);color:var(--text);line-height:1.5}
+.pg-head .btn{flex:none}
+/* 页内已有的主按钮降为次要，保证一屏一个主按钮 */
+.work [data-page] .btn.pri,.work .tunebar .btn.pri{background:var(--s3);color:var(--ink);box-shadow:none}
+/* 项目页：提交按钮由顶部主按钮代理（同一入口 pj-ask-go），表单内只留输入框和「打开示例」；回车也可提交 */
+#pj-ask-go{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}

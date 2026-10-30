@@ -289,7 +289,7 @@ function renderParams() {
   // 参数（docs/26 §6）：名字 + 数值同一行；下面一把刻度尺：板上值（实线）、默认值（○）、草稿（黄铜，连一段改动范围）、量程两端。
   // 全部来自 schema 的 params（名字 / 量程 / 单位 / 说明），界面不认任何题目的参数名。
   $("plist").innerHTML = ps.length ? ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(p.desc ?? "")}">
-    <div class="pr"><span class="k mono">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
+    <div class="pr"><span class="k mono" title="${esc(p.name)}">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
       <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off"><span class="u">${esc(p.unit ?? "")}</span></div>
     ${p.desc ? `<div class="pdesc">${esc(p.desc)}</div>` : ""}
     <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div>
