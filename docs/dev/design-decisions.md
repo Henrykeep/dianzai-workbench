@@ -78,3 +78,9 @@ GPL 项目（betaflight-configurator）只参考思路和布局，不看样式�
 | 正文字号与对比 | [Primer](https://primer.style/product/primitives/typography)、[WCAG 2.2 1.4.3](https://www.w3.org/TR/WCAG22/#contrast-minimum) | 正文 14px；次要文字对比度 ≥ 4.5:1 |
 | 等宽字体 | [Geist Mono 用法](https://vercel.com/font) | 只用于数值、代码、路径 |
 | 最低分辨率 | [Fluent 2 Layout breakpoints](https://fluent2.microsoft.design/layout/) | 1366×768 起；≤1500px 导航收起 |
+
+## 6. 报错翻译层（app/ui/src/errors.ts）
+- git / 门禁、模型服务（401/403/1010/429/超时）、侧车报错统一翻译成「发生了什么 · 原因 · 处理」，原文放在可展开的「详情」里。
+- 侧车已给出 `fix` 的报错按侧车原文显示，不再翻译；新增规则只改 errors.ts 的 RULES。
+- 界面不显示内部名称（如 `app · agent`、`tools/req.py`）：卡片写任务名或中文层级名，命令放在 title。
+- Agent 消息不静默丢失：侧车断开时禁用发送；发送失败标「未送达」并提供「重发」；步数用完给「继续执行」。

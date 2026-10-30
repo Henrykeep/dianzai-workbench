@@ -111,7 +111,7 @@ export function initAgent(call: Call) {
     d.className = "card change " + c.status;
     if (c.status === "committed" && (c.files || []).some((f: string) => /\.ya?ml$/.test(f)))   // 流程条“定稿”只认真正提交了参数 yaml
       window.dispatchEvent(new CustomEvent("dz-final", { detail: c.commit }));
-    d.innerHTML = `<div class="hd"><span class="dotk file"></span><span class="t">${esc(c.title)}</span><span class="lbl">${esc(c.layer)} · ${esc(c.source)}</span></div>
+    d.innerHTML = `<div class="hd"><span class="dotk file"></span><span class="t">${esc(c.title)}</span><span class="lbl">${esc(({ app: "应用代码", fw: "固件", firmware: "固件", docs: "文档", config: "配置" } as Record<string, string>)[c.layer] ?? "")}${c.source === "agent" ? " · Agent 提议" : ""}</span></div>
       <p>${esc(c.reason)}</p>${defaults(c.diff)}<pre class="diff">${diff}</pre>
       <div class="lbl">确认后：写入 → ${c.gates.length ? c.gates.map(esc).join(" → ") : "（无门禁）"} → git 提交</div>
       ${c.log && c.status !== "pending" ? `<details ${c.status === "failed" ? "open" : ""}><summary>门禁输出</summary><pre class="log">${esc(c.log)}</pre></details>` : ""}
@@ -351,17 +351,34 @@ export function initAgent(call: Call) {
     const inp = $<HTMLInputElement>("ag-in"), text = inp.value.trim();
     if (!text) return;
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
-    add(esc(text), "msg me");
+    const me = add(esc(text), "msg me");
     const w = add(`<span class="lbl">思考中…</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
     tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
     try {
-      const r = await call<string>("agent_ask", { text });
-      if (r.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
-       else w.firstElementChild!.outerHTML = `<div>${esc(r).replace(/\n/g, "<br>")}</div>`;
+      const r = await call<any>("agent_ask", { text });
+      const txt = typeof r === "string" ? r : r?.text ?? "";
+      if (txt.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
+      else w.firstElementChild!.outerHTML = `<div>${esc(txt).replace(/\n/g, "<br>")}</div>`;
+      // 步数用完：给「继续执行」。侧车返回 continue 操作时用它，否则发一条「继续」
+      if (/步数用完/.test(txt) || r?.continue) {
+        const c = add(`<div class="act"><button class="btn pri">继续执行</button></div>`, "card cont-card");
+        c.querySelector("button")!.onclick = () => {
+          c.remove();
+          if (r?.continue?.op) void call(r.continue.op, r.continue.args ?? {});
+          else { $<HTMLInputElement>("ag-in").value = "继续"; $<HTMLFormElement>("ag-form").requestSubmit(); }
+        };
+      }
     }
-    catch { w.remove(); }
+    catch {   // 不静默丢：标「未送达」并给「重发」
+      w.remove();
+      me.classList.add("undelivered");
+      const f = document.createElement("div"); f.className = "undel";
+      f.innerHTML = `<span>未送达</span><button class="btn sm">重发</button>`;
+      f.querySelector("button")!.onclick = () => { f.remove(); me.remove(); $<HTMLInputElement>("ag-in").value = text; $<HTMLFormElement>("ag-form").requestSubmit(); };
+      me.after(f);
+    }
     // 不清 tools/mode：工具事件会比回答晚到（侧车线程 → 事件循环），留给这条消息直到下一问
-    finally { live = null; $<HTMLButtonElement>("ag-send").disabled = false; }
+    finally { live = null; $<HTMLButtonElement>("ag-send").disabled = !(document.getElementById("st-ws")?.textContent ?? "").includes("已连接"); }
   };
 
   // ---------------------------------------------------------------- 设置

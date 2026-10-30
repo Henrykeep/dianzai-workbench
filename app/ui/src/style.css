@@ -798,3 +798,6 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
   .app[data-step="调参"] .scope>.vh{position:static;height:auto;padding:var(--sp1) var(--sp5);justify-content:flex-end}
   .app[data-step="调参"] .tunebar .grp .lbl{display:none}
 }
+.msg.me.undelivered{opacity:.6}
+.undel{display:flex;align-items:center;justify-content:flex-end;gap:var(--sp2);font-size:var(--t-xs);color:var(--warn)}
+.toast details.raw{margin-top:var(--sp1);font-size:var(--t-xs)} .toast details.raw pre{max-height:160px;overflow:auto;white-space:pre-wrap;margin:var(--sp1) 0 0}

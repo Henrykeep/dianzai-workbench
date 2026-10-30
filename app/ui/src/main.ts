@@ -18,6 +18,7 @@ import { initHbStrip } from "./hbstrip";
 import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
+import { humanize, humanHtml } from "./errors";
 import { conn, onLinkState, linkStateActive } from "./conn";
 import { initPjAsk } from "./pjask";
 import { estopText } from "./estop";
@@ -94,8 +95,10 @@ function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", 
   const er: Err = typeof e === "string" ? { code: "", message: e } : e;
   const d = document.createElement("div");
   d.className = `toast ${kind}`;
-  d.innerHTML = `<b>${esc(er.message)}</b>${er.fix ? `<span>怎么办：${esc(er.fix)}</span>` : ""}`;
-  d.onclick = () => d.remove();
+  // 侧车已给出 fix 的按原样显示；否则过翻译层（发生了什么 · 原因 · 处理 + 详情）
+  const h = !er.fix && kind !== "ok" && kind !== "info" ? humanize(`${er.code} ${er.message}`) : null;
+  d.innerHTML = h ? humanHtml(h, esc) : `<b>${esc(er.message)}</b>${er.fix ? `<span>处理：${esc(er.fix)}</span>` : ""}`;
+  d.onclick = e => { if (!(e.target as Element).closest("details")) d.remove(); };
   $("toasts").prepend(d);
   setTimeout(() => d.remove(), ms);
 }
@@ -683,6 +686,13 @@ createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag,
 document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();
 conn.on(c => {
+  if (!c.board) {   // 侧车停或板子 lost/disconnected：状态栏左侧、速率、连接按钮同步切换，清掉旧速率
+    $("ro-link").textContent = c.sidecar ? "未连接" : "侧车无响应";
+    $("ro-rx").textContent = "—"; S.rate = 0;
+    $("led").className = "led";
+    $("connect").innerHTML = "连接 <kbd>⌃O</kbd>"; $("connect").classList.add("pri");
+  }
+  $<HTMLButtonElement>("ag-send").disabled = !c.sidecar;
   $("st-ws").textContent = c.sidecar ? "侧车 已连接" : "侧车 未连接";
   $("banner").hidden = c.sidecar;
   $("banner").innerHTML = "侧车无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
