@@ -107,6 +107,33 @@ class Server:
             for msg in await loop.run_in_executor(self.tick_pool, self._tick_collect, n):
                 await self._broadcast(msg)
 
+    def _selftest_try_h(self) -> dict | None:
+        """发 'H'（dzctl 0.12.0+）；没连上/发不出去 → None（按旧固件处理）。急停锁存等其他错误照常抛。"""
+        try:
+            return self.session.run_selftest()
+        except LinkError as e:
+            if e.code == "not_connected":
+                return None
+            raise
+
+    def _selftest_result(self, r: dict | None) -> dict:
+        s = self.session
+        if r and r.get("ok") is not None:              # 'H' 回包：u32 失败掩码（小端）
+            st = {"pass": bool(r["ok"]), "failed_items": r.get("failed_items") or [], "mask": r.get("mask")}
+            return {"source": "H", "selftest": st, "pass": st["pass"], "failed_items": st["failed_items"], "message_zh": r.get("message_zh")}
+        if getattr(s, "h_supported", False):           # 这块板子回过 'H'，这次却没回：超时，不拿旧结果冒充
+            raise LinkError("selftest_timeout", "板子在 1.5 s 内没有回自检结果。", "检查连接后重试；仍超时请读黑匣子查看复位原因", "run_selftest")
+        st = s.fw_status().get("selftest")             # 旧固件：心跳里的上电自检结果
+        hb = getattr(s, "hb_status", None)
+        if st is None:
+            if hb is None:
+                raise LinkError("selftest_unreported", "当前固件没有上报自检结果（固件早于 dzctl 0.10.0，或该应用尚未接入自检上报）。",
+                                "将固件更新到包含自检上报的版本并重新烧录；在此之前可读取黑匣子查看复位原因与安全态记录")
+            fail = bool(hb & (1 << 11))                 # 心跳状态字 bit11 = 自检失败（没有逐项明细）
+            st = {"pass": not fail, "failed_items": [], "from": "hb_bit11"}
+        msg = "自检全部通过" if st.get("pass") else "自检没通过：" + ("；".join(i.get("message_zh") or i.get("key") or "" for i in st.get("failed_items") or []) or "心跳报自检失败（旧固件无逐项明细）")
+        return {"source": "heartbeat", "selftest": st, "pass": bool(st.get("pass")), "failed_items": st.get("failed_items") or [], "message_zh": msg}
+
     async def _op(self, m: dict):
         s, op = self.session, m.get("op")
         run = asyncio.get_running_loop().run_in_executor
@@ -164,8 +191,6 @@ class Server:
             return r
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
-        if op == "run_selftest":                   # 重跑板上自检（'H'）→ 回失败项
-            return await run(None, s.run_selftest)
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
             return await run(None, s.save_params)
         if op == "blackbox":
@@ -222,17 +247,15 @@ class Server:
             r = await run(None, lambda: deps.fetch(self.progress.deps or [], repo))
             await run(None, self.progress.refresh_deps)
             return r
-        if op == "run_selftest":                       # 读取固件心跳上报的板上自检结果（上电自检由板子执行），并刷新进度
+        if op == "run_selftest":                       # 唯一一份：新固件发 'H' 重跑自检；旧固件读心跳上电自检结果；完成后刷新进度
             if not s.status().get("alive"):
-                raise LinkError("not_connected", "未连接板子，无法读取板上自检结果。", "先连接板子（或仿真板），再执行自检")
-            st = s.fw_status().get("selftest")
-            if st is None:
-                raise LinkError("selftest_unreported", "当前固件没有上报自检结果（固件早于 dzctl 0.10.0，或该应用尚未接入自检上报，目前仅 car_2wd 支持）。",
-                                "将固件更新到包含自检上报的版本并重新烧录；在此之前可读取黑匣子查看复位原因与安全态记录")
-            pc = self.progress.changed()
-            if pc:
-                await self._broadcast(pc)
-            return {"selftest": st, "pass": bool(st.get("pass")), "failed_items": st.get("failed_items") or []}
+                raise LinkError("no_board", "未连接板子，无法执行板上自检。", "先连接板子（或仿真板），再执行自检", "connect")
+            try:
+                return await run(None, self._selftest_result, await run(None, self._selftest_try_h))
+            finally:
+                pc = self.progress.changed()
+                if pc:
+                    await self._broadcast(pc)
         if op == "flow_preview" or op == "flow_accept":     # 项目页引导流程：先暂存区预览，确认才写（dzbench/projflow.py）
             from .projflow import Flow, FlowError
             fl = Flow(self.svc.gw.root)

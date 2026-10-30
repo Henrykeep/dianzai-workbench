@@ -8,6 +8,7 @@ import itertools
 import collections
 import pathlib
 import re
+import datetime
 import struct
 import threading
 import time
@@ -92,8 +93,12 @@ class Session:
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
         self.selftest: dict | None = None        # dzctl 0.10.0 心跳尾部自检结果（selftest_dict），旧固件 / 应用没报 = None
         self.params_hash: int | None = None
+        self._selftest_key: tuple | None = None   # 心跳里 (mask, t_ms)：变了才算新的一次自检
+        self.selftest_at: str | None = None       # 自检完成时间（ISO，本机时区）
+        self.selftest_ph: int | None = None       # 自检时的参数 hash；与当前 params_hash 不同 → stale
         self.estop_cause: dict | None = None     # dzctl 0.8.0 心跳里的急停原因（estop_cause_dict），没急停 = None
         self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
+        self.h_supported = False                 # 本次连接里板子回过 'H'（dzctl 0.12.0+）
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
         self.samples: collections.deque = collections.deque()
         self._new: list = []
@@ -151,7 +156,7 @@ class Session:
             self._t_tr = self.t_connect
             self.hb_status = None
             self.estop_cause = None
-            self.selftest = None; self.params_hash = None
+            self.selftest = None; self.params_hash = None; self._selftest_key = self.selftest_at = self.selftest_ph = None
             rec = None if isinstance(tr, ReplayTransport) else latch.get(port, None)
             if rec:                                # 缺口 #20：重连只恢复通信/遥测，急停锁存保持
                 self.tx_locked = True
@@ -497,6 +502,8 @@ class Session:
                         if len(payload) >= 40:
                             m_, t_, ph = struct.unpack_from("<III", payload, 28)
                             self.selftest, self.params_hash = selftest_dict(m_, t_), ph
+                            if self.selftest is not None and (m_, t_) != self._selftest_key:   # 新的一次自检结果：记完成时间 + 当时的参数 hash
+                                self._selftest_key, self.selftest_at, self.selftest_ph = (m_, t_), _iso_now(), ph
                         if es:
                             es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
                         if es != self.estop_cause:
@@ -816,9 +823,13 @@ class Session:
         while time.monotonic() < t_end and getattr(self, "selftest_ack", None) is None:
             time.sleep(0.01)
         m = getattr(self, "selftest_ack", None)
+        if m is not None:
+            self.h_supported = True                # 这块板子认 'H'：以后没回就是超时，而不是旧固件
         if m is None:
             return {"ok": None, "mask": None, "failed_items": [], "message_zh": "板子没回执（固件早于 dzctl 0.12.0？）"}
         d = selftest_dict(m, 1)
+        with self.hblock:                        # 'H' 回包也是一次完成的自检
+            self.selftest_at, self.selftest_ph = _iso_now(), self.params_hash
         msg = "自检全部通过" if d["pass"] else "自检没通过：" + "；".join(i["message_zh"] for i in d["failed_items"])
         self.mark("param", msg)
         return {"ok": d["pass"], "mask": m, "failed_items": d["failed_items"], "message_zh": msg}
@@ -1018,12 +1029,21 @@ class Session:
                                     mode=(run_mode_dict(self.hb_status) or {}).get("mode") or self.run_mode,
                                     fw=fw)
 
+    def selftest_snapshot(self) -> dict | None:
+        """selftest 快照 + at（完成时间 ISO）+ params_hash_at（自检时参数 hash）+ stale（参数已变 → 封箱页提示重新自检）。"""
+        if self.selftest is None:
+            return None
+        ph_at = self.selftest_ph
+        return dict(self.selftest) | {"at": self.selftest_at,
+                                      "params_hash_at": None if ph_at is None else f"{ph_at:08x}",
+                                      "stale": ph_at is not None and self.params_hash is not None and ph_at != self.params_hash}
+
     def fw_status(self) -> dict:
         """固件上报的板上状态快照（link.state / progress 共用，字段名与固件一致）；没上报 = null。
         由 hblock 保护（与收线程心跳处理同一把小锁），不拿 session.lock。"""
         with self.hblock:
             hb = self.hb_status
-            return {"run_mode": run_mode_dict(hb), "selftest": self.selftest,
+            return {"run_mode": run_mode_dict(hb), "selftest": self.selftest_snapshot(),
                     "params_saved": None if self.params_hash is None or hb is None else not (hb & (1 << 16)),
                     "params_hash": None if self.params_hash is None else f"{self.params_hash:08x}",
                     "estop_cause": self.estop_cause}
@@ -1047,7 +1067,7 @@ class Session:
             st.update(hb_status_dict(self.hb_status))
             st["estop_cause"] = self.estop_cause
             st["run_mode"] = run_mode_dict(self.hb_status)
-            st["selftest"] = self.selftest
+            st["selftest"] = self.selftest_snapshot()
             st["params_saved"] = None if self.params_hash is None or self.hb_status is None else not (self.hb_status & (1 << 16))
             st["params_hash"] = None if self.params_hash is None else f"{self.params_hash:08x}"
             if self.tr is not None:
@@ -1107,6 +1127,10 @@ SELFTEST_ITEMS = {1: ("subsys", "子系统自检没通过（某个子系统的 s
                   3: ("nvm", "flash 存储区不可用：参数存不下，掉电后恢复默认"),
                   4: ("sensor", "传感器无数据（编码器 / 视觉 / IMU）"),
                   5: ("power", "电源电压不在允许范围")}
+
+
+def _iso_now() -> str:
+    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def selftest_dict(mask: int, t_ms: int) -> dict | None:

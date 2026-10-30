@@ -224,13 +224,82 @@ def test_server_fetch_deps_and_run_selftest(home, monkeypatch):
     assert not any(b["code"] == "missing_deps" for b in sv.progress.snapshot()["blockers"])
     with pytest.raises(LinkError) as ei:
         asyncio.run(sv._op({"op": "run_selftest"}))
-    assert ei.value.code == "not_connected" and ei.value.fix          # 未连接：原因 + 怎么解决
+    assert ei.value.code == "no_board" and ei.value.fix and ei.value.fix_action == "connect"   # 未连接：原因 + 怎么解决 + 一键去连接
     sv.session.status = lambda: {"alive": True}
     with pytest.raises(LinkError) as ei:
         asyncio.run(sv._op({"op": "run_selftest"}))
     assert ei.value.code == "selftest_unreported" and "固件" in ei.value.fix   # 固件没报自检：不再是 not_ready
     sv.session.selftest = {"pass": True, "failed_items": [], "t": 1.0}
     assert asyncio.run(sv._op({"op": "run_selftest"}))["pass"] is True
+
+
+def _selftest_server(monkeypatch, *, h=None, h_supported=False, hb=None, st=None):
+    """run_selftest 四条路径共用：假会话（alive），'H' 的结果由 h 给出；记录广播。"""
+    from dzbench import server as srv
+    sv = srv.Server()
+    sv.progress._doctor = lambda: []
+    sent = []
+
+    async def bc(ev):
+        sent.append(ev)
+    sv._broadcast = bc
+    sv.progress.changed = lambda: {"type": "progress", "n": len(sent)}
+    s = sv.session
+    s.status = lambda: {"alive": True}
+    s.h_supported = h_supported
+    s.hb_status = hb
+    s.selftest = st
+    s.run_selftest = lambda: h
+    return sv, sent
+
+
+def test_run_selftest_no_board(home, monkeypatch):
+    from dzbench import server as srv
+    from dzbench.session import LinkError
+    sv = srv.Server()
+    sv.progress._doctor = lambda: []
+    with pytest.raises(LinkError) as ei:
+        asyncio.run(sv._op({"op": "run_selftest"}))
+    assert ei.value.code == "no_board" and ei.value.fix_action == "connect"
+
+
+def test_run_selftest_h_ack_mask(home, monkeypatch):
+    from dzbench.session import selftest_dict
+    d = selftest_dict(0b101, 1)                              # u32 小端失败掩码：bit0、bit2 失败
+    sv, sent = _selftest_server(monkeypatch, h={"ok": d["pass"], "mask": 5, "failed_items": d["failed_items"], "message_zh": "x"})
+    r = asyncio.run(sv._op({"op": "run_selftest"}))
+    assert r["source"] == "H" and r["pass"] is False and r["selftest"]["mask"] == 5 and len(r["failed_items"]) == 2
+    assert sent and sent[-1]["type"] == "progress"           # 刷新进度
+
+
+def test_run_selftest_h_timeout(home, monkeypatch):
+    from dzbench.session import LinkError
+    sv, sent = _selftest_server(monkeypatch, h={"ok": None, "mask": None, "failed_items": []}, h_supported=True,
+                                st={"pass": True, "failed_items": []})
+    with pytest.raises(LinkError) as ei:
+        asyncio.run(sv._op({"op": "run_selftest"}))
+    assert ei.value.code == "selftest_timeout"               # 回过 'H' 的板子这次没回：不拿旧结果冒充
+    assert sent and sent[-1]["type"] == "progress"
+
+
+def test_run_selftest_old_fw_heartbeat(home, monkeypatch):
+    sv, sent = _selftest_server(monkeypatch, h={"ok": None, "mask": None, "failed_items": []}, hb=1 << 11)
+    r = asyncio.run(sv._op({"op": "run_selftest"}))           # 旧固件不回 'H'：读心跳 bit11（上电自检）
+    assert r["source"] == "heartbeat" and r["pass"] is False and r["selftest"]["from"] == "hb_bit11"
+    assert sent and sent[-1]["type"] == "progress"
+    sv, sent = _selftest_server(monkeypatch, h=None, hb=0, st={"pass": True, "failed_items": [], "t": 1.0})
+    r = asyncio.run(sv._op({"op": "run_selftest"}))           # 有逐项上电自检结果时优先用它
+    assert r["source"] == "heartbeat" and r["pass"] is True and sent
+
+
+def test_session_h_ack_parses_u32_le():
+    import struct
+    from dzbench.session import Session
+    s = Session()
+    s._send = lambda *a, **k: (setattr(s, "selftest_ack", struct.unpack_from("<I", b"H\x04\x00\x00\x00", 1)[0]) or True)
+    s._check_tx = lambda: None
+    r = s.run_selftest(wait_s=0.2)
+    assert r["mask"] == 4 and r["ok"] is False and s.h_supported
 
 
 def test_current_project_persist_hello_and_req(home, monkeypatch):

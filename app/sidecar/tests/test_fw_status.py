@@ -100,3 +100,27 @@ def test_agent_cannot_switch_run_mode(home):
     assert ei.value.code == "human_only" and not sent
     r = s.set_run_mode("standalone")                    # 界面 RPC 未确认 → needs_confirm 原样给界面，不发指令
     assert r["needs_confirm"] is True and not sent
+
+
+def test_selftest_snapshot_at_hash_and_stale():
+    import datetime
+    from dzbench.session import Session
+    s = Session()
+    assert s.fw_status()["selftest"] is None
+    s.selftest, s.params_hash = {"pass": True, "failed_items": [], "t": 1.0}, 0xAB
+    s.selftest_at, s.selftest_ph = "2026-10-31T05:00:00+08:00", 0xAB
+    for snap in (s.fw_status()["selftest"], s.status()["selftest"]):     # progress 与 link.state 同一份
+        assert snap["at"] and datetime.datetime.fromisoformat(snap["at"]) and snap["params_hash_at"] == "000000ab" and snap["stale"] is False
+    s.params_hash = 0xCD                                                  # 自检后改了参数 → 要重新自检
+    assert s.fw_status()["selftest"]["stale"] is True and s.status()["selftest"]["stale"] is True
+
+
+def test_selftest_h_ack_records_at_and_hash():
+    import struct
+    from dzbench.session import Session
+    s = Session()
+    s.params_hash = 0x1234
+    s._send = lambda *a, **k: (setattr(s, "selftest_ack", struct.unpack_from("<I", b"H\x00\x00\x00\x00", 1)[0]) or True)
+    s._check_tx = lambda: None
+    s.run_selftest(wait_s=0.2)
+    assert s.selftest_at and s.selftest_ph == 0x1234
