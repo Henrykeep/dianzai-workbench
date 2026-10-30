@@ -110,7 +110,7 @@ def score_items(svc, path: str | None = None) -> dict:
 
 # ---------------------------------------------------------------- 一句话跑完项目流程
 def project_chain(root, code: str, src: str | None = None, project: str | None = None, name: str | None = None,
-                  mcu: str | None = None, tpl: str | None = None, uvprojx: str | None = None, app: str | None = None) -> dict:
+                  mcu: str | None = None, tpl: str | None = None, uvprojx: str | None = None, app: str | None = None, hand_edit: str | None = None) -> dict:
     """把还没做的步依次预览完（全部落在暂存区 + 沙盒题目目录，不动仓库），返回一张“批量写入”清单给 project_apply。
     后一步要读前一步的结果：前一步在沙盒目录里 accept（Flow 的 dest 参数），所以真仓库一个字节都不变。
     gen 的 accept 会写仓库 build/，所以只预览不在沙盒确认；import 会写 boards/，同理。"""
@@ -187,7 +187,7 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
             steps.append({"step": "alloc", "ok": True, "files": list(r["files"])})
             batch.append(("alloc", {}))
         if "gen" in todo:
-            r = f.preview("gen", m0)
+            r = f.preview("gen", m0 | ({"board": board} if board else {}))      # 不传板名 project.yaml 会写成 main，导入状态就丢了
             d = r.get("draft") or {}
             steps.append({"step": "gen", "ok": not r["rc"], "rc": r["rc"], "files": len(r.get("files") or {}),
                           "subsys": [c["name"] for c in d.get("chosen") or []], "missing": d.get("missing") or [], "out_tail": r["out"][-400:]})
@@ -199,6 +199,12 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
         uv = uvprojx or (find_uvprojx(pathlib.Path(project).expanduser()) if project else "")
         if uv and board and (project or (root / "boards" / board).is_dir()):   # 从零新建要先在 CubeMX 生成+导入才有板，此时不注入
             km = {"code": code, "board": board, "app": app or code, "uvprojx": str(pathlib.Path(uv).expanduser())}
+            from ..projflow import keil_hand_edited
+            if keil_hand_edited(pathlib.Path(km["uvprojx"])) and hand_edit not in ("merge", "keep"):
+                return stop("keil", "检测到 dz/ 组在上次注入后被手改过",
+                            "选“合并”（hand_edit=merge：重写 dz/ 组，备份 .bak）或“保留”（hand_edit=keep：这次不注入）")
+            if hand_edit:
+                km["hand_edit"] = hand_edit
             if (root / "apps" / km["app"]).is_dir() or (root / "examples" / km["app"] / "project.yaml").exists():
                 r = f._run(["tools/keil_inject.py", km["uvprojx"], "--root", f.repo, *f._kargs(km), "--dry-run"])
             else:                                   # 应用要等 ⑤ 写入后才有：预演留到写入时按顺序跑（失败就停在这步）

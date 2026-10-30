@@ -248,3 +248,19 @@ def test_project_chain_includes_keil_inject(repo, tmp_path):
     r = svc.action_decide(cs[0]["id"], True); clicks += 1
     assert "<GroupName>dz/" in uv.read_text(encoding="utf-8"), str(r)[-600:]
     assert (uv.parent / "Bldc.uvprojx.bak").exists() and clicks == 2
+    # 再生成：dz/ 之外的手改保留；dz/ 组里的手改 → 停下要用户选 合并/保留
+    t = uv.read_text(encoding="utf-8").replace("<Groups>", "<Groups>\n        <Group><GroupName>MyDrv</GroupName></Group>", 1)
+    uv.write_text(t, encoding="utf-8")
+    r2 = svc.project_chain("T6", project=str(pj), name="t6car")
+    assert r2["to_write"] == ["keil"], r2
+    svc.project_apply("T6")
+    assert "<GroupName>MyDrv</GroupName>" in uv.read_text(encoding="utf-8")       # 手改活下来
+    t = uv.read_text(encoding="utf-8"); i = t.index("<GroupName>dz/")
+    uv.write_text(t[:i] + "<GroupName>dz/hand" + t[i + len("<GroupName>dz/"):], encoding="utf-8")
+    edited = uv.read_text(encoding="utf-8")
+    r3 = svc.project_chain("T6", project=str(pj), name="t6car")
+    assert r3["stopped_at"] == "keil" and "手改" in r3["steps"][-1]["why"], r3
+    svc.project_chain("T6", project=str(pj), name="t6car", hand_edit="keep"); svc.project_apply("T6")
+    assert uv.read_text(encoding="utf-8") == edited                               # 选“保留”：一个字节不动
+    svc.project_chain("T6", project=str(pj), name="t6car", hand_edit="merge"); svc.project_apply("T6")
+    assert "dz/hand" not in uv.read_text(encoding="utf-8") and "MyDrv" in uv.read_text(encoding="utf-8")

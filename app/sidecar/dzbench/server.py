@@ -166,7 +166,7 @@ class Server:
             from .projflow import FlowError
             try:
                 if op == "project_chain":
-                    return await run(None, lambda: self.svc.project_chain(m["code"], **{k: m[k] for k in ("src", "project", "name", "mcu", "tpl", "uvprojx", "app") if m.get(k)}))
+                    return await run(None, lambda: self.svc.project_chain(m["code"], **{k: m[k] for k in ("src", "project", "name", "mcu", "tpl", "uvprojx", "app", "hand_edit") if m.get(k)}))
                 return await run(None, self.svc.project_apply, m["code"])
             except (FlowError, GatewayError) as e:
                 raise LinkError(e.code, e.msg, e.fix) from None

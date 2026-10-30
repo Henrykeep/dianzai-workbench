@@ -103,7 +103,7 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}, "src": {"type": "string", "description": "题目 PDF/txt 路径"},
                       "project": {"type": "string", "description": "已有 CubeMX/Keil 工程路径（没有就从零新建）"}, "name": {"type": "string"},
                       "mcu": {"type": "string"}, "uvprojx": {"type": "string", "description": "要注入的 Keil .uvprojx（导入的工程会自动找）"},
-                      "app": {"type": "string", "description": "Keil 注入按哪个应用挑模块（默认 = code）"}}, "required": ["code"]}},
+                      "app": {"type": "string", "description": "Keil 注入按哪个应用挑模块（默认 = code）"}, "hand_edit": {"type": "string", "enum": ["merge", "keep"], "description": "dz/ 组被手改过时用户的选择"}}, "required": ["code"]}},
     {"name": "project_apply", "description": "把 project_chain 预览过的所有步一次写入仓库（一张确认卡）",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}},
     {"name": "polarity_check", "description": "标定：只读遥测判方向（step=push 人推一下 / jog 小幅点动）",

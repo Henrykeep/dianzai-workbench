@@ -55,6 +55,26 @@ def board_slug(name: str) -> str:
     return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9]+", "-", name.lower())).strip("-")
 
 
+_DZ_GROUP = re.compile(r"<Group>\s*<GroupName>dz/.*?</Group>", re.S)
+
+
+def keil_region_hash(uv: pathlib.Path) -> str:
+    """只对我们写的区域（GroupName 以 dz/ 开头的组）取哈希：Keil 自己保存、用户改别处都不算手改。"""
+    import hashlib
+    t = uv.read_text(encoding="utf-8", errors="replace")
+    return hashlib.sha256("\n".join(_DZ_GROUP.findall(t)).encode()).hexdigest()
+
+
+def keil_mark(uv: pathlib.Path) -> None:
+    uv.with_name(uv.name + ".dzhash").write_text(keil_region_hash(uv), encoding="utf-8")
+
+
+def keil_hand_edited(uv: pathlib.Path) -> bool:
+    """上次注入后 dz/ 区域被改过？没有记录（第一次注入）不算。"""
+    h = uv.with_name(uv.name + ".dzhash")
+    return h.exists() and h.read_text(encoding="utf-8").strip() != keil_region_hash(uv)
+
+
 def find_uvprojx(src: pathlib.Path) -> str:
     """工程里的 Keil .uvprojx（CubeMX 一般在 MDK-ARM/ 下）；没有就空串。"""
     fs = sorted(src.glob("*.uvprojx")) + sorted(src.glob("*/*.uvprojx"))
@@ -433,9 +453,16 @@ class Flow:
                 raise FlowError("no_uvprojx", f"{uv} 不存在")
             if m.get("confirm_uvprojx") != str(uv):
                 raise FlowError("need_confirm", "真改 Keil 工程要再确认一次", f"确认要改 {uv}（备份到 {uv}.bak）")
+            if keil_hand_edited(uv):                     # 我们的 dz/ 组被人手改过：停下让用户选 合并 / 保留
+                if m.get("hand_edit") == "keep":
+                    return {"written": [], "kept": str(uv)}
+                if m.get("hand_edit") != "merge":
+                    raise FlowError("hand_edit", f"{uv.name} 的 dz/ 组在上次注入后被手改过",
+                                    "选“合并”（按当前模块重写 dz/ 组，原文件备份 .bak；dz/ 之外的手改都保留）或“保留”（这次不注入）")
             r = self._run(["tools/keil_inject.py", uv, "--root", self.repo, *self._kargs(m)])
             if r["rc"]:
                 raise FlowError("keil_inject", "Keil 注入失败：" + r["out"][-400:])
+            keil_mark(uv)
             return {"written": [str(uv)], "bak": str(uv) + ".bak", "out": r["out"]}
         st = self.home / code / "stage" / step
         if not st.exists():
