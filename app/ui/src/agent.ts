@@ -119,7 +119,7 @@ export function initAgent(call: Call) {
     });
   }
   // 风险等级 human 的动作卡（烧录 / 实机阶跃 / 实机回滚）：人点了才执行
-  const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", run_sweep_test: "实机正弦扫频", rollback_best: "回滚到最好参数", flash_rollback: "回滚到烧前固件", flow_accept: "写入项目文件" };
+  const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", run_sweep_test: "实机正弦扫频", rollback_best: "回滚到最好参数", flash_rollback: "回滚到烧前固件", flow_accept: "写入项目文件", project_apply: "一次写入项目各步", score_run: "跑评分项", score_save: "保存评分证据", score_writeback: "回写评分结果" };
   function renderAction(a: Msg) {
     const PRE: Record<string, string> = { link: "链路新鲜", channels: "实验通道在遥测里", env: "电池 / 温度门限", readback: "板上增益回读一致" };
     const pa = a.preview?.prearm, rest = a.preview ? Object.fromEntries(Object.entries(a.preview).filter(([k]) => k !== "prearm" && !(pa && k === "error"))) : {};

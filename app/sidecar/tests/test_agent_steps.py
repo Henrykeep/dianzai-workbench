@@ -71,7 +71,7 @@ def test_scripted_model_drives_project_steps(repo, tmp_path):
     assert r["next"]["next_step"] == "scheme" and r["next"]["action_id"]      # 方案的预览已跑好、卡已出
     r2 = svc.action_decide(r["next"]["action_id"], True); clicks += 1
     assert (repo / "examples/T1/scheme.yaml").exists()
-    assert r2["next"]["next_step"] == "alloc"
+    assert r2["next"]["next_step"] == "import"                               # 板子没导入：停在要工程路径
     # 项目页手动：读题 运行+确认、方案 运行+确认 = 4 下；Agent：1 句话 + 2 张卡 = 3 下，且方案这步不用再找按钮
     assert clicks == 3
 
@@ -81,7 +81,7 @@ def test_offline_assistant_project_playbook(repo, tmp_path):
     svc, ev = _svc(repo, OfflineAssistant())
     out = svc.ask(f"推进项目 T2，题目 {tmp_path / 't.txt'}")
     assert "T2" in out and "确认卡" in out, out
-    assert [c["tool"] for c in _cards(ev)] == ["flow_accept"]
+    assert [c["tool"] for c in _cards(ev)] == ["project_apply"]
     assert not (repo / "examples/T2").exists()
     out = svc.ask("推进项目 T9")                                              # 缺题目：停下来要，不猜路径
     assert "需要你给我" in out and "src" in out, out
@@ -127,5 +127,99 @@ def test_sim_tuning_round_two_clicks(tmp_path, home):
         assert v["metrics"]["ok"] and len(svc.tune_context()["history"]) >= 2
         # 调参页手动：阶跃实验 → 规则建议 → 采纳 → 阶跃实验 = 4 下；Agent：问 + 采纳 = 2 下
         assert clicks == 2
+    finally:
+        s.disconnect()
+
+
+def test_project_chain_one_card(repo, tmp_path):
+    """一句话跑完项目：Agent 预览读题→方案→(从零新建)→分配→生成，只写暂存区；一张总确认卡写入。共 2 下（问 + 确认）。"""
+    llm = FakeLLM([
+        {"role": "assistant", "content": None, "tool_calls": [call("project_chain", code="T5", src=str(tmp_path / "t.txt"))]},
+        {"role": "assistant", "content": None, "tool_calls": [call("project_apply", code="T5")]},
+        {"role": "assistant", "content": "【实测】各步预览完成，总确认卡在右侧。"},
+    ])
+    svc, ev = _svc(repo, llm)
+    clicks = 1
+    svc.ask(f"新题 T5，题目在 {tmp_path / 't.txt'}")
+    chain = json.loads(llm.seen[1][0][-1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])["result"]
+    print(json.dumps(chain, ensure_ascii=False, indent=1))
+    assert chain["to_write"][:2] == ["req", "scheme"]
+    assert not (repo / "examples/T5").exists()                                    # 没确认：仓库没动
+    c = _cards(ev)[-1]; assert c["tool"] == "project_apply"
+    r = svc.action_decide(c["id"], True); clicks += 1
+    assert (repo / "examples/T5/requirements.yaml").exists() and (repo / "examples/T5/scheme.yaml").exists()
+    assert (repo / "examples/T5/alloc").is_dir(), r
+    # 项目页手动：每步 运行+确认 ×(读题/方案/新建/生成) ≥ 8 下；逐步卡 Agent 3+ 下；chain：2 下
+    assert clicks == 2
+
+
+@pytest.mark.needs_sim
+def test_sim_autopilot_and_page_tools(tmp_path, home, monkeypatch):
+    """仿真自动调参：一句话、0 张卡跑到护栏通过或 N 轮，报告最好一轮；联调/标定只读工具与页面同一函数。实机拒绝自动连跑。"""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
+        "high": [0.4, 0], "hold_s": 1.2, "pre_s": 0.4, "y": "spd_a", "sp": "sp_a"}}), encoding="utf-8")
+    ev = []
+    s = Session(emit=ev.append); s.connect("sim:car_2wd", 115200, log=False)
+    try:
+        t0 = time.monotonic()
+        while s.schema_hash is None and time.monotonic() - t0 < 5:
+            time.sleep(0.05)
+        llm = FakeLLM([
+            {"role": "assistant", "content": None, "tool_calls": [call("tune_autopilot", rounds=3)]},
+            {"role": "assistant", "content": None, "tool_calls": [call("fft", field="spd_a", seconds=5), call("wave_measure", field="spd_a", ref="sp_a", seconds=5)]},
+            {"role": "assistant", "content": "【实测】自动调参完成。"},
+        ])
+        tools = AgentTools(s, ev.append)
+        svc = AgentService(s, tools, ev.append, root=tmp_path, llm=llm)
+        svc.ask("帮我把速度环自动调好")
+        res = json.loads(llm.seen[1][0][-1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])["result"]
+        print(json.dumps(res, ensure_ascii=False)[:800])
+        assert res["rounds"] and res["best_round"] and "gains" in res["best_round"]
+        assert len(res["rounds"]) <= 4 and not _cards(ev)                      # 仿真：没有一张卡
+        for c in llm.seen[2][0][-2:]:
+            assert '"ok": true' in c["content"], c["content"][:300]
+        monkeypatch.setattr(AgentService, "sim", property(lambda self: False))
+        with pytest.raises(Exception):
+            svc.tune_autopilot(2)
+    finally:
+        s.disconnect()
+
+
+@pytest.mark.needs_sim
+def test_sim_score_run_save_writeback(tmp_path, home):
+    """评分：跑 3 次（仿真 log 级，不出卡）→ 存证据（卡）→ 回写（卡）。人点 2 下。"""
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "tools").symlink_to(REPO / "tools"); (tmp_path / "schemas").symlink_to(REPO / "schemas") if (REPO / "schemas").exists() else None
+    d = tmp_path / "examples/S1"; d.mkdir(parents=True)
+    (d / "requirements.yaml").write_text(yaml.safe_dump({"problem": {"code": "S1"}, "items": [
+        {"id": 1, "text": "速度阶跃 1.2 s 内稳定，误差 ≤ 0.3", "score": 10, "metrics": [{"name": "spd_err", "op": "<=", "value": 0.3}]}]},
+        allow_unicode=True), encoding="utf-8")
+    (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
+        "high": [0.4, 0], "hold_s": 1.2, "pre_s": 0.4, "y": "spd_a", "sp": "sp_a"}}), encoding="utf-8")
+    ev = []
+    s = Session(emit=ev.append); s.connect("sim:car_2wd", 115200, log=False)
+    try:
+        t0 = time.monotonic()
+        while s.schema_hash is None and time.monotonic() - t0 < 5:
+            time.sleep(0.05)
+        llm = FakeLLM([
+            {"role": "assistant", "content": None, "tool_calls": [call("score_run", item="1", n=3, band=0.3)]},
+            {"role": "assistant", "content": None, "tool_calls": [call("score_save", item="1")]},
+            {"role": "assistant", "content": "【实测】3/3 通过，保存证据的卡在右侧。"},
+        ])
+        svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path, llm=llm)
+        clicks = 1
+        svc.ask("评分项 1 跑三遍留证据")
+        r = json.loads(llm.seen[1][0][-1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])["result"]
+        print(r)
+        assert len(r["runs"]) == 3 and r["result"] in ("pass", "partial", "fail")
+        c = _cards(ev)[-1]; assert c["tool"] == "score_save"
+        sv = svc.action_decide(c["id"], True); clicks += 1
+        wb = svc.score_writeback("1", sv["result"]["dir"]); clicks += 1          # 回写也是一张卡（这里直接调执行体）
+        print(wb)
+        assert "evidence" in (d / "requirements.yaml").read_text(encoding="utf-8")
+        # 评分页手动：跑 ×3 + 保存 + 回写预览 + 确认 = 6 下；Agent：问 + 保存卡 + 回写卡 = 3 下
+        assert clicks == 3
     finally:
         s.disconnect()

@@ -17,16 +17,16 @@ AUTO, LOG, HUMAN, FORBID = "auto", "log", "human", "forbid"
 RISK: dict[str, str] = {
     "read_telemetry": AUTO, "list_params": AUTO, "step_analysis": AUTO, "list_files": AUTO, "read_file": AUTO, "repo_map": AUTO,
     "tune_context": AUTO, "update_plan": AUTO, "board_memory": AUTO, "read_symbol": AUTO, "decode_hardfault": AUTO, "build_log": AUTO, "bode_predict": AUTO,
-    "project_state": AUTO, "score_items": AUTO, "flow_preview": LOG,   # 预览只写 ~/.dzbench/flow 暂存区
+    "project_state": AUTO, "score_items": AUTO, "flow_preview": LOG, "project_chain": LOG, "polarity_check": AUTO, "fft": AUTO, "wave_measure": AUTO, "tune_autopilot": LOG,   # 预览只写 ~/.dzbench/flow 暂存区
     "build": LOG, "reset": LOG, "propose_param_change": LOG, "propose_edit": LOG, "remember": LOG, "observe": LOG,
     "flash": HUMAN, "flash_rollback": HUMAN, "erase": HUMAN, "mem_write": HUMAN, "run_step_test": HUMAN, "run_sweep_test": HUMAN, "rollback_best": HUMAN,
-    "flow_accept": HUMAN,                          # 写仓库（requirements/scheme/boards/alloc/build、Keil 工程）
+    "flow_accept": HUMAN, "project_apply": HUMAN, "score_run": HUMAN, "score_save": HUMAN, "score_writeback": HUMAN,                          # 写仓库（requirements/scheme/boards/alloc/build、Keil 工程）
     "open_loop_test": HUMAN,                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）
     "swarm_search": FORBID,                        # 群体/随机搜索：实机永远不给，仿真降为 log
     "raw_cmd": FORBID, "disable_estop": FORBID, "unlock_rdp": FORBID, "estop": FORBID,
 }
 # 仿真里不动真东西：这几项降为 log
-SIM_RELAX = {"run_step_test": LOG, "run_sweep_test": LOG, "rollback_best": LOG, "swarm_search": LOG}
+SIM_RELAX = {"run_step_test": LOG, "run_sweep_test": LOG, "rollback_best": LOG, "swarm_search": LOG, "score_run": LOG}
 
 
 def tier(tool: str, sim: bool) -> str:

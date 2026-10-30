@@ -144,6 +144,11 @@ class OfflineAssistant:
             if not (m := re.search(r"((?:[A-Za-z]:)?[\\/][^\s，。]+)", user)):
                 return None
             args["project"] = m.group(1)
+        if step == 2 and nxt == "req":          # 有题目文件：一次把剩下各步全预览，出一张总确认卡
+            return [("project_chain", args)]
+        ch = self.ok(done, "project_chain")
+        if step == 3 and ch:
+            return [("project_apply", {"code": code})] if ch.get("to_write") else None
         if step == 2:
             return [("flow_preview", {"step": nxt, **args})]
         pv = self.ok(done, "flow_preview")
@@ -302,6 +307,18 @@ class OfflineAssistant:
         nxt = st.get("next_step")
         if not nxt:
             return s + "\n五步都走完了。下一步去烧录页编译烧录；评分页按评分项逐条留证据。"
+        ch, ap = self.ok(done, "project_chain"), self.ok(done, "project_apply")
+        if ch:
+            rows = []
+            for x in ch.get("steps") or []:
+                extra = {"req": lambda: f"拆出 {x.get('items')} 个评分项", "scheme": lambda: f"主控 {x.get('mcu')}",
+                         "scratch": lambda: f"从零新建 {x.get('label')}", "import": lambda: f"导入板 {x.get('board')}",
+                         "alloc": lambda: "资源分配", "gen": lambda: f"生成 {x.get('files')} 个文件" + (f"，缺子系统 {'、'.join(x['missing'])}" if x.get("missing") else "")}
+                rows.append(("✓ " if x.get("ok") else "✗ ") + x["step"] + "：" + (extra.get(x["step"], lambda: "")() if x.get("ok") else f"{x.get('why')} {x.get('fix', '')}"))
+            s += "\n" + "\n".join(rows)
+            if ap and ap.get("status") == "pending_human_click":
+                return s + f"\n以上全部只在暂存区；总确认卡在右侧，点一次“执行”按顺序写入 {'、'.join(ch['to_write'])}。"
+            return s + ("\n停在 " + ch["stopped_at"] if ch.get("stopped_at") else "")
         pv, acc = self.ok(done, "flow_preview"), self.ok(done, "flow_accept")
         if acc and acc.get("status") == "pending_human_click":
             files = "、".join(list((pv or {}).get("files") or {})[:6])

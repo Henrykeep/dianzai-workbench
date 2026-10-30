@@ -13,6 +13,7 @@ from .. import config as cfg_mod
 from .. import elfsym, hardfault, keil
 from ..agent_api import AgentTools
 from . import steptools
+from .. import pageops
 from ..flash import FlashError, Flasher, schema_hash_of
 from ..session import LinkError, Session
 from ..transport import ROOT
@@ -66,6 +67,7 @@ class AgentService:
         self.pretune: pretune_mod.PreTune | None = None   # 调参前问答（人确认过的偏好；只收紧护栏）
         self.staged = StagedSearch()
         self.actions: dict[int, dict] = {}
+        self.chains: dict[str, dict] = {}       # project_chain 的预览结果（project_apply 卡确认时用这一份，不重新跑）
         self._aid = itertools.count(1)
         self.syms: dict | None = None
         self.last_verdict: dict | None = None
@@ -98,6 +100,12 @@ class AgentService:
             "flow_preview": lambda step, code, **m: steptools.flow_preview(self.gw.root, step, code, **m),
             "flow_accept": lambda step, code, **m: steptools.flow_accept(self.gw.root, step, code, **m),
             "score_items": lambda path=None: steptools.score_items(self, path),
+            "project_chain": self.project_chain,
+            "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
+            "tune_autopilot": self.tune_autopilot,
+            "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
+            "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
+            "project_apply": self.project_apply,
         }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
@@ -238,6 +246,18 @@ class AgentService:
                     preview = (self.flasher.flash if tool == "flash" else self.flasher.rollback)(dry_run=True)
                 except FlashError as e:
                     preview = {"error": e.message}
+            elif tool == "score_writeback":
+                from .. import scoring
+                r = getattr(self, "score_runs", {}).get(str(args.get("item"))) or {}
+                preview = scoring.writeback(self, {"item": str(args.get("item")), "dir": args.get("dir"), "layer": "sim" if self.sim else "bench",
+                                                   "result": r.get("result", "fail"), "note": args.get("note", "")}).get("diff")
+            elif tool == "score_save":
+                r = getattr(self, "score_runs", {}).get(str(args.get("item"))) or {}
+                preview = {"结果": r.get("result"), "轮数": len(r.get("runs") or []), "验收规格": r.get("spec")}
+            elif tool == "project_apply":
+                c = self.chains.get(args.get("code")) or {}
+                preview = {"一次写入": [steptools.LABEL.get(x, x) if x != "scratch" else "③ 从零新建（写 .ioc）" for x, _ in c.get("batch") or []],
+                           "各步结果": c.get("steps")}
             elif tool == "flow_accept":
                 preview = {"写入": steptools.LABEL.get(args.get("step"), args.get("step")), "项目": args.get("code"),
                            "暂存区": str(pathlib.Path.home() / ".dzbench/flow" / str(args.get("code")) / "stage" / str(args.get("step")))}
@@ -254,6 +274,99 @@ class AgentService:
         if t == risk.LOG:
             risk.audit(tool, args, t, "ok")
         return r
+
+    def project_chain(self, code: str, **m) -> dict:
+        r = steptools.project_chain(self.gw.root, code, **m)
+        self.chains[code] = r
+        return {k: v for k, v in r.items() if k != "batch"} | {"to_write": [s for s, _ in r["batch"]]}
+
+    def project_apply(self, code: str) -> dict:
+        r = self.chains.pop(code, None)
+        if not r or not r["batch"]:
+            raise GatewayError("no_chain", f"{code} 还没有可写入的预览", "先 project_chain")
+        return steptools.project_apply(self.gw.root, code, r["batch"])
+
+    # -------------------------------------------------------------- 评分：跑 N 次 → 存证据 → 回写
+    def score_run(self, item: str, n: int = 3, path: str | None = None, band: float | None = None, hold_s: float = 0.3) -> dict:
+        """按 step_test 跑 N 次，每次用评分页同一验收定义（accept.py）判；最差一次算数。结果留在内存给 score_save。"""
+        from .. import scoring
+        from ..accept import accept_eval
+        it = next((x for x in scoring.items(self, {"path": path} if path else {})["items"] if x["id"] == str(item)), None)
+        if not it:
+            raise GatewayError("no_item", f"没有评分项 {item}", "先 score_items 看编号")
+        specs = {a.get("name"): a for a in (self.s.schema.d.get("accept") or [])} if self.s.schema else {}
+        name = it.get("accept") or next((x.get("accept") for x in it["metrics"] if x.get("accept")), None)
+        # 人/模型按题目原文给的 band 优先；否则只认评分项点名的规格（不拿别的示例规格凑数）
+        spec = ({"name": f"item{item}", "band": float(band), "hold_s": float(hold_s)} if band is not None else None) or specs.get(name)
+        if not spec:
+            raise GatewayError("no_accept", f"评分项 {item} 没对上 schema 的 accept 规格", "在 yaml 的 accept: 段写 band/hold_s 并在评分项写 accept: 名字；或按题目原文给 band（允许误差）")
+        st = self.step_cfg() or {}
+        yk, sk = spec.get("y") or st.get("y"), spec.get("sp") or st.get("sp")
+        runs = []
+        for k in range(1, max(1, min(int(n), 10)) + 1):
+            v = self.run_step_test()
+            w = self.s.window(float(st.get("hold_s", 1.5)) * (5 if int(st.get("segments", 1)) == 4 else 1) + float(st.get("pre_s", 0.6)))
+            t = [a for a, _ in w]; y = [float(b[yk]) for _, b in w]; sp = [float(b[sk]) for _, b in w]
+            if int(st.get("segments", 1)) != 4:        # 单阶跃：只判阶跃之后那段（之前的 low 段是上一轮的尾巴）
+                j = max((i for i in range(1, len(sp)) if sp[i] != sp[i - 1]), default=0)
+                t, y, sp = t[j:], y[j:], sp[j:]
+            r = accept_eval(t, y, sp, spec) or {"pass": False, "why": "窗口太短"}
+            csv = "t,%s,%s\n" % (yk, sk) + "".join(f"{a:.4f},{b:.6g},{c:.6g}\n" for a, b, c in zip(t, y, sp))
+            runs.append({"n": k, "csv": csv, "result": r, "verdict": v["verdict"].get("action")})
+        ok = sum(1 for r in runs if r["result"].get("pass"))
+        res = "pass" if ok == len(runs) else ("fail" if ok == 0 else "partial")
+        self.score_runs = getattr(self, "score_runs", {}) | {str(item): {"runs": runs, "result": res, "spec": spec.get("name", name), "code": self._code_of(path)}}
+        return {"item": str(item), "spec": spec, "runs": [{"n": r["n"], "pass": r["result"].get("pass"), **{k: r["result"].get(k) for k in ("t_arrive_s", "err_max", "why") if k in r["result"]}} for r in runs],
+                "passed": f"{ok}/{len(runs)}", "result": res}
+
+    def _code_of(self, path=None) -> str:
+        from .. import scoring
+        return scoring.items(self, {"path": path} if path else {})["code"]
+
+    def score_save(self, item: str) -> dict:
+        from .. import scoring
+        r = getattr(self, "score_runs", {}).get(str(item))
+        if not r:
+            raise GatewayError("no_runs", f"评分项 {item} 还没跑", "先 score_run")
+        return scoring.save(self, {"code": r["code"], "item": str(item), "layer": "sim" if self.sim else "bench",
+                                   "runs": [{k: x[k] for k in ("n", "csv", "result")} for x in r["runs"]],
+                                   "summary": {"result": r["result"], "spec": r["spec"]}})
+
+    def score_writeback(self, item: str, dir: str, note: str = "") -> dict:
+        """先拿 diff（卡片里展示），确认后用同一 sha 写，文件期间被改过就拒绝。"""
+        from .. import scoring
+        r = getattr(self, "score_runs", {}).get(str(item)) or {}
+        m = {"item": str(item), "dir": dir, "layer": "sim" if self.sim else "bench", "result": r.get("result", "fail"), "note": note}
+        d = scoring.writeback(self, m)
+        return scoring.writeback(self, m | {"confirm": True, "sha": d.get("sha")}) if d.get("sha") else d
+
+    # -------------------------------------------------------------- 仿真自动调参
+    def tune_autopilot(self, rounds: int = 6) -> dict:
+        """仅仿真：提议→采纳→阶跃→护栏判，直到护栏说 done/stop 或轮数用完；最后回到最好的一轮。实机每次写都要人点，不走这里。"""
+        if not self.sim:
+            raise GatewayError("hw_needs_human", "实机调参每次写参数都要你确认，不能自动连跑", "用逐轮模式：run_step_test → 提议 → 你点采纳")
+        log = []
+        v = self.run_step_test()["verdict"]
+        log.append({"round": v.get("round"), "action": v.get("action"), "gains": self._gains(), "score": v.get("score")})
+        for _ in range(max(1, min(int(rounds), 20))):
+            if v.get("action") in ("done", "stop", "rollback"):
+                break
+            p = self.rule_round()
+            if p.get("id") is None:
+                log.append({"stop": p.get("reason")})
+                break
+            self.verify_groups = {k: g for k, g in getattr(self, "verify_groups", {}).items() if k != p["id"]}
+            name = self.tools.pending[p["id"]]["name"]
+            self.tools.decide(p["id"], True)
+            v = self.run_step_test()["verdict"]
+            log.append({"round": v.get("round"), "change": {name: p.get("value")}, "action": v.get("action"), "score": v.get("score")})
+        g = self._guard()
+        b = g.best()
+        best = {"round": b.n, "gains": b.gains, "metrics": b.metrics, "score": round(b.score, 4)} if b else None
+        if v.get("action") != "done" and g.rounds:
+            self.rollback_best(_auto=True)
+        return {"rounds": log, "final": v.get("action"), "best_round": best, "gains_now": self._gains(),
+                "passed": v.get("action") == "done"}
 
     def _flow_next(self, code: str) -> dict | None:
         """项目步写入后，顺手把下一步预览跑好并出确认卡（省一次“再问 Agent / 点运行”）。
