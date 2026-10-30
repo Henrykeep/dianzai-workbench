@@ -14,7 +14,7 @@ import jsonschema
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / "schema" / "board.schema.json"
-RES_TYPES = ["gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi", "dac"]
+RES_TYPES = ["gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi", "dac", "pwm3"]
 
 
 @dataclass
@@ -110,6 +110,44 @@ def dac_instance(part: str):
     return None
 
 
+PWM3_PORTS = {"host-sim", "stm32-cubemx", "mspm0-driverlib"}
+PWM3_STM32_TIMERS = re.compile(r"TIM([1-5]|8|20)")   # 能中心对齐且 ≥3 个输出通道的 STM32 定时器（TIM9~17 不能中心对齐）
+
+
+def check_pwm3(board: dict, res: dict, rep: Report) -> None:
+    """三相 PWM 组：引用 3 个 pwm，同一定时器、不同通道、同频率；端口 / 定时器得支持中心对齐。"""
+    port = board.get("port")
+    pwms = {r.get("name"): r for r in res.get("pwm") or []}
+    for g in res.get("pwm3") or []:
+        n = g.get("name"); ph = g.get("phases") or []
+        if port not in PWM3_PORTS:
+            rep.err(f"[PWM3] pwm3.{n}: 端口 {port} 没实现 pal_pwm3_set（stm32f4-hal 已冻结，走 stm32-cubemx）"); continue
+        miss = [p for p in ph if p not in pwms]
+        if miss:
+            rep.err(f"[PWM3] pwm3.{n}: phases 里的 {miss} 不是本板 pwm 资源名"); continue
+        if len(set(ph)) != 3:
+            rep.err(f"[PWM3] pwm3.{n}: 三相必须是三个不同的 pwm"); continue
+        rs = [pwms[p] for p in ph]
+        tims = {r.get("timer") for r in rs}
+        if len(tims) != 1:
+            rep.err(f"[PWM3] pwm3.{n}: 三相必须在同一个定时器上（现在是 {sorted(map(str, tims))}），否则做不到同一周期更新"); continue
+        tim = tims.pop()
+        if len({r.get("channel") for r in rs}) != 3:
+            rep.err(f"[PWM3] pwm3.{n}: 三相通道重复")
+        if len({r.get("freq_hz") for r in rs}) != 1:
+            rep.err(f"[PWM3] pwm3.{n}: 三相 freq_hz 不一致")
+        f = rs[0].get("freq_hz")
+        if isinstance(f, int) and port != "host-sim" and f < 16000:
+            rep.warn(f"[PWM3] pwm3.{n}: {f} Hz 在人耳范围内，电机会叫；FOC 一般 20~30 kHz（中心对齐时 CubeMX/SysConfig 里的周期按 2×计数写）")
+        if port == "stm32-cubemx" and not PWM3_STM32_TIMERS.fullmatch(str(tim)):
+            rep.err(f"[PWM3] pwm3.{n}: {tim} 不能中心对齐或通道不够，用 TIM1/TIM8（高级，带死区）或 TIM2~5")
+        if port == "mspm0-driverlib":
+            if str(tim) != "TIMA0":
+                rep.err(f"[PWM3] pwm3.{n}: MSPM0G 只有 TIMA0 有 ≥3 个 CC 通道（TIMA1 / TIMG 只有 2 个），写的是 {tim}")
+            elif any(r.get("channel") not in (0, 1, 2, 3) for r in rs):
+                rep.err(f"[PWM3] pwm3.{n}: TIMA0 通道是 0~3")
+
+
 def check_dac(board: dict, res: dict, rep: Report) -> None:
     dacs = res.get("dac") or []
     port = board.get("port")
@@ -190,6 +228,7 @@ def generic_check(board: dict, rep: Report) -> None:
         rep.err("[移植层] stm32f4-hal 已冻结，新 STM32 板一律走 stm32-cubemx（docs/05-CubeMX工作流.md、docs/06-新增板卡.md）")
     res = board.get("resources", {}) or {}
     check_dac(board, res, rep)
+    check_pwm3(board, res, rep)
     check_adc_block(board, res, rep)
     # 1) 同类资源重名
     for t in RES_TYPES:

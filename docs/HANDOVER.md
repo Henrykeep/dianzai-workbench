@@ -107,3 +107,4 @@
 13. 日志导入导出 + 分格（缺口 13）：dzbench/logio.py（CSV / VOFA+ FireWater → .dzlog 回放，op log_import，底栏“导入…”）、export.py fmt=vofa + 无 schema 文本记录也能导出（底栏格式下拉）、textparse 实时认 FireWater；曲线区“分格 / 按单位 / 叠加”三种布局（plot.ts Layout，记 localStorage）。[仿真]；没拿真 VOFA+ 打开过导出文件，界面没在桌面端点过。
 14. 串口线控 + 重连（缺口 14）：session.serial_lines_set / serial_pulse（esp_reset / esp_boot / stm32_reset / stm32_boot）/ serial_modem、stall_s 卡死检测、reconnecting 进度事件；界面连接栏“线控…”。[仿真]（假串口对象）；真 USB 转串口未接，STM32 脉冲极性待按板核对。
 15. 磁编码器 + FOC（缺口 15）：firmware/drivers/as5600（RAW ANGLE、零点 / 方向、多圈、速度、磁铁状态）+ firmware/algo/foc（电压型 SVPWM、开环、角度闭环、对齐）。[仿真]（tests/host/test_foc.c，简化 PMSM 模型）；真芯片 / 真电机未接，无电流环，PWM 输出要应用自己接 pal。
+16. FOC 串级 + 三相 PWM：firmware/algo/foc 1.1.0（foc_velocity_step / foc_pos_step / foc_duty_to_pal）+ PAL 1.8.0 pal_pwm3_set / pal_pwm3_check、board.yaml `pwm3:`（boardlib.check_pwm3，tools/test_pwm3_caps.py）；端口 host-sim 2.6.0 / cubemx 1.11.0 / mspm0 0.11.0。[仿真] host-sim，[编译] cubemx / mspm0；样例板没加 pwm3，真板未跑。

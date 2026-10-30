@@ -323,6 +323,38 @@ dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *freq_hz)
 #endif
 }
 
+/* ---------- 三相 PWM（PAL 1.8.0）：TIMA0 上下计数，关中断连写三路 CC ---------- */
+extern const pal_pwm3_map_t g_pal_pwm3[];
+dz_err_t pal_pwm3_check(pal_id_t id)
+{
+#if BOARD_PWM_COUNT > 0
+    if ((uint32_t)id + 1u > BOARD_PWM3_COUNT) return DZ_ENODEV;   /* 写成 +1 比较：本板 0 组时不触发 type-limits 警告，代码照样编译 */
+    const m0_pwm_t *p = &g_m0_pwm[g_pal_pwm3[id].ph[0]];
+    for (int i = 1; i < 3; i++) if (g_m0_pwm[g_pal_pwm3[id].ph[i]].inst != p->inst) return DZ_ESTATE;
+    return DL_Timer_getCounterMode(p->inst) == DL_TIMER_COUNT_MODE_UP_DOWN ? DZ_OK : DZ_ESTATE;
+#else
+    (void)id; return DZ_ENODEV;
+#endif
+}
+dz_err_t pal_pwm3_set(pal_id_t id, uint16_t u, uint16_t v, uint16_t w)
+{
+#if BOARD_PWM_COUNT > 0
+    if ((uint32_t)id + 1u > BOARD_PWM3_COUNT) return DZ_ENODEV;   /* 写成 +1 比较：本板 0 组时不触发 type-limits 警告，代码照样编译 */
+    if (u > PAL_DUTY_MAX || v > PAL_DUTY_MAX || w > PAL_DUTY_MAX) return DZ_EINVAL;
+    const pal_id_t *ph = g_pal_pwm3[id].ph;
+    uint16_t d[3] = { u, v, w };
+    uint32_t k = pal_irq_save();
+    for (int i = 0; i < 3; i++) {
+        const m0_pwm_t *p = &g_m0_pwm[ph[i]];
+        pwm_set_high_ticks(p, (uint32_t)(((uint64_t)pwm_top(p) * d[i]) / PAL_DUTY_MAX));
+    }
+    pal_irq_restore(k);
+    return DZ_OK;
+#else
+    (void)id; (void)u; (void)v; (void)w; return DZ_ENODEV;
+#endif
+}
+
 /* ---------- 编码器：QEI（16 位扩展到 32 位）或 GPIO 软件 4 倍频 ---------- */
 void dz_m0_gpio_enc_isr(void)
 {

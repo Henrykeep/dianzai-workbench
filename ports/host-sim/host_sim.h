@@ -52,6 +52,9 @@ void     host_sim_gpio_set_input(pal_id_t id, bool active);
 typedef bool (*host_sim_gpio_read_cb_t)(pal_id_t id, const bool *gpio, void *ctx);
 void     host_sim_gpio_read_hook(host_sim_gpio_read_cb_t cb, void *ctx);
 uint16_t host_sim_pwm_duty(pal_id_t id);
+/** 三相 PWM：模拟定时器配成边沿对齐（pal_pwm3_check 报 DZ_ESTATE）；pal_pwm3_set 成功调用次数。 */
+void host_sim_pwm3_edge_aligned(bool on);
+uint32_t host_sim_pwm3_updates(void);
 void     host_sim_enc_add(pal_id_t id, int32_t counts);
 void     host_sim_adc_set(pal_id_t id, uint16_t raw);
 uint16_t host_sim_dac_get(pal_id_t id);   /**< 最近一次 pal_dac_write 的码（2.5.0） */

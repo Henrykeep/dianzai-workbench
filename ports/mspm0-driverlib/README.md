@@ -37,3 +37,6 @@ board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：Flash 末尾，扇区 1 KB�
 ## ADC 块采样硬件路径（0.10.0）
 
 board.yaml `adc[].block: {timer: TIMG6, dma_ch: 0, event_ch: 1}`：定时器、事件通道、DMA 都在运行时配置（SysConfig 里不要再用这个定时器/DMA 通道/事件通道）。定时器时钟 MFCLK 4 MHz，采样率须整除 4 MHz。【编译】未上板，事件通道号未在板上验证。
+
+## 三相 PWM（0.11.0，PAL 1.8.0）
+`pal_pwm3_set / pal_pwm3_check`：关中断连写三路 CC（SysConfig 里 CC 更新方式选“计数到零”才是同周期生效），pal_pwm3_check 看计数模式是否 UP_DOWN；只认 TIMA0。比较值按中心对齐算（周期 = 2·LOAD/ARR）。【编译】未上板；样例板没有加 pwm3（要先在 CubeMX/SysConfig 里配三路中心对齐 PWM）。

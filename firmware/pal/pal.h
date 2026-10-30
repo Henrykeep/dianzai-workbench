@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.7.0"
+#define PAL_VERSION "1.8.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -148,6 +148,21 @@ dz_err_t pal_pwm_set_duty(pal_id_t id, uint16_t duty);
 dz_err_t pal_pwm_set_pulse_us(pal_id_t id, uint32_t pulse_us);
 /** 读取该通道实际 PWM 频率（Hz），用于自检核对分频是否正确。 */
 dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *freq_hz);
+
+/* ------------------------------------------------------------------------- */
+/* 三相 PWM（FOC / BLDC，PAL 1.8.0）                                          */
+/* ------------------------------------------------------------------------- */
+/*
+ * board.yaml `pwm3: [{ name: FOC, phases: [PWM_U, PWM_V, PWM_W] }]`：三个同一定时器、同频率的 pwm 组成一组，
+ * 逻辑 ID 为 RES_PWM3_<名>。定时器必须在 CubeMX / SysConfig 里配成中心对齐（上下计数），
+ * 三路比较值在同一个 PWM 周期生效（cubemx：写之前置 UDIS、写完清掉，靠 CCR 预装载；mspm0：关中断连写三路，
+ * 依赖 SysConfig 里 CC 更新方式设为“计数到零时”）。
+ */
+typedef struct { pal_id_t ph[3]; } pal_pwm3_map_t;
+/** 三相占空比（0..PAL_DUTY_MAX），超出返回 DZ_EINVAL，三路都不改。[ISR-safe] */
+dz_err_t pal_pwm3_set(pal_id_t id, uint16_t u, uint16_t v, uint16_t w);
+/** 核对硬件：定时器是中心对齐 → DZ_OK；边沿对齐 → DZ_ESTATE（FOC 启动前调用一次，不对就别转）。 */
+dz_err_t pal_pwm3_check(pal_id_t id);
 
 /* ------------------------------------------------------------------------- */
 /* 编码器（正交或脉冲计数）                                                   */

@@ -39,3 +39,6 @@ board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：F1 = Flash 末尾（页 1 K
 ## ADC 块采样硬件路径（1.10.0）
 
 board.yaml `adc[].block: {timer: TIM2}`：F4 可用 TIM2/3/8，F1 TIM3/8（ADC 规则组 TRGO 触发源）。CubeMX 里要给该 ADC 配 DMA（Normal，半字）并生成 DMA IRQ；定时器开 Base 即可，PSC/ARR 由移植层按采样率改写。完成判定轮询 DMA 剩余计数，不定义 HAL_ADC_ConvCpltCallback。【编译】未上板。
+
+## 三相 PWM（1.11.0，PAL 1.8.0）
+`pal_pwm3_set / pal_pwm3_check`：UDIS 暂停更新事件后写三路 CCR、再清 UDIS（靠 CubeMX 的 Output compare preload），pal_pwm3_check 读 CR1.CMS。比较值按中心对齐算（周期 = 2·LOAD/ARR）。【编译】未上板；样例板没有加 pwm3（要先在 CubeMX/SysConfig 里配三路中心对齐 PWM）。

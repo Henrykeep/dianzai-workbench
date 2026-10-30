@@ -17,3 +17,6 @@ PAL 的 PC 实现 + 电机/编码器一阶模型，用于在没有硬件时跑�
 - `host_sim_i2c_attach` / `host_sim_spi_attach` 用来挂“假芯片”回调（见 tests/host/test_imu.c 里的假 MPU6050 和假 BMI088）。
 - 没挂芯片时，I2C 返回 EIO（无应答），SPI 读到全 0xFF（MISO 悬空）。
 - `host_sim_fail_next(HS_FAIL_I2C / HS_FAIL_SPI, n)` 可以注入超时。
+
+## 三相 PWM（2.6.0，PAL 1.8.0）
+board.yaml 加 FOC_U/V/W（SIMTIM9 ch1~3，20 kHz）和 pwm3 FOC；`host_sim_pwm3_updates()` 数调用次数，`host_sim_pwm3_edge_aligned(true)` 让 pal_pwm3_check 报 DZ_ESTATE。

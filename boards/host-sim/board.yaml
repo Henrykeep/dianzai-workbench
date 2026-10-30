@@ -52,6 +52,9 @@ resources:
     - { name: BUZZER_PWM, timer: SIMTIM5, channel: 1, pin: SIM49, freq_hz: 2700, note: 无源蜂鸣器（2.7 kHz 谐振） }
     - { name: MOTOR_C_IN1, timer: SIMTIM6, channel: 1, pin: SIM50, freq_hz: 20000, note: DRV8833 双 PWM 接法 }
     - { name: MOTOR_C_IN2, timer: SIMTIM6, channel: 2, pin: SIM51, freq_hz: 20000 }
+    - { name: FOC_U, timer: SIMTIM9, channel: 1, pin: SIM190, freq_hz: 20000, note: 三相 FOC 驱动板 U 相（中心对齐） }
+    - { name: FOC_V, timer: SIMTIM9, channel: 2, pin: SIM191, freq_hz: 20000 }
+    - { name: FOC_W, timer: SIMTIM9, channel: 3, pin: SIM192, freq_hz: 20000 }
   encoder:
     - { name: MOTOR_A, timer: SIMTIM1, pin_a: SIM5, pin_b: SIM6 }
     - { name: MOTOR_B, timer: SIMTIM4, pin_a: SIM17, pin_b: SIM18 }
@@ -82,3 +85,5 @@ resources:
     - { name: IMU_GYR, instance: SIMSPI0, sck: SIM23, mosi: SIM24, miso: SIM25, cs: SIM27, mode: 3, hz: 10000000, note: 仿真 BMI088 陀螺仪 }
     - { name: TFT, instance: SIMSPI1, sck: SIM58, mosi: SIM59, miso: SIM60, cs: SIM61, mode: 0, hz: 20000000, note: ST7735/ST7789 }
     - { name: OLED_SPI, instance: SIMSPI1, sck: SIM58, mosi: SIM59, miso: SIM60, cs: SIM62, mode: 0, hz: 8000000, note: SSD1306 4 线 SPI }
+  pwm3:
+    - { name: FOC, phases: [FOC_U, FOC_V, FOC_W], note: firmware/algo/foc 的主机测试 }

@@ -80,7 +80,7 @@ static void motor_step(motor_t *m, const float du[3], float dt)
     m->th += m->w * dt;
 }
 static motor_t motor_new(void) { motor_t m = { 7, 1.234f, 0.3f, 0, 2.0f, 0.01f, 0.05f, 2e-5f, 2e-4f, 12.0f, 0 }; return m; }
-static const foc_cfg_t FCFG = { 7, 12.0f, 6.0f, 3.0f, 0.3f, 2.0f, 4.0f, 0.06f };
+static const foc_cfg_t FCFG = { 7, 12.0f, 6.0f, 3.0f, 0.3f, 2.0f, 4.0f, 0.06f, 0.0f, 0.0f, 0.0f, 0.0f };
 
 TEST(foc_transforms)
 {
@@ -177,7 +177,38 @@ TEST(foc_with_as5600)
     host_sim_i2c_attach(RES_I2C_IMU, NULL, NULL);
 }
 
+/* 串级位置→速度环，输出经 pal_pwm3_set（host-sim RES_PWM3_FOC）回读给电机模型 */
+TEST(foc_cascade_pwm3)
+{
+    host_sim_reset(); pal_init();
+    CHECK(pal_pwm3_check(RES_PWM3_FOC) == DZ_OK);
+    host_sim_pwm3_edge_aligned(true); CHECK(pal_pwm3_check(RES_PWM3_FOC) == DZ_ESTATE); host_sim_pwm3_edge_aligned(false);
+    CHECK(pal_pwm3_set(RES_PWM3_FOC, 10001, 0, 0) == DZ_EINVAL);
+    CHECK(pal_pwm3_set(PAL_ID_NONE, 0, 0, 0) == DZ_ENODEV);
+    motor_t m = motor_new(); foc_t f; float du[3]; uint16_t pd[3];
+    foc_cfg_t c = FCFG; c.pos_kp = 20.0f; c.vel_kp = 0.08f; c.vel_ki = 2.0f; c.vel_limit = 30.0f;
+    CHECK(foc_init(&f, &c) == DZ_OK);
+    CHECK(foc_pos_step(&f, 1.0f, 0, 0, 1e-4f, du) == DZ_ESTATE);
+    CHECK(foc_set_calibration(&f, foc_norm_angle(-m.off_e), 1) == DZ_OK);   /* 已知零点：θe = pp·θ − zero = pp·θ + off */
+    uint32_t n0 = host_sim_pwm3_updates();
+    float tgt = m.th + 6.0f, vmax = 0.0f; m.load = 0.002f;
+    for (int i = 0; i < 30000; i++) {
+        (void)foc_pos_step(&f, tgt, m.th, m.w, 1e-4f, du);
+        foc_duty_to_pal(du, pd);
+        (void)pal_pwm3_set(RES_PWM3_FOC, pd[0], pd[1], pd[2]);
+        float rd[3] = { host_sim_pwm_duty(RES_PWM_FOC_U) / 10000.0f, host_sim_pwm_duty(RES_PWM_FOC_V) / 10000.0f, host_sim_pwm_duty(RES_PWM_FOC_W) / 10000.0f };
+        motor_step(&m, rd, 1e-4f);
+        if (m.w > vmax) vmax = m.w;
+    }
+    CHECK(host_sim_pwm3_updates() - n0 == 30000);
+    CHECK_NEAR(m.th, tgt, 0.01);
+    CHECK(vmax <= 30.0f * 1.15f && vmax > 20.0f);            /* 外环速度限幅生效 */
+    /* 速度环单独：跟上 15 rad/s */
+    for (int i = 0; i < 20000; i++) { (void)foc_velocity_step(&f, 15.0f, m.th, m.w, 1e-4f, du); motor_step(&m, du, 1e-4f); }
+    CHECK_NEAR(m.w, 15.0, 0.3);
+}
+
 void suite_foc(void)
 {
-    RUN(as5600_fake); RUN(foc_transforms); RUN(foc_openloop); RUN(foc_align_and_hold); RUN(foc_align_faults); RUN(foc_with_as5600);
+    RUN(as5600_fake); RUN(foc_transforms); RUN(foc_openloop); RUN(foc_align_and_hold); RUN(foc_align_faults); RUN(foc_with_as5600); RUN(foc_cascade_pwm3);
 }

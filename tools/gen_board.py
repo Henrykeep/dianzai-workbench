@@ -442,6 +442,15 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     return "\n".join(c), mk
 
 
+def gen_pwm3(board: dict) -> str:
+    """三相 PWM 组表（所有端口同格式）：每组 = 3 个 pwm 逻辑 ID，端口的 pal_pwm3_set 用它。"""
+    res = usable(board)
+    idx = {r["name"]: i for i, r in enumerate(res["pwm"])}
+    rows = [f"    {{ {{ {idx[g['phases'][0]]}u, {idx[g['phases'][1]]}u, {idx[g['phases'][2]]}u }} }}, /* {g['name']}: {' / '.join(g['phases'])} */"
+            for g in res.get("pwm3") or []]
+    return "\n/* 三相 PWM 组（board.yaml pwm3） */\n" + "\n".join(_table("pal_pwm3_map_t", "g_pal_pwm3", rows))
+
+
 def _table(typ, name, rows):
     if not rows:
         return [f"const {typ} {name}[1];  /* 本板没有此类资源，占位避免零长度数组 */", ""]
@@ -483,6 +492,7 @@ def main() -> int:
     src = a.board.as_posix()
     a.out.mkdir(parents=True, exist_ok=True)
     c_src, mk = GENERATORS[fam](board, src, sha)
+    c_src += gen_pwm3(board)
     (a.out / "board_gen.h").write_text(gen_header(board, src, sha), encoding="utf-8")
     (a.out / "board_gen.c").write_text(c_src, encoding="utf-8")
     (a.out / "board_gen.mk").write_text("".join(f"{k} := {v}\n" for k, v in mk.items()), encoding="utf-8")

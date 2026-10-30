@@ -645,6 +645,10 @@ dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *freq_hz)
 #endif
 }
 
+/* 三相 PWM：本端口已冻结，不实现（validate_board 拒绝 pwm3），走 stm32-cubemx */
+dz_err_t pal_pwm3_set(pal_id_t id, uint16_t u, uint16_t v, uint16_t w) { (void)id; (void)u; (void)v; (void)w; return DZ_ENOTSUP; }
+dz_err_t pal_pwm3_check(pal_id_t id) { (void)id; return DZ_ENOTSUP; }
+
 /* ------------------------------------------------------------------ 编码器 */
 dz_err_t pal_enc_get_count(pal_id_t id, int32_t *count)
 {

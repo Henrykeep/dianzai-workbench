@@ -377,6 +377,30 @@ dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *freq_hz)
 #endif
 }
 
+/* ---------- 三相 PWM（PAL 1.8.0）：中心对齐，比较值 = ARR·duty（周期 = 2·ARR 个计数） ---------- */
+extern const pal_pwm3_map_t g_pal_pwm3[];
+dz_err_t pal_pwm3_check(pal_id_t id)
+{
+    if ((uint32_t)id + 1u > BOARD_PWM3_COUNT) return DZ_ENODEV;   /* 写成 +1 比较：本板 0 组时不触发 type-limits 警告，代码照样编译 */
+    TIM_HandleTypeDef *h = g_cm_pwm[g_pal_pwm3[id].ph[0]].h;
+    for (int i = 1; i < 3; i++) if (g_cm_pwm[g_pal_pwm3[id].ph[i]].h != h) return DZ_ESTATE;
+    return (h->Instance->CR1 & TIM_CR1_CMS) ? DZ_OK : DZ_ESTATE;   /* DZ-REG-OK: HAL 没有读计数模式的宏 */
+}
+dz_err_t pal_pwm3_set(pal_id_t id, uint16_t u, uint16_t v, uint16_t w)
+{
+    if ((uint32_t)id + 1u > BOARD_PWM3_COUNT) return DZ_ENODEV;   /* 写成 +1 比较：本板 0 组时不触发 type-limits 警告，代码照样编译 */
+    if (u > PAL_DUTY_MAX || v > PAL_DUTY_MAX || w > PAL_DUTY_MAX) return DZ_EINVAL;
+    const pal_id_t *ph = g_pal_pwm3[id].ph;
+    TIM_HandleTypeDef *h = g_cm_pwm[ph[0]].h;
+    uint32_t arr = __HAL_TIM_GET_AUTORELOAD(h);
+    uint16_t d[3] = { u, v, w };
+    h->Instance->CR1 |= TIM_CR1_UDIS;     /* DZ-REG-OK: 暂停更新事件，三路 CCR 预装载值一起在下个周期生效 */
+    for (int i = 0; i < 3; i++)
+        __HAL_TIM_SET_COMPARE(h, g_cm_pwm[ph[i]].channel, (uint32_t)(((uint64_t)arr * d[i]) / PAL_DUTY_MAX));
+    h->Instance->CR1 &= ~TIM_CR1_UDIS;    /* DZ-REG-OK: 同上 */
+    return DZ_OK;
+}
+
 /* ---------- 编码器：16/32 位定时器统一扩展为 32 位累计 ---------- */
 dz_err_t pal_enc_get_count(pal_id_t id, int32_t *count)
 {

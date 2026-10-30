@@ -211,6 +211,7 @@ check:
 	$(PY) tools/test_module_ide.py
 	$(PY) tools/test_mspm0_board.py
 	$(PY) tools/test_dac_caps.py
+	$(PY) tools/test_pwm3_caps.py
 	$(PY) tools/test_adc_block_caps.py
 	$(PY) tools/test_new_subsys.py
 	$(PY) tools/test_report.py

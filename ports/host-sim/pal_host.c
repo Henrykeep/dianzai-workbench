@@ -239,6 +239,28 @@ dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *f)
     return DZ_OK;
 }
 
+/* 三相 PWM：仿真里三路同时生效；host_sim_pwm3_edge_aligned 模拟“定时器忘了配中心对齐” */
+extern const pal_pwm3_map_t g_pal_pwm3[];
+static bool s_pwm3_edge;
+static uint32_t s_pwm3_updates;
+void host_sim_pwm3_edge_aligned(bool on) { s_pwm3_edge = on; }
+uint32_t host_sim_pwm3_updates(void) { return s_pwm3_updates; }
+dz_err_t pal_pwm3_set(pal_id_t id, uint16_t u, uint16_t v, uint16_t w)
+{
+    if (id >= BOARD_PWM3_COUNT) return DZ_ENODEV;
+    if (u > PAL_DUTY_MAX || v > PAL_DUTY_MAX || w > PAL_DUTY_MAX) return DZ_EINVAL;
+    const pal_id_t *ph = g_pal_pwm3[id].ph;
+    uint16_t d[3] = { u, v, w };
+    for (int i = 0; i < 3; i++) { S.pwm[ph[i]] = d[i]; log_ev(HS_EV_PWM, ph[i], d[i]); }
+    s_pwm3_updates++;
+    return DZ_OK;
+}
+dz_err_t pal_pwm3_check(pal_id_t id)
+{
+    if (id >= BOARD_PWM3_COUNT) return DZ_ENODEV;
+    return s_pwm3_edge ? DZ_ESTATE : DZ_OK;
+}
+
 dz_err_t pal_enc_get_count(pal_id_t id, int32_t *c)
 {
     if (id >= BOARD_ENCODER_COUNT) return DZ_ENODEV;

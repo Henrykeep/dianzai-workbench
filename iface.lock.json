@@ -161,6 +161,9 @@
    "foc.h: float v_align;",
    "foc.h: float t_align_s;",
    "foc.h: float kp, ki, kd;",
+   "foc.h: float pos_kp;",
+   "foc.h: float vel_kp, vel_ki;",
+   "foc.h: float vel_limit;",
    "foc.h: } foc_cfg_t;",
    "foc.h: typedef struct { foc_cfg_t cfg;",
    "foc.h: foc_state_t state;",
@@ -170,6 +173,7 @@
    "foc.h: uint8_t phase;",
    "foc.h: float t, a0, a1;",
    "foc.h: float ol_angle, integ, uq;",
+   "foc.h: float vel_integ, vel_target;",
    "foc.h: } foc_t;",
    "foc.h: dz_err_t foc_init(foc_t *f, const foc_cfg_t *cfg);",
    "foc.h: float foc_elec_angle(const foc_t *f, float mech);",
@@ -178,10 +182,13 @@
    "foc.h: dz_err_t foc_set_calibration(foc_t *f, float zero_e, int8_t dir);",
    "foc.h: void foc_openloop_step(foc_t *f, float vel_mech, float uq, float dt, float duty[3]);",
    "foc.h: dz_err_t foc_angle_step(foc_t *f, float target, float mech, float vel, float dt, float duty[3]);",
+   "foc.h: dz_err_t foc_velocity_step(foc_t *f, float vel_target, float mech, float vel, float dt, float duty[3]);",
+   "foc.h: dz_err_t foc_pos_step(foc_t *f, float target, float mech, float vel, float dt, float duty[3]);",
+   "foc.h: void foc_duty_to_pal(const float duty[3], uint16_t out[3]);",
    "foc.h: dz_err_t foc_selftest(void);"
   ],
-  "hash": "f4784091f1539e55",
-  "version": "1.0.0"
+  "hash": "e4118e9605097e5d",
+  "version": "1.1.0"
  },
  "firmware/algo/follow": {
   "decls": [
@@ -1427,6 +1434,10 @@
    "pal.h: dz_err_t pal_pwm_set_duty(pal_id_t id, uint16_t duty);",
    "pal.h: dz_err_t pal_pwm_set_pulse_us(pal_id_t id, uint32_t pulse_us);",
    "pal.h: dz_err_t pal_pwm_get_freq(pal_id_t id, uint32_t *freq_hz);",
+   "pal.h: typedef struct { pal_id_t ph[3];",
+   "pal.h: } pal_pwm3_map_t;",
+   "pal.h: dz_err_t pal_pwm3_set(pal_id_t id, uint16_t u, uint16_t v, uint16_t w);",
+   "pal.h: dz_err_t pal_pwm3_check(pal_id_t id);",
    "pal.h: dz_err_t pal_enc_get_count(pal_id_t id, int32_t *count);",
    "pal.h: dz_err_t pal_enc_reset(pal_id_t id);",
    "pal.h: dz_err_t pal_uart_write(pal_id_t id, const uint8_t *buf, uint16_t len);",
@@ -1453,8 +1464,8 @@
    "pal.h: dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n);",
    "pal.h: dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);"
   ],
-  "hash": "02e94094264e42d4",
-  "version": "1.7.0"
+  "hash": "dd352c8d6b2cdee4",
+  "version": "1.8.0"
  },
  "firmware/proto/dzctl": {
   "decls": [
@@ -1645,6 +1656,8 @@
    "host_sim.h: typedef bool (*host_sim_gpio_read_cb_t)(pal_id_t id, const bool *gpio, void *ctx);",
    "host_sim.h: void host_sim_gpio_read_hook(host_sim_gpio_read_cb_t cb, void *ctx);",
    "host_sim.h: uint16_t host_sim_pwm_duty(pal_id_t id);",
+   "host_sim.h: void host_sim_pwm3_edge_aligned(bool on);",
+   "host_sim.h: uint32_t host_sim_pwm3_updates(void);",
    "host_sim.h: void host_sim_enc_add(pal_id_t id, int32_t counts);",
    "host_sim.h: void host_sim_adc_set(pal_id_t id, uint16_t raw);",
    "host_sim.h: uint16_t host_sim_dac_get(pal_id_t id);",
@@ -1666,8 +1679,8 @@
    "host_sim.h: int host_sim_add_periodic(uint32_t period_us, void (*fn)(void *), void *ctx);",
    "host_sim.h: void host_sim_set_reset_cause(pal_reset_cause_t c);"
   ],
-  "hash": "36cda57ac4611965",
-  "version": "2.5.0"
+  "hash": "095a6d80dde47589",
+  "version": "2.6.0"
  },
  "ports/mspm0-driverlib": {
   "decls": [
@@ -1752,7 +1765,7 @@
    "wwdt_calc.h: return 1;"
   ],
   "hash": "e2afe126663c3212",
-  "version": "0.10.0"
+  "version": "0.11.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -1847,7 +1860,7 @@
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
   "hash": "98342754017066fe",
-  "version": "1.10.0"
+  "version": "1.11.0"
  },
  "ports/stm32f4-hal": {
   "decls": [

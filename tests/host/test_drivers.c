@@ -23,7 +23,7 @@ TEST(motor_invalid_cfg)
     c = mcfg(); c.deadband = 0.6f;        CHECK(motor_dc_init(&m, &c) == DZ_EINVAL);
     c = mcfg(); c.max_duty = 0.0f;        CHECK(motor_dc_init(&m, &c) == DZ_EINVAL);
     c = mcfg(); c.deadband = 0.3f; c.max_duty = 0.3f; CHECK(motor_dc_init(&m, &c) == DZ_EINVAL);
-    c = mcfg(); c.pwm = 7;                CHECK(motor_dc_init(&m, &c) == DZ_ENODEV); /* 板上不存在的 ID */
+    c = mcfg(); c.pwm = (pal_id_t)BOARD_PWM_COUNT; CHECK(motor_dc_init(&m, &c) == DZ_ENODEV); /* 板上不存在的 ID */
     motor_dc_t z = {0};
     CHECK(motor_dc_set(&z, 0.5f) == DZ_ESTATE);
 }

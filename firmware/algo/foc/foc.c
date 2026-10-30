@@ -84,7 +84,7 @@ dz_err_t foc_align_step(foc_t *f, float mech, float dt, float duty[3])
     f->dir = moved > 0.0f ? 1 : -1;
     f->zero_e = 0.0f;
     f->zero_e = foc_elec_angle(f, mech);            /* 转子 d 轴此刻对准 θe=0 */
-    f->integ = 0.0f;
+    f->integ = 0.0f; f->vel_integ = 0.0f;
     f->state = FOC_READY;
     return DZ_OK;
 }
@@ -92,7 +92,7 @@ dz_err_t foc_align_step(foc_t *f, float mech, float dt, float duty[3])
 dz_err_t foc_set_calibration(foc_t *f, float zero_e, int8_t dir)
 {
     if (!f || (dir != 1 && dir != -1)) return DZ_EINVAL;
-    f->zero_e = foc_norm_angle(zero_e); f->dir = dir; f->integ = 0.0f; f->state = FOC_READY;
+    f->zero_e = foc_norm_angle(zero_e); f->dir = dir; f->integ = 0.0f; f->vel_integ = 0.0f; f->state = FOC_READY;
     return DZ_OK;
 }
 
@@ -117,6 +117,35 @@ dz_err_t foc_angle_step(foc_t *f, float target, float mech, float vel, float dt,
     f->uq = clampv(f, f->cfg.kp * e + f->integ - f->cfg.kd * vel);
     foc_set_voltage(f, (float)f->dir * f->uq, 0.0f, foc_elec_angle(f, mech), duty);   /* 传感器反装时正 Uq 让读数减小 */
     return DZ_OK;
+}
+
+dz_err_t foc_velocity_step(foc_t *f, float vt, float mech, float vel, float dt, float duty[3])
+{
+    if (!f || dt <= 0.0f) return DZ_EINVAL;
+    if (f->state != FOC_READY) { duty[0] = duty[1] = duty[2] = 0.0f; return DZ_ESTATE; }
+    f->vel_target = vt;
+    float e = vt - vel;
+    float u = f->cfg.vel_kp * e + f->vel_integ, uc = clampv(f, u);
+    if (u == uc || (u > uc) != (e > 0.0f)) f->vel_integ = clampv(f, f->vel_integ + f->cfg.vel_ki * e * dt);
+    f->uq = clampv(f, f->cfg.vel_kp * e + f->vel_integ);
+    foc_set_voltage(f, (float)f->dir * f->uq, 0.0f, foc_elec_angle(f, mech), duty);
+    return DZ_OK;
+}
+
+dz_err_t foc_pos_step(foc_t *f, float target, float mech, float vel, float dt, float duty[3])
+{
+    if (!f) return DZ_EINVAL;
+    float vt = f->cfg.pos_kp * (target - mech), l = f->cfg.vel_limit;
+    if (l > 0.0f) vt = vt > l ? l : vt < -l ? -l : vt;
+    return foc_velocity_step(f, vt, mech, vel, dt, duty);
+}
+
+void foc_duty_to_pal(const float duty[3], uint16_t out[3])
+{
+    for (int i = 0; i < 3; i++) {
+        float d = duty[i] < 0.0f ? 0.0f : duty[i] > 1.0f ? 1.0f : duty[i];
+        out[i] = (uint16_t)(d * 10000.0f + 0.5f);
+    }
 }
 
 dz_err_t foc_selftest(void)

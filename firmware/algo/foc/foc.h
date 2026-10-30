@@ -11,7 +11,7 @@
 #define FOC_H
 #include <stdint.h>
 #include "dz_err.h"
-#define FOC_VERSION "1.0.0"
+#define FOC_VERSION "1.1.0"
 
 void foc_clarke(float ia, float ib, float *alpha, float *beta);          /**< 两相电流（ic = -ia-ib） */
 void foc_park(float alpha, float beta, float th_e, float *d, float *q);
@@ -28,7 +28,10 @@ typedef struct {
     float v_limit;       /**< Uq/Ud 上限 V（≤ vbus/√3） */
     float v_align;       /**< 对齐电压，0 = v_limit/2 */
     float t_align_s;     /**< 每段时间，0 = 0.5 s */
-    float kp, ki, kd;    /**< 角度环：误差 rad → Uq V */
+    float kp, ki, kd;    /**< 角度环（单环 foc_angle_step）：误差 rad → Uq V */
+    float pos_kp;        /**< 串级外环：位置误差 rad → 速度目标 rad/s */
+    float vel_kp, vel_ki;/**< 串级内环：速度误差 rad/s → Uq V（PI） */
+    float vel_limit;     /**< 速度目标限幅 rad/s，0 = 不限 */
 } foc_cfg_t;
 
 typedef struct {
@@ -41,6 +44,7 @@ typedef struct {
     uint8_t phase; float t, a0, a1;
     /* 开环 / 闭环 */
     float ol_angle, integ, uq;
+    float vel_integ, vel_target;
 } foc_t;
 
 dz_err_t foc_init(foc_t *f, const foc_cfg_t *cfg);
@@ -56,5 +60,11 @@ dz_err_t foc_set_calibration(foc_t *f, float zero_e, int8_t dir);
 void foc_openloop_step(foc_t *f, float vel_mech, float uq, float dt, float duty[3]);
 /** 角度闭环（PID → Uq，限幅 + 积分抗饱和）。vel 可用 as5600_velocity。需 READY。 */
 dz_err_t foc_angle_step(foc_t *f, float target, float mech, float vel, float dt, float duty[3]);
+/** 速度闭环（PI → Uq，积分抗饱和）。需 READY。 */
+dz_err_t foc_velocity_step(foc_t *f, float vel_target, float mech, float vel, float dt, float duty[3]);
+/** 位置→速度串级：外环 P 出速度目标（限 vel_limit），内环速度 PI 出 Uq。需 READY。 */
+dz_err_t foc_pos_step(foc_t *f, float target, float mech, float vel, float dt, float duty[3]);
+/** 占空比 0..1 → PAL 满量程（PAL_DUTY_MAX=10000），给 pal_pwm3_set 用。 */
+void foc_duty_to_pal(const float duty[3], uint16_t out[3]);
 dz_err_t foc_selftest(void);
 #endif

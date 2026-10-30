@@ -472,6 +472,31 @@
           "minimum": 1
         }
       }
+    },
+    "pwm3": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        }
+      ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": [
+        "name",
+        "phases"
+      ],
+      "description": "三相 PWM 组（FOC / BLDC）：引用三个同一定时器、同频率的 pwm 资源，定时器须配成中心对齐；pal_pwm3_set 三路同一周期生效",
+      "properties": {
+        "phases": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "type": "string"
+          },
+          "description": "U/V/W 三个 pwm 资源名"
+        }
+      }
     }
   },
   "properties": {
@@ -728,6 +753,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/dac"
+          }
+        },
+        "pwm3": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/pwm3"
           }
         }
       }
