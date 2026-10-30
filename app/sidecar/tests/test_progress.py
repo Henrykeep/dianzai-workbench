@@ -177,3 +177,74 @@ def test_server_op_and_agent_tool_same_interface(home, monkeypatch):
     assert "progress_get" in {t["name"] for t in loop.TOOLS}
     assert "progress_get" in loop._READ                   # 只读工具：所有模式可用
     assert "progress_get" in sv.svc.loop.handlers
+
+
+# ------------------------------------------------------------------ fetch_deps / run_selftest / 当前项目
+def _entries():
+    return {a["id"]: a for a in _yaml.safe_load((_pl.Path(__file__).resolve().parents[3] / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["actions"]}
+
+
+def test_fix_actions_fetch_deps_and_run_selftest_entries():
+    e = _entries()
+    assert P.FIX["missing_deps"] == "fetch_deps" and P.FIX["selftest_fail"] == "run_selftest"
+    assert e["fetch_deps"].get("ready", True) is True and e["fetch_deps"]["ops"] == ["fetch_deps"]
+    assert e["run_selftest"]["ready"] is False and e["run_selftest"]["ops"] == ["run_selftest"]
+
+
+def test_fetch_deps_reuses_doctor_fixes(tmp_path):
+    from dzbench import deps
+    items = [{"id": "py_serial", "name": "pyserial（串口）", "level": "fail"},
+             {"id": "pack", "name": "MSPM0 器件包（DFP）", "level": "fail"},
+             {"id": "config", "name": "工程配置 dzbench.json", "level": "fail", "fix": "按提示改 JSON 语法"},
+             {"id": "py_pyocd", "name": "pyOCD", "level": "warn"}]
+    calls = []
+    r = deps.fetch(items, str(tmp_path), runner=lambda c, cwd: calls.append(c) or {"cmd": " ".join(c), "rc": 0, "tail": ""})
+    assert calls[0][-3:] == ["pip", "install", "pyserial"]
+    assert calls[1][-1] == "m0pack" and calls[1][1].endswith("tools/fetch_third_party.sh")
+    assert len(calls) == 2                                  # warn 项不装
+    assert r["unresolved"] == [{"name": "工程配置 dzbench.json", "fix": "按提示改 JSON 语法"}] and r["ok"] is False
+
+
+def test_server_fetch_deps_and_run_selftest(home, monkeypatch):
+    from dzbench import deps, server as srv
+    from dzbench.session import LinkError
+    sv = srv.Server()
+    seq = [[{"id": "py_serial", "name": "pyserial（串口）", "level": "fail"}], []]
+    sv.progress._doctor = lambda: seq.pop(0) if seq else []
+    monkeypatch.setattr(deps, "_run", lambda c, cwd: {"cmd": " ".join(c), "rc": 0, "tail": ""})
+    monkeypatch.setattr(deps.fetch, "__defaults__", (deps._run,))
+    r = asyncio.run(sv._op({"op": "fetch_deps"}))
+    assert r["ok"] and len(r["ran"]) == 1
+    assert sv.progress.deps == []                           # 装完重跑自检
+    assert not any(b["code"] == "missing_deps" for b in sv.progress.snapshot()["blockers"])
+    with pytest.raises(LinkError) as ei:
+        asyncio.run(sv._op({"op": "run_selftest"}))
+    assert ei.value.code == "not_ready"
+
+
+def test_current_project_persist_hello_and_req(home, monkeypatch):
+    from dzbench import project, server as srv
+    root = home / "repo"
+    (root / "examples" / "demo").mkdir(parents=True)
+    sv = srv.Server()
+    monkeypatch.setattr(sv.svc.gw, "root", root)
+    sv.progress._doctor = lambda: []
+    h = asyncio.run(sv._op({"op": "hello"}))
+    assert h["project"] is None
+    snap = asyncio.run(sv._op({"op": "progress.get"}))
+    assert snap["project"] is None and snap["steps"][0]["state"] == "doing"
+    with pytest.raises(Exception):                          # 暂存区预览会因缺题目失败，但“打开项目”已记下
+        asyncio.run(sv._op({"op": "flow_preview", "step": "req", "code": "demo"}))
+    want = {"path": str(root / "examples" / "demo"), "name": "demo"}
+    sv2 = srv.Server()                                      # 模拟侧车重启：从 $DZBENCH_HOME 恢复
+    sv2.progress._doctor = lambda: []
+    assert asyncio.run(sv2._op({"op": "hello"}))["project"] == want
+    s = asyncio.run(sv2._op({"op": "progress.get"}))
+    assert s["project"] == want and s["steps"][0]["state"] == "doing"     # 没有 requirements.yaml
+    (root / "examples" / "demo" / "requirements.yaml").write_text("items: []\n", encoding="utf-8")
+    assert asyncio.run(sv2._op({"op": "progress.get"}))["steps"][0]["state"] == "doing"   # 空评分项不算
+    (root / "examples" / "demo" / "requirements.yaml").write_text("items:\n  - {id: a, text: 速度误差}\n", encoding="utf-8")
+    s = asyncio.run(sv2._op({"op": "progress.get"}))
+    assert s["steps"][0]["state"] == "done" and s["steps"][0]["id"] == "req"
+    assert project.set_current(root, "../x") is None                       # 非法题号不记
+    assert str(project._path()).startswith(str(home))

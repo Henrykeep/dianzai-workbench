@@ -14,6 +14,7 @@ import pathlib
 import websockets
 
 from . import events, lastsession, snapshots
+from . import project as project_mod
 from .agent import llm as agent_llm
 from .agent.gateway import GatewayError
 from .agent.guard import GuardError
@@ -90,7 +91,7 @@ class Server:
         run = asyncio.get_running_loop().run_in_executor
         if op == "hello":
             return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients)},
-                    "recovered": self.recovered, "link": s.link.last,
+                    "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
         if op == "progress.get":                       # 项目进度（只读；refresh=true 时重跑依赖自检）
@@ -169,6 +170,19 @@ class Server:
             if op == "precontest_export":
                 r["path"] = await run(None, lambda: precontest.export(r, s, repo, snapshots.base_dir()))
             return r
+        if op in ("flow_preview", "flow_accept", "project_chain", "project_apply") and m.get("code"):
+            project_mod.set_current(self.svc.gw.root, str(m["code"]))   # 新建 / 打开项目 = 记为当前项目（重启后恢复）
+        if op == "fetch_deps":                         # 一键安装缺失依赖（只按自检 fail 项，命令固定，见 deps.py）
+            from . import deps
+            repo = str(self.svc.gw.root)
+            if self.progress.deps is None:
+                await run(None, self.progress.refresh_deps)
+            r = await run(None, lambda: deps.fetch(self.progress.deps or [], repo))
+            await run(None, self.progress.refresh_deps)
+            return r
+        if op == "run_selftest":                       # 入口已登记但未就绪（entrypoints.yaml ready: false）
+            raise LinkError("not_ready", "当前固件尚未提供自检触发与结果上报，暂不能从工作台执行板上自检。",
+                            "固件支持后此入口自动启用；在此之前可读取黑匣子查看复位原因与安全态记录")
         if op == "flow_preview" or op == "flow_accept":     # 项目页引导流程：先暂存区预览，确认才写（dzbench/projflow.py）
             from .projflow import Flow, FlowError
             fl = Flow(self.svc.gw.root)

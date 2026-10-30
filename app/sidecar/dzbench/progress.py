@@ -9,10 +9,13 @@
 
 返回结构（约定）：
   {steps:[{id,title,state:todo|doing|done|blocked,reason?,detail?}], current, next:{title,action,hint},
-   blockers:[{code,message,fix_action,blocks}], mode}
+   blockers:[{code,message,fix_action,blocks}], mode, project:{path,name}|null}
+req 完成 = 已打开项目且其目录下 requirements.yaml 有评分项（见 project.py）。
 next.action 与每个 blocker 的 fix_action 都是入口规则表 docs/dev/entrypoints.yaml 里的动作 id（测试逐个核对）。
 """
 from __future__ import annotations
+
+from . import project as _project
 
 STATES = ("todo", "doing", "done", "blocked")
 
@@ -31,10 +34,10 @@ TITLE = {i: t for i, t, _ in STEPS}
 # 动作 id 一律取自入口规则表 docs/dev/entrypoints.yaml 的 actions[].id（界面按钮与 Agent 共用；本模块不执行）
 ACTIONS = {
     "connect": "连接板子",
-    "doctor": "运行自检，按提示安装缺失依赖",
+    "fetch_deps": "一键安装缺失依赖",
     "tune_relay": "无初值一键起步调参",
     "estop_clear": "确认安全后解除急停",
-    "blackbox": "读取黑匣子，查明自检未通过的原因",
+    "run_selftest": "执行板上自检并读取结果",
     "params_flash": "将参数写入 Flash",
     "project_flow": "读题到生成工程引导",
     "build": "编译固件",
@@ -44,8 +47,8 @@ ACTIONS = {
 }
 
 BLOCKER_CODES = ("no_board", "missing_deps", "gains_zero", "estop", "selftest_fail", "params_not_saved")
-FIX = {"no_board": "connect", "missing_deps": "doctor", "gains_zero": "tune_relay",
-       "estop": "estop_clear", "selftest_fail": "blackbox", "params_not_saved": "params_flash"}
+FIX = {"no_board": "connect", "missing_deps": "fetch_deps", "gains_zero": "tune_relay",
+       "estop": "estop_clear", "selftest_fail": "run_selftest", "params_not_saved": "params_flash"}
 STEP_ACTION = {"req": "project_flow", "project": "project_flow", "sim": "build", "bringup": "cal_polarity",
                "tune": "tune_relay", "score": "score", "seal": "precontest"}
 # 每类阻塞挡住哪些步骤（"mode:standalone" = 切换到脱机模式）
@@ -107,7 +110,7 @@ def derive(f: dict) -> dict:
         "seal": bool(f.get("sealed")),
     }
     detail = {
-        "req": f"{f.get('req_items')} 个评分项" if done["req"] else "尚未从题目整理评分项",
+        "req": f"{f.get('req_items')} 个评分项" if done["req"] else ("尚未打开项目" if not f.get("project") else "项目中还没有 requirements.yaml 评分项"),
         "project": "检测到工作台固件" if f.get("schema_ok") else ("工程已配置" if f.get("project_ready") else "尚未配置工程"),
         "sim": "仿真板已收到遥测" + (f"（固件 {f['fw_rev']}）" if f.get("fw_rev") else "") if done["sim"] else "",
         "bringup": f"实物板已读回 {f.get('params_read', 0)} 个参数" if done["bringup"] else "",
@@ -142,7 +145,7 @@ def derive(f: dict) -> dict:
         nxt = {"title": "全部完成", "action": "", "hint": "各步骤均已完成，可导出封箱清单存档。"}
     return {"steps": steps, "current": current, "next": nxt,
             "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks")} for b in bl],
-            "mode": f.get("mode")}
+            "mode": f.get("mode"), "project": f.get("project")}
 
 
 def standalone_blocker(snapshot: dict) -> dict | None:
@@ -166,6 +169,7 @@ def _params_saved(s) -> bool | None:
 def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
     """从会话（Session）、Agent 服务（可选）和依赖自检结果收集事实。只读。"""
     st = s.status()
+    proj = _project.current()
     link = s.link.last or {"board": "connected" if st.get("alive") else "disconnected", "reason": None}
     flags = st.get("hb_flags") or []
     estop = bool(st.get("tx_locked")) or "急停" in flags
@@ -191,6 +195,8 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
         "mode": link.get("mode"),
         "schema_ok": bool(st.get("schema_ok")),
         "fw_rev": st.get("fw_rev"),
+        "project": proj,
+        "req_items": _project.req_items(proj),
         "has_samples": bool(s.samples),
         "sim_board": str(st.get("port") or "").startswith("sim:"),
         "params_read": len(s.params),
