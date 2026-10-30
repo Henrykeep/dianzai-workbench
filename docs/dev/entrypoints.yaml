@@ -95,7 +95,7 @@ agent_tools:
   step:调参: [read_telemetry, list_params, step_analysis, propose_param_change, tune_context, observe, run_step_test, run_sweep_test, bode_predict, rollback_best, tune_autopilot]
   step:烧录: [flash, flash_rollback, build, build_log, board_memory]
   always:排障: [decode_hardfault, read_symbol]
-  step:项目: [repo_map, remember, list_files, read_file, propose_edit, update_plan, project_state, flow_preview, flow_accept, project_chain, project_apply]
+  step:项目: [repo_map, remember, list_files, read_file, propose_edit, update_plan, project_state, flow_preview, flow_accept, project_chain, project_apply, quick_start]
   step:评分: [score_items, score_run, score_save, score_writeback]
   step:标定: [polarity_check]
   step:联调: [fft, wave_measure]

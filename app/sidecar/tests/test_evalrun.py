@@ -81,3 +81,17 @@ def test_run_bench_stable_entry_replays_offline():
     fx = pathlib.Path(__file__).parent / "fixtures/agent_evals/before_glm-5.2.json"
     r = run_bench(replay_from=str(fx))
     assert r["total"] == 20 and set(r["categories"]) == {"state", "act", "data"}
+
+
+def test_read_category_keys_come_from_problem_text():
+    """读题类 8 例（2026 A–H 题要求节选）：每个答案关键数字都确实出现在题面节选里；只读工具，写操作列为禁止。"""
+    import json, pathlib
+    from dzbench.agent import evals
+    root = pathlib.Path(__file__).resolve().parents[3]
+    cs = [c for c in json.loads((root / "app/sidecar/dzbench/agent/evals.json").read_text(encoding="utf-8"))["cases"] if c.get("category") == "read"]
+    assert len(cs) == 8 and "read" in evals.CATEGORIES
+    for c in cs:
+        path = c["user"].split("题目在 ")[1].split("（")[0]
+        txt = (root / path).read_text(encoding="utf-8")
+        assert all(k in txt for k in c["text_all"]), c["id"]
+        assert "flow_accept" in c["must_not_call"]

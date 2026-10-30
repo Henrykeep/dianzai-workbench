@@ -240,6 +240,9 @@ class AgentService:
             risk.audit(tool, args, t, "denied")
             raise GatewayError("forbidden", f"{tool} 是禁止操作，Agent 永远不能执行")
         if t == risk.HUMAN:
+            dup = next((a for a in self.actions.values() if a["tool"] == tool and a["args"] == args), None)
+            if dup:                                          # 同一操作的卡还挂着（如 quick_start 已出 project_apply 卡，模型又调一次）→ 不重复出卡
+                return {"status": "pending_human_click", "action_id": dup["id"], "note": "这张确认卡已经在界面上了，等用户点，不要再调"}
             aid = next(self._aid)
             preview = cards.build(self, tool, args)          # 卡片内容：人话 + 旧→新，见 agent/cards.py
             self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run, "t": time.monotonic()}
@@ -285,7 +288,8 @@ class AgentService:
             return {"spec": sp, "chain": ch, "action_id": None}
         self.quick[sp["code"]] = sp
         card = self.gate("project_apply", {"code": sp["code"]}, lambda: None)
-        return {"spec": sp, "chain": ch, "action_id": card.get("action_id")}
+        return {"spec": sp, "chain": ch, "action_id": card.get("action_id"),
+                "note": "确认卡已出（含方案与引脚表）；用户点确认后自动写项目、上仿真、调参、评分。不要再调 project_apply。"}
 
     def _quick_after(self, code: str, written: dict) -> dict:
         """确认后接着跑：仿真板 → 一键起步调参 → 评分（仿真里都是 log 级，不再出卡）。"""
