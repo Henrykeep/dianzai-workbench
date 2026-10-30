@@ -80,4 +80,5 @@
 - [硬件路线图](docs/硬件路线图.md)
 - [参考来源](docs/参考来源.md)
 - [待确认问题](docs/QUESTIONS.md)
+- [入口规则表](docs/dev/entrypoints.yaml)：每个用户动作的唯一入口，tools/check_entrypoints.py 检查
 - [更新日志](CHANGELOG.md)

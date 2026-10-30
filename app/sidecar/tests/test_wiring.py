@@ -11,13 +11,9 @@ import pytest
 APP = pathlib.Path(__file__).resolve().parents[2]
 UI_SRC = "\n".join(p.read_text(encoding="utf-8") for p in (APP / "ui/src").glob("*.ts"))
 SERVER_OPS = set(re.findall(r'op == "([a-z_]+)"', (APP / "sidecar/dzbench/server.py").read_text(encoding="utf-8")))
-# 不在界面上、故意保留的 op（脚本 / 测试接口），每个写清楚为什么
-SCRIPT_ONLY = {
-    "send_data": "按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”面板的 send_raw / 预设）",
-    "agent_tool": "外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask",
-    "polarity_check": "标定向导第 0 步的后端（向导界面未做，先给脚本/外部 Agent 用；见 docs/32）",
-    "propose": "外部脚本提一个待确认的参数提议（界面里的提议都来自 Agent / 阶跃分析）",
-}
+# 不在界面上、故意保留的 op（脚本 / 测试接口）：单一来源 = docs/dev/entrypoints.yaml script_ops
+import yaml  # noqa: E402
+SCRIPT_ONLY = yaml.safe_load((APP.parent / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["script_ops"]
 
 
 def ui_ops():

@@ -201,6 +201,8 @@ check:
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	$(PY) tools/test_port_policy.py
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
+	$(PY) tools/check_entrypoints.py --selftest
+	$(PY) tools/check_entrypoints.py
 	$(PY) tools/check_deps.py
 	$(PY) tools/check_deps.py --selftest
 	$(PY) tools/iface_hash.py --check

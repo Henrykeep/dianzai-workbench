@@ -1,0 +1,87 @@
+# 入口规则表：每个用户动作 → 恰好一个入口（时间线一步 / 工具箱一类 / 常驻）。
+# tools/check_entrypoints.py 在 make check 里检查：动作/标签/界面元素不重复；侧车每个 op 有界面或 Agent 调用方
+# （或写进 script_ops 并说明为什么）；界面调用的每个 op 都在这里登记；Agent 工具都有归属步。
+# 依据：/workspace/walk/LOGIC_AUDIT.md §3.1（时间线导航）、§3.3（入口唯一 + op 无孤儿）。
+# at 写法：step:<步> | toolbox:<类> | always:<常驻件>。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
+
+steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
+toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
+always:    [急停, 连接, 排障]
+
+actions:
+  # ── 常驻 ──
+  - {id: estop,        label: 急停,             at: always:急停, ui: estop,      ops: [estop]}
+  - {id: estop_clear,  label: 解除急停,         at: always:急停, ui: cmd-r,      ops: [cmd]}
+  - {id: connect,      label: 连接/断开,        at: always:连接, ui: connect,    ops: [connect, disconnect, list_ports, serial_lines, hello]}
+  - {id: auto_rc,      label: 自动重连,         at: always:连接, ui: auto-rc,    ops: [auto_reconnect]}
+  - {id: link_health,  label: 链路心跳条,       at: always:连接, ui: hbstrip,    ops: [health, timeline]}
+  - {id: alerts,       label: 告警确认,         at: always:连接, ui: al-ack, dynamic: true, ops: [alert_ack]}
+  - {id: doctor,       label: 自检,             at: always:排障, ui: doctor,     ops: [doctor]}
+  - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
+  # ── 烧录 ──
+  - {id: build,        label: 编译,             at: step:烧录,   ui: fw-build,   ops: [build]}
+  - {id: flash,        label: 烧录,             at: step:烧录,   ui: fw-flash,   ops: [flash]}
+  - {id: fw_rollback,  label: 回滚固件,         at: step:烧录,   ui: fw-rollback, ops: [flash_rollback]}
+  - {id: probe,        label: 调试探针设置,     at: step:烧录,   ui: fw-probe,   ops: [probe_config_get, probe_config_set]}
+  # ── 模块 ──
+  - {id: raw,          label: 原始收发,         at: step:模块,   ui: raw,        ops: [raw_monitor]}
+  - {id: send,         label: 发送,             at: step:模块,   ui: snd-go,     ops: [send_raw]}
+  - {id: presets,      label: 常用指令,         at: step:模块,   ui: snd-presets, ops: [preset_save, preset_send, preset_timer, preset_trigger, preset_delete, preset_list]}
+  - {id: board_cmd,    label: 板端命令,         at: step:模块,   ui: cmd-send,   ops: [cmd]}
+  - {id: elf_watch,    label: ELF 变量观察,     at: step:模块,   ui: elf-go,     ops: [elf_symbols, watch_start, watch_stop]}
+  # ── 联调 ──
+  - {id: scope,        label: 示波,             at: step:联调,   ui: pb,         ops: []}
+  - {id: fft,          label: 频谱,             at: step:联调,   ui: fft,        ops: [fft]}
+  - {id: event_tl,     label: 事件时间线,       at: step:联调,   ui: tl,         ops: [replay_ctl]}
+  # ── 标定 ──（向导见 HANDOVER 17+）
+  # ── 调参 ──
+  - {id: params,       label: 参数编辑与下发,   at: step:调参,   ui: p-send,     ops: [param_set, param_read_all]}
+  - {id: snap_save,    label: 存快照,           at: step:调参,   ui: snap-save,  ops: [snapshot_save, snapshot_list]}
+  - {id: restore,      label: 回到…,            at: step:调参,   ui: p-def,      ops: [snapshot_restore, tune_rollback_best, tune_best]}
+  - {id: step_test,    label: 阶跃实验,         at: step:调参,   ui: ag-step,    ops: [tune_step_test]}
+  - {id: sweep_test,   label: 扫频,             at: step:调参,   ui: ag-sweep,   ops: [tune_sweep_test]}
+  - {id: search,       label: 仿真搜索,         at: step:调参,   ui: ag-search,  ops: [tune_search, tune_propose]}
+  - {id: analyze,      label: 分析阶跃,         at: step:调参,   ui: ag-tune,    ops: [tune_analyze, tune_propose]}
+  - {id: rule,         label: 规则建议,         at: step:调参,   ui: ag-rule,    ops: [tune_rule_round]}
+  - {id: proposals,    label: 提议卡采纳,       at: step:调参,   ui: props,      ops: [proposal_decide, agent_action_decide, change_decide, rollback]}
+  - {id: pretune,      label: 调参前问答,       at: step:调参,   ui: ag-pre,     ops: [pretune_get, pretune_set]}
+  - {id: guard_reset,  label: 重置护栏,         at: step:调参,   ui: ag-guard,   ops: [tune_reset]}
+  - {id: agent_chat,   label: Agent 助手,       at: step:调参,   ui: ag-form,    ops: [agent_ask, agent_reset, agent_set_mode, agent_journal, agent_tune_finish]}
+  - {id: agent_undo,   label: 撤销 Agent,       at: step:调参,   ui: ag-undo,    ops: [agent_undo]}
+  # ── 评分 ──（评分页见 HANDOVER 17+；验收判定现跟着阶跃实验出）
+  # ── 封箱 ──
+  - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
+  - {id: params_flash, label: 存参数到 flash,   at: step:封箱,   ui: pre-save,   ops: [cmd]}
+  - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}
+  - {id: yaml_wb,      label: 写回 yaml,        at: step:封箱,   ui: ag-yaml,    ops: [yaml_writeback]}
+  # ── 工具箱 ──
+  - {id: wave_meas,    label: 波形测量,         at: toolbox:测量, ui: fft-meas,  ops: [wave_measure]}
+  - {id: cursors,      label: A/B 光标,         at: toolbox:测量, ui: meas,      ops: []}
+  - {id: serial_ln,    label: 串口线控,         at: toolbox:串口, ui: lines-btn, ops: [serial_modem, serial_lines_set, serial_pulse, serial_stall]}
+  - {id: log_replay,   label: 回放记录,         at: toolbox:记录, ui: replay,    ops: [log_list, replay, replay_ctl]}
+  - {id: log_export,   label: 导出记录,         at: toolbox:记录, ui: export,    ops: [log_export]}
+  - {id: log_import,   label: 导入记录,         at: toolbox:记录, ui: import,    ops: [log_import, replay]}
+  - {id: framedef,     label: 非工作台帧格式,   at: toolbox:帧格式, ui: framedef, ops: [framedef_set, framedef_status]}
+  - {id: coproc,       label: 协处理器部署,     at: toolbox:协处理器, ui: fw-coproc, ops: [coproc_get, coproc_set, coproc_push, coproc_start, coproc_stop, coproc_status, coproc_log]}
+  - {id: llm_cfg,      label: 大模型设置,       at: toolbox:设置, ui: ag-cfg,    ops: [agent_config]}
+
+# 同一个 op 被多个动作用、且不算重复入口的（每个写清楚为什么）
+shared_ops:
+  cmd: 板端单字符命令通道：解除急停 R、存 flash W、手发命令共用一条帧，动作各不相同
+  replay_ctl: 回放控制；时间线点一条 = 跳到那一刻（同一回放，不是第二个入口）
+  replay: 导入后直接回放
+  tune_propose: 分析阶跃 / 仿真搜索的候选都落成同一种提议卡（提议路径统一后改走 propose）
+
+# 不在界面上、故意保留的 op（脚本 / 测试接口）
+script_ops:
+  send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
+  agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
+  polarity_check: 标定向导第 0 步的后端（向导界面未做；HANDOVER 17+ 标定页接上后从这里删）
+  propose: 外部脚本提一个待确认的参数提议（提议路径统一后界面也走这个）
+
+# 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）
+agent_tools:
+  step:调参: [read_telemetry, list_params, step_analysis, propose_param_change, tune_context, observe, run_step_test, run_sweep_test, bode_predict, rollback_best]
+  step:烧录: [flash, flash_rollback, build, build_log, board_memory]
+  always:排障: [decode_hardfault, read_symbol]
+  step:项目: [repo_map, remember, list_files, read_file, propose_edit, update_plan]
