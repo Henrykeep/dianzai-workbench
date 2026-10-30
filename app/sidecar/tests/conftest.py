@@ -4,7 +4,17 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import os  # noqa: E402
+
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_shell_llm_env(monkeypatch):
+    """开发机 shell 里常 source 过模型网关配置（DZ_LLM_BASE_URL / DZ_LLM_API_KEY …）：测试一律从干净环境起，
+    要用的测试自己 monkeypatch.setenv。否则 test_first_run_setup_against_mock 这类“留空 = 用已保存配置”的断言会被 shell 带偏。"""
+    for k in [k for k in os.environ if k.startswith("DZ_LLM_")]:
+        monkeypatch.delenv(k, raising=False)
 
 
 @pytest.fixture
