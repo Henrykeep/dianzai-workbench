@@ -403,6 +403,13 @@ class Flow:
             return out
         raise FlowError("bad_step", f"没有这一步：{step}")
 
+    @staticmethod
+    def _set_mcu(tgt: pathlib.Path, st: pathlib.Path, put) -> None:
+        mcu = (yaml.safe_load((st / "scheme.yaml").read_text(encoding="utf-8")) or {}).get("mcu")
+        old = (tgt / "scheme.yaml").read_text(encoding="utf-8")
+        if mcu and (yaml.safe_load(old) or {}).get("mcu") != mcu:
+            put(tgt / "scheme.yaml", apply_picks(old, {}, {}, mcu))
+
     def build_ide(self, board: str, app: str) -> dict:
         """生成后顺手：arm-none-eabi-gcc 交叉编译验证 + 各 IDE 工程（EIDE 全部；MSPM0 另出 CCS projectspec 与 Keil）。"""
         p = subprocess.run(["make", f"BOARD={board}", f"APP={app}"], cwd=self.repo, capture_output=True, text=True, timeout=900)
@@ -460,6 +467,7 @@ class Flow:
             shutil.copytree(st / "board" / name, dst); written.append(str(dst))
             for rel, text in self._files(st / "alloc").items():
                 put(tgt / "alloc" / rel, text)
+            self._set_mcu(tgt, st, put)                     # 主控改成这次选的（后面 alloc 按它的芯片表）
         elif step == "scratch":
             name = _safe(m["name"]); dest = pathlib.Path(m.get("cubemx_dir") or (pathlib.Path.home() / "dz-cubemx" / name)).expanduser()
             ioc = dest / f"{name}.ioc"
@@ -473,6 +481,7 @@ class Flow:
                         put(dest / f.relative_to(st / "cubemx" / name), f.read_text(encoding="utf-8"))
             for rel, text in self._files(st / "alloc").items():
                 put(tgt / "alloc" / rel, text)
+            self._set_mcu(tgt, st, put)
         elif step == "import":
             name = _safe(m["name"]); src = st / "root" / "boards" / name
             if not (src / "board.yaml").exists():

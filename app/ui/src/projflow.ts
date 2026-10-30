@@ -188,7 +188,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
       if (w.build) {   // 生成后自动交叉编译 + 出 IDE 工程（EIDE；MSPM0 另有 CCS / Keil）
         const p = document.createElement("div");
         p.innerHTML = `<p class="hint">${w.build.rc ? "✗ 编译失败" : "✓ 编译通过"}：<span class="mono">${esc(w.build.cmd)}</span></p>` + (w.build.rc ? `<pre class="mono">${esc(w.build.out.slice(-1500))}</pre>` : "")
-          + w.ide.map((i: any) => `<p class="hint">${i.rc ? "✗" : "✓"} ${esc(i.out.trim().split("\n").pop() || i.cmd)}</p>`).join("");
+          + w.ide.map((i: any) => `<p class="hint">${i.rc ? "✗" : "✓"} ${esc((i.out.trim().split("\n").pop() || i.cmd).replace(/^[✓✗]\s*/, ""))}</p>`).join("");
         G.append(p); if (!w.build.rc) done("gen", "编译通过");
       }
     });
