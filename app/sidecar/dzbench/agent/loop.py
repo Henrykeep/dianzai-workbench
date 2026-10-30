@@ -171,7 +171,7 @@ def grounded(text: str, results: list[dict]) -> str | None:
 
 def tagged(text: str, results: list[dict]) -> str | None:
     """规则 8：看过数据就要标【实测】/【源码】，有判断就标【推断】（首轮真模型评测：glm-5.2 常整段不标）。"""
-    saw = any(r["ok"] and r["name"] in _NUM_TOOLS | {"read_file", "board_memory"} for r in results)
+    saw = any(r["ok"] and r["name"] in _NUM_TOOLS | {"read_file", "board_memory"} and r["result"] != EMPTY for r in results)
     if not saw or "【实测】" in text or "【源码】" in text:
         return None
     return "回答没有区分事实与推断：来自工具/数据的结论标【实测】或【源码】，你自己的判断标【推断】。"

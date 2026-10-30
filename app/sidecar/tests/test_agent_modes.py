@@ -56,8 +56,8 @@ def test_final_answer_must_cite_numbers_once():
     assert out == "还是挺好"                                # 只退回一次，不死循环
     assert "没有引用任何具体数字" in llm.seen[2][0][-1]["content"]
     llm2 = FakeLLM([{"role": "assistant", "content": None, "tool_calls": [call("read_telemetry")]},
-                    {"role": "assistant", "content": "ch 最新 1.5"}])
-    assert G(llm2).ask("怎么样") == "ch 最新 1.5" and len(llm2.seen) == 2
+                    {"role": "assistant", "content": "【实测】ch 最新 1.5"}])
+    assert G(llm2).ask("怎么样") == "【实测】ch 最新 1.5" and len(llm2.seen) == 2
 
 
 def test_note_reaches_model():
