@@ -21,8 +21,6 @@ def svc_srv(tmp_path, monkeypatch):
     s, ev = Session(), []
     client = llm.OpenAICompat({"provider": "custom", "base_url": url + "/v1", "model": "m", "api_key": KEY}, retries=0, stream=False)
     svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path, llm=client)
-    # 真工具表里 quick_start 现在缺 input_schema（嵌入式开发-2 在修）：这里换成一张合法的表，免得和本测试的目标混在一起
-    monkeypatch.setattr(svc.loop, "tools", lambda: [{"name": "noop", "description": "d", "input_schema": {"type": "object", "properties": {}}}])
     yield svc, ev, state
     srv.shutdown()
 
