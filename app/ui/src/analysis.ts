@@ -52,22 +52,25 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
     open = false;
     plot.ghost = runs[1]?.data ?? null;
     annotate(r);
+    // 侧车判定可能早于曲线流完：之后几秒用实时缓冲重算标注位置，直到峰值落定
+    const t0a = plot.t0; for (let k = 1; k <= 12; k++) setTimeout(() => { if (runs[0] === r && plot.t0 === t0a) annotate(r); }, k * 500);
     renderHist(); renderReads(); onNotify("hist");
   }
   function annotate(r: Run) {
     const i = mainCh(plot);
     if (i < 0 || !r.m || plot.t0 == null) { plot.annot = null; plot.repaint(); return; }
-    const y = r.data.ys[i], s = r.data.ys[plot.refOf[i]];
+    const d = plot.capture(plot.t0, 1e9);   // 用实时缓冲（含判定后才到的样本）
+    const y = d.ys[i], s = d.ys[plot.refOf[i]] ?? [];
     let j0 = 0, sv = NaN;                // 最后一次设定值跳变 = 阶跃时刻（跳过 NaN：设定值通道不是每帧都有）
     for (let j = 0; j < s.length; j++) { if (!Number.isFinite(s[j])) continue; if (Number.isFinite(sv) && s[j] !== sv) j0 = j; sv = s[j]; }
     if (!j0) {
       const last = y[y.length - 1] ?? 0; let jm = 0;
       y.forEach((v, j) => { if (Math.abs(v - last) > Math.abs(y[jm] - last)) jm = j; }); j0 = jm;
     }
-    const tStep = plot.t0 + (r.data.rel[j0] ?? 0);
+    const tStep = plot.t0 + (d.rel[j0] ?? 0);
     const up = (y[y.length - 1] ?? 0) >= (y[j0] ?? 0);   // 阶跃方向：终值相对跳变时刻
     let k = j0; for (let j = j0; j < y.length; j++) if (Number.isFinite(y[j]) && (up ? y[j] > y[k] : y[j] < y[k])) k = j;
-    plot.annot = { i, tPeak: plot.t0 + r.data.rel[k], yPeak: y[k], mp: r.m.Mp, ts: r.m.settled ? tStep + r.m.ts : null, tsv: r.m.ts };
+    plot.annot = { i, tPeak: plot.t0 + d.rel[k], yPeak: y[k], mp: r.m.Mp, ts: r.m.settled ? tStep + r.m.ts : null, tsv: r.m.ts };
     plot.repaint();
   }
   window.addEventListener("dz-round", e => { const d = (e as CustomEvent).detail; closeRound(VERDICT_SHORT[d?.verdict?.action] ?? undefined, d?.metrics); });

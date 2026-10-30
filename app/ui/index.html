@@ -69,7 +69,7 @@
     <aside class="dock">
       <div class="vh"><div class="tabs" id="dock-tabs"><span data-d="params" class="on">参数</span><span data-d="protect">保护</span><span data-d="snaps">快照</span><span data-d="board">板端</span></div>
         <div class="sp"></div>
-        <button class="ib" id="p-read" title="读取：从板子重新读取全部参数" >读取</button>
+        <details class="menu right" id="dock-more"><summary class="ib" title="保护参数、快照、重新读取">更多 <i data-lucide="chevron-down"></i></summary><div class="pop"><button class="mi" data-d2="params">参数</button><button class="mi" data-d2="protect">保护参数</button><button class="mi" data-d2="snaps">快照</button><hr><button class="mi" id="p-read" title="读取：从板子重新读取全部参数">从板子重新读取</button></div></details>
       </div>
       <div class="life mono" id="life" title="参数从改到定稿的五站：草稿只在界面里 → 下发到板上 RAM（断电丢）→ 存快照（工作台本地）→ 存 flash（下次上电用）→ 写回 app.yaml（进仓库）"><span data-l="edit">草稿<i></i></span><span data-l="ram">RAM<i></i></span><span data-l="snap">快照<i></i></span><span data-l="flash">flash<i></i></span><span data-l="yaml">yaml<i></i></span></div>
       <div class="dk" data-d="params"><input id="p-q" class="in pq" placeholder="筛选参数：pos_ ki*（/ 聚焦）" title="空格/逗号分隔，* 通配；按名字或说明匹配。参数多于 8 个时出现" hidden /><div id="plist" class="plist"></div></div>

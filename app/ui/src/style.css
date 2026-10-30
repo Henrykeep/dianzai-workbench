@@ -539,3 +539,31 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 .app[data-step="调参"]{grid-template-rows:var(--h-top) auto minmax(0,1fr) fit-content(200px) var(--h-sb)}
 .page p.hint,.page .act+p{text-align:left!important;margin-left:auto;margin-right:auto}
 .page[data-page="封箱"] .act{padding:var(--sp4) var(--sp5);border-radius:var(--r-lg);background:var(--s3);box-shadow:var(--hi),0 0 0 1px var(--hair)}
+/* v8 迭代 3（用户点评 ui_v8c_调参） */
+.card.stale{display:none}
+.worse{box-shadow:inset 0 0 0 1px var(--crit-bg),var(--hi)} .worse .sg-h .mono{color:var(--crit)}
+.worse .why{color:var(--text);line-height:1.6;margin:var(--sp2) 0}
+/* 参数栏：标签行只显示当前页名，其余进「更多」；参数生命周期 = 一行安静文字，只有待处理的站点亮起 */
+#dock-tabs span:not(.on){display:none} #dock-tabs span.on::after{display:none}
+.life{display:block;padding:0 var(--sp5) var(--sp2);font:400 var(--t-xs)/18px var(--f-mono);color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.life span{display:inline;flex:none;padding:0;border:0!important;opacity:1}
+.life span+span::before{content:" · ";color:var(--faint)}
+.life span i{display:inline;margin-left:4px;opacity:1}
+.life span:not(.hot) i{display:none}
+/* 参数说明：独立一行、正文对比度 */
+.pdesc{font-size:var(--t-sm);line-height:18px;color:var(--text);margin:2px 0 var(--sp1)}
+.rgx .ds{display:none}
+/* 事件条：只露最新一条，悬停展开全部 */
+.tl{mask-image:none;gap:var(--sp2)}
+.tl::before{content:"最新事件";align-self:center;font-size:var(--t-xs);color:var(--dim);flex:none}
+.tl:not(:hover) .tl-e{display:none} .tl:not(:hover) .tl-e:last-child{display:inline-flex}
+.tl-e{border:0;background:var(--s3);border-left:3px solid var(--c)}
+/* 图卡头：读数不留左侧空列；视图控件并到实验行右侧，不再单独一行 */
+.app[data-step="调参"] .reads{padding:var(--sp1) var(--sp5) var(--sp2);gap:var(--sp6)}
+.app[data-step="调参"] .reads .rn{display:none}
+.app[data-step="调参"] .work{position:relative}
+.app[data-step="调参"] .scope{position:static}
+.app[data-step="调参"] .scope>.vh{position:absolute;top:0;right:156px;height:var(--h-vh);padding:0;z-index:3;background:none;gap:var(--sp2)}
+.app[data-step="调参"] #view,.app[data-step="调参"] #plot-sub,.app[data-step="调参"] #xdiv{display:none}
+.page>.hint,.page p.hint{max-width:960px}
+.page>.hint{width:100%!important;max-width:960px!important}

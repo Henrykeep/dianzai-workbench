@@ -270,8 +270,9 @@ function renderParams() {
   $("plist").innerHTML = ps.length ? ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(p.desc ?? "")}">
     <div class="pr"><span class="k mono">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
       <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off"><span class="u">${esc(p.unit ?? "")}</span></div>
+    ${p.desc ? `<div class="pdesc">${esc(p.desc)}</div>` : ""}
     <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div>
-    <div class="rgx mono"><span>${fmt(p.min, p)}</span><span class="ds">${esc(p.desc ?? "")}</span><span>${fmt(p.max, p)}</span></div></div>`).join("")
+    <div class="rgx mono"><span>${fmt(p.min, p)}</span><span class="sp"></span><span>${fmt(p.max, p)}</span></div></div>`).join("")
     : emptyState("sliders", "连上后列出可调参数");
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
@@ -353,6 +354,9 @@ function life() {
   const st: Record<string, string> = { edit: n ? `${n} 待下发` : "无草稿", ram: off ? `${off}≠默认` : "=默认", snap: `${S.nsnap ?? 0} 个`, flash: "去封箱", yaml: "去封箱" };
   $("life").querySelectorAll<HTMLElement>("[data-l]").forEach(e => { e.querySelector("i")!.textContent = st[e.dataset.l!]; e.classList.toggle("hot", (e.dataset.l === "edit" && n > 0) || (e.dataset.l === "ram" && off > 0)); });
 }
+// 参数栏“更多”：保护 / 快照 收进菜单，标签行只留当前页名
+document.querySelectorAll<HTMLElement>("#dock-more [data-d2]").forEach(b => b.onclick = () => {
+  document.querySelector<HTMLElement>(`#dock-tabs [data-d="${b.dataset.d2}"]`)?.click(); ($("dock-more") as HTMLDetailsElement).open = false; });
 $("life").querySelectorAll<HTMLElement>("[data-l]").forEach(e => e.onclick = () => {
   const l = e.dataset.l;
   if (l === "edit" || l === "ram") (document.querySelector('#dock-tabs [data-d="params"]') as HTMLElement)?.click();

@@ -153,7 +153,20 @@ export function initAgent(call: Call) {
   function renderRound(m: Msg) {
     const v = m.verdict, k = m.metrics;
     setRound({ verdict: v, metrics: k });
+    // 建议卡永远对应最新一轮：旧轮的建议卡收起；变差 / 停止 → 本轮结论卡，主动作 = 回到最好一轮
+    const props = document.getElementById("props");
+    props?.querySelectorAll<HTMLElement>(":scope > .card.sugg, :scope > .card.worse").forEach(c => c.classList.add("stale"));
     if (v.action === "continue" && !v.advice) autoSuggest();
+    if ((v.action === "rollback" || v.action === "stop") && props) {
+      const c = document.createElement("div"); c.className = "card sugg worse";
+      c.innerHTML = `<div class="sg-h"><span class="mono">第 ${v.round} 轮${v.action === "rollback" ? "变差" : "停止"}</span><span class="lbl">程序判定</span></div>
+        <p class="why">超调 ${n(k.overshoot_pct, 1, "%")} · 调节 ${n(k.settling_s, 2, " s")}${v.best ? `；最好是第 ${v.best.round} 轮（评分 ${v.best.score ?? "—"}）` : ""}。${esc(v.reason || "")}</p>
+        <div class="act"><button class="btn pri" type="button">回到最好一轮</button><button class="btn" type="button">留在本轮</button></div>`;
+      const [go, stay] = c.querySelectorAll("button");
+      go.onclick = () => { $("ag-best").click(); c.classList.add("stale"); };
+      stay.onclick = () => c.classList.add("stale");
+      props.prepend(c);
+    }
     add(`<div class="hd"><span class="dotk"></span><span class="t">第 ${v.round} 轮阶跃：${esc(VERDICT[v.action] ?? v.action)}</span><span class="lbl">程序判定</span></div>
       <p>超调 ${n(k.overshoot_pct, 1, "%")} · 调节 ${n(k.settling_s, 3, " s")} · 稳态误差 ${n(k.sse_pct, 1, "%")} · 振荡 ${k.oscillations} · 评分 ${v.score}</p>
       ${v.best ? `<div class="lbl">最好：第 ${v.best.round} 轮 ${esc(JSON.stringify(v.best.gains))}${v.rolled_back ? "（仿真已自动回滚）" : ""}</div>` : ""}
