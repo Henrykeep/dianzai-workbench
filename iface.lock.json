@@ -1,4 +1,7 @@
 {
+ "_pending_rewrite": [
+  "firmware/algo/lpf"
+ ],
  "firmware/algo/abobs": {
   "decls": [
    "abobs.h: typedef struct { float alpha;",
@@ -190,7 +193,7 @@
    "foc.h: dz_err_t foc_selftest(void);"
   ],
   "hash": "e4118e9605097e5d",
-  "version": "1.1.0"
+  "version": "2.0.0"
  },
  "firmware/algo/follow": {
   "decls": [
@@ -241,38 +244,6 @@
   ],
   "hash": "b0766b33aad31559",
   "version": "1.0.0"
- },
- "firmware/algo/lpf": {
-  "decls": [
-   "biquad.h: typedef struct { float b0, b1, b2, a1, a2;",
-   "biquad.h: float d1, d2;",
-   "biquad.h: float y;",
-   "biquad.h: bool primed;",
-   "biquad.h: } biquad_t;",
-   "biquad.h: dz_err_t lpf2p_init(biquad_t *f, float cutoff_hz, float sample_hz);",
-   "biquad.h: dz_err_t notch_init(biquad_t *f, float center_hz, float bw_hz, float att_db, float sample_hz);",
-   "biquad.h: float biquad_update(biquad_t *f, float x);",
-   "biquad.h: void biquad_reset(biquad_t *f, float x0);",
-   "biquad.h: void biquad_clear(biquad_t *f);",
-   "biquad.h: dz_err_t biquad_selftest(void);",
-   "lpf1.h: typedef struct { float cutoff_hz;",
-   "lpf1.h: float dt_s;",
-   "lpf1.h: } lpf1_cfg_t;",
-   "lpf1.h: typedef struct { float alpha;",
-   "lpf1.h: float y;",
-   "lpf1.h: bool primed;",
-   "lpf1.h: } lpf1_t;",
-   "lpf1.h: dz_err_t lpf1_init(lpf1_t *f, const lpf1_cfg_t *cfg);",
-   "lpf1.h: dz_err_t lpf1_init_alpha(lpf1_t *f, float alpha);",
-   "lpf1.h: float lpf1_update(lpf1_t *f, float x);",
-   "lpf1.h: bool lpf1_check_gap(lpf1_t *f, float actual_dt_s, float max_dt_s);",
-   "lpf1.h: void lpf1_reset(lpf1_t *f, float y0);",
-   "lpf1.h: void lpf1_clear(lpf1_t *f);",
-   "lpf1.h: float lpf1_value(const lpf1_t *f);",
-   "lpf1.h: dz_err_t lpf1_selftest(void);"
-  ],
-  "hash": "b5e17aceb62f00f0",
-  "version": "1.2.0"
  },
  "firmware/algo/mtspeed": {
   "decls": [
@@ -567,7 +538,7 @@
    "as5600.h: } dz_err_t as5600_selftest(void);"
   ],
   "hash": "d3520ffa3318ffc5",
-  "version": "1.0.0"
+  "version": "2.0.0"
  },
  "firmware/drivers/battery": {
   "decls": [
