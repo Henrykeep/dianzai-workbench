@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { condOk, csvOf, verdict, type Run } from "../src/score.ts";
+import { condOk, csvOf, verdict, lanesOf, type Run } from "../src/score.ts";
 import { acceptEval } from "../src/accept.ts";
 const html = readFileSync("index.html", "utf8");
 for (const id of ["score", "sc-file", "sc-layer", "sc-mat", "sc-spec", "sc-n", "sc-dur", "sc-trig", "sc-cf", "sc-cop", "sc-cv", "sc-go", "sc-save", "sc-runs"]) if (!html.includes(`id="${id}"`)) throw "缺 #" + id;
@@ -15,4 +15,6 @@ if (verdict([R(good, 1), R(good, 2)], 3, "bench").text !== "已跑 2/3 轮") thr
 if (!verdict([R(good, 1), R(good, 2), R(good, 3)], 3, "bench").text.includes("未现场验收")) throw "台架不算得分";
 if (verdict([R(good, 1), R(good, 2), R(good, 3)], 3, "field").text !== "现场通过") throw "现场";
 if (verdict([R(good, 1), R(bad, 2), R(good, 3)], 3, "field").cls !== "bad") throw "最差一轮";
+const ln = lanesOf(["sp", "y", "e"], [-1, 0, -1], [true, true, false]);
+if (JSON.stringify(ln) !== JSON.stringify([{ y: 1, ref: 0 }])) throw "lanes " + JSON.stringify(ln);
 console.log("score ok");

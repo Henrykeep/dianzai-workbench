@@ -24,14 +24,33 @@ export function verdict(runs: Run[], need: number, layer: string) {
   if (!w.all) return { text: `未过（${w.pass}/${w.n}）`, cls: "bad", w };
   return layer === "field" ? { text: "现场通过", cls: "ok", w } : { text: `${layer === "sim" ? "仿真" : "台架"}通过（未现场验收）`, cls: "ok", w };
 }
-// 曲线截图：把示波区各 lane 的 canvas 竖着拼成一张 PNG
-export function snapPlot(host: HTMLElement): string | undefined {
-  const cs = [...host.querySelectorAll("canvas")].filter(c => c.width > 0 && c.height > 0 && c.offsetParent !== null);
-  if (!cs.length) return;
-  const W = Math.max(...cs.map(c => c.width)), H = cs.reduce((a, c) => a + c.height, 0);
-  const o = document.createElement("canvas"); o.width = W; o.height = H;
-  const g = o.getContext("2d")!; g.fillStyle = getComputedStyle(document.body).backgroundColor || "#111"; g.fillRect(0, 0, W, H);
-  let y = 0; for (const c of cs) { g.drawImage(c, 0, y); y += c.height; }
+// 证据图的分格：每个显示中的通道一格，它的设定值通道画在同一格（虚线），设定值通道本身不单独占格
+export function lanesOf(names: string[], refOf: number[], vis: boolean[]) {
+  const isRef = new Set(refOf.filter(r => r >= 0));
+  return names.map((_, i) => i).filter(i => vis[i] !== false && !isRef.has(i)).map(i => ({ y: i, ref: refOf[i] ?? -1 }));
+}
+// 证据图：只画这一轮截取的那段（t 从 0 开始），每格写通道名和单位、标题写评分项和轮次
+export function snapRun(rel: number[], ys: number[][], names: string[], units: string[], refOf: number[], vis: boolean[], title: string): string | undefined {
+  const L = lanesOf(names, refOf, vis); if (!L.length || rel.length < 2) return;
+  const W = 900, LH = 150, TOP = 28, BOT = 24, PADL = 60, PADR = 12, H = TOP + L.length * LH + BOT;
+  const o = document.createElement("canvas"); o.width = W; o.height = H; const g = o.getContext("2d")!;
+  g.fillStyle = "#111"; g.fillRect(0, 0, W, H); g.font = "13px sans-serif"; g.fillStyle = "#ddd"; g.fillText(title, 8, 18);
+  const t0 = rel[0], t1 = rel[rel.length - 1], X = (t: number) => PADL + (t - t0) / (t1 - t0 || 1) * (W - PADL - PADR);
+  L.forEach((ln, k) => {
+    const y0 = TOP + k * LH, ser = [ys[ln.y], ln.ref >= 0 ? ys[ln.ref] : []];
+    const all = ser.flat().filter(Number.isFinite); let lo = Math.min(...all), hi = Math.max(...all);
+    if (!all.length) { lo = -1; hi = 1; } if (hi - lo < 1e-9) { lo -= 1; hi += 1; } const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
+    const Y = (v: number) => y0 + 8 + (hi - v) / (hi - lo) * (LH - 24);
+    g.strokeStyle = "#333"; g.strokeRect(PADL, y0 + 8, W - PADL - PADR, LH - 24);
+    g.fillStyle = "#888"; g.font = "11px monospace"; g.fillText(hi.toPrecision(3), 4, y0 + 18); g.fillText(lo.toPrecision(3), 4, y0 + LH - 18);
+    ser.forEach((a, si) => { if (!a.length) return; g.strokeStyle = si ? "#c9a24a" : "#6cc"; g.setLineDash(si ? [5, 4] : []); g.beginPath();
+      let pen = false; rel.forEach((t, q) => { const v = a[q]; if (!Number.isFinite(v)) { pen = false; return; } pen ? g.lineTo(X(t), Y(v)) : g.moveTo(X(t), Y(v)); pen = true; }); g.stroke(); });
+    g.setLineDash([]); g.font = "12px sans-serif"; g.fillStyle = "#6cc";
+    g.fillText(`${names[ln.y]}${units[ln.y] ? ` (${units[ln.y]})` : ""}`, PADL + 6, y0 + 22);
+    if (ln.ref >= 0) { g.fillStyle = "#c9a24a"; g.fillText(`- - ${names[ln.ref]}`, PADL + 6, y0 + 38); }
+  });
+  g.fillStyle = "#888"; g.font = "11px monospace";
+  for (let q = 0; q <= 5; q++) { const t = t0 + (t1 - t0) * q / 5; g.fillText(t.toFixed(2) + " s", X(t) - 18, H - 8); }
   return o.toDataURL("image/png");
 }
 
@@ -81,7 +100,7 @@ export function initScore(call: Call, plot: Plot, specs: () => AcceptSpec[], toa
       if (yi >= 0) r = acceptEval(cap.rel, cap.ys[yi], ri >= 0 ? cap.ys[ri] : cap.rel.map(() => tgt ?? NaN), sp);
     }
     const n = (runs.get(cur!.id)?.length ?? 0) + 1;
-    return { n, dur: t1 - t0, r, csv: csvOf(cap.rel, plot.names, cap.ys), png: snapPlot(document.getElementById("pb")!) };
+    return { n, dur: t1 - t0, r, csv: csvOf(cap.rel, plot.names, cap.ys), png: snapRun(cap.rel, cap.ys, plot.names, plot.units, plot.refOf, plot.vis, `${cur!.id} 第 ${n} 轮（${(t1 - t0).toFixed(2)} s）`) };
   }
   function drawRuns() {
     if (!cur) return;
