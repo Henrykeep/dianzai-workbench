@@ -4,6 +4,7 @@
 # 依据：/workspace/walk/LOGIC_AUDIT.md §3.1（时间线导航）、§3.3（入口唯一 + op 无孤儿）。
 # at 写法：step:<步> | toolbox:<类> | always:<常驻件>。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
 
+# 步骤导航位置：左侧 aside.nav #steps（v9 起，原顶栏时间线）
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
 always:    [急停, 连接, 排障]

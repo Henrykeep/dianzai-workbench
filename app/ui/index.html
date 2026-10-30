@@ -7,8 +7,16 @@
 </head>
 <body>
 <div class="app">
+  <aside class="nav" id="nav">
+    <div class="nav-hd"><div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 14 H7 V6 H9 Q10.5 4 12 6 T15 6 H18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg><span>电赛工作台</span></div></div>
+    <div class="nav-sec">流程</div>
+    <nav class="steps" id="steps" title="开发流程：点一步切到那一页；高亮 = 当前页，描边 = 建议的下一步，✓ = 已走过"><button data-step="项目" title="项目"><i data-lucide="folder-kanban"></i><span class="nl">项目</span><span class="nd" aria-hidden="true"></span></button><button data-step="烧录" title="烧录"><i data-lucide="zap"></i><span class="nl">烧录</span><span class="nd" aria-hidden="true"></span></button><button data-step="模块" title="模块"><i data-lucide="cpu"></i><span class="nl">模块</span><span class="nd" aria-hidden="true"></span></button><button data-step="联调" title="联调"><i data-lucide="activity"></i><span class="nl">联调</span><span class="nd" aria-hidden="true"></span></button><button data-step="标定" title="标定"><i data-lucide="crosshair"></i><span class="nl">标定</span><span class="nd" aria-hidden="true"></span></button><button data-step="调参" title="调参"><i data-lucide="sliders-horizontal"></i><span class="nl">调参</span><span class="nd" aria-hidden="true"></span></button><button data-step="评分" title="评分"><i data-lucide="clipboard-check"></i><span class="nl">评分</span><span class="nd" aria-hidden="true"></span></button><button data-step="封箱" title="封箱"><i data-lucide="package-check"></i><span class="nl">封箱</span><span class="nd" aria-hidden="true"></span></button></nav>
+    <div class="sp"></div>
+    <p class="lbl step-hint" id="step-hint"></p>
+    <button class="nav-fold" id="nav-fold" type="button" title="收起 / 展开侧栏（只显示图标）"><i data-lucide="panel-left"></i><span class="nl">收起</span></button>
+  </aside>
   <header class="top">
-    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 14 H7 V6 H9 Q10.5 4 12 6 T15 6 H18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg><span>电赛工作台</span></div>
+
     <div class="conn">
       <span id="led" class="led"></span>
       <select id="port" title="端口：插上板子会自动出现并选中；sim: 开头是无需硬件的仿真板"></select>
@@ -24,10 +32,7 @@
         </div></details>
     </div>
 
-    <nav class="steps" id="steps" title="比赛时间线：点一步切到那一页；高亮 = 当前页，下划线 = 建议的下一步">
-      <button data-step="项目">项目</button><button data-step="烧录">烧录</button><button data-step="模块">模块</button><button data-step="联调">联调</button><button data-step="标定">标定</button><button data-step="调参">调参</button><button data-step="评分">评分</button><button data-step="封箱">封箱</button>
-    </nav>
-    <span class="lbl step-hint" id="step-hint" title="当前步与下一步"></span>
+
     <div class="pins" id="stats"></div>
     <div class="sp"></div>
 
@@ -261,9 +266,10 @@
       </dialog>
       <dialog id="cfg" class="dlg llm">
         <form method="dialog" id="cfg-form">
+          <button class="dlg-x" id="cfg-x" value="cancel" formnovalidate title="关闭（Esc 是急停，不用来关窗）" aria-label="关闭"><i data-lucide="x"></i></button>
           <header class="lh"><span class="glyph"><i data-lucide="sparkles"></i></span><div>
             <h3 id="cfg-title">接上大模型</h3>
-            <p class="hint">任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。没网时自动切本机 Ollama 模型；调参、示波、急停、评分页本来就不依赖 Agent。</p></div></header>
+            <p class="hint"><b>Esc 是急停</b>，关这个框请点右上角 × 或框外。任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。没网时自动切本机 Ollama 模型；调参、示波、急停、评分页本来就不依赖 Agent。</p></div></header>
           <div class="sec">1 · 服务商</div>
           <div id="cfg-provs" class="provs" role="radiogroup"></div>
           <div class="sec">2 · 接口</div>

@@ -1,7 +1,7 @@
 import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
-import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
+import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
 import { LAYOUTS, Layout, Plot, chColor, num } from "./plot";
@@ -660,7 +660,7 @@ $("doctor").onclick = async () => {
   $<HTMLDialogElement>("doc").show();
 };
 
-createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
+createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X } });
 // 对话框原来写在右栏 <aside> 里：分页后右栏在 项目/烧录/标定/封箱 页隐藏，自检、赛前检查等对话框跟着看不见 → 统一挪到 body 下
 document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();

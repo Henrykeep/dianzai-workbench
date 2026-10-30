@@ -8,10 +8,10 @@
 :root{
   --f-sans:"Bricolage Grotesque","Noto Sans SC Dz","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
   --f-mono:"Geist Mono","Noto Sans SC Dz",Consolas,monospace;
-  --t-xs:11px; --t-sm:12px; --t-md:13px; --t-lg:18px; --t-xl:40px; --t-h:22px;
+  --t-xs:12px; --t-sm:12px; --t-md:14px; --t-lg:16px; --t-h:20px; --t-xl:32px;   /* 字号 5 级 12/14/16/20/32，见 docs/dev/design-decisions.md */
   --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
   --r-xs:4px; --r-sm:6px; --r:8px; --r-lg:14px;
-  --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:60px; --h-sb:28px; --w-rail:0px; --w-left:280px; --w-side:320px; --w-lab:136px;
+  --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:48px; --h-sb:28px; --w-rail:0px; --w-nav:200px; --w-nav-folded:56px; --h-nav-item:32px; --w-left:280px; --w-side:320px; --w-lab:136px;
   /* 动效：四档时长、只动 transform / opacity */
   --d-1:160ms; --d-2:280ms; --d-3:480ms; --d-4:720ms; --dur:160ms; --ease:cubic-bezier(.22,1,.36,1);
 }

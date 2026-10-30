@@ -736,3 +736,39 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 /* 弹层自动翻转（chrome.ts placePop）：覆盖 .menu.up 的固定方向 */
 .menu .pop.pop-down{top:calc(100% + 4px);bottom:auto;overflow:auto}
 .menu .pop.pop-up{top:auto;bottom:calc(100% + 4px);overflow:auto}
+
+/* ── v9 左侧导航（代替顶栏时间线）：VS Code 活动栏 / Linear 侧栏式，固定在窗口左侧，可折叠成图标 ── */
+.app{margin-left:var(--w-nav);transition:margin-left var(--d-2) var(--ease)}
+.nav{position:fixed;inset:0 auto 0 0;z-index:20;width:var(--w-nav);display:flex;flex-direction:column;gap:var(--sp1);padding:0 var(--sp2) var(--sp2);background:var(--s0);box-shadow:inset -1px 0 0 var(--hair);transition:width var(--d-2) var(--ease);overflow:hidden}
+.nav-hd{display:flex;align-items:center;height:var(--h-top);padding:0 var(--sp2)}
+.nav-sec{padding:var(--sp3) var(--sp2) var(--sp1);font-size:var(--t-xs);color:var(--dim);white-space:nowrap}
+.nav .sp{flex:1}
+.nav .steps{display:flex;flex-direction:column;gap:2px;margin:0;padding:0;background:none;box-shadow:none;border-radius:0;counter-reset:none}
+.nav .steps button{counter-increment:none;display:flex;align-items:center;gap:var(--sp3);height:var(--h-nav-item);padding:0 var(--sp2);border-radius:var(--r);background:none;color:var(--muted);font:500 var(--t-md)/1 var(--f-sans);box-shadow:none;white-space:nowrap}
+.nav .steps button::before,.nav .steps button::after{display:none!important;content:none!important}
+.nav .steps button svg.lucide{width:16px;height:16px;color:var(--dim)}
+.nav .steps button:hover{background:var(--s-hover);color:var(--ink)}
+.nav .steps button.on{background:var(--s3);color:var(--ink);font-weight:600;box-shadow:inset 2px 0 0 var(--acc)}
+.nav .steps button.on svg.lucide{color:var(--acc)}
+.nav .steps button.next:not(.on){color:var(--text)}
+.nav .nl{flex:1;text-align:left}
+.nav .nd{flex:none;width:16px;text-align:center;font-size:var(--t-xs);color:var(--dim)}
+.nav .steps button.done .nd::before{content:"✓";color:var(--ok);opacity:.75}
+.nav .steps button.next:not(.on) .nd::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;box-shadow:0 0 0 1.5px var(--acc)}
+.nav .step-hint{display:block;max-width:none;margin:0 var(--sp2);padding:var(--sp2) 0;font-size:var(--t-xs);line-height:1.5;color:var(--dim);white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical}
+.nav-fold{display:flex;align-items:center;gap:var(--sp3);height:var(--h-nav-item);padding:0 var(--sp2);border:0;border-radius:var(--r);background:none;color:var(--dim);font:inherit;font-size:var(--t-sm);cursor:pointer;white-space:nowrap}
+.nav-fold:hover{background:var(--s-hover);color:var(--ink)}
+.nav-folded .app{margin-left:var(--w-nav-folded)}
+.nav-folded .nav{width:var(--w-nav-folded)}
+.nav-folded .nav .nl,.nav-folded .nav .nd,.nav-folded .nav-sec,.nav-folded .nav .step-hint,.nav-folded .nav .brand>span{display:none}
+.nav-folded .nav .steps button,.nav-folded .nav-fold{justify-content:center;padding:0}
+.nav-folded .nav .steps button.done{box-shadow:inset 0 -2px 0 -0px transparent}
+/* 顶栏：只留连接胶囊、全局操作；时间线已移到左侧 */
+.top{gap:var(--sp2)}
+.top .conn{padding:2px 2px 2px var(--sp2);border-radius:999px;background:var(--s2);box-shadow:inset 0 0 0 1px var(--hair)}
+.dlg-x{position:absolute;top:var(--sp3);right:var(--sp3);z-index:2;display:grid;place-items:center;width:28px;height:28px;border:0;border-radius:var(--r);background:none;color:var(--dim);cursor:pointer}
+.dlg-x:hover{background:var(--s-hover);color:var(--ink)} .dlg.llm{position:fixed}
+/* 窄窗口自动收起侧栏，保证调参工具条不挤 */
+@media (max-width:1500px){:root:not(.nav-open) .app{margin-left:var(--w-nav-folded)} :root:not(.nav-open) .nav{width:var(--w-nav-folded)}
+ :root:not(.nav-open) .nav .nl,:root:not(.nav-open) .nav .nd,:root:not(.nav-open) .nav-sec,:root:not(.nav-open) .nav .step-hint,:root:not(.nav-open) .nav .brand>span{display:none}
+ :root:not(.nav-open) .nav .steps button,:root:not(.nav-open) .nav-fold{justify-content:center;padding:0}}

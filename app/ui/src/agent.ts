@@ -432,6 +432,11 @@ export function initAgent(call: Call) {
     }
     b.disabled = false; olSt("ok", `<b>本地就绪</b> · ${esc(want)} · 云端连不上时自动切过去`);
   };
+  // 点框外关闭（非模态 dialog 没有 backdrop，所以监听文档点击）
+  document.addEventListener("pointerdown", (e) => {
+    const d = $<HTMLDialogElement>("cfg");
+    if (d.open && !d.contains(e.target as Node) && !(e.target as Element).closest?.("#ag-cfg,[data-r=cfg]")) d.close("cancel");
+  });
   $<HTMLDialogElement>("cfg").onclose = () => {
     sessionStorage.setItem("dz-cfg-seen", "1");
     if ($<HTMLDialogElement>("cfg").returnValue !== "save") return;

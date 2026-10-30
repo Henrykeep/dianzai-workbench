@@ -29,6 +29,14 @@ export function initChrome(): void {
     applyTheme(t);
   });
   initTabs();
+  // 左侧导航可折叠成只显示图标，记在 localStorage
+  const fold = (on: boolean) => { document.documentElement.classList.toggle("nav-folded", on); localStorage.setItem("dz.nav", on ? "1" : "0"); };
+  fold(localStorage.getItem("dz.nav") === "1");
+  document.getElementById("nav-fold")?.addEventListener("click", () => {
+    const r = document.documentElement;
+    if (matchMedia("(max-width:1500px)").matches) r.classList.toggle("nav-open"); // 窄窗口默认收起，按钮临时展开
+    else fold(!r.classList.contains("nav-folded"));
+  });
   const menus = () => Array.from(document.querySelectorAll<HTMLDetailsElement>("details.menu[open]"));
   document.addEventListener("click", (e) => {
     const t = e.target as HTMLElement;
