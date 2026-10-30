@@ -10,6 +10,9 @@ SAN     ?= -fsanitize=address,undefined
 endif
 CFLAGS  := -std=c11 -O2 -g $(WARN) -Wno-double-promotion $(SAN) -fno-omit-frame-pointer
 LDFLAGS := $(SAN) -lm
+ifeq ($(OS),Windows_NT)
+LDFLAGS += -lwinmm   # timeBeginPeriod：仿真板实时模式 1 ms 节拍
+endif
 PORT_SRC = $(PORT_DIR)/pal_host.c $(PORT_DIR)/main_host.c $(SIM_SETUP)
 TARGET   = $(OUT)/$(APP).elf
 endif

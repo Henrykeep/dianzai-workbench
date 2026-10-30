@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import shutil
 import subprocess
 import threading
 import time
@@ -82,7 +83,7 @@ class SimTransport(Transport):
         if (who := os.environ.get("DZBENCH_TEST_NO_SIM")):     # 仅测试用：conftest 给没标 needs_sim 的测试设上（子进程侧车也能拦住）
             raise RuntimeError(f"{who} 起了仿真板却没标 @pytest.mark.needs_sim（Windows CI 会挂）")
         elf = sim_elf(app)
-        if build:
+        if build and (shutil.which("make") or not elf.exists()):   # 安装包没有 make：直接用自带编好的仿真板
             r = subprocess.run(["make", "-s", "BOARD=host-sim", f"APP={app}"], cwd=sim_root(), capture_output=True, text=True,
                                encoding="utf-8", errors="replace", env={**os.environ, "PYTHONUTF8": "1"})
             if r.returncode != 0:

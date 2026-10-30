@@ -236,7 +236,7 @@ class Flow:
         return p
 
     def _run(self, args: list, cwd: pathlib.Path | None = None) -> dict:
-        cmd = [sys.executable, *map(str, args)]
+        cmd = [os.environ.get("DZBENCH_PYTHON") or sys.executable, *map(str, args)]
         p = subprocess.run(cmd, cwd=cwd or self.repo, capture_output=True, text=True, timeout=300)
         shown = " ".join(str(a) for a in args)
         return {"cmd": "python3 " + shown, "rc": p.returncode, "out": (p.stdout + p.stderr)[-20000:]}

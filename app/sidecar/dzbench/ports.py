@@ -45,7 +45,7 @@ def list_ports() -> list[dict]:
                         "likely": any(k in hint.upper() for k in ("CH340", "CH343", "CP210", "FTDI", "STLINK", "ST-LINK", "XDS", "USB"))})
     except ImportError:
         pass
-    can_sim = os.name != "nt" and (shutil.which("make") or any(sim_elf(a).exists() for a in SIM_APPS))
+    can_sim = (os.name != "nt" and shutil.which("make")) or any(sim_elf(a).exists() for a in SIM_APPS)   # 安装包自带编好的仿真板
     if can_sim:
         for a in SIM_APPS:
             out.append({"port": SIM_PREFIX + a, "desc": f"仿真板 · {a}（host-sim，无需硬件）", "kind": "sim", "likely": False})

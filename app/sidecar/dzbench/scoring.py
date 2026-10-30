@@ -12,6 +12,7 @@ import json
 import pathlib
 import re
 import subprocess
+import os
 import sys
 
 import yaml
@@ -62,7 +63,7 @@ def save(svc, m: dict) -> dict:
         raise ScoreError("bad_id", "题号 / 评分项编号只能是字母数字")
     if layer not in ("unit", "sim", "bench", "field"):
         raise ScoreError("bad_layer", "层只能是 unit / sim / bench / field")
-    p = subprocess.run([sys.executable, "tools/req.py", "newlog", "--root", f"docs/verify/{code}", "--task", item, "--layer", layer],
+    p = subprocess.run([os.environ.get("DZBENCH_PYTHON") or sys.executable, "tools/req.py", "newlog", "--root", f"docs/verify/{code}", "--task", item, "--layer", layer],
                        cwd=root, capture_output=True, text=True, timeout=60)
     if p.returncode:
         raise ScoreError("newlog", "建证据目录失败：" + (p.stdout + p.stderr)[-300:])

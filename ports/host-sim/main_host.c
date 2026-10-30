@@ -15,6 +15,11 @@
 #include <fcntl.h>
 #include <time.h>
 #include <unistd.h>
+#elif defined(_WIN32)
+#define HOST_SIM_STREAM 1
+#include <fcntl.h>
+#include <io.h>
+#include <windows.h>
 #endif
 #include "board_gen.h"
 #include "host_sim.h"
@@ -24,6 +29,40 @@ __attribute__((weak)) void host_sim_app_setup(void) { }
 
 #if defined(HOST_SIM_STREAM) && defined(RES_UART_LINK)
 /* 实时模式：每 1 ms 虚拟时间对齐一次墙钟；stdin 非阻塞读，EOF 退出。 */
+#if defined(_WIN32)
+static int stream(double speed)
+{
+    /* Windows 版实时模式：管道无非阻塞 read，用 PeekNamedPipe 看有多少字节；二进制模式免得 \n 被改成 \r\n */
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    LARGE_INTEGER f, t0, now;
+    uint64_t ms = 0;
+    _setmode(0, _O_BINARY); _setmode(1, _O_BINARY);
+    setvbuf(stdout, NULL, _IONBF, 0);
+    timeBeginPeriod(1);
+    QueryPerformanceFrequency(&f); QueryPerformanceCounter(&t0);
+    for (;;) {
+        uint8_t buf[512]; DWORD avail = 0, got = 0; uint16_t n;
+        if (!PeekNamedPipe(in, NULL, 0, NULL, &avail, NULL)) return 0;   /* 上位机关了管道 */
+        while (avail > 0) {
+            if (!ReadFile(in, buf, avail < sizeof buf ? avail : (DWORD)sizeof buf, &got, NULL) || got == 0) return 0;
+            host_sim_uart_inject_rx(RES_UART_LINK, buf, (uint16_t)got);
+            avail -= got;
+        }
+        app_loop();
+        host_sim_run_us(1000);
+        while ((n = host_sim_uart_take_tx(RES_UART_LINK, buf, sizeof buf)) > 0)
+            if (_write(1, buf, n) < 0) return 0;
+        if (host_sim_wdg_bitten()) {
+            fprintf(stderr, "host-sim: 看门狗 %u ms 没喂，真板此时已复位（复位原因 WATCHDOG）\n", (unsigned)host_sim_wdg_timeout_ms());
+            return 86;
+        }
+        ms++;
+        QueryPerformanceCounter(&now);
+        double ahead_ms = (double)ms / speed - (double)(now.QuadPart - t0.QuadPart) * 1e3 / (double)f.QuadPart;
+        if (ahead_ms > 1.0) Sleep((DWORD)ahead_ms);
+    }
+}
+#else
 static int stream(double speed)
 {
     struct timespec t0, now;
@@ -49,6 +88,7 @@ static int stream(double speed)
         if (ahead_ms > 0.2) { struct timespec d = { 0, (long)(ahead_ms * 1e6) }; nanosleep(&d, NULL); }
     }
 }
+#endif
 #endif
 
 int main(int argc, char **argv)
