@@ -89,7 +89,7 @@ select:disabled{opacity:.6}
 .led{width:6px;height:6px;border-radius:50%;background:var(--off);flex:none}
 .led.ok{background:var(--ok)} .led.warn{background:var(--warn)}
 .estop{display:flex;align-items:center;gap:var(--sp2);height:40px;padding:0 var(--sp3);border:0;border-radius:var(--r);cursor:pointer;
-  background:var(--estop);color:#fff;font:600 var(--t-md) var(--f-sans);white-space:nowrap;transition:transform var(--d-1) var(--ease)}
+  background:var(--estop);color:var(--estop-ink);font:600 var(--t-md) var(--f-sans);white-space:nowrap;transition:transform var(--d-1) var(--ease)}
 .estop:hover{filter:brightness(1.08)}
 .estop:active,.estop.hit{transform:scale(.96)}
 .estop .sq{width:8px;height:8px;background:currentColor;border-radius:1px}
@@ -157,12 +157,12 @@ select:disabled{opacity:.6}
 .prow .u:empty{display:none}
 .ruler{position:relative;height:12px;margin-top:var(--sp1);
   background:repeating-linear-gradient(90deg,var(--grid-2) 0 1px,transparent 1px 10%),linear-gradient(var(--line2),var(--line2)) 0 100%/100% 1px no-repeat;background-size:100% 4px,100% 1px;background-position:0 100%,0 100%;background-repeat:no-repeat}
-.ruler i{position:absolute;bottom:0;left:calc(var(--x,0) * 100%)}
+.ruler i{position:absolute;bottom:0;left:calc(var(--x) * 100%)}
 .ruler .brd{width:2px;height:12px;margin-left:-1px;background:var(--ink);border-radius:1px}
 .ruler .def{width:8px;height:8px;margin-left:-4px;bottom:-4px;border-radius:50%;background:var(--s2);box-shadow:inset 0 0 0 1px var(--muted)}
 .ruler .new,.ruler .span{display:none}
 .prow.dirty .ruler .new{display:block;width:2px;height:16px;margin-left:-1px;background:var(--acc);border-radius:1px}
-.prow.dirty .ruler .span{display:block;left:calc(var(--a,0) * 100%);width:calc((var(--b,0) - var(--a,0)) * 100%);height:2px;background:var(--acc);opacity:.5}
+.prow.dirty .ruler .span{display:block;left:calc(var(--a) * 100%);width:calc((var(--b) - var(--a)) * 100%);height:2px;background:var(--acc);opacity:.5}
 .rgx{display:flex;gap:var(--sp2);justify-content:space-between;margin-top:var(--sp1);font-size:var(--t-xs);color:var(--dim)}
 .rgx .ds{flex:1;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--f-sans);color:var(--muted)}
 .commit{flex:none;padding:var(--sp3) var(--sp5) var(--sp5);display:flex;flex-direction:column;gap:var(--sp3)}
@@ -316,7 +316,7 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .hbstrip i{width:4px;border-radius:1px;background:var(--ok)}
 .hbstrip i.hb-warn{background:var(--warn)}
 .hbstrip i.hb-bad{background:var(--crit)}
-.hbstrip i.hb-off{background:var(--line, #8884)}
+.hbstrip i.hb-off{background:var(--line)}
 .hbstrip i:hover{outline:1px solid currentColor}
 /* 事件时间线（timeline.ts） */
 .tl{display:flex;gap:6px;overflow-x:auto;padding:4px 0;font:var(--t-xs) var(--f-sans);white-space:nowrap}
@@ -356,9 +356,6 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .app.nodock:not(.full) .work{grid-column:1/3}
 .app.nodock .dock{display:none}
 /* 调参页：曲线在左、参数在右、Agent 在最右；底部 实验 / 判定 / 回到… */
-.app[data-step="调参"]{grid-template-columns:minmax(0,1fr) var(--w-left) var(--w-side)}
-.app[data-step="调参"] .work{grid-column:1}
-.app[data-step="调参"] .dock{grid-column:2}
 .tunebar{display:none;align-items:center;gap:var(--sp5);padding:var(--sp2) var(--sp3);background:var(--s2);border-radius:var(--r-lg);flex-wrap:wrap}
 .app[data-step="调参"] .tunebar{display:flex}
 .tunebar .grp{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
@@ -371,15 +368,15 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .app:not([data-step="评分"]) #rail [data-side="score"]{display:none}
 
 /* 参数生命周期条 */
-.life{display:flex;gap:2px;padding:4px 6px;font-size:11px;border-bottom:1px solid var(--line,#333)}
+.life{display:flex;gap:2px;padding:4px 6px;font-size:11px;border-bottom:1px solid var(--line)}
 .life span{flex:1;cursor:pointer;padding:2px 4px;border-radius:3px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.life span+span{border-left:1px solid var(--line,#333)}
+.life span+span{border-left:1px solid var(--line)}
 .life span i{font-style:normal;display:block;opacity:.7}
-.life span.hot{opacity:1;color:var(--brass,#c9a24a)}
+.life span.hot{opacity:1;color:var(--acc-t)}
 
 /* 标定向导 */
-.calgrid{align-self:stretch;display:grid;grid-template-columns:minmax(0,1fr) 22rem;gap:var(--sp3,12px);align-items:start}
-.wz{border:1px solid var(--line,#333);border-radius:var(--r,6px);padding:8px 12px;margin-bottom:10px}
+.calgrid{align-self:stretch;display:grid;grid-template-columns:minmax(0,1fr) 22rem;gap:var(--sp3);align-items:start}
+.wz{border:1px solid var(--line);border-radius:var(--r);padding:8px 12px;margin-bottom:10px}
 .wz h4{margin:0 0 4px;display:flex;gap:8px;align-items:baseline}
 .wz ul{margin:4px 0;padding-left:18px}.wz .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
 .wz .out{font-size:12px;opacity:.85;white-space:pre-wrap}
@@ -387,16 +384,69 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 
 /* 项目页引导流程 */
 .pflow{display:flex;flex-direction:column;gap:10px;align-self:stretch}
-.pf-card{border:1px solid var(--line,#333);border-radius:var(--r,6px);padding:8px 12px}
-.pf-card h4{margin:0 0 4px;display:flex;gap:8px}.pf-card .st{color:var(--ok,#6c6);font-weight:400}
+.pf-card{border:1px solid var(--line);border-radius:var(--r);padding:8px 12px}
+.pf-card h4{margin:0 0 4px;display:flex;gap:8px}.pf-card .st{color:var(--ok);font-weight:400}
 .pf-card .row,.page>.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
-.pf-drop{border:1px dashed var(--line,#555);border-radius:6px;padding:14px;text-align:center;cursor:pointer;opacity:.8}.pf-drop.over{border-color:var(--brass,#c9a24a);opacity:1}
-.pf-out,.pf-pre{max-height:14em;overflow:auto;font-size:12px;background:var(--s1,#111);padding:6px;border-radius:4px;white-space:pre-wrap}
-.pf-tab{border-collapse:collapse;width:100%;font-size:12px}.pf-tab td,.pf-tab th{border-bottom:1px solid var(--line,#333);padding:2px 4px;text-align:left;vertical-align:top}
+.pf-drop{border:1px dashed var(--line2);border-radius:6px;padding:14px;text-align:center;cursor:pointer;opacity:.8}.pf-drop.over{border-color:var(--acc-t);opacity:1}
+.pf-out,.pf-pre{max-height:14em;overflow:auto;font-size:12px;background:var(--s1);padding:6px;border-radius:4px;white-space:pre-wrap}
+.pf-tab{border-collapse:collapse;width:100%;font-size:12px}.pf-tab td,.pf-tab th{border-bottom:1px solid var(--line);padding:2px 4px;text-align:left;vertical-align:top}
 .pf-tab .in{width:100%}.pf-ta{width:100%}
 /* 评分页 */
 .app[data-step="评分"]{--w-side:min(600px,40vw)}
-#sc-item{border-bottom:1px solid var(--line,#333);padding-bottom:8px}
+#sc-item{border-bottom:1px solid var(--line);padding-bottom:8px}
 .score{display:flex;flex-direction:column;gap:8px}.score .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
-.sc-mat tr[data-id]{cursor:pointer}.sc-mat tr.on{background:var(--s1,#1a1a1a)}
-.score .ok{color:var(--ok,#6c6)}.score .bad{color:var(--crit,#e66)}
+.sc-mat tr[data-id]{cursor:pointer}.sc-mat tr.on{background:var(--s1)}
+.score .ok{color:var(--ok)}.score .bad{color:var(--crit)}
+
+/* ── 布局 v7（docs/dev/ui-layout-rules.md）：整壳规则落成共用组件 ──
+ * 三种页型：向导页（项目/烧录/标定/封箱：居中单列卡片，主按钮在卡片右下）、实况页（模块/联调/调参：左参数 | 中主图 | 右建议）、
+ * 验收页（评分：中主图 | 右矩阵）。每区顶层最多 3 个可见按钮，其余收进「更多」；颜色只用 tokens.css 变量。 */
+.step-hint{display:none}
+.pins{gap:var(--sp3)} .pins .lbl{display:none}
+/* 实况页：主操作条在主图上方（和参考稿“阶跃 #n”按钮同位），判定紧跟，回到…在右端 */
+.app[data-step="调参"] .work{grid-column:2}
+.app[data-step="调参"] .dock{grid-column:1}
+.app[data-step="调参"] .tunebar{order:-1;gap:var(--sp3);padding:var(--sp2) var(--sp3)}
+.tunebar .flow{display:none}
+.tunebar .grp .lbl{color:var(--muted)}
+.more>summary i,.menu>summary i{width:14px;height:14px}
+/* 次要标签只在属于它的页出现：示波/原始/频谱只在 模块、联调；板端只在 模块 */
+.app:not([data-step="联调"]):not([data-step="模块"]) #view{display:none}
+.app[data-step="调参"] #dock-tabs [data-d="board"],.app[data-step="模块"] #dock-tabs [data-d="params"],
+.app[data-step="模块"] #dock-tabs [data-d="protect"],.app[data-step="模块"] #dock-tabs [data-d="snaps"],.app[data-step="模块"] .life{display:none}
+.life{border-bottom:0;padding:0 var(--sp5) var(--sp2);color:var(--muted)}
+/* 调参：右栏只留建议（Agent 卡 + 提问），台账挪到主图下方（参考稿布局） */
+.app[data-step="调参"]{grid-template-rows:var(--h-top) auto minmax(0,1fr) 208px var(--h-sb);row-gap:var(--sp2)}
+.app[data-step="调参"] .status{grid-row:5}
+.app[data-step="调参"] .dock,.app[data-step="调参"] .work{grid-row:3/5}
+.app[data-step="调参"] .work{grid-row:3}
+.app[data-step="调参"] .side{display:contents}
+.app[data-step="调参"] #rail{display:none}
+.app[data-step="调参"] .side>.pane{display:none}
+.app[data-step="调参"] .side>.pane.agent{display:flex!important;grid-column:3;grid-row:3/5;background:var(--s2);border-radius:var(--r-lg);overflow:hidden}
+.app[data-step="调参"] .side>.pane[data-side="hist"]{display:flex!important;grid-column:2;grid-row:4;background:var(--s2);border-radius:var(--r-lg);overflow:auto}
+.app[data-step="调参"] .side>.pane>.vh .ttl{display:block;color:var(--ink);font-size:var(--t-md)}
+/* 向导页：居中单列，卡片同一种样式 */
+.page{align-items:stretch}
+.page>*{width:100%;max-width:960px;margin-left:auto;margin-right:auto}
+.page>h3{font:500 var(--t-lg) var(--f-sans);color:var(--ink);margin:0}
+.page .hint,.hint{color:var(--muted);font-size:var(--t-sm);margin:0}
+.pf-card,.wz,.card-s{background:var(--s3);border:0;border-radius:var(--r-lg);padding:var(--sp3) var(--sp5)}
+.pf-card h4,.wz h4,.calgrid h4{font:500 var(--t-md) var(--f-sans);color:var(--ink);margin:0 0 var(--sp2)}
+.pf-card .row:has(.pf-run){justify-content:flex-end}
+.pflow{gap:var(--sp2)}
+.pf-out,.pf-pre{background:var(--s1);border-radius:var(--r)}
+.pf-drop{border-radius:var(--r);padding:var(--sp5)}
+.pf-tab td,.pf-tab th{border-bottom-color:var(--hair);padding:var(--sp1) var(--sp2)}
+.calgrid{gap:var(--sp3)}
+.page[data-page="烧录"]>.btn{width:auto;margin:0}
+.page[data-page="烧录"]{display:grid;grid-template-columns:repeat(4,max-content);justify-content:center;align-content:start;gap:var(--sp2)}
+.page[data-page="烧录"]>h3,.page[data-page="烧录"]>.hint,.page[data-page="烧录"]>.fwst{grid-column:1/-1}
+/* 验收页 */
+.score{padding:0 var(--sp5) var(--sp3);overflow:auto}
+#sc-item{border-bottom:1px solid var(--hair);padding-bottom:var(--sp3)}
+.sc-mat tr.on{background:var(--s3)}
+.page>h3,.page>.hint,.page>.row,.page>.act,.page>.fwst{margin-left:auto;margin-right:auto}
+/* 评分页右栏只有评分一个面板，不显示其他标签 */
+.app[data-step="评分"] #rail [data-side]:not([data-side="score"]){display:none}
+.app[data-step="模块"] .dock .commit{display:none}
