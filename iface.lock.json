@@ -1854,13 +1854,14 @@
    "port_cubemx.h: extern const cm_i2c_t g_cm_i2c[];",
    "port_cubemx.h: extern const cm_spi_t g_cm_spi[];",
    "port_cubemx.h: extern const char *const g_board_name;",
+   "port_cubemx.h: void dz_cm_selfinit(void);",
    "port_cubemx.h: typedef struct { uint32_t uart_err;",
    "port_cubemx.h: uint32_t tim_cb_unknown;",
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "98342754017066fe",
-  "version": "1.11.0"
+  "hash": "fce85c9d3b2c2942",
+  "version": "1.12.0"
  },
  "ports/stm32f4-hal": {
   "decls": [

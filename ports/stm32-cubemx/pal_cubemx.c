@@ -108,8 +108,12 @@ static dz_err_t start_all(void)
     return rc;
 }
 
+/* board_gen.c 有 timer.self_init 时会给出强定义（工作台自建 CubeMX 没启用的节拍定时器） */
+__attribute__((weak)) void dz_cm_selfinit(void) {}
+
 void dz_cubemx_start(void)
 {
+    dz_cm_selfinit();
     /* DZ-REG-OK: CMSIS 内核寄存器，HAL 无打开 DWT/跟踪单元的接口（调试器看周期计数用） */
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
     dz_err_t e = start_all();

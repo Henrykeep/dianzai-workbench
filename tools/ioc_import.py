@@ -109,6 +109,33 @@ def norm_name(label: str) -> str:
     return n[:32]
 
 
+def apply_alias(ioc: dict, alias: dict) -> dict:
+    """引脚别名表（boards/<板>/aliases.yaml，tools/import_project.py 生成）：引脚 → 工作台逻辑标签。
+    相当于在 CubeMX 里改了 User Label，但用户的 .ioc 一个字不动。键可写 PA0 或用户原标签（如 AIN1）。"""
+    if not alias:
+        return ioc
+    ioc = dict(ioc)
+    keys = {}
+    for k in list(ioc):
+        m = re.fullmatch(r"((P[A-K]\d{1,2})(?:-[A-Za-z0-9_]+)?)\.Signal", k)
+        if m:
+            keys[m[2]] = m[1]
+    by_label = {v: k[: -len(".GPIO_Label")].split("-")[0] for k, v in ioc.items() if k.endswith(".GPIO_Label")}
+    for src, lab in alias.items():
+        pin = src if src in keys else by_label.get(src)
+        if not pin or pin not in keys:
+            raise SystemExit(f"✗ 别名表里的 {src!r} 在 .ioc 里找不到（写引脚名如 PA0，或 CubeMX 里的原标签）")
+        ioc[f"{keys[pin]}.GPIO_Label"] = str(lab)
+    return ioc
+
+
+def load_alias(path) -> dict:
+    if not path:
+        return {}
+    d = yaml.safe_load(pathlib.Path(path).read_text(encoding="utf-8")) or {}
+    return {str(k): str(v) for k, v in (d.get("pins") or {}).items()}
+
+
 def pins_of(ioc: dict) -> dict[str, dict]:
     """收集每个物理引脚的属性。键里可能带复用后缀（PA0-WKUP、PC14-OSC32_IN），统一成 PA0/PC14。"""
     pins: dict[str, dict] = {}
@@ -363,6 +390,15 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
             else:
                 rep.warn(f"{ip} 已启用但没有引脚也没有开中断，未纳入 resources（用途不明）")
     for name, inst in sorted(list(timers.items()) + list(auto.items())):
+        if inst.endswith(":self"):
+            # 工作台自建（CubeMX 没启用这个定时器，见 board.yaml timer.self_init / gen_board._selfinit_timers）
+            inst = inst[:-5]
+            if inst in ips or inst in tim_used or inst == tb:
+                rep.err("L1", f"节拍定时器 {name}={inst}:self 已被 CubeMX 工程使用，去掉 :self 直接用它")
+            if claim("timer", name, inst):
+                res["timer"].append({"name": name, "instance": inst, "self_init": True,
+                                     "note": "CubeMX 工程没启用它，由工作台自建（tools/import_project.py 选的空闲定时器）"})
+            continue
         if inst in tim_used:
             rep.err("L1", f"节拍定时器 {name}={inst} 已被 PWM/编码器占用")
         irqs = tim_irqs(inst)
@@ -459,6 +495,12 @@ def check_project(proj: pathlib.Path, rep: Rep, rtos: bool = False, tim_timebase
                 rep.err("U1", f"{f.name} 定义了 {cb}，与 ports/stm32-cubemx 冲突：删掉，需要的逻辑放进子系统")
 
 
+def board_slug(s: str, fallback: str = "my-board") -> str:
+    """任意目录/文件名 → 合法板名 ^[a-z0-9][a-z0-9-]{1,47}$（"Car_Mode1021" → car-mode1021，中文丢掉）。"""
+    n = re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")[:48].strip("-")
+    return n if len(n) >= 2 else fallback
+
+
 def build_board(res: dict, meta: dict, base: dict | None, ioc_rel: str) -> dict:
     b = copy.deepcopy(base) if base else {
         "schema_version": 1, "name": "TODO", "vendor": "TODO", "description": "由 tools/ioc_import.py 从 .ioc 生成",
@@ -468,7 +510,7 @@ def build_board(res: dict, meta: dict, base: dict | None, ioc_rel: str) -> dict:
     if tc.get("openocd_target", "TODO") == "TODO" and str(meta.get("family", "")).startswith("stm32"):
         tc["openocd_target"] = f"target/{meta['family']}x.cfg"        # stm32f1 → target/stm32f1x.cfg（OpenOCD 自带脚本名）
     if b.get("name", "TODO") == "TODO":
-        b["name"] = pathlib.Path(ioc_rel).stem                          # 先用 .ioc 文件名，改成你板子的名字
+        b["name"] = board_slug(pathlib.Path(ioc_rel).stem)              # 先用 .ioc 文件名（转成合法板名），可改
     b["port"] = "stm32-cubemx"
     b["config_source"] = {"tool": "cubemx", "file": ioc_rel,
                           **{k: meta[k] for k in ("hal_timebase", "rtos") if meta.get(k)}}
@@ -517,8 +559,8 @@ def diff(res: dict, board: dict) -> list[str]:
     return out
 
 
-def run(ioc_path, timers, rep):
-    return extract(parse_ioc(pathlib.Path(ioc_path).read_text(encoding="utf-8")), timers, rep)
+def run(ioc_path, timers, rep, alias=None):
+    return extract(apply_alias(parse_ioc(pathlib.Path(ioc_path).read_text(encoding="utf-8")), alias or {}), timers, rep)
 
 
 def selftest() -> int:
@@ -564,6 +606,7 @@ def main() -> int:
     ap.add_argument("--base", type=pathlib.Path, help="生成时保留其中的名称/说明/verified/note 等人工信息")
     ap.add_argument("--timer", action="append", default=[], help="节拍定时器 名=实例，如 CTRL=TIM6")
     ap.add_argument("--project", type=pathlib.Path, help="CubeMX 工程目录（检查 main.c 的 USER CODE 钩子）")
+    ap.add_argument("--alias", type=pathlib.Path, help="引脚别名表 aliases.yaml（不写则用 board.yaml 的 config_source.alias）")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -574,9 +617,18 @@ def main() -> int:
     ref_board = yaml.safe_load(ref.read_text(encoding="utf-8")) if ref and ref.exists() else None
     timers = dict(t.split("=", 1) for t in a.timer)
     if not timers and ref_board:
-        timers = {r["name"]: r["instance"] for r in (ref_board.get("resources") or {}).get("timer") or []}
+        timers = {r["name"]: r["instance"] + (":self" if r.get("self_init") else "")
+                  for r in (ref_board.get("resources") or {}).get("timer") or []}
+    alias_rel = None
+    if a.alias:
+        alias_path = a.alias
+    elif ref_board and (ref_board.get("config_source") or {}).get("alias"):
+        alias_rel = ref_board["config_source"]["alias"]
+        alias_path = ref.parent / alias_rel
+    else:
+        alias_path = None
     rep = Rep()
-    res, meta = run(a.ioc, timers, rep)
+    res, meta = run(a.ioc, timers, rep, load_alias(alias_path))
     if a.project:
         check_project(a.project, rep, rtos=bool(meta.get("rtos")),
                       tim_timebase=meta.get("hal_timebase", "SysTick") != "SysTick")
@@ -607,6 +659,10 @@ def main() -> int:
         rel = pathlib.Path(a.ioc).resolve().relative_to(a.out.resolve().parent).as_posix() \
             if pathlib.Path(a.ioc).resolve().is_relative_to(a.out.resolve().parent) else str(a.ioc)
         b = build_board(res, meta, ref_board, rel)
+        if alias_path:
+            ap_ = pathlib.Path(alias_path).resolve()
+            b["config_source"]["alias"] = (ap_.relative_to(a.out.resolve().parent).as_posix()
+                                           if ap_.is_relative_to(a.out.resolve().parent) else str(alias_path))
         a.out.write_text("# 由 tools/ioc_import.py 从 CubeMX .ioc 生成；引脚/实例请改 .ioc 后重新导入，"
                          "这里只手改 name/verified/note/invert/scale 等说明字段\n"
                          + yaml.safe_dump(b, allow_unicode=True, sort_keys=False), encoding="utf-8")

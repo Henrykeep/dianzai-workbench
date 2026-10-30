@@ -267,6 +267,40 @@ def cube_define(part: str) -> str:
     return m[1] + "xx"
 
 
+# 定时器更新中断名（不同系列有共用向量）。只列 import_project 会挑的“空闲节拍定时器”候选
+_TIM_UP_IRQ = {
+    "stm32f1": {"TIM1": "TIM1_UP", "TIM2": "TIM2", "TIM3": "TIM3", "TIM4": "TIM4", "TIM5": "TIM5",
+                "TIM6": "TIM6", "TIM7": "TIM7", "TIM8": "TIM8_UP"},
+    "stm32f4": {"TIM1": "TIM1_UP_TIM10", "TIM2": "TIM2", "TIM3": "TIM3", "TIM4": "TIM4", "TIM5": "TIM5",
+                "TIM6": "TIM6_DAC", "TIM7": "TIM7", "TIM8": "TIM8_UP_TIM13"},
+}
+
+
+def _selfinit_timers(timers: list, family: str) -> list[str]:
+    """timer.self_init：CubeMX 工程没启用这个定时器，工作台自建句柄/时钟/中断（用户不用回 CubeMX 加定时器）。
+    PSC/ARR 由 pal_timer_start 按周期设置，这里只做 Base_Init + NVIC。dz_cubemx_start() 开头调用 dz_cm_selfinit()。"""
+    sel = [r for r in timers if r.get("self_init")]
+    if not sel:
+        return []
+    out = ["/* 工作台自建的节拍定时器（board.yaml timer.self_init；CubeMX 工程里没启用它） */"]
+    body = []
+    for r in sel:
+        inst = r["instance"]
+        irq = _TIM_UP_IRQ.get(family, {}).get(inst)
+        if not irq:
+            raise SystemExit(f"✗ timer.{r['name']}: self_init 不支持 {family} 的 {inst}（可选 {sorted(_TIM_UP_IRQ.get(family, {}))}）")
+        h = _cube_handle(inst)
+        pr = int(r.get("irq_priority", 1))
+        out += [f"TIM_HandleTypeDef {h};", f"void {irq}_IRQHandler(void);", f"void {irq}_IRQHandler(void) {{ HAL_TIM_IRQHandler(&{h}); }}"]
+        body += [f"    __HAL_RCC_{inst}_CLK_ENABLE();",
+                 f"    {h}.Instance = {inst}; {h}.Init.Prescaler = 0; {h}.Init.CounterMode = TIM_COUNTERMODE_UP;",
+                 f"    {h}.Init.Period = 0xFFFFu; {h}.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1; {h}.Init.RepetitionCounter = 0;",
+                 f"    {h}.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;",
+                 f"    (void)HAL_TIM_Base_Init(&{h});",
+                 f"    HAL_NVIC_SetPriority({irq}_IRQn, {pr}u, 0u); HAL_NVIC_EnableIRQ({irq}_IRQn);"]
+    return out + ["void dz_cm_selfinit(void)", "{"] + body + ["}", ""]
+
+
 def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
     """port: stm32-cubemx —— 只生成“逻辑 ID -> CubeMX 句柄”表；外设配置全在 .ioc / CubeMX 生成代码里。"""
     res = usable(board)
@@ -314,6 +348,7 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
                            ("timer", "cm_timer_t", "g_cm_timer"), ("adc", "cm_adc_t", "g_cm_adc"),
                            ("i2c", "cm_i2c_t", "g_cm_i2c"), ("spi", "cm_spi_t", "g_cm_spi"), ("dac", "cm_dac_t", "g_cm_dac")):
         c += _table(typ, name, rows[key])
+    c += _selfinit_timers(res["timer"], board["mcu"]["family"])
     c.append("const char *const g_board_name = BOARD_NAME;\n")
     cs = board["config_source"]
     tb = cs.get("hal_timebase", "SysTick")

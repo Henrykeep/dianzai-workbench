@@ -53,6 +53,7 @@ extern const cm_adc_t   g_cm_adc[];
 extern const cm_i2c_t   g_cm_i2c[];
 extern const cm_spi_t   g_cm_spi[];
 extern const char *const g_board_name;
+void dz_cm_selfinit(void);   /* board_gen.c（timer.self_init）强定义，否则 pal_cubemx.c 的弱空函数 */
 
 /* 诊断计数（调试器里看） */
 typedef struct { uint32_t uart_err; uint32_t tim_cb_unknown; } cm_diag_t;

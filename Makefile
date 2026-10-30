@@ -29,6 +29,9 @@ BDIR      := build/$(BOARD)$(if $(VARIANT),-$(VARIANT))$(if $(filter rtt,$(LINK)
 OUT       := $(BDIR)/$(APP)
 GEN       := $(BDIR)/gen
 
+ifneq ($(PROJECT),)
+$(error 没有 PROJECT= 这个变量：题目工程也用 APP=<目录名>，例如 make BOARD=$(BOARD) APP=$(notdir $(patsubst %/,%,$(PROJECT)))（apps/ 与 examples/ 下都会找）)
+endif
 ifeq ($(APP_DIR),)
 $(error 找不到应用 $(APP)（apps/ 或 examples/ 下）)
 endif

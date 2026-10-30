@@ -47,6 +47,23 @@
 4. `python3 tools/ioc_import.py boards/<板>/cubemx/xxx.ioc --base boards/<旧板>/board.yaml --timer CTRL=TIM6 -o boards/<板>/board.yaml`，生成/合并 board.yaml（手写字段保留）。
 5. `make ioc-check`、`make check`、`make BOARD=<板> APP=port_selftest` 编译自检固件并上板。
 
+## 已经有自己的 CubeMX/Keil 工程？直接导入（不用改 .ioc、不用改代码）
+
+```sh
+python3 tools/import_project.py <你的工程目录> --app car_2wd          # 先看报告
+python3 tools/import_project.py <你的工程目录> --app car_2wd --accept-repair   # main.c 标记坏了时，看过 diff 再确认
+make BOARD=<目录名> APP=car_2wd
+```
+
+- 板名取自目录名（自动转成合法名字）；原工程**一个字节都不改**，复制到 `boards/<名>/cubemx/`。
+- **标签不用按约定改**：自动按引脚功能生成 `boards/<名>/aliases.yaml`（如 `AIN1 → GPIO_MOTOR_A_IN1`、PWMA/PWMB → MOTOR_A/B）。猜错就改这张表，`.ioc` 不动。
+- **节拍定时器 CTRL**：先找 .ioc 里已开中断、没接引脚的定时器；没有就挑空闲的（TIM6/7/5/4…），由工作台自己初始化（`timer.self_init`），不用回 CubeMX 加。
+- **你写在 main.c / freertos.c USER CODE 里的代码**：整块原样搬到 `user_code/from_core_user_code.c.txt`（不编译、不删），你的 APP/HARDWARE 源码备份在 `user_code/orig/`；钩子（`dz_cubemx_start/loop/tim_callback`）只插在 USER CODE 区。FreeRTOS 工程钩子放进 StartDefaultTask。
+- **USER CODE 标记被改坏**（例如 while(1) 写进了 USER CODE 3 而 BEGIN WHILE 没了）：停下、打印修复 diff，确认后加 `--accept-repair`。
+- **Keil(MDK) 生成的工程**没有 `*_FLASH.ld`/gcc 启动文件：按芯片从 `ports/stm32-cubemx/ld/` 模板补链接脚本，启动文件用 CMSIS gcc 模板。
+- 报告分三类：动手改 / 确认 / 上板观察；`--report x.json` 输出机器可读结果。p2 Car_Mode1021：动手改 0、确认 2、观察 1；p1 Bldc：动手改 0、确认 1。
+- `make` 写成 `PROJECT=` 会直接报错提示用 `APP=<目录>`。
+
 ## 串口接收：推荐 Circular DMA（IT 为兜底）
 移植层按 CubeMX 配置自动选模式（ioc_import 会报告是哪种）：
 | CubeMX 配置 | 移植层行为 | 建议 |

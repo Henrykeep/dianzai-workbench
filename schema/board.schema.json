@@ -263,6 +263,10 @@
           "minimum": 0,
           "maximum": 15,
           "default": 1
+        },
+        "self_init": {
+          "type": "boolean",
+          "description": "CubeMX 工程里没启用这个定时器（没有空闲的可用）：由工作台在 board_gen.c 里自建句柄、时钟、中断（tools/import_project.py 选空闲定时器时写入）。仅 stm32-cubemx"
         }
       }
     },
@@ -545,6 +549,10 @@
             "freertos"
           ],
           "description": "CubeMX 工程启用了 FreeRTOS（CMSIS-RTOS v2）；不写 = 裸机"
+        },
+        "alias": {
+          "type": "string",
+          "description": "引脚别名表（相对 board.yaml，tools/import_project.py 生成）：引脚 → 工作台逻辑标签。用户不必在 CubeMX 里改 User Label；ioc_import 读取时套用"
         }
       }
     },

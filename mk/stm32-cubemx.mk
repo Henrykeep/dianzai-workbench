@@ -33,6 +33,11 @@ HAL_SRC += $(wildcard $(RTOS_DIR)/*.c) $(RTOS_DIR)/CMSIS_RTOS_V2/cmsis_os2.c \
            $(RTOS_DIR)/portable/GCC/$(RTOS_PORT)/port.c $(RTOS_DIR)/portable/MemMang/heap_4.c
 endif
 LDSCRIPT = $(firstword $(wildcard $(CUBE_DIR)/*_FLASH.ld))
+# 只有 Keil(MDK-ARM) 工程时 CubeMX 不生成 GCC 链接脚本：给明确提示（不要让 -T 吃掉下一个参数）
+ifeq ($(LDSCRIPT)$(filter-out vars gen,$(or $(MAKECMDGOALS),all)),)
+else ifeq ($(LDSCRIPT),)
+$(error 找不到 $(CUBE_DIR)/*_FLASH.ld：CubeMX 按 MDK-ARM 生成的工程没有 GCC 链接脚本。用 tools/import_project.py 导入（自动从 ports/stm32-cubemx/ld/ 补），或 CubeMX 里 Toolchain 选 Makefile/STM32CubeIDE 再生成一次)
+endif
 LDFLAGS  = $(MCU) -T$(LDSCRIPT) -Wl,--defsym=__flash_kb=$(BOARD_FLASH_KB) -Wl,--defsym=__nvm_kb=$(or $(BOARD_NVM_KB),0) -Wl,--gc-sections \
            -Wl,-Map=$(OUT)/$(APP).map -Wl,--print-memory-usage -Wl,--no-warn-rwx-segments --specs=nano.specs --specs=nosys.specs -lm
 PORT_SRC = $(PORT_DIR)/pal_cubemx.c $(if $(filter freertos,$(BOARD_RTOS)),$(PORT_DIR)/dz_freertos.c)
