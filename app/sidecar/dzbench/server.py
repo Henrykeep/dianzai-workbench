@@ -265,13 +265,13 @@ class Server:
             try:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
-                raise LinkError(e.code, e.msg, e.fix) from None
+                raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
         if op == "quick_start":     # 一句话起项目：{"op":"quick_start","text":"两轮车速度环，STM32F1"} → 一张确认卡；确认走 agent_action_decide
             from .projflow import FlowError
             try:
                 return await run(None, self.svc.quick_start, m["text"])
             except (FlowError, GatewayError) as e:
-                raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix) from None
+                raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix, getattr(e, "fix_action", None)) from None
         if op == "project_chain" or op == "project_apply":   # 项目页“一键走完 ①–⑤（+Keil 注入）”：先整链预览，再一次写入（同 Agent 那张总卡）
             from .projflow import FlowError
             try:
@@ -279,7 +279,7 @@ class Server:
                     return await run(None, lambda: self.svc.project_chain(m["code"], **{k: m[k] for k in ("src", "project", "name", "mcu", "tpl", "uvprojx", "app", "hand_edit") if m.get(k)}))
                 return await run(None, self.svc.project_apply, m["code"])
             except (FlowError, GatewayError) as e:
-                raise LinkError(e.code, e.msg, e.fix) from None
+                raise LinkError(e.code, e.msg, e.fix, getattr(e, "fix_action", None)) from None
         if op == "score_items" or op == "score_save" or op == "score_writeback":       # 评分页：评分项来自 requirements.yaml；证据按 docs/verify 规范存（dzbench/scoring.py）
             from . import scoring
             try:

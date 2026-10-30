@@ -97,7 +97,7 @@ def test_scratch_allocs_and_writes_ioc(tmp_path):
     m = {"code": "S1", "dest": str(dest)}
     opts = f.preview("scratch", m)["options"]
     from dzbench.projflow import syscfg_cli
-    has_sc = syscfg_cli().exists()
+    has_sc = syscfg_cli() is not None
     assert opts[0]["ok"] and any(o["ok"] == has_sc and o["family"] == "mspm0" for o in opts)
     f1 = next(o for o in opts if o["mcu"] == "stm32f103c8t6" and not o["tpl"])      # 装不下的排在装得下的后面，并写明理由
     assert f1["fit"] is False and "装不下" in f1["why"] and opts.index(f1) > opts.index(next(o for o in opts if o.get("fit")))
@@ -120,7 +120,7 @@ def test_scratch_mspm0_syscfg(tmp_path):
     """MSPM0 从零：SysConfig 求解器分引脚 → 板目录（.syscfg + ti_msp_dl_config + board.yaml），syscfg_import 回核无错。没装 CLI 跳过。"""
     import shutil
     from dzbench.projflow import syscfg_cli
-    if not syscfg_cli().exists():
+    if syscfg_cli() is None:
         pytest.skip("本机没有 SysConfig CLI")
     f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
     for n in ("requirements.yaml", "scheme.yaml"):

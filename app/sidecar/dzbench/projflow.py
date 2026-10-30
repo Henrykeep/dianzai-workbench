@@ -28,8 +28,8 @@ TEXT_EXT = {".yaml", ".yml", ".md", ".txt", ".h", ".c", ".json", ".csv", ".mk", 
 
 
 class FlowError(Exception):
-    def __init__(self, code: str, msg: str, fix: str = ""):
-        super().__init__(msg); self.code, self.msg, self.fix = code, msg, fix
+    def __init__(self, code: str, msg: str, fix: str = "", fix_action: str | None = None):
+        super().__init__(msg); self.code, self.msg, self.fix, self.fix_action = code, msg, fix, fix_action
 
 
 def _safe(name: str) -> str:
@@ -158,13 +158,34 @@ def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
     return out
 
 
-def syscfg_cli() -> pathlib.Path:
-    """SYSCFG_CLI → 仓库 third_party/sysconfig_1.28.0（make fetch 装的）→ ~/ti/sysconfig_1.28.0。"""
+SYSCFG_VER = "sysconfig_1.28.0"
+
+
+def syscfg_cli_name() -> str:
+    """TI SysConfig CLI 的入口脚本名：Windows 是 sysconfig_cli.bat，其他平台 sysconfig_cli.sh。"""
+    return "sysconfig_cli.bat" if os.name == "nt" or sys.platform.startswith("win") else "sysconfig_cli.sh"
+
+
+def syscfg_cli() -> pathlib.Path | None:
+    """SYSCFG_CLI → 仓库 third_party/sysconfig_1.28.0（make fetch 装的）→ ~/ti/sysconfig_1.28.0；按平台找 .bat / .sh。找不到 → None。"""
     if os.environ.get("SYSCFG_CLI"):
-        return pathlib.Path(os.environ["SYSCFG_CLI"])
+        p = pathlib.Path(os.environ["SYSCFG_CLI"])
+        return p if p.exists() else None
     repo = pathlib.Path(os.environ.get("DZBENCH_REPO") or pathlib.Path(__file__).resolve().parents[3])
-    local = repo / "third_party/sysconfig_1.28.0/sysconfig_cli.sh"
-    return local if local.exists() else pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"
+    name = syscfg_cli_name()
+    for p in (repo / "third_party" / SYSCFG_VER / name, pathlib.Path.home() / "ti" / SYSCFG_VER / name):
+        if p.exists():
+            return p
+    return None
+
+
+def require_syscfg_cli() -> pathlib.Path:
+    """要用 SysConfig CLI 的地方调它：找不到 → missing_deps + fix_action fetch_deps（界面一键“装依赖”）。"""
+    p = syscfg_cli()
+    if p is None:
+        raise FlowError("missing_deps", f"找不到 TI SysConfig CLI（{syscfg_cli_name()}）",
+                        "在仓库根目录运行 make fetch 自动安装，或设环境变量 SYSCFG_CLI 指向它", "fetch_deps")
+    return p
 
 
 def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work: pathlib.Path) -> tuple[bool, str]:
@@ -200,7 +221,7 @@ def scratch_options(repo: pathlib.Path, scheme: dict, work: pathlib.Path | None 
         if x["kind"] != "mcu" or "mcu" not in x:
             continue
         fam, part = x["mcu"]["family"], x["mcu"]["part"].upper()
-        ok = fam in IOC_FAMILIES or (fam == "mspm0" and syscfg_cli().exists())
+        ok = fam in IOC_FAMILIES or (fam == "mspm0" and syscfg_cli() is not None)
         why = "" if ok else ("MSPM0 从零要 TI SysConfig CLI（免费，在仓库根目录运行 make fetch 自动装，或设 SYSCFG_CLI），没有就在 SysConfig 里配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
         tpls = [n for n, bp in boards if bp.rstrip("X")[:11] == part.rstrip("X")[:11]]
         for t in [None, *tpls]:
