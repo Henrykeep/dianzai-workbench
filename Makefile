@@ -286,9 +286,10 @@ check:
 	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && for t in tests/*.test.ts; do node_modules/.bin/esbuild $$t --bundle --platform=node --log-level=error | node || exit 1; done; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
 
-fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）
+fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）
 	tools/fetch_third_party.sh
 	tools/fetch_sysconfig.sh
+	cd app/ui && npm ci --no-audit --no-fund
 
 clean:
 	rm -rf build

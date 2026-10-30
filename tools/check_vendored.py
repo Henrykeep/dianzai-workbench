@@ -4,6 +4,7 @@
 LICENSE/SOURCE.md/代码文件头任何一处）或认不出许可即失败。自测：tools/test_check_vendored.py。"""
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -29,36 +30,73 @@ def classify(text: str) -> str:
     return "unknown"
 
 
-def check(base: pathlib.Path) -> list[str]:
+def tracked(root: pathlib.Path) -> set[str] | None:
+    """root 下 git 跟踪的文件（相对 root 的 posix 路径）；不是 git 仓库时返回 None（退回按磁盘扫描）。"""
+    try:
+        out = subprocess.run(["git", "-C", str(root), "ls-files", "-z", "--full-name", "."], capture_output=True, check=True).stdout
+        top = subprocess.run(["git", "-C", str(root), "rev-parse", "--show-toplevel"], capture_output=True, check=True, text=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    pre = pathlib.Path(root).resolve().relative_to(pathlib.Path(top).resolve()).as_posix()
+    pre = "" if pre == "." else pre + "/"
+    return {n[len(pre):] for n in out.decode("utf-8", "replace").split("\0") if n and n.startswith(pre)}
+
+
+def _files(d: pathlib.Path, root: pathlib.Path, tr: set[str] | None) -> list[pathlib.Path]:
+    if tr is None:
+        return [f for f in d.rglob("*") if f.is_file() and "__pycache__" not in f.parts]
+    pre = d.relative_to(root).as_posix() + "/"
+    return [root / n for n in sorted(tr) if n.startswith(pre)]
+
+
+def check(base: pathlib.Path, root: pathlib.Path | None = None, warns: list[str] | None = None) -> list[str]:
+    """只扫 git 跟踪的文件（root 是 git 仓库时）；未跟踪的 __pycache__ 等杂物不参与判定。
+    已删除的许可违规目录（REMOVED）若仍在磁盘上但没有跟踪文件：记为残留目录警告（写入 warns），不算失败。"""
     errs = []
     if not base.is_dir():
         return errs
+    root = root or (ROOT if base.resolve().is_relative_to(ROOT) else base.parent)
+    tr = tracked(root)
+    rel = lambda p: p.relative_to(root).as_posix()  # noqa: E731
+    dirs = []
     for d in sorted(p for p in base.iterdir() if p.is_dir()):
-        names = {p.name for p in d.iterdir()}
+        files = _files(d, root, tr)
+        if d.name in REMOVED and tr is not None and not files:
+            if warns is not None:
+                warns.append(f"残留目录 {rel(d)}：该目录已从仓库移除，请删除")
+            continue
+        if not files:          # 未跟踪的杂物目录：不属于仓库，不检查
+            continue
+        dirs.append(d)
+        names = {f.relative_to(d).as_posix() for f in files}
         lic = [d / n for n in ("LICENSE", "COPYING", "LICENSE.txt") if n in names]
+        if d.name in REMOVED:
+            errs.append(f"{rel(d)}: 已因许可删除的目录又有文件被 git 跟踪，删掉（git rm -r）")
         if not lic:
-            errs.append(f"{d.relative_to(base.parent if not base.is_relative_to(ROOT) else ROOT)}: 缺 LICENSE")
+            errs.append(f"{rel(d)}: 缺 LICENSE")
         else:
             kind = classify(lic[0].read_text(encoding="utf-8", errors="replace"))
             if kind == "copyleft":
-                errs.append(f"{d.relative_to(base.parent if not base.is_relative_to(ROOT) else ROOT)}: LICENSE 是 GPL/LGPL/AGPL，规则只收宽松许可，删掉或换净室实现")
+                errs.append(f"{rel(d)}: LICENSE 是 GPL/LGPL/AGPL，规则只收宽松许可，删掉或换净室实现")
             elif kind == "unknown":
-                errs.append(f"{d.relative_to(base.parent if not base.is_relative_to(ROOT) else ROOT)}: LICENSE 认不出是宽松许可（MIT/BSD/Apache-2.0/zlib/ISC），许可不明不得入库")
+                errs.append(f"{rel(d)}: LICENSE 认不出是宽松许可（MIT/BSD/Apache-2.0/zlib/ISC），许可不明不得入库")
         sm = d / "SOURCE.md"
-        if sm.is_file() and COPYLEFT.search(sm.read_text(encoding="utf-8")):
-            errs.append(f"{sm.relative_to(base.parent if not base.is_relative_to(ROOT) else ROOT)}: 出处写着 GPL/LGPL/AGPL")
-        if not sm.is_file() or not SRC.search(sm.read_text(encoding="utf-8")):
-            errs.append(f"{d.relative_to(base.parent if not base.is_relative_to(ROOT) else ROOT)}: 缺 SOURCE.md 或其中没有 Source: repo@commit path")
-        for f in d.rglob("*"):
-            if f.suffix in CODE and "__pycache__" not in f.parts:
+        has_sm = "SOURCE.md" in names and sm.is_file()
+        if has_sm and COPYLEFT.search(sm.read_text(encoding="utf-8")):
+            errs.append(f"{rel(sm)}: 出处写着 GPL/LGPL/AGPL")
+        if not has_sm or not SRC.search(sm.read_text(encoding="utf-8")):
+            errs.append(f"{rel(d)}: 缺 SOURCE.md 或其中没有 Source: repo@commit path")
+        for f in files:
+            if f.suffix in CODE and "__pycache__" not in f.parts and f.is_file():
                 text = f.read_text(encoding="utf-8", errors="replace")
                 head = "\n".join(text.splitlines()[:15])
                 if COPYLEFT.search("\n".join(text.splitlines()[:40])):
-                    errs.append(f"{f.relative_to(base.parent if not base.is_relative_to(ROOT) else ROOT)}: 文件头带 GPL/LGPL/AGPL 声明")
+                    errs.append(f"{rel(f)}: 文件头带 GPL/LGPL/AGPL 声明")
                 if not SRC.search(head):
-                    errs.append(f"{f.relative_to(base.parent if not base.is_relative_to(ROOT) else ROOT)}: 前 15 行缺 Source: repo@commit path")
-    ref = (ROOT / "docs/参考来源.md").read_text(encoding="utf-8")
-    for d in sorted(p for p in base.iterdir() if p.is_dir()):
+                    errs.append(f"{rel(f)}: 前 15 行缺 Source: repo@commit path")
+    refp = ROOT / "docs/参考来源.md"
+    ref = refp.read_text(encoding="utf-8") if refp.is_file() else ""
+    for d in dirs:
         if f"third_party/vendored/{d.name}" not in ref:
             errs.append(f"docs/参考来源.md 未登记 third_party/vendored/{d.name}")
     return errs
@@ -100,10 +138,11 @@ SELF = {"tools/check_vendored.py", "tools/test_check_vendored.py"}
 
 def check_removed_refs(base: pathlib.Path) -> list[str]:
     errs, seen = [], set()
+    tr = tracked(base)
     for g in BUILD_GLOBS:
         for f in base.glob(g):
             rel = f.relative_to(base).as_posix()
-            if rel in seen or rel in SELF or not f.is_file() or "node_modules" in rel or "/tests/" in rel:
+            if rel in seen or rel in SELF or (tr is not None and rel not in tr) or not f.is_file() or "node_modules" in rel or "/tests/" in rel:
                 continue
             seen.add(rel)
             try:
@@ -117,7 +156,10 @@ def check_removed_refs(base: pathlib.Path) -> list[str]:
 
 
 def main() -> int:
-    errs = check(ROOT / "third_party" / "vendored") + check_sdk(ROOT / "third_party") + check_removed_refs(ROOT)
+    warns: list[str] = []
+    errs = check(ROOT / "third_party" / "vendored", ROOT, warns) + check_sdk(ROOT / "third_party") + check_removed_refs(ROOT)
+    for w in warns:
+        print(f"⚠ [licenses/leftover] {w}（未被 git 跟踪，不影响门禁；可执行 rm -rf 该目录）")
     for e in errs:
         print(f"✗ [licenses/vendored] {e} · 处理：删掉该目录或换宽松许可/净室实现（规则见 third_party/vendored/README.md）")
     print("check_vendored:", "失败" if errs else "通过")
