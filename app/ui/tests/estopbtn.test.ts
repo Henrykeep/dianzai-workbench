@@ -1,4 +1,4 @@
-import { fireEstop, handleEstopMsg, latchedCause, clearedOnce, CLEARED_NOTICE, onEstopEvent, ESTOP_LABEL, traces, latchCleared, onCleared, CLEARED_TEXT, RETUNE } from "../src/estopbtn.ts";
+import { fireEstop, handleEstopMsg, latchedCause, clearedOnce, CLEARED_NOTICE, onEstopEvent, ESTOP_LABEL, traces, latchCleared, onCleared, CLEARED_TEXT, RETUNE, markClearClick, markClearedShown } from "../src/estopbtn.ts";
 import { Link } from "../src/ws.ts";
 // 假 WS：记录 send 时刻
 const sent: { t: number; m: any }[] = [];
@@ -66,4 +66,17 @@ console.log(`estopbtn ok click→send ${dt.toFixed(3)} ms`);
     handleEstopMsg({ type: "estop", state: "requested", ok: false, message_zh: "急停没有送达，请直接断电" } as any, u as any);
     if (toasts.join() !== "急停没有送达，请直接断电") throw "ok:false 要按 message_zh 告警 " + toasts; }
   console.log("estop handler ok");
+}
+// 解除计时：clear_click → cleared_shown，差值 clear_to_cleared_ms（performance.now 口径）；只记第一次渲染
+{
+  if (markClearedShown() !== null && traces.at(-1)!.clear_click == null) throw "未点解除不应打 cleared_shown";
+  const t = markClearClick();
+  if (t.clear_click == null || t.cleared_shown != null) throw "clear_click 打点";
+  const s0 = performance.now(); while (performance.now() - s0 < 2) { /* 等 2 ms */ }
+  const r = markClearedShown()!;
+  if (r !== t || r.cleared_shown! < r.clear_click! || !(r.clear_to_cleared_ms! >= 1.5) || Math.abs(r.clear_to_cleared_ms! - (r.cleared_shown! - r.clear_click!)) > 0.01) throw "clear_to_cleared_ms " + JSON.stringify(r);
+  const first = r.cleared_shown; markClearedShown(); if (t.cleared_shown !== first) throw "只记第一次渲染";
+  if ((globalThis as any).__dzEstop !== traces) throw "写入 window.__dzEstop";
+  markClearClick(); if (t.cleared_shown != null || t.clear_to_cleared_ms != null) throw "再次解除应重置";
+  console.log("estop clear timing ok");
 }
