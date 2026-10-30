@@ -25,7 +25,7 @@ export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; 
   // jump = 只跳到那一页并聚焦按钮，不替用户点（切换运行模式必须人确认；Agent 只给跳转）
   project_list: { step: "项目", ui: "pj-open", label: "打开项目" },   // project.open 失败的 fix_action：回空状态重新选
   set_run_mode: { step: "封箱", ui: "seal-mode", label: "前往封箱", jump: true },
-  connect: { ui: "connect", label: "连接" }, estop_clear: { ui: "cmd-r", label: "解除并继续" }, doctor: { ui: "doctor", label: "运行自检" },
+  connect: { ui: "connect", label: "连接" }, estop_clear: { ui: "cmd-r", label: "解除急停" }, doctor: { ui: "doctor", label: "运行自检" },
   blackbox: { ui: "pre-bbtn", label: "读黑匣子" }, llm_cfg: { ui: "ag-cfg", label: "大模型设置" },
   project_flow: { step: "项目", ui: "pflow" }, project_ask: { step: "项目", ui: "pj-ask-go" }, flash: { step: "烧录", ui: "fw-flash" },
   build: { step: "烧录", ui: "fw-build", label: "编译" }, cal_polarity: { step: "标定", ui: "calwiz", label: "极性自检" },
@@ -98,7 +98,7 @@ export const PURPOSE: Record<StepId, string> = {
 };
 export const ACTION_LABEL: Record<string, string> = {
   project_flow: "开始读需求", project_ask: "新建工程", flash: "烧录固件", connect: "连接目标板", params: "下发参数",
-  score: "开始评分", precontest: "开始检查", tune_relay: "自整定", estop_clear: "解除并继续", doctor: "运行自检",
+  score: "开始评分", precontest: "开始检查", tune_relay: "自整定", estop_clear: "解除急停", doctor: "运行自检",
 };
 export function pageHead(p: Progress): { text: string; label: string; action?: string; goto?: StepId } {
   const cur = p.steps.find(s => s.id === p.current)!;

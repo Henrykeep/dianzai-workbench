@@ -26,8 +26,8 @@ import { initProject } from "./project";
 import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
-import { fireEstop, onEstopEvent, ESTOP_LABEL, EstopPhase } from "./estopbtn";
-import { fetchProgress, render as renderProgress } from "./progress";
+import { fireEstop, onEstopEvent, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE } from "./estopbtn";
+import { fetchProgress, render as renderProgress, runAction } from "./progress";
 import type { Step } from "./steps";
 import { initSteps } from "./steps";
 import { initCalWiz } from "./calwiz";
@@ -62,7 +62,7 @@ function renderAlerts() {
   const latched = S.latched;
   document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   $("estop").classList.toggle("locked", latched);
-  if (latched) setEstopPhase("latched"); else if (estopPhase === "latched") setEstopPhase("idle");
+  if (latched) { setEstopPhase("latched"); clearedShown = false; document.querySelector(".toast.cleared")?.remove(); } else if (estopPhase === "latched") setEstopPhase("idle");
   el.hidden = !l.length && !latched;
   if (el.hidden) { el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
@@ -71,12 +71,12 @@ function renderAlerts() {
   const v = estopView(ev, (S.status as any).estop_cause, S.lastHbMs);
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
-  if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(v.head)}</b></span>`;
+  if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? v.head : "已解除（之前：" + v.head + "）")}</b></span>`;
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
   if (!head) head = `<b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
   el.innerHTML = `<span class="al-n">${Math.max(l.length, 1)}</span>${head}` +
     (l.length > 1 ? `<span class="al-more">${l.filter(e => !isE(e) && !isW(e)).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
-    `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存，本地服务恢复被打断的流程（前端不重发运动指令）">解除并继续</button>` : "") +
+    `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除急停</button>` : "") +
     (l.length ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
   el.querySelectorAll<HTMLElement>(".al-t").forEach(t => { if (last) t.onclick = () => jumpAt(last); });
   const r = el.querySelector<HTMLElement>("#al-r"); if (r) r.onclick = async () => { await call("cmd", { c: "R" }); renderAlerts(); };
@@ -121,11 +121,23 @@ const call = async <T = any>(op: string, args: Record<string, unknown> = {}) => 
 
 // ---------------------------------------------------------------- 急停：永远可点，不依赖任何状态
 let estopPhase: EstopPhase = "idle";
+// 解除确认（cleared 事件或 tx_locked → false）：只提示 + 「重新调参」；不自动发任何运动 / 调参请求
+let clearedShown = false;
+function showCleared() {
+  if (clearedShown) return; clearedShown = true;
+  onCleared((text, btn, go) => {
+    const d = document.createElement("div"); d.className = "toast ok cleared";
+    d.innerHTML = `<b>${esc(text)}</b><span class="act"><button class="btn sm pri" data-r="retune">${esc(btn.label)}</button><button class="btn sm" data-r="x">知道了</button></span>`;
+    d.querySelector<HTMLElement>("[data-r=retune]")!.onclick = () => { d.remove(); go(); };
+    d.querySelector<HTMLElement>("[data-r=x]")!.onclick = () => d.remove();
+    $("toasts").prepend(d);
+  }, () => runAction(RETUNE.action, s => goStepRef(s)));
+}
 function setEstopPhase(p: EstopPhase) {
   estopPhase = p;
   const b = document.getElementById("estop"); if (!b) return;
   b.dataset.phase = p;
-  const lbl = b.querySelector(".lbl"); if (lbl) lbl.textContent = ESTOP_LABEL[p];
+  const lbl = b.querySelector(".es-lbl"); if (lbl) lbl.textContent = ESTOP_LABEL[p];
 }
 function estop(src = "按钮") {
   fireEstop(link, src);              // 先发：同步 ws.send，不排队、不防抖、不等 Agent
@@ -551,6 +563,7 @@ function renderStatus(st: Msg) {
   if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
   S.status = st;
   if (!linkStateActive()) conn.set({ board: !!st.connected, alive: !!st.alive });   // 有 link.state 时以它为准
+  if (latchCleared(wasLatched, S.latched)) showCleared();
   if (relock) renderAlerts();   // 急停锁存变化：告警条上的“解除急停 R”跟着出现/消失
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
@@ -633,8 +646,7 @@ link.on(m => {
       break;
     }
     case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); break;
-    case "event": if (m.kind === "estop" && m.state) { const p = onEstopEvent(m.state); if (p) setEstopPhase(p); }
-      tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
+    case "event": tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
     case "alert_ack": AL.ack(m.upto); renderAlerts(); break;   // 另一个窗口点了“知道了”
     case "schema": applySchema(m.schema); break;
     case "param": S.applied[m.name] = m.value; syncParams(); break;
@@ -646,7 +658,7 @@ link.on(m => {
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
     case "reconnecting": if (m.attempt >= 5) toast(`${m.port} 还没回来：已试 ${m.attempt} 次，每 ${m.next_s} s 再试；不想等就点“断开”`, "info", 4000); break;
-    case "estop": if (m.state) { const p = onEstopEvent(m.state); if (p) setEstopPhase(p); break; }
+    case "estop": if (m.state) { const p = onEstopEvent(m.state); if (p) setEstopPhase(p); if (m.state === "cleared") showCleared(); break; }
       if (m.sent && estopPhase === "pending") setEstopPhase(onEstopEvent("requested") ?? "requested");   // 旧回包 {sent:true}：按已发送处理
       toast(m.message, m.sent ? "info" : "crit", m.sent ? 2500 : 15000); break;
   }

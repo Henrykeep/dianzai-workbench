@@ -14,7 +14,9 @@ export function fireEstop(link: { fire(op: string, a: Record<string, unknown>): 
   return t;
 }
 // 收到 estop {source, state: requested|latched}：记到最近一次点击上
+// 事件格式已定：只用 {type:"estop", seq, state: requested|latched|cleared, source, cause?, message_zh?, t}
 export function onEstopEvent(state: string): EstopPhase | null {
+  if (state === "cleared") { log("estop cleared"); return "idle"; }
   if (state !== "requested" && state !== "latched") return null;
   const t = traces[traces.length - 1];
   if (t && t[state] == null) { t[state] = now(); log(`estop click→${state} ${(t[state]! - t.click).toFixed(1)} ms`); }
@@ -22,4 +24,12 @@ export function onEstopEvent(state: string): EstopPhase | null {
 }
 function log(s: string) {
   try { console.debug("[dz-estop]", s); (globalThis as any).__dzEstop = traces; } catch { /* 调试日志失败不影响急停 */ }
+}
+
+// 解除确认（tx_locked true → false）：只提示，不自动发任何运动 / 调参请求；「重新调参」由人点了才发起
+export const CLEARED_TEXT = "已解除，电机保持静止，需重新开始调参";
+export const RETUNE = { label: "重新调参", action: "tune_relay" } as const;
+export function latchCleared(prev: boolean, cur: boolean) { return prev && !cur; }
+export function onCleared(show: (text: string, btn: typeof RETUNE, onClick: () => void) => void, startTune: () => void) {
+  show(CLEARED_TEXT, RETUNE, () => startTune());   // startTune 只在人点击时调用
 }

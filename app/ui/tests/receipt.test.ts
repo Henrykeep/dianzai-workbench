@@ -24,12 +24,12 @@ if (R.state("c1") !== "running" || R.state("c2") !== "queued" || R.state("c3") !
 R.sent("d"); R.replied("d"); adv(5000); if (R.state("d") !== "done") throw "回答算送达";
 if (R.ack({ msg_id: "zz", state: "queued" }) || R.ack({ msg_id: "a", state: "bogus" as any })) throw "忽略未知";
 if (newMsgId() === newMsgId()) throw "msg_id 唯一";
-// blocked → 「已急停，请先解除」，正文 message，按钮走 resolveFix → 「解除并继续」
+// blocked → 「已急停，请先解除」，正文 message，按钮走 resolveFix → 「解除急停」
 R.sent("e"); R.ack({ msg_id: "e", state: "blocked", reason: "estop", message: "板子已急停（心跳丢失），这条消息暂停执行", fix_action: "estop_clear" });
 if (R.state("e") !== "blocked") throw "blocked";
 const k = blockedCard({ msg_id: "e", state: "blocked", reason: "estop", message: "板子已急停（心跳丢失），这条消息暂停执行", fix_action: "estop_clear" }, () => true);
 if (k.title !== "已急停，请先解除" || k.why !== "板子已急停（心跳丢失），这条消息暂停执行") throw "blocked 卡";
-if (k.other?.kind !== "run" || k.other.label !== "解除并继续" || k.otherId !== "estop_clear") throw "解除并继续 " + JSON.stringify(k.other);
+if (k.other?.kind !== "run" || k.other.label !== "解除急停" || k.otherId !== "estop_clear") throw "解除急停 " + JSON.stringify(k.other);
 if (ACTIONS.estop_clear.ui !== "cmd-r") throw "解除走人点的 R 键入口";
 // progress.changed：只对新 blocker 发消息（#28：急停打断自整定）
 const seen = new Set<string>();

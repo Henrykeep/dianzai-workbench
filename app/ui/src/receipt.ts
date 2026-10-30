@@ -36,13 +36,13 @@ export class Receipts {
   replied(id: string) { if (this.m.has(id)) this.set(id, "done"); }
   failed(id: string) { if (this.m.has(id)) this.set(id, "lost"); }
 }
-// blocked 提示卡：标题固定，正文 = 本地服务给的 message，按钮走统一 fix_action（estop_clear →「解除并继续」）
+// blocked 提示卡：标题固定，正文 = 本地服务给的 message，按钮走统一 fix_action（estop_clear →「解除急停」）
 export function blockedCard(a: Ack, has?: (ui: string) => boolean): Card {
   const fa = a.fix_action || (a.reason === "estop" ? "estop_clear" : "");
   return {
     title: a.reason === "estop" || fa === "estop_clear" ? "已急停，请先解除" : "消息暂不能执行",
     why: a.message || "本地服务暂停了这条消息",
-    fix: fa === "estop_clear" ? "确认现场安全后点「解除并继续」，本地服务会接着执行这条消息" : "按按钮处理后，本地服务会接着执行",
+    fix: fa === "estop_clear" ? "确认现场安全后点「解除急停」。解除后电机待机，不会自动恢复运动" : "按按钮处理后，本地服务会接着执行",
     detail: `msg_id: ${a.msg_id} · state: ${a.state}${a.reason ? " · reason: " + a.reason : ""}`,
     retry: false, other: fa ? resolveFix(fa, has) : null, otherId: fa || undefined,
   };

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """界面文案检查（问题池 #26）：扫 app/ui 里用户看得见的字符串。
 
-禁止：「侧车」（对用户统一叫「本地服务」；变量名不管）、口语词（一下 / 搞 / 啥 …）、感叹号（！ 或中文旁的 !）、emoji。
+禁止：旧名「解除并继续」（已改「解除急停」）、「侧车」（对用户统一叫「本地服务」；变量名不管）、口语词（一下 / 搞 / 啥 …）、感叹号（！ 或中文旁的 !）、emoji。
 范围：app/ui/index.html 的文字与 title/placeholder/aria-label/alt/value 属性；app/ui/src/**/*.ts 里含中文的字符串字面量
 （注释不算）。用法：python3 tools/check_copy.py [--selftest]；有问题时逐条列出 文件:行 · 命中 · 原文 · 怎么改，退出码 1。
 """
@@ -13,7 +13,9 @@ CJK = re.compile(r"[\u4e00-\u9fff]")
 COLLOQ = ["一下", "搞定", "搞", "啥", "咋", "弄", "瞅", "呗", "嘛", "啦", "咱"]
 # emoji：表情 / 图形符号平面 + 常见的 ⚠ ⚡ ✅ ❌ ⭐ 与变体选择符；✓ ✗ 这类文字符号不算
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u26A0\u26A1\u2705\u274C\u2B50\uFE0F]")
-FIX = {"侧车": "改成「本地服务」", "！": "去掉感叹号，用句号", "!": "去掉感叹号，用句号", "emoji": "去掉 emoji，用文字或图标组件"}
+# 已改名的旧文案：出现即报
+RENAMED = {"解除并继续": "改成「解除急停」", "急停已解除，电机处于待机": "改成「已解除，电机保持静止，需重新开始调参」"}
+FIX = {**RENAMED, "侧车": "改成「本地服务」", "！": "去掉感叹号，用句号", "!": "去掉感叹号，用句号", "emoji": "去掉 emoji，用文字或图标组件"}
 
 
 def ts_strings(src: str):
@@ -110,6 +112,8 @@ def problems(text: str):
     for w in COLLOQ:
         if w in vis and not any(h in vis for h in ("一下子",) if w == "一下"):
             hits.append(w); break
+    for old in RENAMED:
+        if old in vis: hits.append(old)
     if "！" in vis: hits.append("！")
     if re.search(r"[\u4e00-\u9fff。，）」][ ]?!|![\u4e00-\u9fff]", vis): hits.append("!")
     if EMOJI.search(vis): hits.append("emoji")
@@ -137,6 +141,8 @@ def selftest():
     assert problems("完成🎉") == ["emoji"]
     h = html_strings('<button title="试一下">发送</button>\n<!-- 侧车 -->\n<p>本地服务已连接</p>')
     assert [p for _, t in h for p in problems(t)] == ["一下"], h
+    assert problems("<button>解除并继续</button>") == ["解除并继续"], "旧名"
+    assert not problems("解除急停")
     print("check_copy selftest ok")
 
 
