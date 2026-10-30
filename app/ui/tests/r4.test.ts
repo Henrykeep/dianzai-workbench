@@ -1,0 +1,13 @@
+import { humanize } from "../src/errors.ts";
+import { estopText } from "../src/estop.ts";
+import { infer } from "../src/progress.ts";
+const h = humanize("HTTP 403 error code: 1010");
+if (!h || !h.what.includes("拒绝") || !h.raw.includes("1010")) throw "403 翻译";
+if (humanize("一切正常") !== null) throw "无匹配不翻译";
+if (estopText({ kind: "estop" }) !== "急停已触发（来源未知）。排除原因后点「解除」") throw "来源未知";
+if (!estopText({ source: "heartbeat_timeout", detail: "心跳超时（上位机 500 ms 未发送数据）", fix: "检查串口连接后点「解除」" }).startsWith("急停：心跳超时")) throw "侧车文案优先";
+const p = infer({ current: "项目", connected: false, estop: false, gainsZero: false, paramsDirty: true, selftestFail: false, visited: new Set(["项目"]) });
+if (p.steps.length !== 7 || p.steps[0].id !== "req" || p.current !== "req") throw "7 步旅程";
+if (!p.blockers.some(b => b.code === "no_board" && b.fix_action === "connect")) throw "no_board blocker";
+if (!p.blockers.some(b => b.code === "params_not_saved")) throw "params blocker";
+console.log("r4 ok");

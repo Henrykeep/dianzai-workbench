@@ -1,12 +1,12 @@
 import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
-import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
+import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
 import { LAYOUTS, Layout, Plot, chColor, num } from "./plot";
 import { matchNames } from "./names";
-import { Param, clampLocal, pendingOf, rangeLabel } from "./params";
+import { Param, clampLocal, pendingOf, rangeLabel, noInitialGains } from "./params";
 import { AGENT_IDLE, agentIdle, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
@@ -18,6 +18,12 @@ import { initHbStrip } from "./hbstrip";
 import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
+import { humanize, humanHtml } from "./errors";
+import { conn, onLinkState, linkStateActive } from "./conn";
+import { initPjAsk } from "./pjask";
+import { estopText } from "./estop";
+import { fetchProgress, render as renderProgress } from "./progress";
+import type { Step } from "./steps";
 import { initSteps } from "./steps";
 import { initCalWiz } from "./calwiz";
 import { initSymptoms } from "./symptoms";
@@ -48,9 +54,17 @@ const AL = new Alerts();
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   el.hidden = !l.length;
+  // 急停/看门狗锁存：告警里写明“已急停 + 原因 + 怎么解除”，并点亮右上角唯一的「解除」按钮（不另开入口）
+  const latched = l.some(e => e.kind === "estop" || e.kind === "watchdog");
+  document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   if (!l.length) { el.innerHTML = ""; return; }
   const last = l[l.length - 1];
-  el.innerHTML = `<span class="al-n">${l.length}</span><span class="al-t" title="点击跳到这一刻">${esc(last.text)}<i>${last.log_t != null ? "dzlog " + last.log_t.toFixed(1) + " s" : ""}</i></span>` +
+  const isE = (e: any) => e.kind === "estop" || e.kind === "watchdog";
+  // 急停：只显示侧车给的说明（estop.ts 兜底），不显示 dzlog 时间戳
+  el.innerHTML = latched
+    ? `<span class="al-n">${l.length}</span><span class="al-t" title="点击跳到这一刻"><b class="al-h">${esc(estopText(l.filter(isE).pop() as any))}</b></span>`
+    : `<span class="al-n">${l.length}</span><b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
+  el.innerHTML +=
     (l.length > 1 ? `<span class="al-more">${l.slice(0, -1).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
     `<span class="sp"></span><button class="btn sm" id="al-ack">知道了</button>`;
   el.querySelector<HTMLElement>(".al-t")!.onclick = () => jumpAt(last);
@@ -81,8 +95,10 @@ function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", 
   const er: Err = typeof e === "string" ? { code: "", message: e } : e;
   const d = document.createElement("div");
   d.className = `toast ${kind}`;
-  d.innerHTML = `<b>${esc(er.message)}</b>${er.fix ? `<span>怎么办：${esc(er.fix)}</span>` : ""}`;
-  d.onclick = () => d.remove();
+  // 侧车已给出 fix 的按原样显示；否则过翻译层（发生了什么 · 原因 · 处理 + 详情）
+  const h = !er.fix && kind !== "ok" && kind !== "info" ? humanize(`${er.code} ${er.message}`) : null;
+  d.innerHTML = h ? humanHtml(h, esc) : `<b>${esc(er.message)}</b>${er.fix ? `<span>处理：${esc(er.fix)}</span>` : ""}`;
+  d.onclick = e => { if (!(e.target as Element).closest("details")) d.remove(); };
   $("toasts").prepend(d);
   setTimeout(() => d.remove(), ms);
 }
@@ -110,10 +126,14 @@ addEventListener("keydown", e => {
 // ---------------------------------------------------------------- 端口
 function renderPorts(keep = true) {
   const sel = $<HTMLSelectElement>("port"), cur = sel.value;
+  // 排序：可能是板子的 USB 串口 → 仿真板 → 其余（板载 ttyS0/COM1 放最后）
+  const rank = (p: { kind: string; likely?: boolean }) => p.likely ? 0 : p.kind === "sim" ? 1 : 2;
+  S.ports = [...S.ports].sort((a, b) => rank(a) - rank(b));
   sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}">${esc(p.kind === "sim" ? p.desc : `${p.port} · ${p.desc}`)}</option>`).join("")
     || `<option value="">没有找到串口 — 插上 USB 转串口</option>`;
   // 零配置：USB 串口优先；没有就选仿真板（板载 ttyS0/COM1 几乎不会是你的板子，不默认选）
-  const pick = (keep && S.ports.some(p => p.port === cur) && cur) || S.ports.find(p => p.likely)?.port || S.ports.find(p => p.kind === "sim")?.port || S.ports[0]?.port || "";
+  const last = localStorage.getItem("dz-port") ?? "";   // 记住上次连接的端口
+  const pick = (keep && S.ports.some(p => p.port === cur) && cur) || S.ports.find(p => p.likely)?.port || (S.ports.some(p => p.port === last) && last) || S.ports.find(p => p.kind === "sim")?.port || S.ports[0]?.port || "";
   sel.value = pick;
 }
 async function refreshPorts() {
@@ -136,6 +156,7 @@ async function toggleConnect() {
     const low = $<HTMLSelectElement>("lines").value === "low";
     await call("serial_lines", low ? { dtr: false, rts: false } : { dtr: null, rts: null });
     const r = await call("connect", { port, baud: $<HTMLSelectElement>("baud").value });
+    localStorage.setItem("dz-port", port);
     if (r?.baud) $<HTMLSelectElement>("baud").value = String(r.baud);
     plot.clear();
   } catch { /* toast 已显示 */ } finally { btn.disabled = false; }
@@ -315,7 +336,18 @@ function renderProtect() {
     S.edit[n] = String(v); await sendPending([n], true); toast(`${n} 已撤销为 ${fmt(v, p)}`, "ok", 3000);
   });
 }
+// 增益全 0 时“无初值一键起步”与“阶跃实验”互换位置：起步成为操作条主按钮，阶跃收进“更多实验”
+// （同一组元素搬位置，入口仍各只有一个，操作条顶层按钮数不变）
+function syncRelaySlot() {
+  const relay = document.getElementById("ag-relay"), step = document.getElementById("ag-step"), pop = document.querySelector("#tune-more .pop");
+  if (!relay || !step || !pop) return;
+  const zero = noInitialGains(S.schema?.params ?? [], S.applied);
+  if (zero === (relay.parentElement !== pop)) return;
+  if (zero) { step.replaceWith(relay); pop.prepend(step); relay.className = "btn go"; step.className = "mi"; }
+  else { relay.replaceWith(step); pop.prepend(relay); step.className = "btn go"; relay.className = "mi"; }
+}
 function syncParams() {
+  syncRelaySlot();
   (S.schema?.params ?? []).forEach(p => {
     const inp = document.getElementById(`pi-${p.name}`) as HTMLInputElement | null;
     // 没在改的格子一律跟随板上值（含其他客户端 / Agent 改的），聚焦也跟随
@@ -483,7 +515,9 @@ function renderProposal(m: Msg) {
 // ---------------------------------------------------------------- 状态
 function renderStatus(st: Msg) {
   const was = S.status.connected;
+  if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
   S.status = st;
+  if (!linkStateActive()) conn.set({ board: !!st.connected, alive: !!st.alive });   // 有 link.state 时以它为准
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");
@@ -508,7 +542,14 @@ function renderStatus(st: Msg) {
   $("connect").classList.toggle("pri", !st.connected);
   $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = $<HTMLSelectElement>("lines").disabled = !!st.connected;
   $("empty").hidden = !!st.connected && !!S.schema;
-  $("empty").innerHTML = `<div>${st.connected ? (st.hint ? esc(st.hint) : "等待板子心跳…") : "选端口，点 <b>连接</b>。<br>没有硬件？选 <b>仿真板</b> 先熟悉界面。"}</div>`;
+  // 曲线区空状态即引导：说明这一页做什么 + 一个主按钮（点的是已有入口，不新增功能入口）
+  $("empty").innerHTML = st.connected
+    ? `<div class="es"><b>等待目标板心跳</b><p>${st.hint ? esc(st.hint) : "曲线将在收到第一帧数据后显示。"}</p></div>`
+    : `<div class="es"><b>未连接</b><p>曲线区显示目标板实时数据。连接目标板，或选择「仿真板」在无硬件时开始。</p><button class="btn pri" data-go="sim">开始仿真</button></div>`;
+  $("empty").querySelector<HTMLElement>("[data-go=sim]")?.addEventListener("click", () => {
+    const sel = $<HTMLSelectElement>("port"), o = [...sel.options].find(x => x.value.startsWith("sim:"));
+    if (o) sel.value = o.value; $("connect").click();
+  });
   if (!was && st.connected) { call("health").then(h => hb.set(h)).catch(() => {}); call("timeline").then(r => { tl.set(r.events); AL.ack(r.acked); r.events.forEach((x: any) => AL.offer(x)); renderAlerts(); }).catch(() => {}); }   // 刷新页面/新窗口：补回已有的格子
   if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); tl.clear(); AL.reset(); renderAlerts(); }
 }
@@ -564,6 +605,7 @@ link.on(m => {
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
+    case "link.state": onLinkState(m as any); break;
     case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
@@ -572,11 +614,11 @@ link.on(m => {
   }
 });
 link.onState = async open => {
-  $("st-ws").textContent = open ? "侧车 已连接" : "侧车 未连接";
-  $("banner").hidden = open;
-  $("banner").innerHTML = "侧车（dzbench）没有响应：程序会自动把它重启，界面自动重连。板子 1 秒收不到心跳会自己急停。开发模式请先运行 <code>python -m dzbench</code>";
+  conn.set({ sidecar: open });
+  if (!open && S.status.connected) renderStatus({ ...S.status });   // 状态栏同步成未连接
   if (!open) return;
   const h = await link.rpc("hello");
+  if ((h as any)?.link) onLinkState((h as any).link);
   S.ports = h.ports; renderPorts(false);
   const applyFramedef = () => {
     const kind = $<HTMLSelectElement>("framedef").value;
@@ -639,11 +681,36 @@ $("doctor").onclick = async () => {
   $<HTMLDialogElement>("doc").show();
 };
 
-createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
+createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } });
 // 对话框原来写在右栏 <aside> 里：分页后右栏在 项目/烧录/标定/封箱 页隐藏，自检、赛前检查等对话框跟着看不见 → 统一挪到 body 下
 document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();
+conn.on(c => {
+  if (!c.board) {   // 侧车停或板子 lost/disconnected：状态栏左侧、速率、连接按钮同步切换，清掉旧速率
+    $("ro-link").textContent = c.sidecar ? "未连接" : "侧车无响应";
+    $("ro-rx").textContent = "—"; S.rate = 0;
+    $("led").className = "led";
+    $("connect").innerHTML = "连接 <kbd>⌃O</kbd>"; $("connect").classList.add("pri");
+  }
+  $<HTMLButtonElement>("ag-send").disabled = !c.sidecar;
+  $("st-ws").textContent = c.sidecar ? "侧车 已连接" : "侧车 未连接";
+  $("banner").hidden = c.sidecar;
+  $("banner").innerHTML = "侧车无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
+});
 const goStep = initSteps(() => !!S.status.connected);
+// 项目进度：接口优先、否则前端推断；每秒或切步时刷新
+const refreshProgress = async () => renderProgress(await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
+  current: (document.querySelector<HTMLElement>(".app")!.dataset.step || "项目") as Step,
+  connected: conn.get().board,
+  estop: AL.list.some(e => e.kind === "estop" || e.kind === "watchdog"),
+  gainsZero: noInitialGains(S.schema?.params ?? [], S.applied),
+  paramsDirty: pending().length > 0,
+  selftestFail: false,
+  visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
+}), goStep);
+window.addEventListener("dz-step", () => void refreshProgress());
+initPjAsk(call, goStep);
+setInterval(() => void refreshProgress(), 1500);
 initSymptoms(s => goStep(s as Parameters<typeof goStep>[0]));
 initProjFlow(call, (t, k) => toast(t, k ?? "info", 6000));
 const score: { refresh(): void } = initScore(call, plot, () => S.schema?.accept ?? [], (t, k) => toast(t, k ?? "info", 9000));

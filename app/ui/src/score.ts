@@ -71,13 +71,17 @@ export function initScore(call: Call, plot: Plot, specs: () => AcceptSpec[], toa
   const specFor = (it: ScoreItem) => { const nm = it.accept ?? it.metrics.find(m => m.accept)?.accept; return specs().find(s => s.name === nm) ?? null; };
   function drawMat() {
     const layer = $<HTMLSelectElement>("sc-layer").value;
-    $("sc-mat").innerHTML = `<table class="pf-tab sc-mat"><tr><th>评分项</th><th>自动判定</th><th>人工 / 物理证据</th><th>当前结论</th></tr>${items.map(it => {
+    // 列表而非四列表格：侧栏窄，只留“哪一项 · 几分 · 结论”，判定方式和证据放 title 与选中项详情
+    const tot = items.reduce((a, it) => a + (it.score ?? 0), 0);
+    const got = items.reduce((a, it) => { const sp = specFor(it); return a + (verdict(runs.get(it.id) ?? [], sp?.runs ?? 3, layer).cls === "ok" ? (it.score ?? 0) : 0); }, 0);
+    const auto = items.filter(it => specFor(it)).length;
+    $("sc-mat").innerHTML = `<div class="sc-sum"><div><b class="mono">${got}</b><span class="mono"> / ${tot} 分已通过</span></div><span>${items.filter(it => !(runs.get(it.id) ?? []).length && !saved.has(it.id)).length} 项还没有测试记录（按 0 分计）· ${auto} 项可自动判</span><div class="bar"><i style="width:${tot ? (got / tot) * 100 : 0}%"></i></div></div><div class="sc-head"><span>评分项</span><span>结论</span></div><ul class="sc-mat">${items.map(it => {
       const sp = specFor(it), v = verdict(runs.get(it.id) ?? [], sp?.runs ?? 3, layer);
       const how = it.metrics.map(m => m.how).filter(Boolean).join("；") || "—";
-      return `<tr data-id="${esc(it.id)}" class="${cur?.id === it.id ? "on" : ""}"><td><b>${esc(it.id)}</b>${it.score != null ? ` · ${it.score} 分` : ""}<div class="hint">${esc(it.text.length > 28 ? it.text.slice(0, 28) + "…" : it.text)}</div></td>
-        <td>${sp ? `accept <span class="mono">${esc(sp.name)}</span>` : `<span class="hint">没有 accept 规格</span>`}</td><td class="hint">${esc(how)}${saved.has(it.id) ? `<div class="mono">${esc(saved.get(it.id))}</div>` : ""}</td><td class="${v.cls}">${v.text}</td></tr>`;
-    }).join("")}</table>`;
-    $("sc-mat").querySelectorAll<HTMLElement>("tr[data-id]").forEach(tr => (tr.onclick = () => pick(tr.dataset.id!)));
+      const tip = `自动判定：${sp ? "accept " + sp.name : "没有 accept 规格"}\n人工 / 物理证据：${how}${saved.has(it.id) ? "\n证据：" + saved.get(it.id) : ""}`;
+      return `<li data-id="${esc(it.id)}" class="${cur?.id === it.id ? "on" : ""}" title="${esc(tip)}"><div class="sc-l"><div class="sc-id"><b>${esc(it.id)}</b>${it.score != null ? `<span class="sc-pt mono">${it.score} 分</span>` : ""}${sp ? `<span class="sc-auto">可自动判</span>` : ""}</div><div class="sc-tx">${esc(it.text)}</div></div>${(runs.get(it.id) ?? []).length || saved.has(it.id) ? `<span class="sc-v ${v.cls}">${v.text}</span>` : `<span class="sc-v none" title="测评时没有记录的项按 0 分计：先跑一轮留数据">无记录 · 计 0 分</span>`}</li>`;
+    }).join("")}</ul>`;
+    $("sc-mat").querySelectorAll<HTMLElement>("li[data-id]").forEach(tr => (tr.onclick = () => pick(tr.dataset.id!)));
   }
   function pick(id: string) {
     cur = items.find(x => x.id === id) ?? null; drawMat(); if (!cur) return;

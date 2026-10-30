@@ -111,7 +111,7 @@ export function initAgent(call: Call) {
     d.className = "card change " + c.status;
     if (c.status === "committed" && (c.files || []).some((f: string) => /\.ya?ml$/.test(f)))   // 流程条“定稿”只认真正提交了参数 yaml
       window.dispatchEvent(new CustomEvent("dz-final", { detail: c.commit }));
-    d.innerHTML = `<div class="hd"><span class="dotk file"></span><span class="t">${esc(c.title)}</span><span class="lbl">${esc(c.layer)} · ${esc(c.source)}</span></div>
+    d.innerHTML = `<div class="hd"><span class="dotk file"></span><span class="t">${esc(c.title)}</span><span class="lbl">${esc(({ app: "应用代码", fw: "固件", firmware: "固件", docs: "文档", config: "配置" } as Record<string, string>)[c.layer] ?? "")}${c.source === "agent" ? " · Agent 提议" : ""}</span></div>
       <p>${esc(c.reason)}</p>${defaults(c.diff)}<pre class="diff">${diff}</pre>
       <div class="lbl">确认后：写入 → ${c.gates.length ? c.gates.map(esc).join(" → ") : "（无门禁）"} → git 提交</div>
       ${c.log && c.status !== "pending" ? `<details ${c.status === "failed" ? "open" : ""}><summary>门禁输出</summary><pre class="log">${esc(c.log)}</pre></details>` : ""}
@@ -231,7 +231,7 @@ export function initAgent(call: Call) {
     call<any>("tune_relay").then(r => add(r?.ok
       ? `<span class="lbl">继电起步：Ku=${n(r.ku, 3, "")} Pu=${n(r.pu, 3, " s")}（${r.cycles} 个周期）→ ${esc(r.gains.rule.toUpperCase())} 初值已发提议卡</span>`
       : `<span class="lbl">继电起步没成功：${esc(r?.why ?? "")}</span>`, "msg bot"), () => {})
-      .finally(() => { b.disabled = false; b.textContent = "无初值一键起步"; });
+      .finally(() => { b.disabled = false; b.textContent = "自整定"; });
   };
   $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
   $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
@@ -351,17 +351,34 @@ export function initAgent(call: Call) {
     const inp = $<HTMLInputElement>("ag-in"), text = inp.value.trim();
     if (!text) return;
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
-    add(esc(text), "msg me");
+    const me = add(esc(text), "msg me");
     const w = add(`<span class="lbl">思考中…</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
     tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
     try {
-      const r = await call<string>("agent_ask", { text });
-      if (r.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
-       else w.firstElementChild!.outerHTML = `<div>${esc(r).replace(/\n/g, "<br>")}</div>`;
+      const r = await call<any>("agent_ask", { text });
+      const txt = typeof r === "string" ? r : r?.text ?? "";
+      if (txt.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
+      else w.firstElementChild!.outerHTML = `<div>${esc(txt).replace(/\n/g, "<br>")}</div>`;
+      // 步数用完：给「继续执行」。侧车返回 continue 操作时用它，否则发一条「继续」
+      if (/步数用完/.test(txt) || r?.continue) {
+        const c = add(`<div class="act"><button class="btn pri">继续执行</button></div>`, "card cont-card");
+        c.querySelector("button")!.onclick = () => {
+          c.remove();
+          if (r?.continue?.op) void call(r.continue.op, r.continue.args ?? {});
+          else { $<HTMLInputElement>("ag-in").value = "继续"; $<HTMLFormElement>("ag-form").requestSubmit(); }
+        };
+      }
     }
-    catch { w.remove(); }
+    catch {   // 不静默丢：标「未送达」并给「重发」
+      w.remove();
+      me.classList.add("undelivered");
+      const f = document.createElement("div"); f.className = "undel";
+      f.innerHTML = `<span>未送达</span><button class="btn sm">重发</button>`;
+      f.querySelector("button")!.onclick = () => { f.remove(); me.remove(); $<HTMLInputElement>("ag-in").value = text; $<HTMLFormElement>("ag-form").requestSubmit(); };
+      me.after(f);
+    }
     // 不清 tools/mode：工具事件会比回答晚到（侧车线程 → 事件循环），留给这条消息直到下一问
-    finally { live = null; $<HTMLButtonElement>("ag-send").disabled = false; }
+    finally { live = null; $<HTMLButtonElement>("ag-send").disabled = !(document.getElementById("st-ws")?.textContent ?? "").includes("已连接"); }
   };
 
   // ---------------------------------------------------------------- 设置
@@ -384,7 +401,7 @@ export function initAgent(call: Call) {
     const c = await call("agent_config").catch(() => null);
     if (!c) return;
     provs = c.providers;
-    $("cfg-title").textContent = first ? "接上大模型（第一次用）" : "大模型设置";
+    $("cfg-title").textContent = first ? "配置大模型" : "大模型设置";
     $("cfg-provs").innerHTML = Object.entries(provs).map(([k, p]) =>
       `<button type="button" class="pv" role="radio" data-k="${esc(k)}"><b>${esc(p.name)}</b><span class="mono">${esc(p.model || "自己填")}</span></button>`).join("");
     document.querySelectorAll<HTMLElement>("#cfg-provs .pv").forEach(b => b.onclick = () => pickProv(b.dataset.k!, true));
@@ -432,6 +449,11 @@ export function initAgent(call: Call) {
     }
     b.disabled = false; olSt("ok", `<b>本地就绪</b> · ${esc(want)} · 云端连不上时自动切过去`);
   };
+  // 点框外关闭（非模态 dialog 没有 backdrop，所以监听文档点击）
+  document.addEventListener("pointerdown", (e) => {
+    const d = $<HTMLDialogElement>("cfg");
+    if (d.open && !d.contains(e.target as Node) && !(e.target as Element).closest?.("#ag-cfg,[data-r=cfg]")) d.close("cancel");
+  });
   $<HTMLDialogElement>("cfg").onclose = () => {
     sessionStorage.setItem("dz-cfg-seen", "1");
     if ($<HTMLDialogElement>("cfg").returnValue !== "save") return;
@@ -440,7 +462,15 @@ export function initAgent(call: Call) {
       .then(() => { done.innerHTML = `<span class="lbl">大模型</span>已保存：${esc(fv("cfg-model"))}。下一句话起用它回答。`; })
       .catch(() => done.remove());
   };
-  call("agent_config").then(c => { if (c && !c.configured && !sessionStorage.getItem("dz-cfg-seen")) openCfg(true); }).catch(() => {});
+  // 首启不弹窗（会挡住项目/调参等不依赖 Agent 的功能）：在 Agent 栏放一张空状态卡，用户想用时再点设置
+  call("agent_config").then(c => {
+    if (c?.configured) badge(/ollama|localhost|127\.0\.0\.1|:11434/i.test(`${c.provider} ${c.base_url}`) ? "local" : "cloud");
+    if (!c || c.configured) return;
+    document.querySelectorAll(".setup-card").forEach(e => e.remove());   // 只保留一张
+    const card = add(`<div class="ag-setup"><b>Agent 未配置</b><p>原因：尚未配置大模型服务。处理：点击「配置模型」。未配置时，新建项目、烧录、示波、调参、评分与急停均可正常使用。</p></div>
+      <div class="act"><button class="btn" data-r="cfg">配置模型</button></div>`, "card setup-card");
+    card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
+  }).catch(() => {});
 
   // ---------------------------------------------------------------- 计划 / 撤销
   let planEl: HTMLElement | null = null;
@@ -489,11 +519,18 @@ export function initAgent(call: Call) {
     if (first.classList.contains("lbl")) first.outerHTML = `<div class="stream"></div>`;
     (live.firstElementChild as HTMLElement).innerHTML = esc(streamed).replace(/\n/g, "<br>");
   }
+  // 云端 / 本地模型标识：断网自动切本地（agent_mode.fallback）或直接配 Ollama 时显示「本地模型」
+  function badge(k: "local" | "cloud") {
+    const b = document.getElementById("ag-badge"); if (!b) return;
+    b.hidden = false; b.dataset.k = k; b.textContent = k === "local" ? "本地模型" : "云端模型";
+  }
+  window.addEventListener("offline", () => badge("local"));
   function modeLine(m: Msg) {
     if (!mode) return;
     if (m.type === "agent_mode") {
       mode.dataset.base = m.mode === "local" ? `本地 ${m.name}${m.fallback ? " · 云端连不上，已自动切到本地" : ""}` : `大模型 ${m.name}`;
       mode.classList.toggle("local", m.mode === "local");
+      badge(m.mode === "local" ? "local" : "cloud");
     }
     if (m.type === "agent_usage") mode.dataset.use = ` · ${(m.prompt + m.completion).toLocaleString()} tokens${m.cost != null ? ` · ¥${m.cost.toFixed(4)}` : ""}`;
     if (m.type === "agent_retry") mode.dataset.use = ` · 服务忙，第 ${m.attempt} 次重试…`;

@@ -29,7 +29,16 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   const root = document.getElementById("pflow"); if (!root) return;
   const v = (id: string) => (document.getElementById(id) as HTMLInputElement).value.trim();
   const base = () => ({ code: v("pf-code") || "题目", dest: v("pf-dest") || undefined });
-  const done = (k: string, txt: string) => { const c = root.querySelector<HTMLElement>(`[data-f="${k}"]`)!; c.classList.add("ok"); c.querySelector(".st")!.textContent = "✓ " + txt; };
+  // 进度：完成几步、下一步是哪张卡（卡片 .ok 即完成）
+  const prog = () => {
+    const cs = [...root.querySelectorAll<HTMLElement>(".pf-card")], n = cs.filter(c => c.classList.contains("ok")).length;
+    const nx = cs.find(c => !c.classList.contains("ok")); cs.forEach(c => c.classList.toggle("cur", c === nx));
+    const bar = document.querySelector<HTMLElement>("#pj-prog i"), t = document.getElementById("pj-prog-t");
+    if (bar) bar.style.width = `${(n / cs.length) * 100}%`;
+    if (t) t.textContent = `${n} / ${cs.length} 完成` + (nx ? ` · 下一步：${nx.querySelector("h4")?.firstChild?.textContent ?? ""}` : " · 全部就绪");
+  };
+  queueMicrotask(prog);
+  const done = (k: string, txt: string) => { const c = root.querySelector<HTMLElement>(`[data-f="${k}"]`)!; c.classList.add("ok"); c.querySelector(".st")!.textContent = "✓ " + txt; prog(); };
   const out = (k: string, r: any) => { const o = root.querySelector<HTMLElement>(`[data-f="${k}"] .pf-out`)!; o.hidden = false; o.textContent = `$ ${r.cmd}\n${r.out}${r.rc ? `\n（退出码 ${r.rc}）` : ""}`; };
   const res = (k: string) => root.querySelector<HTMLElement>(`[data-f="${k}"] .pf-res`)!;
   const filesView = (fs: Record<string, string>, show: string[]) => Object.keys(fs).length ? `<p class="hint">将写入的文件：${Object.keys(fs).map(esc).join("、")}</p>` +
