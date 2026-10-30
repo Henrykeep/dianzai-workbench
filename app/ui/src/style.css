@@ -567,3 +567,50 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 .app[data-step="调参"] #view,.app[data-step="调参"] #plot-sub,.app[data-step="调参"] #xdiv{display:none}
 .page>.hint,.page p.hint{max-width:960px}
 .page>.hint{width:100%!important;max-width:960px!important}
+
+/* ── Agent 确认卡（v8）：一张卡 = 标题/一句话 → 步骤时间线（事实 + 旧→新）→ 可展开 diff → 执行。琥珀只给“待你决定”。 */
+.card.action{flex:none;overflow:clip;background:var(--s2);box-shadow:var(--sh-card),inset 0 0 0 1px var(--acc-line);border-radius:var(--r-lg)}
+.card.action.done-ok{box-shadow:var(--sh-card)} .card.action.declined{opacity:.55;box-shadow:var(--sh-card)}
+.card.action .ahd{display:flex;gap:var(--sp3);align-items:flex-start;padding:var(--sp3) var(--sp4) var(--sp2);background:linear-gradient(180deg,var(--acc-bg),transparent)}
+.card.action .pulse{flex:none;width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--acc);box-shadow:0 0 0 4px var(--acc-bg)}
+.card.action.pending .pulse{animation:apulse 1.8s var(--ease) infinite}
+.card.action:not(.pending) .pulse{background:var(--ok);box-shadow:0 0 0 4px var(--ok-bg)}
+.card.action.declined .pulse{background:var(--dim);box-shadow:none}
+@keyframes apulse{50%{box-shadow:0 0 0 7px transparent}}
+.card.action .ahd>div{flex:1;min-width:0}
+.card.action .at{font:500 var(--t-md)/1.4 var(--f-sans);color:var(--ink)}
+.card.action .as{margin-top:2px;font-size:var(--t-sm);color:var(--muted);line-height:1.5}
+.card.action .where{flex:none;padding:1px var(--sp2);border-radius:999px;font:500 var(--t-xs)/18px var(--f-sans);color:var(--muted);box-shadow:inset 0 0 0 1px var(--line2)}
+.card.action .where.hw{color:var(--warn);box-shadow:inset 0 0 0 1px var(--warn-bg),inset 0 0 0 1px var(--warn)}
+.card.action .aerr{margin:0 var(--sp4) var(--sp2);padding:var(--sp2) var(--sp3);border-radius:var(--r-sm);background:var(--crit-bg);color:var(--crit);font-size:var(--t-sm)}
+.card.action ul.prearm{padding:0 var(--sp4) var(--sp2)}
+.asteps{list-style:none;margin:0;padding:var(--sp1) var(--sp4) var(--sp2);position:relative}
+.ast{display:flex;gap:var(--sp3);position:relative;padding-bottom:var(--sp3)}
+.ast:not(:last-child)::before{content:"";position:absolute;left:9px;top:22px;bottom:2px;width:1px;background:var(--line2)}
+.ast .ico{flex:none;width:19px;height:19px;border-radius:50%;display:grid;place-items:center;font:600 10px/1 var(--f-sans);background:var(--ok-bg);color:var(--ok)}
+.ast.s-warn .ico{background:var(--warn-bg);color:var(--warn)} .ast.s-fail .ico{background:var(--crit-bg);color:var(--crit)}
+.ast .bd{flex:1;min-width:0}
+.ast .st{font:500 var(--t-md)/19px var(--f-sans);color:var(--ink);display:flex;gap:var(--sp2)}
+.ast .st .no{font:400 var(--t-xs)/19px var(--f-mono);color:var(--dim)} .ast .st .no:empty{display:none}
+.ast .facts{display:flex;flex-direction:column;gap:2px;margin-top:2px;font-size:var(--t-sm);line-height:1.5;color:var(--text)}
+.ast.s-warn .facts span:last-child{color:var(--warn)}
+.chgs{list-style:none;margin:var(--sp2) 0 0;padding:var(--sp1);border-radius:var(--r-sm);background:var(--s0);box-shadow:inset 0 0 0 1px var(--hair)}
+.chg{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:var(--sp2);align-items:center;padding:3px var(--sp2);border-radius:var(--r-xs);font-size:var(--t-sm)}
+.chg+.chg{box-shadow:0 -1px 0 var(--hair)}
+.chg .kd{font:500 var(--t-xs)/1 var(--f-sans);color:var(--dim)}
+.chg .nm{font:400 var(--t-sm)/1.5 var(--f-mono);color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;min-width:0}
+.chg .nm .dir{color:var(--dim);overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;min-width:0;direction:rtl}
+.chg .vv{font:400 var(--t-sm)/1.5 var(--f-mono);white-space:nowrap;display:flex;gap:6px;align-items:baseline}
+.chg .vv s{color:var(--dim);text-decoration-color:var(--faint)} .chg .vv i{font-style:normal;color:var(--faint)} .chg .vv b{font-weight:500;color:var(--acc-t)}
+.chg.k-file .vv b{color:var(--muted)} .chgs .lbl{padding:3px var(--sp2)}
+.ast details{margin-top:var(--sp2);font-size:var(--t-sm)}
+.ast details>summary{cursor:pointer;color:var(--muted);list-style:none;display:inline-flex;gap:6px;align-items:center}
+.ast details>summary::-webkit-details-marker{display:none}
+.ast details>summary::before{content:"";width:6px;height:6px;border:solid var(--muted);border-width:0 1.5px 1.5px 0;transform:rotate(-45deg);transition:transform var(--d-1) var(--ease)}
+.ast details[open]>summary::before{transform:rotate(45deg)}
+.ast details>summary:hover{color:var(--ink)}
+.ast details .diff{margin:var(--sp2) 0 0;max-height:260px}
+.card.action .act{position:sticky;bottom:0;z-index:1;display:flex;gap:var(--sp2);align-items:center;padding:var(--sp3) var(--sp4);background:var(--s1);box-shadow:0 -1px 0 var(--hair)}
+.card.action .act .after{flex:1;font-size:var(--t-xs);color:var(--muted);line-height:1.4}
+/* 向导页（项目/烧录/标定/封箱）右栏就是主助手：加宽，卡片里的旧→新放得下 */
+.app[data-step="项目"],.app[data-step="烧录"],.app[data-step="标定"],.app[data-step="封箱"]{--w-side:420px}

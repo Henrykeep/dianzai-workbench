@@ -8,20 +8,30 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&am
 const n = (v: number | null | undefined, d = 2, u = "") => v == null ? "—" : `${(+v).toFixed(d)}${u}`;
 
 // 引导问题按当前 schema 生成，不写死某个对象（以前固定“速度环”“左轮比右轮慢”，倒立摆 / 云台上也这么问）
-export function agentIdle(fields: string[] = []): string {
+let lastFields: string[] = [];
+export function agentIdle(fields: string[] = lastFields): string {
+  lastFields = fields;
   const set = new Set(fields);
   const pair = [["_a", "_b"], ["_l", "_r"], ["_x", "_y"]].flatMap(([a, b]) =>
     fields.filter(f => f.endsWith(a) && set.has(f.slice(0, -a.length) + b)).map(f => [f, f.slice(0, -a.length) + b]))[0];
-  const qs = ["超调好大，怎么办", "帮我把这个环调好",
-    pair ? `为什么 ${pair[0]} 和 ${pair[1]} 不一样` : "最近的数据正常吗", "仿真里调好了，可以上车了吗"];
+  const step = document.querySelector<HTMLElement>(".app")?.dataset.step ?? "调参";
+  const BY: Record<string, [string, string[]]> = {      // 每页一句“我能替你干什么”+ 直接能点的说法
+    项目: ["把题目 PDF 路径（和 CubeMX 工程目录，没有就从零新建）发我：五步一起预览，一张卡确认写入。", ["项目走到哪一步了", "推进项目 <题号>，题目 <PDF 路径>"]],
+    烧录: ["我能编译、烧录（烧前出卡确认）、烧坏一键回滚。", ["编译一下看有没有错", "烧录"]],
+    标定: ["先人推一下、再小幅点动，我判传感器 / 误差 / 输出方向。", ["检查一下极性"]],
+    评分: ["我按评分项跑 N 次、最差一次算数，存证据、回写 requirements.yaml（都出卡确认）。", ["评分项 1 跑三遍留证据"]],
+  };
+  const [lead, qs] = BY[step] ?? ["点“分析阶跃”离线看超调 / 调节时间；或直接问。改参数和文件都要你确认，碰不到急停。",
+    ["超调好大，怎么办", "仿真里自动调好", pair ? `为什么 ${pair[0]} 和 ${pair[1]} 不一样` : "最近的数据正常吗", "仿真里调好了，可以上车了吗"]];
   return `<div class="hint">
-  点“分析阶跃”离线看超调 / 调节时间；或直接问。改参数和文件都要你确认，碰不到急停。
+  ${esc(lead)}
   <div class="chips">${qs.map(q => `<button type="button" class="chip" data-q="${esc(q)}">${esc(q)}</button>`).join("")}</div></div>`;
 }
 export const AGENT_IDLE = agentIdle();
 
 export function initAgent(call: Call) {
   const feed = $("props");
+  window.addEventListener("dz-step", () => { if (feed.querySelector(":scope > .hint") || !feed.children.length) feed.innerHTML = agentIdle(); });
   const add = (html: string, cls = "card") => {
     feed.querySelector(":scope > .hint")?.remove();
     const d = document.createElement("div"); d.className = cls; d.innerHTML = html; feed.prepend(d); return d;
@@ -120,27 +130,52 @@ export function initAgent(call: Call) {
   }
   // 风险等级 human 的动作卡（烧录 / 实机阶跃 / 实机回滚）：人点了才执行
   const TOOL_CN: Record<string, string> = { flash: "烧录固件", erase: "擦除", mem_write: "写内存", run_step_test: "实机阶跃实验", run_sweep_test: "实机正弦扫频", rollback_best: "回滚到最好参数", flash_rollback: "回滚到烧前固件", flow_accept: "写入项目文件", project_apply: "一次写入项目各步", score_run: "跑评分项", score_save: "保存评分证据", score_writeback: "回写评分结果" };
+  // 卡片内容由侧车 agent/cards.py 拼好（标题 / 一句话 / 每步：事实 + 旧→新 + 可展开 diff）；这里只排版，不认识具体工具
+  const PRE: Record<string, string> = { link: "链路新鲜", channels: "实验通道在遥测里", env: "电池 / 温度门限", readback: "板上增益回读一致" };
+  const CHG_KIND: Record<string, string> = { file: "文件", pin: "引脚", param: "参数", evidence: "证据" };
+  const diffHtml = (t: string) => esc(t).split("\n").map(l => `<span class="${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : ""}">${l}</span>`).join("\n");
+  function changeRow(c: any): string {
+    const old = c.old == null ? "" : `<s class="old">${esc(c.old)}</s><i>→</i>`;
+    return `<li class="chg k-${esc(c.k)}"><span class="kd">${esc(CHG_KIND[c.k] ?? c.k)}</span><span class="nm" title="${esc(c.name)}">${esc(c.k === "file" ? c.name.split("/").pop() : c.name)}</span><span class="vv">${old}<b>${esc(c.new ?? "删除")}</b></span></li>`;
+  }
+  function stepRow(st: any, i: number, n: number): string {
+    const ico = st.state === "fail" ? "✕" : st.state === "warn" ? "!" : "✓";
+    const ORD: Record<string, number> = { pin: 0, param: 1, evidence: 2, file: 3 };       // 引脚 / 参数先看，文件放后
+    const ch = [...(st.changes || [])].sort((x: any, y: any) => (ORD[x.k] ?? 9) - (ORD[y.k] ?? 9));
+    const more = ch.length > 6 ? `<li class="lbl">还有 ${ch.length - 6} 项，展开看全部</li>` : "";
+    const det = st.detail || ch.length > 6
+      ? `<details><summary>查看改动</summary>${ch.length > 6 ? `<ul class="chgs">${ch.slice(6).map(changeRow).join("")}</ul>` : ""}${st.detail ? `<pre class="diff">${diffHtml(st.detail)}</pre>` : ""}</details>` : "";
+    return `<li class="ast s-${esc(st.state)}"><span class="ico">${ico}</span><div class="bd">
+      <div class="st"><span class="no">${n > 1 ? i + 1 : ""}</span>${esc(st.title)}</div>
+      ${(st.facts || []).length ? `<div class="facts">${st.facts.map((f: string) => `<span>${esc(f)}</span>`).join("")}</div>` : ""}
+      ${ch.length ? `<ul class="chgs">${ch.slice(0, 6).map(changeRow).join("")}${more}</ul>` : ""}${det}</div></li>`;
+  }
   function renderAction(a: Msg) {
-    const PRE: Record<string, string> = { link: "链路新鲜", channels: "实验通道在遥测里", env: "电池 / 温度门限", readback: "板上增益回读一致" };
-    const pa = a.preview?.prearm, rest = a.preview ? Object.fromEntries(Object.entries(a.preview).filter(([k]) => k !== "prearm" && !(pa && k === "error"))) : {};
-    const pv = (pa ? `<ul class="prearm">${(pa.checked as string[]).map(c => `<li class="ok-t">✓ ${esc(PRE[c] ?? c)}</li>`).join("")}${(pa.failed as string[]).map(f => `<li class="warn-t">✗ ${esc(f)}</li>`).join("")}</ul>` : "")
-      + (Object.keys(rest).length ? `<pre class="log">${esc(JSON.stringify(rest, null, 1))}</pre>` : "");
-    const where = a.sim ? " · 仿真" : a.as_hw ? " · 仿真当实板" : " · 实机";
-    const d = add(`<div class="hd"><span class="dotk file"></span><span class="t">需要你确认：${esc(TOOL_CN[a.tool] ?? a.tool)}</span><span class="lbl">风险 human${where}</span></div>
-      ${pa ? `<div class="lbl">${pa.ok ? "解锁前检查全部通过" : "解锁前检查没过：先处理 ✗ 项再点执行（点的时候会再查一次）"}${a.ttl_s ? ` · 这张卡 ${Math.round(a.ttl_s)} s 内有效` : ""}</div>` : ""}
-      ${pv}<div class="act"><button class="btn pri" data-a="1">执行</button><button class="btn" data-a="0">拒绝</button></div>`, "card change pending");
+    const c = (a.preview ?? {}) as any, pa = c.prearm;
+    const where = a.sim ? "仿真" : a.as_hw ? "仿真当实板" : "实机";
+    const steps = (c.steps || []) as any[];
+    const body = `<header class="ahd"><span class="pulse"></span><div><div class="at">${esc(c.title ?? TOOL_CN[a.tool] ?? a.tool)}</div>
+        ${c.summary ? `<div class="as">${esc(c.summary)}</div>` : ""}</div><span class="where ${a.sim ? "sim" : "hw"}">${where}</span></header>
+      ${c.error ? `<div class="aerr">${esc(c.error)}</div>` : ""}
+      ${pa ? `<ul class="prearm">${(pa.checked as string[]).map(x => `<li class="ok-t">✓ ${esc(PRE[x] ?? x)}</li>`).join("")}${(pa.failed as string[]).map(f => `<li class="warn-t">✕ ${esc(f)}</li>`).join("")}</ul>` : ""}
+      ${steps.length ? `<ol class="asteps">${steps.map((st, i) => stepRow(st, i, steps.length)).join("")}</ol>` : ""}
+      <footer class="act"><span class="after">${esc(c.after ?? "")}${a.ttl_s ? ` · ${Math.round(a.ttl_s)} s 内有效` : ""}</span>
+        <button class="btn" data-a="0">拒绝</button><button class="btn pri" data-a="1">执行</button></footer>`;
+    const d = add(body, "card action pending");
     d.querySelectorAll<HTMLButtonElement>("button[data-a]").forEach(b => b.onclick = () => {
       d.querySelectorAll("button").forEach(x => (x as HTMLButtonElement).disabled = true);
       call("agent_action_decide", { id: a.id, accept: b.dataset.a === "1" })
-        .then(r => { d.querySelector(".act")!.innerHTML = actionResult(r); },
+        .then(r => { d.classList.replace("pending", r.status === "done" ? "done-ok" : "declined"); d.querySelector(".act")!.innerHTML = actionResult(r); },
               (e: any) => { d.querySelector(".act")!.innerHTML = `<span class="lbl warn-t">没有执行：${esc(e?.message ?? "见提示")}${e?.fix ? "。" + esc(e.fix) : ""}</span>`; });
     });
   }
   // 烧录/回滚的结果要把心跳校验讲清楚：“已执行”不等于板子起来了
   function actionResult(r: any): string {
     if (r.status !== "done") return `<span class="lbl">已拒绝</span>`;
-    const v = r.result?.verify;
-    if (!v) return `<span class="lbl ok-t">已执行</span>`;
+    const v = r.result?.verify, w = r.result?.written;
+    if (r.result?.failed) return `<span class="lbl warn-t">写到第 ${(w?.length ?? 0) + 1} 步（${esc(r.result.failed)}）停下：${esc(r.result.error)}</span>`;
+    if (Array.isArray(w)) return `<span class="lbl ok-t">✓ 已写入 ${w.length} 步${r.result?.state?.human_todo ? " · 接下来要你：" + esc(r.result.state.human_todo) : ""}</span>`;
+    if (!v) return `<span class="lbl ok-t">✓ 已执行</span>`;
     if (v.ok) return `<span class="lbl ok-t">已执行 · 心跳核对通过（schema ${esc(v.schema_hash)}）</span>`;
     if (v.ok === null) return `<span class="lbl warn-t">已执行 · ${esc(v.why)}</span>`;
     return `<span class="lbl warn-t">已执行，但${esc(v.why)}：${esc(v.fix ?? "")}</span>`;

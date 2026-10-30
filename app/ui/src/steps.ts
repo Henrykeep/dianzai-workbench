@@ -16,14 +16,14 @@ export const STEP_HINT: Record<Step, string> = {
 // 页面布局：哪些区域可见（dock = 参数栏，side = 右栏，scope = 曲线区）、进页时右栏 / 曲线区切到哪个标签
 type Lay = { dock: boolean; side: boolean; scope: boolean; sideTab?: string; view?: string; dockTab?: string };
 export const LAYOUT: Record<Step, Lay> = {
-  项目: { dock: false, side: false, scope: false },
-  烧录: { dock: false, side: false, scope: false },
+  项目: { dock: false, side: true, scope: false, sideTab: "agent" },   // 向导页右栏常驻 Agent：一句话把这一页的活干了
+  烧录: { dock: false, side: true, scope: false, sideTab: "agent" },   // 向导页右栏常驻 Agent：一句话把这一页的活干了
   模块: { dock: true, side: true, scope: true, view: "raw", dockTab: "board", sideTab: "chans" },
   联调: { dock: false, side: true, scope: true, view: "plot", sideTab: "chans" },
-  标定: { dock: false, side: false, scope: false },
+  标定: { dock: false, side: true, scope: false, sideTab: "agent" },   // 向导页右栏常驻 Agent：一句话把这一页的活干了
   调参: { dock: true, side: true, scope: true, view: "plot", dockTab: "params", sideTab: "agent" },
   评分: { dock: false, side: true, scope: true, view: "plot", sideTab: "score" },
-  封箱: { dock: false, side: false, scope: false },
+  封箱: { dock: false, side: true, scope: false, sideTab: "agent" },   // 向导页右栏常驻 Agent：一句话把这一页的活干了
 };
 export const nextOf = (s: Step): Step | null => STEPS[STEPS.indexOf(s) + 1] ?? null;
 export function hintText(s: Step, connected: boolean): string {
@@ -53,6 +53,7 @@ export function initSteps(connected: () => boolean): (s: Step) => void {
     if (L.dockTab) click(`#dock-tabs [data-d="${L.dockTab}"]`);
     if (L.sideTab) click(`#rail [data-side="${L.sideTab}"]`);
     localStorage.setItem(KEY, s);
+    window.dispatchEvent(new CustomEvent("dz-step", { detail: s }));
     hint();
   };
   const hint = () => { const s = (app.dataset.step || "项目") as Step; document.getElementById("step-hint")!.textContent = hintText(s, connected()); };
