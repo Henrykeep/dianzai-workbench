@@ -112,7 +112,7 @@ class Server:
         if op == "param_read_all":
             return await run(None, s.read_all_params)
         if op == "snapshot_save":
-            p = s.snapshot_save(m.get("name", ""), m.get("note", ""))
+            p = s.snapshot_save(m.get("name", ""), m.get("note", ""), m.get("mode", ""))
             return {"path": p, "snapshots": snapshots.list_all(s.schema.hash)}
         if op == "polarity_check":          # 标定向导第 0 步：只读遥测窗口判方向（app/sidecar/dzbench/agent/polarity.py）
             from .agent import polarity
@@ -137,7 +137,7 @@ class Server:
         if op == "snapshot_list":
             return snapshots.list_all(s.schema.hash) if s.schema else []
         if op == "snapshot_restore":
-            return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults"))))
+            return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults")), float(m.get("ramp_s", 0) or 0)))
         if op == "precontest" or op == "precontest_export":
             from . import doctor, precontest
             repo = m.get("repo") or str(self.svc.gw.root)

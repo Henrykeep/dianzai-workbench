@@ -47,7 +47,7 @@
       <div class="dk" data-d="params"><input id="p-q" class="in pq" placeholder="筛选参数：pos_ ki*（/ 聚焦）" title="空格/逗号分隔，* 通配；按名字或说明匹配。参数多于 8 个时出现" hidden /><div id="plist" class="plist"></div></div>
       <div class="dk" data-d="protect" hidden><div id="ptab" class="ptab"></div></div>
       <div class="commit"><div class="pdiff mono" id="pend"></div><div class="btns"><button class="btn" id="p-revert" disabled>撤销</button><button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button></div></div>
-      <div class="dk" data-d="snaps" hidden><div class="row pad"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div><div id="snaps" class="pad"></div></div>
+      <div class="dk" data-d="snaps" hidden><div class="row pad"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><select id="snap-mode" class="in" title="环模式标签：速度环 / 位置环预设，切换时可平滑过渡"><option value="">—</option><option value="speed">速度环</option><option value="position">位置环</option></select><input id="snap-ramp" class="in" type="number" min="0" max="10" step="0.1" value="0.5" style="width:4.5em" title="恢复时平滑过渡秒数（0 = 一步写入）"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div><div id="snaps" class="pad"></div></div>
       <div class="dk pad" data-d="board" hidden>
         <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除急停 R</button>
           <span class="lbl">板端命令</span><input id="cmd-c" class="in w-xs" maxlength="1" placeholder="字符"><input id="cmd-n" class="in w-sm" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>

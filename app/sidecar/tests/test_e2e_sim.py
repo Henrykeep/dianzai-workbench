@@ -37,6 +37,20 @@ def test_car_2wd_params(home):
         assert s.read_param("kp") == 2.0
         s.snapshot_restore(defaults=True)
         assert s.read_param("kp") == pytest.approx(0.08)
+        s.snapshot_save("pos", mode="position")        # 缺口第 3 项：环模式标签 + 平滑切换
+        s.set_param("kp", 1.0)
+        sent = []
+        orig = s.set_param
+        s.set_param = lambda k, v, verify=False: (sent.append((k, v)), orig(k, v, verify))[1]
+        s.snapshot_restore("pos", ramp_s=0.25)
+        s.set_param = orig
+        ks = [v for k, v in sent if k == "kp"]
+        assert len(ks) == 5 and ks[0] < 1.0 and ks[-1] == pytest.approx(0.08) and ks == sorted(ks, reverse=True)
+        assert s.read_param("kp") == pytest.approx(0.08)
+        from dzbench import snapshots
+        assert next(x for x in snapshots.list_all(s.schema.hash) if x["name"] == "pos")["mode"] == "position"
+        with pytest.raises(Exception):
+            s.snapshot_save("x", mode="bogus")
     finally:
         s.disconnect()
 

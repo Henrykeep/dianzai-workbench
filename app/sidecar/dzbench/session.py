@@ -545,16 +545,36 @@ class Session:
         return str(p)
 
     # ------------------------------------------------------------------ 快照 / 日志
-    def snapshot_save(self, name: str, note: str = "") -> str:
+    def snapshot_save(self, name: str, note: str = "", mode: str = "") -> str:
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表，不能存快照")
-        return str(snapshots.save(self.schema.hash, name, dict(self.params), note))
+        if mode not in snapshots.MODES:
+            raise LinkError("bad_mode", f"环模式只能是 {'/'.join(m for m in snapshots.MODES if m)} 或留空")
+        return str(snapshots.save(self.schema.hash, name, dict(self.params), note, mode))
 
-    def snapshot_restore(self, name: str | None = None, defaults: bool = False) -> list[dict]:
+    RAMP_DT = 0.05
+
+    def snapshot_restore(self, name: str | None = None, defaults: bool = False, ramp_s: float = 0.0) -> list[dict]:
+        """ramp_s > 0：平滑切换（速度环 ↔ 位置环预设），每 RAMP_DT 秒一步线性过渡，最后一步回读校验；
+        中途急停 / 断线（set_param 抛错）立刻停在当前步，不再继续写。"""
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表")
         vals = {p["name"]: p["default"] for p in self.schema.params} if defaults else snapshots.load(self.schema.hash, name)
-        return [self.set_param(k, v, verify=True) for k, v in vals.items() if k in self.schema.param_index]
+        vals = {k: v for k, v in vals.items() if k in self.schema.param_index}
+        ramp_s = max(0.0, min(float(ramp_s or 0.0), 10.0))
+        if ramp_s <= 0:
+            return [self.set_param(k, v, verify=True) for k, v in vals.items()]
+        plan = snapshots.ramp_plan({k: self.params.get(k) for k in vals}, vals, max(1, round(ramp_s / self.RAMP_DT)))
+        out, e0 = {}, self.estop_count
+        for i, st in enumerate(plan):
+            if self.estop_count != e0:
+                raise LinkError("ramp_aborted", f"平滑切换第 {i}/{len(plan)} 步遇到急停，已停止写参数", "确认安全后重新恢复快照")
+            last = i == len(plan) - 1
+            for k, v in st.items():
+                out[k] = self.set_param(k, v, verify=last)
+            if not last:
+                time.sleep(self.RAMP_DT)
+        return list(out.values())
 
     def start_log(self) -> str:
         tag = re.sub(r"[^0-9A-Za-z_+-]+", "-", (self.port or "").split("/")[-1]).strip("-")[:40]   # 文件名带上端口/仿真应用，回放列表里认得出

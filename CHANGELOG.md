@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 环模式预设 + 平滑切换（缺口清单第 3 项）：快照可打“速度环 / 位置环”标签（`snapshot_save {mode}`，列表显示标签）；恢复时可设平滑过渡秒数（`snapshot_restore {ramp_s}`，默认 0.5 s，上限 10 s），每 50 ms 一步线性插值，只发要变的参数，最后一步回读校验；中途急停立即停写并报 `ramp_aborted`。纯函数 `snapshots.ramp_plan`；tests/test_snapshots_ramp.py + car_2wd 仿真端到端。思路参考 PID_Helper pid-session.ts（草稿/生效值分离），代码自写。[未测] 真板；固件侧没有“环模式”参数（标签只在上位机）
 - [仿真] “上板验证”可选自动阶跃：仿真搜索卡片加勾选“全部采纳后自动做一次阶跃实验”。`tune_propose {verify_step}` 把一个候选的几张提议卡记成一组，你全部采纳后侧车在后台跑 `run_step_test`，TuneGuard 判定（继续/达标/回滚）照常走 tune_round 卡片；有一张被拒整组作废、不做实验；实验失败发中文错误卡。写参数仍只在你点采纳之后。tests/test_search.py 新增分组用例。[未测] 真板上一整轮
 - [仿真] 修偶发红的 `test_agent_evals_offline_sim_2026h`：评测在开问前用固定 sleep 等阶跃，preflight 满载时仿真跑慢、5 s 窗口里还没有阶跃 → 离线助手答“没找到设定值阶跃”。改为 `evals.wait_step_in_window`：按板子时间判定设定值已跳变并保持 hold_s 才开问（纯数据，60 s 超时报错）。新单测 `test_step_in_window_is_pure_data`；2×nproc 满载 CPU 下评测通过
 - [仿真] 仿真搜索接到界面：Agent 栏“仿真搜索”按钮 → 侧车 op `tune_search`（最近 5 s 开环台阶 → identify 辨识 FOPDT → 仿真 PSO/分阶段 → top-k，不写板子）；每个候选“上板验证”走 `tune_propose` 提议卡，你确认后才限幅写入。新增可选宽范围模式 `wide`（PSO 边界放到初值 0–4 倍，分阶段 ±25/50/100%），默认仍是 PID_Helper 原版窄范围。tests/test_search.py 加辨识+搜索、宽范围两例。[未测] 界面按钮在真板上的完整一轮

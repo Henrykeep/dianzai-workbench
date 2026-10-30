@@ -361,15 +361,16 @@ $("flow").querySelector<HTMLElement>('[data-s="save"]')!.onclick = () => {
 async function loadSnaps(list?: any[]) {
   if (!S.schema) return;
   list ??= await link.rpc("snapshot_list").catch(() => []);
-  $("snaps").innerHTML = list!.slice(0, 8).map(s => `<div class="hv"><span class="tag">${esc(s.time.slice(5, 16))}</span><span>${esc(s.name)}</span>
+  $("snaps").innerHTML = list!.slice(0, 8).map(s => `<div class="hv"><span class="tag">${esc(s.time.slice(5, 16))}</span>${s.mode ? `<span class="tag">${s.mode === "speed" ? "速度环" : "位置环"}</span>` : ""}<span>${esc(s.name)}</span>
      <button class="btn ghost sm" data-s="${esc(s.name)}">恢复</button></div>`).join("") || `<div class="hint">调到好用的一组就存一下，翻车时一键恢复。</div>`;
   $("snaps").querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
-    await call("snapshot_restore", { name: b.dataset.s }); toast(`已恢复快照 ${b.dataset.s}`, "ok", 3000);
+    const ramp_s = Math.max(0, Math.min(10, Number($<HTMLInputElement>("snap-ramp").value) || 0));
+    await call("snapshot_restore", { name: b.dataset.s, ramp_s }); toast(`已恢复快照 ${b.dataset.s}${ramp_s ? `（${ramp_s} s 平滑过渡）` : ""}`, "ok", 3000);
   });
 }
 async function saveSnap() {
   const name = $<HTMLInputElement>("snap-name").value.trim() || new Date().toTimeString().slice(0, 8).replace(/:/g, "");
-  const r = await call("snapshot_save", { name }); $<HTMLInputElement>("snap-name").value = ""; loadSnaps(r.snapshots); toast(`快照已保存：${name}`, "ok", 2500);
+  const r = await call("snapshot_save", { name, mode: $<HTMLSelectElement>("snap-mode").value }); $<HTMLInputElement>("snap-name").value = ""; loadSnaps(r.snapshots); toast(`快照已保存：${name}`, "ok", 2500);
 }
 $("snap-save").onclick = saveSnap;
 
