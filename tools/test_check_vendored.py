@@ -54,7 +54,18 @@ def main():
         print("✓" if ok else "✗", "SDK 目录缺许可文件失败、有则通过", "" if ok else e)
         if not ok:
             fails.append("sdk")
-    real = C.check(C.ROOT / "third_party" / "vendored") + C.check_sdk(C.ROOT / "third_party")
+    with tempfile.TemporaryDirectory() as tp:
+        tp = pathlib.Path(tp)
+        (tp / ".github" / "workflows").mkdir(parents=True)
+        (tp / ".github" / "workflows" / "w.yml").write_text("run: pyinstaller --paths third_party/vendored/pid_helper x\n")
+        (tp / "tools").mkdir(); (tp / "tools" / "a.py").write_text("from k230_edc_skill import x\n")
+        (tp / "tools" / "ok.sh").write_text("# 致谢 PID_Helper 思路\n")
+        e = C.check_removed_refs(tp)
+        ok = len(e) == 2 and any("w.yml" in x for x in e) and any("a.py" in x for x in e)
+        print("✓" if ok else "✗", "workflow/构建文件引用已删 GPL 目录失败（致谢文字不算）", "" if ok else e)
+        if not ok:
+            fails.append("removed_refs")
+    real = C.check_removed_refs(C.ROOT) + C.check(C.ROOT / "third_party" / "vendored") + C.check_sdk(C.ROOT / "third_party")
     print("✓ 仓库现有 vendored 全部通过" if not real else f"✗ 仓库 vendored: {real}")
     print("test_check_vendored:", "失败" if fails or real else "通过")
     return 1 if fails or real else 0

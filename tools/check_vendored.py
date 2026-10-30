@@ -89,8 +89,35 @@ def check_sdk(base: pathlib.Path) -> list[str]:
     return errs
 
 
+# 因许可删掉的目录：构建 / 打包 / 运行路径里再出现就失败（文档里的致谢不算，见 docs/参考来源.md）
+REMOVED = ("pid_helper", "k230_edc_skill")
+REMOVED_RE = re.compile(r"third_party/vendored/(" + "|".join(REMOVED) + r")\b|^\s*(from|import)\s+(" + "|".join(REMOVED) + r")\b", re.M)
+BUILD_GLOBS = (".github/workflows/*.yml", ".github/workflows/*.yaml", "Makefile", "mk/*.mk", "tools/*.sh", "tools/*.py",
+               "**/*.spec", "**/*.projectspec", "app/src-tauri/*.json", "app/src-tauri/*.toml", "app/sidecar/**/*.py",
+               "app/sidecar/requirements*.txt", "app/ui/package.json", "packaging/**/*")
+SELF = {"tools/check_vendored.py", "tools/test_check_vendored.py"}
+
+
+def check_removed_refs(base: pathlib.Path) -> list[str]:
+    errs, seen = [], set()
+    for g in BUILD_GLOBS:
+        for f in base.glob(g):
+            rel = f.relative_to(base).as_posix()
+            if rel in seen or rel in SELF or not f.is_file() or "node_modules" in rel or "/tests/" in rel:
+                continue
+            seen.add(rel)
+            try:
+                text = f.read_text(errors="ignore")
+            except OSError:
+                continue
+            for m in REMOVED_RE.finditer(text):
+                ln = text.count("\n", 0, m.start()) + 1
+                errs.append(f"{rel}:{ln} 引用已删除的许可违规目录 {m.group(0).strip()} · 原因：构建/打包/运行路径不得再指向它")
+    return errs
+
+
 def main() -> int:
-    errs = check(ROOT / "third_party" / "vendored") + check_sdk(ROOT / "third_party")
+    errs = check(ROOT / "third_party" / "vendored") + check_sdk(ROOT / "third_party") + check_removed_refs(ROOT)
     for e in errs:
         print(f"✗ [licenses/vendored] {e} · 处理：删掉该目录或换宽松许可/净室实现（规则见 third_party/vendored/README.md）")
     print("check_vendored:", "失败" if errs else "通过")
