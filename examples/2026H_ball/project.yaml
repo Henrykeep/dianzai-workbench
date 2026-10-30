@@ -61,7 +61,7 @@ state:
 subsystems:
   - { name: vision,  board: main, period_ms: 5,  owns: [vision_out],  reads: [io_in] }
   - { name: chassis, board: main, period_ms: 10, owns: [chassis_out], reads: [io_in, coord] }
-  - { name: ball,    board: main, period_ms: 10, owns: [beam_out],    reads: [vision_out, coord, chassis_out] }
+  - { name: ball,    board: main, period_ms: 10, owns: [beam_out],    reads: [vision_out, coord, chassis_out, io_in] }   # io_in：IMU 前馈（ff_src=1），原来漏声明
 
 params:
   # 底盘（P1：1456 counts/rev，周长 0.2041 m；是否 4 倍频未知——用 docs/12 的 10 圈标定确认）

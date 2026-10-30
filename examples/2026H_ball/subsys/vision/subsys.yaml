@@ -1,0 +1,36 @@
+# 子系统 vision 的接口声明（tools/subsys_kit.py manifest 从代码推出；代码改了读写就重跑）。
+# add_subsys.py 按它把子系统装进别的题目：缺的段/字段/参数自动补，没人写的段交给 io（默认 0）。
+name: vision
+period_ms: 5
+owns:
+  vision_out:
+    - {name: new_sample, type: bool, desc: 本周期有新的有效样本}
+    - {name: x_px, type: float, unit: px}
+    - {name: t_ms, type: uint32, unit: ms, desc: 样本到达时刻}
+    - {name: state, type: uint8, desc: vis_state_t：0 lost / 1 held / 2 valid}
+    - {name: age_ms, type: uint32, unit: ms, desc: 最近有效帧的数据时效（从未收到 = UINT32_MAX）}
+    - {name: drops, type: uint32, desc: 按 seq 统计的丢帧数}
+    - {name: lat_jit_ms, type: int32, unit: ms, desc: 相对延迟抖动（比最快帧慢多少）}
+    - {name: x_raw_px, type: float, unit: px, desc: 标定前像素（x_px 是标定后的）}
+reads:
+  io_in:
+    - {name: cam_x_px, type: int16, unit: px, desc: 钢珠相对画面中心 x}
+    - {name: cam_flags, type: uint8, desc: 视觉帧 flags（bit0 有效 bit1 预测 bit2 标定过期 bit3 识别到）}
+    - {name: cam_seq, type: uint32, desc: 收到的有效帧计数}
+    - {name: cam_rx_ms, type: uint32, unit: ms, desc: 最近一帧到达本机时刻}
+    - {name: cam_fseq, type: uint8, desc: 最近一帧的 dzframe seq（8 位回绕，用于丢帧统计）}
+    - {name: cam_ms, type: uint32, unit: ms, desc: 最近一帧的相机时间戳（相机本地时钟）}
+params:
+  - {name: vis_hold_ms, type: uint32, default: 60, min: 1, max: 1000, unit: ms, desc: 超过它判 HELD（约 2 帧），未验证}
+  - {name: vis_lost_ms, type: uint32, default: 300, min: 2, max: 5000, unit: ms, desc: 超过它判 LOST，未验证}
+  - {name: cal_n, type: uint8, default: 0, min: 0, max: 5, unit: '', desc: 标定点数（0 关；≥4 推荐：中心两侧各 2 点，左右斜率独立）}
+  - {name: cal_px0, type: float, default: -150, min: -2000, max: 2000, unit: px, desc: 原始像素，严格递增}
+  - {name: cal_px1, type: float, default: -60, min: -2000, max: 2000, unit: px, desc: ''}
+  - {name: cal_px2, type: float, default: 0, min: -2000, max: 2000, unit: px, desc: ''}
+  - {name: cal_px3, type: float, default: 60, min: -2000, max: 2000, unit: px, desc: ''}
+  - {name: cal_px4, type: float, default: 150, min: -2000, max: 2000, unit: px, desc: ''}
+  - {name: cal_v0, type: float, default: -150, min: -2000, max: 2000, unit: px, desc: 线性化像素 = 实测距离 / 中心处 mm/px}
+  - {name: cal_v1, type: float, default: -60, min: -2000, max: 2000, unit: px, desc: ''}
+  - {name: cal_v2, type: float, default: 0, min: -2000, max: 2000, unit: px, desc: ''}
+  - {name: cal_v3, type: float, default: 60, min: -2000, max: 2000, unit: px, desc: ''}
+  - {name: cal_v4, type: float, default: 150, min: -2000, max: 2000, unit: px, desc: ''}

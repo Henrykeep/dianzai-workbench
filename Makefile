@@ -217,6 +217,7 @@ check:
 	$(PY) tools/test_pwm3_caps.py
 	$(PY) tools/test_adc_block_caps.py
 	$(PY) tools/test_new_subsys.py
+	$(PY) tools/test_subsys_kit.py
 	$(PY) tools/test_report.py
 	$(PY) tools/test_req.py
 	$(PY) tools/test_params_diff.py

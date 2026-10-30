@@ -1,0 +1,57 @@
+# 子系统 ball 的接口声明（tools/subsys_kit.py manifest 从代码推出；代码改了读写就重跑）。
+# add_subsys.py 按它把子系统装进别的题目：缺的段/字段/参数自动补，没人写的段交给 io（默认 0）。
+name: ball
+period_ms: 10
+owns:
+  beam_out:
+    - {name: angle_deg, type: float, unit: °, desc: 相对水平的摆杆角}
+    - {name: target_abs_deg, type: float, unit: °, desc: 下发给 QD4310 的绝对角（零点+角度，已硬限位）}
+    - {name: state, type: uint8, desc: ball_beam_state_t}
+    - {name: ff_deg, type: float, unit: °, desc: 实际使用的加速度前馈（含死区/失效保护后）}
+reads:
+  vision_out:
+    - {name: new_sample, type: bool, desc: 本周期有新的有效样本}
+    - {name: x_px, type: float, unit: px}
+    - {name: t_ms, type: uint32, unit: ms, desc: 样本到达时刻}
+  coord:
+    - {name: ball_sp_px, type: float, unit: px, desc: 钢珠目标位置（相对画面中心）}
+  chassis_out:
+    - {name: accel_mps2, type: float, desc: 底盘加速度估计（滤波后），给钢珠环前馈}
+  io_in:
+    - {name: imu_ax_mps2, type: float, unit: m/s², desc: IMU 前向加速度（io 层按板上资源取：uart IMU 姿态模块 / i2c MPU6050；未上板验证）}
+    - {name: imu_rx_ms, type: uint32, unit: ms, desc: IMU 最近一次有效读数时刻}
+    - {name: imu_ok, type: bool, desc: IMU 读数有效}
+params:
+  - {name: bb_alpha, type: float, default: 0.55, min: 0, max: 1, unit: '', desc: P2，未验证}
+  - {name: bb_beta, type: float, default: 0.2, min: 0, max: 1, unit: '', desc: P2，未验证}
+  - {name: bb_lead_s, type: float, default: 0.07, min: 0, max: 0.3, unit: s, desc: P2 超前 70 ms，未验证}
+  - {name: pos_k, type: float, default: 0.72, min: 0, max: 5, unit: (px/s)/px, desc: (px/s)/px，P1，未验证}
+  - {name: vel_max, type: float, default: 320, min: 0, max: 2000, unit: px/s, desc: px/s，P1，未验证}
+  - {name: vel_k, type: float, default: 0.016, min: 0, max: 0.2, unit: °/(px/s), desc: °/(px/s)，P1，未验证}
+  - {name: ball_ki, type: float, default: 0.055, min: 0, max: 1, unit: °/(px·s), desc: P1，单位按 °/(px·s) 解读（P1 代码单位未写明，未验证）}
+  - {name: i_zone_px, type: float, default: 55, min: 0, max: 400, unit: px, desc: P1，未验证}
+  - {name: i_max_deg, type: float, default: 2.5, min: 0, max: 15, unit: °, desc: P1，未验证}
+  - {name: i_decay, type: float, default: 0.5, min: 0, max: 1, unit: '', desc: 误差变号时积分衰减系数（P1 衰减比例未整理，TODO 核对）}
+  - {name: angle_max_deg, type: float, default: 5.5, min: 0, max: 20, unit: °, desc: P1，未验证}
+  - {name: rate_max_dps, type: float, default: 220, min: 0, max: 1000, unit: °/s, desc: P1，未验证}
+  - {name: hold_ms, type: uint32, default: 120, min: 0, max: 2000, unit: ms, desc: P1 预测保持，未验证}
+  - {name: vision_timeout_ms, type: uint32, default: 600, min: 50, max: 5000, unit: ms, desc: P1，未验证}
+  - {name: beam_dir, type: float, default: 1.0, min: -1, max: 1, unit: '', desc: TODO(用户)：+1/-1，θ>0 应使球向 +x 滚（P2 的 BEAM_DIR 也标着待确认）}
+  - {name: bb_est_mode, type: uint8, default: 0, min: 0, max: 1, unit: '', desc: 0 α-β / 1 差分+低通}
+  - {name: bb_loop_mode, type: uint8, default: 0, min: 0, max: 1, unit: '', desc: 0 串级（限 v_des）/ 1 单环}
+  - {name: stic_deg, type: float, default: 0, min: 0, max: 3, unit: °, desc: 静摩擦补偿（0 关），未验证}
+  - {name: stic_vel, type: float, default: 8, min: 0, max: 200, unit: px/s, desc: 球速低于它才补偿}
+  - {name: stic_e, type: float, default: 15, min: 0, max: 400, unit: px, desc: 误差大于它才补偿}
+  - {name: bal_span_px, type: float, default: 0, min: 0, max: 1000, unit: px, desc: 静平衡前馈表 x = −span/0/+span（0 关）}
+  - {name: bal_l_deg, type: float, default: 0, min: -10, max: 10, unit: °, desc: 球静止在 −span 处所需摆杆角（实测填）}
+  - {name: bal_c_deg, type: float, default: 0, min: -10, max: 10, unit: °, desc: 中心处}
+  - {name: bal_r_deg, type: float, default: 0, min: -10, max: 10, unit: °, desc: +span 处}
+  - {name: ff_src, type: uint8, default: 0, min: 0, max: 1, unit: '', desc: 0 编码器差分 / 1 IMU（IMU 失效自动回退为 0 前馈）}
+  - {name: ff_dead_mps2, type: float, default: 0.15, min: 0, max: 5, unit: m/s², desc: 死区：小于它不前馈（滤掉噪声抖动）}
+  - {name: ff_fail_mps2, type: float, default: 8, min: 0.5, max: 50, unit: m/s², desc: 超过它视为读数异常 → 前馈置 0}
+  - {name: imu_timeout_ms, type: uint32, default: 50, min: 1, max: 1000, unit: ms, desc: IMU 数据超过它没更新 → 前馈置 0}
+  - {name: beam_zero_deg, type: float, default: 82.02, min: 0, max: 360, unit: °, desc: P2 电机绝对角零点，只对那台机械有效，未验证}
+  - {name: beam_min_deg, type: float, default: 61, min: 0, max: 360, unit: °, desc: P2 硬限位，未验证}
+  - {name: beam_max_deg, type: float, default: 105, min: 0, max: 360, unit: °, desc: P2 硬限位，未验证}
+  - {name: ff_gain, type: float, default: 0.0, min: 0, max: 3, unit: '', desc: 0 关闭；P1 为 1.30（快档开启），未验证}
+  - {name: ff_max_deg, type: float, default: 5.0, min: 0, max: 15, unit: °, desc: P1，未验证}

@@ -1,0 +1,18 @@
+# 子系统 chassis 的接口声明（tools/subsys_kit.py manifest 从代码推出；代码改了读写就重跑）。
+# add_subsys.py 按它把子系统装进别的题目：缺的段/字段/参数自动补，没人写的段交给 io（默认 0）。
+name: chassis
+period_ms: 10
+owns:
+  chassis_out:
+    - {name: cmd_a, type: float, desc: -1..1}
+    - {name: cmd_b, type: float, desc: -1..1}
+    - {name: accel_mps2, type: float, desc: 底盘加速度估计（滤波后），给钢珠环前馈}
+reads:
+  io_in:
+    - {name: wheel_a_mps, type: float, unit: m/s, desc: 左轮线速度（编码器，左右对应关系未验证）}
+    - {name: wheel_b_mps, type: float, unit: m/s, desc: 右轮线速度}
+  coord:
+    - {name: chassis_mps, type: float, unit: m/s}
+params:
+  - {name: chassis_kp, type: float, default: 0.8, min: 0, max: 50, unit: '', desc: 占位：P1 轮速 PID 输出是 CCR，量纲不同不能直接搬（TODO 实调）}
+  - {name: chassis_ki, type: float, default: 4.0, min: 0, max: 200, unit: '', desc: 占位（TODO 实调）}
