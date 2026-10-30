@@ -306,7 +306,7 @@ class AgentLoop:
                     allow = MODES[self.mode]["tools"]
                     if allow is not None and name not in allow:
                         raise GatewayError("mode", f"当前是{MODES[self.mode]['name']}模式，不能用 {name}；需要的话请用户切换模式")
-                    if name in PARAM_WRITES and any(r["name"] == "observe" for r in results):
+                    if self.guards and name in PARAM_WRITES and any(r["name"] == "observe" for r in results):
                         raise GatewayError("observe_first", "本轮已经在观察（observe），观察期间不改参数",
                                            "等观察结果出来、确认信号正常且结论稳定后，下一轮再提改参数")
                     if name in READ_ONLY:

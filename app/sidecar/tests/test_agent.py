@@ -390,5 +390,7 @@ def test_no_param_write_after_observe_same_turn():
                     {"role": "assistant", "content": "先观察"}])
     wrote = []
     loop = AgentLoop(fake, {"observe": lambda: {"ok": True}, "propose_param_change": lambda **m: wrote.append(m)}, max_steps=5)
+    loop.guards = True                                  # 护栏只对真模型开（脚本化模型按剧本走，见 test_wiring 全工具链）
+    loop.answer_checks = []
     loop.ask("刚才那轮怎么样")
     assert wrote == [] and any("observe_first" in m["content"] or "观察期间不改参数" in m["content"] for m in loop.messages if m["role"] == "tool")
