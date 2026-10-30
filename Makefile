@@ -220,6 +220,8 @@ preflight:
 	tools/preflight.sh
 
 check:
+	$(PY) tools/check_redef.py --selftest
+	$(PY) tools/check_redef.py
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	$(PY) tools/test_port_policy.py
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
