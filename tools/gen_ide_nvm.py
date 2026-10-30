@@ -84,6 +84,9 @@ def targets():
         if b.get("port") == "stm32-cubemx":
             yield by.parent / "keil" / "dz_nvm.sct", keil_sct(mcu)
         elif b.get("port") == "mspm0-driverlib":
+            if not TI_CMD.exists():   # 没拉 MSPM0 SDK（preflight / CI 无器件包）：CCS .cmd 没法比对，跳过而不是崩
+                print(f"- 跳过 {by.parent.name}：缺 {TI_CMD.relative_to(ROOT)}（bash tools/fetch_third_party.sh 拉 SDK 后再查）")
+                continue
             yield by.parent / "ccs" / "dz_nvm_linker.cmd", ccs_cmd(mcu)
 
 
