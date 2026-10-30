@@ -1501,6 +1501,8 @@
    "dzctl.h: #define DZCTL_HB_SA_RUNNING (1u << 15)",
    "dzctl.h: #define DZCTL_MODE_MAGIC 0xA5u",
    "dzctl.h: #define DZCTL_HB_PARAMS_DIRTY (1u << 16)",
+   "dzctl.h: #define DZCTL_ST_MAX 8u",
+   "dzctl.h: #define DZCTL_CMD_SELFTEST 'H'",
    "dzctl.h: #define DZCTL_SAVE_OK 0u",
    "dzctl.h: #define DZCTL_SAVE_BUSY 1u",
    "dzctl.h: #define DZCTL_SAVE_NO_NVM 2u",
@@ -1528,6 +1530,11 @@
    "dzctl.h: uint32_t dzctl_board_uid(void);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
    "dzctl.h: typedef enum { DZCTL_ST_SUBSYS = 1, DZCTL_ST_PARAMS = 2, DZCTL_ST_NVM = 3, DZCTL_ST_SENSOR = 4, DZCTL_ST_POWER = 5 } dzctl_selftest_item_t;",
+   "dzctl.h: typedef bool (*dzctl_selftest_fn)(void);",
+   "dzctl.h: int dzctl_selftest_register(uint8_t code, dzctl_selftest_fn fn);",
+   "dzctl.h: uint32_t dzctl_selftest_run(uint32_t t_ms, uint32_t extra_fail_mask);",
+   "dzctl.h: uint32_t dzctl_selftest_mask(void);",
+   "dzctl.h: void dzctl_selftest_reply(uint32_t fail_mask, dzframe_t *out);",
    "dzctl.h: void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms);",
    "dzctl.h: void dzctl_set_params_hash(uint32_t h);",
    "dzctl.h: uint32_t dzctl_hash32(const void *data, uint32_t len);",
@@ -1551,8 +1558,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "ccdf79ef04e6ae06",
-  "version": "0.11.0"
+  "hash": "98318db26082292f",
+  "version": "0.12.0"
  },
  "firmware/proto/dzframe": {
   "decls": [
