@@ -21,7 +21,7 @@ def from_broadcast(m: dict) -> tuple[str, str] | None:
             return None                     # 固件锁存确认 / 解除：requested 那条已进时间线，解除另有 tx_locked 事件
         if m.get("state") == "requested":   # 统一事件：没有 sent/src，送达看 ok，来源看 source
             return ("estop", "急停，板子已锁存 → 确认安全后点“解除急停 R”" if m.get("ok") else "急停（未送达）", m.get("source") or "ui")
-        if m.get("nolink"):
+        if m.get("reason") == "no_board" or m.get("nolink"):
             return None                     # 没连板子：只弹提示，不进告警条（不是板子上发生的事）
         by = f"：{m['src']}" if m.get("src") else ""
         return ("estop", ("急停" + by + "，板子已锁存 → 确认安全后点“解除急停 R”") if m.get("sent") else ("急停" + by + "（未送达）"),

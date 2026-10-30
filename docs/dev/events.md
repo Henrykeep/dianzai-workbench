@@ -12,7 +12,7 @@
 | `cleared` | `type` `seq` `state` `source` `t` | `message_zh` | 人工 R 解除 |
 
 - `t`：毫秒 Unix 时间；`seq`：单调递增。
-- 没连板子 / 回放时的急停回包不是状态事件（无 `state`），仍是 `{type, sent:false, …}` 提示，只弹 toast、不进告警条。
+- 没连板子 / 回放时的急停回包不是状态事件（无 `state`）：键集合固定为 `type` `ok` `reason` `message_zh`（代码 `Session.ESTOP_REPLY_KEYS`），`ok=false`，`reason` 为 `no_board`（没连板子，只弹提示、不进告警条）或 `replay`（回放中）。不再有 `sent` / `message` / `nolink` / `src`。
 - 前端对旧格式（`sent` / `message`）与新格式都兼容。
 
 ## 模型列表 `op: "agent_models"` 的返回

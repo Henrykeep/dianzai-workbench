@@ -701,6 +701,7 @@ class Session:
         return True
 
     # 急停事件约定（docs/dev/events.md）：必有键 + 可选键；测试断言键集合精确等于约定
+    ESTOP_REPLY_KEYS = {"type", "ok", "reason", "message_zh"}   # 没连板子 / 回放：不是状态事件（无 state），只提示
     ESTOP_EVENT_KEYS = {"requested": ({"type", "seq", "state", "source", "t", "ok", "message_zh"}, set()),
                         "latched": ({"type", "seq", "state", "source", "t"}, {"cause", "message_zh", "latency_ms"}),
                         "cleared": ({"type", "seq", "state", "source", "t"}, {"message_zh"})}
@@ -757,8 +758,8 @@ class Session:
         src = 谁按的（急停按钮 / Esc 键 / 空格键），写进告警文字。"""
         by = f"（{src}）" if src else ""
         if self.tr is None:
-            return {"type": "estop", "sent": False, "nolink": True, "src": src,
-                    "message": f"没连板子：急停{by}没有送达任何板子；连着真板时请直接断电/拔电池"}
+            return {"type": "estop", "ok": False, "reason": "no_board",       # 键集合见 ESTOP_REPLY_KEYS（docs/dev/events.md）
+                    "message_zh": f"没连板子：急停{by}没有送达任何板子；连着真板时请直接断电/拔电池"}
         replay = isinstance(self.tr, ReplayTransport)
         with self.hblock:                  # 先记“已请求”再发：板子急停上升沿的即时心跳 ≤ 5 ms 就回来，晚记会错过锁存确认
             self.tx_locked = True
@@ -773,7 +774,7 @@ class Session:
             latch.set(self.port, self.board_uid, self.estop_source, src)
         self.emit({"type": "tx_locked", "on": True, "source": self.estop_source})
         if isinstance(self.tr, ReplayTransport):
-            return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
+            return {"type": "estop", "ok": False, "reason": "replay", "message_zh": "回放中：急停没有送达任何板子"}
         return self.estop_ev("requested", self.estop_source, ok=ok,     # 键集合见 ESTOP_EVENT_KEYS（docs/dev/events.md）
                              message_zh=f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池")
 

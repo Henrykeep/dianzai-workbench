@@ -101,7 +101,8 @@ def test_2026h_estop_and_replay(home):
         assert wait(lambda: r.tr.done, 15)
         assert r.schema and abs(len(r.samples) - n_live) <= 2
         assert r.samples[-1][1]["state"] == 3
-        assert r.estop()["sent"] is False
+        rr = r.estop()
+        assert rr["ok"] is False and rr["reason"] == "replay" and set(rr) == Session.ESTOP_REPLY_KEYS
     finally:
         r.disconnect()
 
