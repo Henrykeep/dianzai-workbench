@@ -20,7 +20,7 @@
   color-scheme:dark;
   --bg:oklch(.145 .008 255);
   --s0:oklch(.17 .009 255); --s1:oklch(.145 .008 255); --s2:oklch(.185 .01 255); --s3:oklch(.235 .012 255); --s-hover:oklch(.265 .013 255);
-  --ink:oklch(.97 .004 255); --text:oklch(.8 .01 255); --muted:oklch(.63 .012 255); --dim:oklch(.5 .012 255); --faint:oklch(.36 .01 255);
+  --ink:oklch(.97 .004 255); --text:oklch(.8 .01 255); --muted:oklch(.7 .012 255); --dim:oklch(.6 .012 255); --faint:oklch(.36 .01 255);
   --line:oklch(1 0 0 / .07); --hair:oklch(1 0 0 / .05); --line2:oklch(1 0 0 / .12);
   --grid:oklch(1 0 0 / .045); --grid-2:oklch(1 0 0 / .09);
   --hi:inset 0 1px 0 oklch(1 0 0 / .05); --hi-acc:inset 0 1px 0 oklch(1 0 0 / .25); --acc-line:oklch(.8 .135 68 / .3);

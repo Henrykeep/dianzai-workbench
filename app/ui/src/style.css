@@ -791,3 +791,10 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .nav .steps button.sub{height:28px;padding-left:calc(var(--sp2) + 28px);font-size:var(--t-sm)}
 .nav .steps button.sub svg.lucide{display:none}
 .nav-folded .nav .steps button.sub{display:none}
+.ag-badge{margin-left:var(--sp2);padding:0 var(--sp2);height:20px;line-height:20px;border-radius:999px;font-size:var(--t-xs);color:var(--muted);box-shadow:inset 0 0 0 1px var(--hair)}
+.ag-badge[data-k=local]{color:var(--ok);box-shadow:inset 0 0 0 1px currentColor}
+/* 1366×768：时间窗工具条不再浮在操作条上，改为曲线区顶部正常排布，避免重叠 */
+@media (max-width:1500px){
+  .app[data-step="调参"] .scope>.vh{position:static;height:auto;padding:var(--sp1) var(--sp5);justify-content:flex-end}
+  .app[data-step="调参"] .tunebar .grp .lbl{display:none}
+}

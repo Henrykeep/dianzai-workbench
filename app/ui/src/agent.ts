@@ -447,6 +447,7 @@ export function initAgent(call: Call) {
   };
   // 首启不弹窗（会挡住项目/调参等不依赖 Agent 的功能）：在 Agent 栏放一张空状态卡，用户想用时再点设置
   call("agent_config").then(c => {
+    if (c?.configured) badge(/ollama|localhost|127\.0\.0\.1|:11434/i.test(`${c.provider} ${c.base_url}`) ? "local" : "cloud");
     if (!c || c.configured) return;
     document.querySelectorAll(".setup-card").forEach(e => e.remove());   // 只保留一张
     const card = add(`<div class="ag-setup"><b>Agent 未配置</b><p>原因：尚未配置大模型服务。处理：点击「配置模型」。未配置时，新建项目、烧录、示波、调参、评分与急停均可正常使用。</p></div>
@@ -501,11 +502,18 @@ export function initAgent(call: Call) {
     if (first.classList.contains("lbl")) first.outerHTML = `<div class="stream"></div>`;
     (live.firstElementChild as HTMLElement).innerHTML = esc(streamed).replace(/\n/g, "<br>");
   }
+  // 云端 / 本地模型标识：断网自动切本地（agent_mode.fallback）或直接配 Ollama 时显示「本地模型」
+  function badge(k: "local" | "cloud") {
+    const b = document.getElementById("ag-badge"); if (!b) return;
+    b.hidden = false; b.dataset.k = k; b.textContent = k === "local" ? "本地模型" : "云端模型";
+  }
+  window.addEventListener("offline", () => badge("local"));
   function modeLine(m: Msg) {
     if (!mode) return;
     if (m.type === "agent_mode") {
       mode.dataset.base = m.mode === "local" ? `本地 ${m.name}${m.fallback ? " · 云端连不上，已自动切到本地" : ""}` : `大模型 ${m.name}`;
       mode.classList.toggle("local", m.mode === "local");
+      badge(m.mode === "local" ? "local" : "cloud");
     }
     if (m.type === "agent_usage") mode.dataset.use = ` · ${(m.prompt + m.completion).toLocaleString()} tokens${m.cost != null ? ` · ¥${m.cost.toFixed(4)}` : ""}`;
     if (m.type === "agent_retry") mode.dataset.use = ` · 服务忙，第 ${m.attempt} 次重试…`;

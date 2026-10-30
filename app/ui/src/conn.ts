@@ -13,3 +13,13 @@ export const conn = {
   },
   on(f: (c: Conn) => void) { subs.push(f); f(cur); },
 };
+
+// 后端 link.state 事件（link-state 分支）：收到过就以它为准；超过 stale_after_ms 没收到 = 侧车无响应（不看 board）。
+// 没有这个事件（旧侧车）时，仍走 WebSocket 开合 + status 的旧逻辑。合并顺序不影响。
+let lsT = 0, lsStale = 3000, lsSeen = false;
+export function onLinkState(m: { board?: string; stale_after_ms?: number }) {
+  lsSeen = true; lsT = performance.now(); lsStale = m.stale_after_ms ?? 3000;
+  conn.set({ sidecar: true, board: m.board === "connected", alive: m.board === "connected" });
+}
+export const linkStateActive = () => lsSeen;
+setInterval(() => { if (lsSeen && conn.get().sidecar && performance.now() - lsT > lsStale) conn.set({ sidecar: false }); }, 500);

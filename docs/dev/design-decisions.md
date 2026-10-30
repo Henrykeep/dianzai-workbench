@@ -69,3 +69,12 @@ GPL 项目（betaflight-configurator）只参考思路和布局，不看样式�
 | 项目 | 一套需求对应的工程与记录 | 赛题（仅作为项目类型时使用） |
 | 目标板 | 被调试的硬件；仿真也算 | 板子、下位机 |
 | 大模型 | Agent 使用的 LLM 服务 | AI、模型服务 |
+
+## 5. 层级与分辨率
+| 规则 | 出处 | 我们采用的值 |
+|---|---|---|
+| 层级靠间距与分隔线 | [Atlassian spacing](https://atlassian.design/foundations/spacing)、[Primer Divider/Box](https://primer.style/product/primitives/) | 组内 `--sp2`，组间 `--sp5`，区块之间 1px `--hair` |
+| 表面层级 | [Fluent 2 Elevation](https://fluent2.microsoft.design/elevation) | `--s0` 导航 / `--s1` 页面 / `--s2` 卡片 / `--s3` 选中，阴影只给浮层 |
+| 正文字号与对比 | [Primer](https://primer.style/product/primitives/typography)、[WCAG 2.2 1.4.3](https://www.w3.org/TR/WCAG22/#contrast-minimum) | 正文 14px；次要文字对比度 ≥ 4.5:1 |
+| 等宽字体 | [Geist Mono 用法](https://vercel.com/font) | 只用于数值、代码、路径 |
+| 最低分辨率 | [Fluent 2 Layout breakpoints](https://fluent2.microsoft.design/layout/) | 1366×768 起；≤1500px 导航收起 |
