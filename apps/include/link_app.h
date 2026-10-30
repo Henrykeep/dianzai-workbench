@@ -20,7 +20,7 @@
 #include "link_gen.h"
 #include "dz_compiler.h"
 #include "blackbox.h"
-#include "pid.h"
+#include "link_relay.h"
 
 typedef struct {
     dzframe_parser_t rx;
@@ -66,16 +66,8 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         for (uint16_t i = 0; i < got; i++) {
             if (!dzframe_feed(&L->rx, buf[i], &f)) continue;
             dzctl_wd_feed(&L->wd, &f, now);
-            dzctl_relay_t rl;
             if (dzctl_is_estop(&f)) { L->estop = true; pid_relay_stop(); }
-            else if (dzctl_relay_parse(&f, &rl)) {      /* 继电自整定（调参“无初值一键起步”）：急停中拒绝 */
-                uint8_t s = 0u;
-                if (!rl.start) { if (rl.amp < 0.0f) s = 1u; else pid_relay_stop(); }
-                else if (L->estop) s = 2u;
-                else if (pid_relay_start(rl.loop, rl.amp, rl.hyst, rl.timeout_s) != DZ_OK) s = 1u;
-                dzctl_relay_ack(s, L->seq++, &ack);
-                link_app_send(&ack);
-            }
+            else if (link_relay_frame(&f, L->estop, &L->seq, &ack)) link_app_send(&ack);
             else if (dzctl_is_bb_request(&f)) {
                 for (uint16_t k = 0; L->bb && k < bb_count(L->bb); k++) {
                     const bb_rec_t *r = bb_get(L->bb, k);
@@ -96,7 +88,8 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
             }
         }
     }
-    if (dzctl_wd_expired(&L->wd, now)) { L->estop = true; pid_relay_stop(); }   /* 上位机掉线：急停并结束继电 */
+    if (dzctl_wd_expired(&L->wd, now)) L->estop = true;   /* 上位机掉线：急停 */
+    link_relay_guard(L->estop);                           /* 急停中结束继电 */
     if (now - L->last_hb >= 500u) {
         L->last_hb = now;
         dzctl_heartbeat(&t, L->seq++, &f);

@@ -21,6 +21,7 @@
 #include "io_safety.h"
 #include "safety.h"
 #include "dzctl.h"
+#include "link_relay.h"
 #include "rtosmon.h"
 
 #define LINK_ID_BALL_SP 0x01u
@@ -63,17 +64,22 @@ static void handle_cmd(const dzframe_t *f)
     }
 }
 
+static uint8_t s_relay_seq;
+
 void io_link_read(void)
 {
     uint8_t buf[32]; uint16_t got = 0, i;
     dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_project_params[io_coord()->profile_idx]);
     if (dzctl_wd_expired(&WD, pal_millis())) coord_event(io_coord(), COORD_EV_ESTOP);   /* 急停路径负责输出归零 */
+    bool stop = io_coord()->st == COORD_ESTOP || io_coord()->st == COORD_FAULT;
+    link_relay_guard(stop);                                  /* 急停/故障中结束继电 */
     if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
     for (i = 0; i < got; i++) {
         if (!dzframe_feed(&LL, buf[i], &f)) continue;
         dzctl_wd_feed(&WD, &f, pal_millis());
         if (dzctl_is_estop(&f)) { coord_event(io_coord(), COORD_EV_ESTOP); s_host_sp_px = 0.0f; }
+        else if (link_relay_frame(&f, stop, &s_relay_seq, &ack)) link_send(&ack);
         else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);
         else if (dzctl_is_bb_request(&f)) {                 /* 黑匣子导出（dzctl 0.6.0） */
             const bb_t *bb = io_safety_bb();

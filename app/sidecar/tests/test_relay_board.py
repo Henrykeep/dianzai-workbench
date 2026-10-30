@@ -58,3 +58,21 @@ def test_relay_one_click_start_proposes(board):
     assert r["ok"], r
     assert 0.1 < r["ku"] < 0.3 and 0.05 < r["pu"] < 0.2, r       # 实测 Ku≈0.166 Pu≈0.09 s（USAGE_MATRIX #1）
     assert len(r["proposals"]) == 3                              # kp/ki/kd 各一张提议卡，采纳才写入
+
+
+@pytest.mark.parametrize("target", ["sim:car_2wd", "sim:2026H_ball"])
+def test_relay_answers_on_own_link_boards(home, target):
+    """car_2wd、2026H io_link 自带收帧，也走 apps/include/link_relay.h：按钮不会是“板子没回应”。"""
+    s = Session()
+    s.connect(target)
+    try:
+        assert _wait(lambda: s.schema and len(s.window(0.5)) > 3)
+        assert s.relay(0, 0.2, 0.1, 1.0)["ok"]
+        assert s.relay(0, 0.2, 0.1, 1.0)["status"] == 1          # 已在继电
+        s.estop(); time.sleep(0.3)
+        s.cmd("R"); time.sleep(0.2)
+        assert s.relay(0, 0.2, 0.1, 1.0)["ok"]                    # 急停结束了上一次继电
+        assert s.relay(9, 0.2, 0.1, 1.0)["status"] == 1
+        assert s.relay_stop()
+    finally:
+        s.disconnect()

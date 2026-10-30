@@ -27,6 +27,7 @@
 #include "encoder.h"
 #include "dzframe.h"
 #include "dzctl.h"
+#include "link_relay.h"
 #include "link_gen.h"
 #include "subsys.h"
 #include "drive_plan.h"
@@ -214,6 +215,8 @@ static void send(const dzframe_t *f)
     if (n) (void)link_write(out, (uint16_t)n);   /* EBUSY 时丢这一帧，下一帧补上 */
 }
 
+static uint8_t s_relay_seq;
+
 static void handle_rx(uint32_t now)
 {
     uint8_t buf[32]; uint16_t got = 0;
@@ -226,6 +229,8 @@ static void handle_rx(uint32_t now)
         if (dzctl_is_estop(&f)) {
             s_estop = true;
             s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f;
+        } else if (link_relay_frame(&f, s_estop, &s_relay_seq, &ack)) {
+            send(&ack);
         } else if (dzctl_handle(&t, &f, &ack)) {
             apply_params();
             send(&ack);
@@ -261,6 +266,7 @@ void app_loop(void)
     handle_rx(now);
     if (dzctl_wd_expired(&s_wd, now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
     if (car_aux_poll(now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }   /* 只置不清 */
+    link_relay_guard(s_estop);   /* 急停（心跳超时/电池/安全锁存）中结束继电 */
 #if HAVE_ISENSE
     {   /* 电流采样：引脚 mV（含分压）−零点 → ÷ mV/A；读失败当 0（不误判堵转），计 ctrl_err */
         static const pal_id_t ch[2] = { RES_ADC_ISENSE_A, RES_ADC_ISENSE_B };
