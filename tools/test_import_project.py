@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""回归：用户原样的两个工程（p2 Car_Mode1021 / F103，p1 Bldc / F407 FreeRTOS，Keil 生成、没有 .ld）
+导入后“还需要人做的事”的条数不许比基线多（tools/testdata/real/import_baseline.json）。
+还查：原工程一个字节没变；main.c 标记坏了不加 --accept-repair 会停（rc 3）且不留半成品；
+用户代码一行没丢（搬进 user_code/）。有 arm-none-eabi-gcc 和 HAL 时再真编译，否则跳过编译。"""
+import filecmp
+import hashlib
+import json
+import os
+import pathlib
+import shutil
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent
+DATA = ROOT / "tools" / "testdata" / "real" / "projects"
+BASE = json.loads((ROOT / "tools" / "testdata" / "real" / "import_baseline.json").read_text(encoding="utf-8"))
+fails = []
+
+
+def ok(c, m):
+    print(("✓ " if c else "✗ ") + m)
+    if not c:
+        fails.append(m)
+
+
+def tree_hash(d: pathlib.Path) -> str:
+    h = hashlib.sha256()
+    for f in sorted(d.rglob("*")):
+        if f.is_file():
+            h.update(str(f.relative_to(d)).encode()); h.update(f.read_bytes())
+    return h.hexdigest()
+
+
+def imp(src, name, *args):
+    return subprocess.run([sys.executable, "tools/import_project.py", str(src), "--name", name, *args],
+                          cwd=ROOT, capture_output=True, text=True)
+
+
+has_arm = shutil.which("arm-none-eabi-gcc") is not None
+for proj, exp in BASE.items():
+    if proj.startswith("_"):
+        continue
+    src = DATA / proj
+    name = "zz-test-" + str(abs(hash(proj)) % 10000)
+    dest = ROOT / "boards" / name
+    before = tree_hash(src)
+    try:
+        if "--accept-repair" in exp["args"]:
+            r = imp(src, name, *[a for a in exp["args"] if a != "--accept-repair"])
+            ok(r.returncode == 3 and not dest.exists(), f"{proj}：USER CODE 标记坏了 → 不加 --accept-repair 就停（rc {r.returncode}），不留半成品")
+        with tempfile.TemporaryDirectory() as t:
+            rep = pathlib.Path(t) / "r.json"
+            r = imp(src, name, *exp["args"], "--report", str(rep))
+            ok(r.returncode == 0 and rep.exists(), f"{proj}：导入成功（rc {r.returncode}）")
+            if r.returncode or not rep.exists():
+                print(r.stdout[-2000:], r.stderr[-2000:])
+                continue
+            d = json.loads(rep.read_text(encoding="utf-8"))
+        cnt = {k: sum(1 for x in d["todo"] if x["kind"] == k) for k in ("edit", "confirm", "observe")}
+        for k, v in cnt.items():
+            ok(v <= exp[k], f"{proj}：{k} {v} 处（基线 ≤ {exp[k]}）")
+            if v < exp[k]:
+                print(f"  ↓ 比基线少了，把 import_baseline.json 里 {proj}.{k} 改成 {v}")
+        ok(tree_hash(src) == before, f"{proj}：原工程没被改动")
+        moved = (dest / "user_code" / "from_core_user_code.c.txt").read_bytes() if (dest / "user_code" / "from_core_user_code.c.txt").exists() else b""
+        orig_main = (src / "Core" / "Src" / "main.c").read_bytes()
+        # 用户在 main.c 里写过的每一行非空代码，要么还在新 main.c，要么在 user_code/ 里
+        new_main = (dest / "cubemx" / "Core" / "Src" / "main.c").read_bytes()
+        lost = [l for l in orig_main.splitlines() if l.strip() and l.strip() not in new_main and l.strip() not in moved]
+        ok(not lost, f"{proj}：main.c 里的用户代码一行没丢（丢了 {len(lost)} 行）")
+        if lost:
+            print("  ", lost[:5])
+        if has_arm:
+            for app in exp["build"]:
+                b = subprocess.run(["make", "-s", f"BOARD={name}", f"APP={app}"], cwd=ROOT, capture_output=True, text=True)
+                skip = b.returncode and "找不到" in b.stdout + b.stderr   # 没有 HAL/FreeRTOS 等器件包：跳过，不算失败
+                if skip:
+                    print(f"  （缺器件包（HAL/FreeRTOS），跳过 {app} 编译）"); break
+                ok(b.returncode == 0, f"{proj}：make APP={app} 编译通过")
+                if b.returncode:
+                    print(b.stdout[-1500:], b.stderr[-1500:])
+        else:
+            print("  （没有 arm-none-eabi-gcc，跳过编译）")
+    finally:
+        shutil.rmtree(dest, ignore_errors=True)
+        shutil.rmtree(ROOT / "build" / name, ignore_errors=True)
+
+print("test_import_project: " + ("失败 " + str(len(fails)) if fails else "通过"))
+sys.exit(1 if fails else 0)

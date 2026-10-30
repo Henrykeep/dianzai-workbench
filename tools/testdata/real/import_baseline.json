@@ -1,0 +1,5 @@
+{
+  "_说明": "tools/test_import_project.py 的基线：导入用户原工程后“还需要人做的事”的条数。只许降不许升；降了就把这里改小。导入器之前（2026-10-30 走查）p2 要手改约 20 处（13 处 CubeMX 改标签、加 TIM1、改 main.c、补 .ld 等）。",
+  "Car_Mode1021": {"args": ["--app", "car_2wd", "--accept-repair"], "edit": 0, "confirm": 2, "observe": 1, "build": ["car_2wd", "port_selftest"]},
+  "Bldc - 副本 (6)": {"args": ["--app", "car_2wd"], "edit": 0, "confirm": 1, "observe": 0, "build": ["car_2wd", "port_selftest"]}
+}

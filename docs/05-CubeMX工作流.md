@@ -62,6 +62,7 @@ make BOARD=<目录名> APP=car_2wd
 - **USER CODE 标记被改坏**（例如 while(1) 写进了 USER CODE 3 而 BEGIN WHILE 没了）：停下、打印修复 diff，确认后加 `--accept-repair`。
 - **Keil(MDK) 生成的工程**没有 `*_FLASH.ld`/gcc 启动文件：按芯片从 `ports/stm32-cubemx/ld/` 模板补链接脚本，启动文件用 CMSIS gcc 模板。
 - 报告分三类：动手改 / 确认 / 上板观察；`--report x.json` 输出机器可读结果。p2 Car_Mode1021：动手改 0、确认 2、观察 1；p1 Bldc：动手改 0、确认 1。
+- 回归：`make check` 跑 `tools/test_import_project.py`，用你原样的 p2/p1 工程（`tools/testdata/real/projects/`）导入，“动手改/确认/观察”条数超过 `import_baseline.json` 就失败。
 - `make` 写成 `PROJECT=` 会直接报错提示用 `APP=<目录>`。
 
 ## 串口接收：推荐 Circular DMA（IT 为兜底）

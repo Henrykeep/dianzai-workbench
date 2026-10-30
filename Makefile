@@ -209,6 +209,7 @@ check:
 	$(PY) tools/iface_hash.py --selftest
 	$(PY) tools/ioc_import.py --selftest
 	$(PY) tools/test_ioc_import.py
+	$(PY) tools/test_import_project.py
 	$(PY) tools/keil_inject.py --selftest
 	$(PY) tools/test_ide_nvm.py
 	$(PY) tools/test_k230_vision.py
