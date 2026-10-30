@@ -5,7 +5,7 @@
  * 寄存器：STATUS 0x0B（MD 磁铁在 bit5 / ML 太弱 bit4 / MH 太强 bit3）、RAW ANGLE 0x0C..0x0D（12 位，不受 ZPOS/MPOS 影响）、
  * AGC 0x1A、MAGNITUDE 0x1B..0x1C。只读 RAW ANGLE，零点 / 方向在软件里做（不烧 OTP）。
  * 400 kHz 下读 2 字节约 70 µs；FOC 电流环频率高时请把 as5600_update 放到较慢的任务里，FOC 用插值角度。
- * 参考：pid_helper STM32F1 / ESP32-C3 例程 as5600_dev.c（跨零修正、速度滤波思路）、SimpleFOC MagneticSensorI2C。
+ * 【2.0.0 已停用】实现已移除（原实现参照过 GPL 代码，见 as5600.c 文件头），全部函数返回 DZ_ENOTSUP。
  * 版本：AS5600_VERSION
  */
 #ifndef AS5600_H
@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include "dz_err.h"
 #include "pal.h"
-#define AS5600_VERSION "1.0.0"
+#define AS5600_VERSION "2.0.0"
 #define AS5600_ADDR 0x36u
 
 typedef struct {

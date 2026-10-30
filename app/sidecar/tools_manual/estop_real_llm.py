@@ -32,6 +32,13 @@ def main() -> int:
         t0 = time.monotonic()
         while not st.srv.session.params and time.monotonic() - t0 < 15:
             time.sleep(0.1)
+        # 先做一次不打断的真实调用：确认模型可用、是真实长生成（而不是 503 重试）
+        tq = time.monotonic()
+        r = ui.call("agent_ask", timeout=300, text=PROMPT)
+        d = r.get("data") or {}
+        txt = json.dumps(d, ensure_ascii=False)
+        print(f"探针调用：ok={r.get('ok')} 用时={time.monotonic() - tq:.1f} s 回复长度={len(txt)} 错误={(r.get('error') or {}).get('code')}", flush=True)
+        outcomes = []
         for i in range(N):
             m = ui.mark()
             ui.ws.send(json.dumps({"op": "agent_ask", "rid": 10000 + i, "text": PROMPT}))
@@ -51,6 +58,11 @@ def main() -> int:
             print(f"#{i + 1:02d} 模型调用中={running} requested={ws_lat[-1]:.1f} ms latched={lat[-1]:.1f} ms", flush=True)
             ui.ok("cmd", c="R")
             t1 = time.monotonic()                            # 等这轮 Agent 结束（被锁存拒绝或答完）再下一轮
+            with ui.cv:
+                ui.cv.wait_for(lambda: 10000 + i in ui.replies, 180)
+                rep = ui.replies.pop(10000 + i, {})
+            outcomes.append((rep.get("error") or {}).get("code") or ("ok" if rep.get("ok") else "?"))
+            print(f"   本轮 Agent 结局：{outcomes[-1]}（用时 {time.monotonic() - tc:.1f} s）", flush=True)
             while st.srv.agent_running and time.monotonic() - t1 < 120:
                 time.sleep(0.2)
             time.sleep(0.5)
@@ -61,7 +73,7 @@ def main() -> int:
     def pct(xs, p):
         xs = sorted(xs)
         return xs[min(len(xs) - 1, round(p / 100 * (len(xs) - 1)))]
-    print(json.dumps({"n": len(lat), "llm_inflight": inflight,
+    print(json.dumps({"n": len(lat), "llm_inflight": inflight, "agent_outcomes": {k: outcomes.count(k) for k in set(outcomes)},
                       "click→requested_ms": {"p50": round(statistics.median(ws_lat), 1), "p95": round(pct(ws_lat, 95), 1)},
                       "click→latched_ms": {"p50": round(statistics.median(lat), 1), "p95": round(pct(lat, 95), 1)}},
                      ensure_ascii=False))

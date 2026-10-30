@@ -94,7 +94,11 @@ def compare(lock, cur):
 def run(root, mode):
     lockp = os.path.join(root, "iface.lock.json")
     lock = json.load(open(lockp)) if os.path.exists(lockp) else {}
-    cur = scan(root)
+    # "_pending_rewrite"：待净室重写的模块（锁段已删，等重写者升 MAJOR 后重新入锁）；在此列表里的模块不比对、不入锁
+    pending = list(lock.pop("_pending_rewrite", []))
+    cur = {m: c for m, c in scan(root).items() if m not in pending}
+    for m in pending:
+        lock.pop(m, None)
     errs, notes = compare(lock, cur)
     for e in errs:
         print("✗ " + e)
@@ -102,8 +106,11 @@ def run(root, mode):
         if errs:
             print("iface_hash: 存在违反版本规则的改动，拒绝更新锁文件")
             return 1
+        out = dict(cur)
+        if pending:
+            out["_pending_rewrite"] = pending
         with open(lockp, "w", encoding="utf-8") as f:
-            json.dump(cur, f, ensure_ascii=False, indent=1, sort_keys=True)
+            json.dump(out, f, ensure_ascii=False, indent=1, sort_keys=True)
             f.write("\n")
         print(f"iface_hash: 已写入 {len(cur)} 个模块到 iface.lock.json")
         return 0

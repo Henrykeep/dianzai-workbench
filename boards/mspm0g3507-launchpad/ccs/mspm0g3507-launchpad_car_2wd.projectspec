@@ -123,6 +123,7 @@
         <file path="../../../firmware/algo/foc/foc.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/follow/follow.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/line_obs/line_obs.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/lpf/biquad.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/lpf/lpf1.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/mtspeed/mtspeed.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/pid/pid.c" targetDirectory="dz/firmware" action="link"/>

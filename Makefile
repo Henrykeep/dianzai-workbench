@@ -188,7 +188,8 @@ gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 ui-preview:
 	PY=$(PY) sh mk/ui-preview.sh
 
-# 端到端基准：历年控制类题在仿真板上跑全流程并评分（用例 tools/bench/cases.json），结果在 build/bench/
+# 端到端基准：4 道题在 host-sim 上 构建 → 阶跃 →（继电起步）→ 验收评分，约 2 分钟；结果 build/bench/results.{json,md}
+# 当前基线（fw-runtime，2026-10-31）：motor_pos 99.5 / 2013C 88.2 / 2023E 71.1 / 2026H 84.7，平均 85.9（新克隆 make fetch 后实测）。ARGS="--only 2026H" 只跑一题
 bench:
 	$(PY) tools/bench/bench.py $(ARGS)
 
@@ -200,15 +201,27 @@ selftest:
 
 test:
 	$(MAKE) -C tests/host
+	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
 
 # 推送前：干净克隆 + 空 HOME + 无器件包里跑 CI 同款步骤（tools/preflight.sh）
+# 许可扫描（make check 调用）：vendored/third_party 每目录 LICENSE、Python 依赖 pip-licenses、前端 npm 依赖。
+# 统一输出：✗ [licenses/<类>] 什么 · 原因：… · 处理：…；GPL/LGPL/AGPL、无许可、认不出即失败；CC-BY 登记 docs/ATTRIBUTION.md 即可。
+licenses:
+	$(PY) tools/check_vendored.py
+	$(PY) tools/test_check_vendored.py
+	$(PY) tools/check_py_licenses.py --selftest
+	$(PY) tools/check_py_licenses.py
+	bash tools/check_npm_licenses.sh
+
 preflight:
 	tools/preflight.sh
 
 check:
+	$(PY) tools/check_redef.py --selftest
+	$(PY) tools/check_redef.py
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	$(PY) tools/test_port_policy.py
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
@@ -258,7 +271,8 @@ check:
 	$(PY) tools/audit_port.py --selftest
 	$(PY) tools/check_ai_docs.py --selftest
 	$(PY) tools/check_ai_docs.py --check
-	$(PY) tools/check_vendored.py
+	$(PY) tools/bench/test_bench.py
+	$(MAKE) --no-print-directory licenses
 	$(PY) tools/check_version.py
 	$(MAKE) ioc-check
 	$(PY) tools/check_gen_consistency.py --selftest
@@ -272,9 +286,10 @@ check:
 	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && for t in tests/*.test.ts; do node_modules/.bin/esbuild $$t --bundle --platform=node --log-level=error | node || exit 1; done; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
 
-fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）
+fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）
 	tools/fetch_third_party.sh
 	tools/fetch_sysconfig.sh
+	cd app/ui && npm ci --no-audit --no-fund
 
 clean:
 	rm -rf build

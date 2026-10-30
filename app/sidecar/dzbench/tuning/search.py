@@ -1,6 +1,9 @@
 """仿真里的 PID 搜索：PSO 粒子群 / 分阶段（P→I→D→微调），实机只拿 top-k 候选逐个验证。
 
-算法本体是 PID_Helper（GPL-3.0）的移植：third_party/vendored/pid_helper/pid_helper_pso.py（见 SOURCE.md）。
+净室实现（只依据公开文献，见 docs/参考来源.md“净室重写算法来源”）：
+- PSO：Kennedy & Eberhart 1995，收缩系数版 Clerc & Kennedy 2002（w = 0.7298，c1 = c2 = 1.49618），位置夹在边界内、速度限为边界宽度的 20 %。
+- 分阶段：逐坐标模式搜索（Hooke & Jeeves 1961 的探索步），P → I → D → 三者同时微调，步长按百分比乘法放缩。
+- 打分：各指标 (x + floor)/(基线 + floor) 的加权平均，1.0 = 和初值一样，越小越好。
 本文件只做：kp/ki/kd ↔ p/i/d、FOPDT 仿真对象 + 闭环阶跃指标（evaluate）、搜索主循环、门禁。
 - PSO：只许 sim=True（agent/experiment.require_swarm），有随机性，固定 rng_seed 可复现。
 - 结果只是“候选”：实机上每个都要走 TuneGuard / 提议确认，不在这里写参数。
@@ -10,20 +13,9 @@ from __future__ import annotations
 import math
 import random
 
-from . import identify  # noqa: F401  确保 vendored 路径已加进 sys.path
-import pid_helper_pso as PSO  # noqa: E402
 
 from ..agent.experiment import require_swarm
 
-MAP = {"kp": "p", "ki": "i", "kd": "d"}
-
-
-def _to(g: dict) -> dict:
-    return {MAP[k]: float(g.get(k, 0.0)) for k in MAP}
-
-
-def _from(p: dict) -> dict:
-    return {k: p[v] for k, v in MAP.items()}
 
 
 def simulate_fopdt(gains: dict, K: float, T: float, L: float, *, dt: float = 0.005, t_end: float | None = None,
@@ -60,50 +52,92 @@ def simulate_fopdt(gains: dict, K: float, T: float, L: float, *, dt: float = 0.0
             "steady_error": round(sse, 5), "control_ripple": round(ripple, 6)}
 
 
+KEYS = ("kp", "ki", "kd")
+PROFILES = {
+    "balanced":     {"itae": 1.0, "overshoot": 1.0, "settling_ms": 0.5, "steady_error": 1.0, "control_ripple": 0.5},
+    "fast":         {"itae": 1.5, "overshoot": 0.5, "settling_ms": 1.0, "steady_error": 1.0, "control_ripple": 0.3},
+    "smooth":       {"itae": 0.5, "overshoot": 2.0, "settling_ms": 0.5, "steady_error": 1.0, "control_ripple": 1.5},
+}
+FLOORS = {"itae": 0.05, "overshoot": 0.02, "settling_ms": 100.0, "steady_error": 0.02, "control_ripple": 0.02}
+W, C1, C2 = 0.7298, 1.49618, 1.49618        # Clerc & Kennedy 2002 收缩系数
+
+
+def score(m: dict, base: dict, profile: str = "balanced") -> float:
+    w = PROFILES[profile]
+    return sum(w[k] * (m[k] + FLOORS[k]) / (base[k] + FLOORS[k]) for k in w) / sum(w.values())
+
+
+def _bounds(s0: dict, bounds: dict | None, wide: bool) -> dict:
+    if bounds:
+        return {k: tuple(map(float, bounds[k])) if k in bounds else (0.0, max(3 * s0[k], 0.1)) for k in KEYS}
+    f = 4.0 if wide else 2.0                      # 默认：初值的 0–2 倍；wide：0–4 倍，并保证最小搜索宽度
+    mins = {"kp": 1.0, "ki": 0.5, "kd": 0.1} if wide else {"kp": 0.2, "ki": 0.1, "kd": 0.02}
+    return {k: (0.0, max(f * s0[k], mins[k])) for k in KEYS}
+
+
 def optimize(evaluate, seed: dict, *, strategy: str = "pso", sim: bool, iterations: int = 12, swarm: int = 8,
              profile: str = "balanced", top_k: int = 3, rng_seed: int = 0, bounds: dict | None = None,
              wide: bool = False) -> dict:
-    """wide=False（默认）= PID_Helper 原版：只在初值附近搜；wide=True = 宽范围：PSO 边界放到初值的 0–4 倍（至少 kp≤1/ki≤0.5/kd≤0.1）、
-    分阶段每步 ±25/50/100%。evaluate(gains{kp,ki,kd}) → 指标 dict。返回 {baseline, best, top[k], evals, strategy}；score 越小越好，1.0 = 和初值一样。"""
+    """evaluate(gains{kp,ki,kd}) → 指标 dict（simulate_fopdt 同键）。返回 {baseline, best, top[k], evals, strategy}；
+    score 越小越好，1.0 = 和初值一样。PSO 只许 sim=True；固定 rng_seed 可复现。"""
     if strategy == "pso":
         require_swarm(sim)
     elif strategy != "staged":
         raise ValueError(f"strategy 只能 pso / staged，不是 {strategy!r}")
-    if profile not in PSO.PROFILES:
-        raise ValueError(f"profile 只能 {'/'.join(PSO.PROFILES)}")
-    rnd = random.Random(rng_seed).random
-    s0 = _to(seed)
-    base = evaluate(_from(s0))
+    if profile not in PROFILES:
+        raise ValueError(f"profile 只能 {'/'.join(PROFILES)}")
+    rng = random.Random(rng_seed)
+    s0 = {k: float(seed.get(k, 0.0)) for k in KEYS}
+    base = evaluate(dict(s0))
+    B = _bounds(s0, bounds, wide)
     seen: dict[tuple, dict] = {}
 
-    def ev(p: dict) -> float:
-        key = tuple(round(p[k], 6) for k in PSO.KEYS)
+    def clip(g):
+        return {k: round(min(B[k][1], max(B[k][0], g[k])), 6) for k in KEYS}
+
+    def ev(g: dict) -> float:
+        key = tuple(g[k] for k in KEYS)
         if key not in seen:
-            m = evaluate(_from(p))
-            seen[key] = {"gains": _from(p), "metrics": m, "score": PSO.score(m, base, profile)}
+            m = evaluate(dict(g))
+            seen[key] = {"gains": dict(g), "metrics": m, "score": score(m, base, profile)}
         return seen[key]["score"]
 
-    ev(s0)
+    s0c = clip(s0)
+    ev(s0c)
     if strategy == "pso":
-        pb = {MAP[k]: tuple(v) for k, v in bounds.items()} if bounds else None
-        if pb is None and wide:
-            pb = {"p": (0.0, max(4 * s0["p"], 1.0)), "i": (0.0, max(4 * s0["i"], 0.5)), "d": (0.0, max(4 * s0["d"], 0.1))}
-        opt = PSO.default_options(s0, swarm, pos_bounds=pb)
-        sw = PSO.create_swarm(s0, opt, rnd)
-        gbest, gscore = dict(s0), ev(s0)
+        vmax = {k: 0.2 * (B[k][1] - B[k][0]) for k in KEYS}
+        xs = [s0c] + [clip({k: rng.uniform(*B[k]) for k in KEYS}) for _ in range(max(1, swarm) - 1)]
+        vs = [{k: rng.uniform(-vmax[k], vmax[k]) for k in KEYS} for _ in xs]
+        pb = [(dict(x), ev(x)) for x in xs]
+        gb = min(pb, key=lambda p: p[1])
         for _ in range(iterations):
-            sw = [PSO.record_score(pt, ev(pt["position"])) for pt in sw]
-            for pt in sw:
-                if pt["best_score"] < gscore:
-                    gbest, gscore = dict(pt["best_position"]), pt["best_score"]
-            sw = PSO.advance(sw, gbest, opt, rnd)
+            for i, x in enumerate(xs):
+                v = {}
+                for k in KEYS:
+                    vk = W * vs[i][k] + C1 * rng.random() * (pb[i][0][k] - x[k]) + C2 * rng.random() * (gb[0][k] - x[k])
+                    v[k] = max(-vmax[k], min(vmax[k], vk))
+                vs[i] = v
+                xs[i] = clip({k: x[k] + v[k] for k in KEYS})
+                sc = ev(xs[i])
+                if sc < pb[i][1]:
+                    pb[i] = (dict(xs[i]), sc)
+                    if sc < gb[1]:
+                        gb = pb[i]
     else:
-        cur, cs = dict(s0), ev(s0)
-        for stage in ("p", "i", "d", "micro"):
+        steps = [0.25, 0.5, 1.0] if wide else [0.1, 0.2]
+        cur, cs = s0c, ev(s0c)
+        for stage in ("kp", "ki", "kd", "micro"):
             for _ in range(max(1, iterations // 4)):
-                cands = PSO.micro_candidates(cur) if stage == "micro" else PSO.staged_candidates(stage, cur, pcts=[25, 50, 100] if wide else None)
-                if bounds:
-                    cands = [c for c in cands if all(bounds[k][0] <= c[v] <= bounds[k][1] for k, v in MAP.items() if k in bounds)]
+                cands = []
+                if stage == "micro":
+                    for k in KEYS:
+                        for sg in (-1, 1):
+                            cands.append(clip(cur | {k: cur[k] * (1 + sg * 0.05)}))
+                else:
+                    scale = cur[stage] or 0.1 * (B[stage][1] - B[stage][0])
+                    for st in steps:
+                        for sg in (-1, 1):
+                            cands.append(clip(cur | {stage: cur[stage] + sg * st * scale}))
                 best = min(cands, key=ev, default=None)
                 if best is None or ev(best) >= cs:
                     break

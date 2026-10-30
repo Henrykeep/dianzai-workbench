@@ -13,7 +13,7 @@
 #include <stdbool.h>
 #include "dz_err.h"
 
-#define LPF1_VERSION "1.1.0"
+#define LPF1_VERSION "1.2.0"
 
 typedef struct {
     float cutoff_hz;  /**< 截止频率，> 0 */

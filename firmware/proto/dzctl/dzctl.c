@@ -92,6 +92,36 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
 
 void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms) { s_st_mask = fail_mask; s_st_t = t_ms ? t_ms : 1u; }
 void dzctl_set_params_hash(uint32_t h) { s_par_h = h; }
+
+static struct { uint8_t code; dzctl_selftest_fn fn; } s_st_reg[DZCTL_ST_MAX];
+static uint8_t s_st_n;
+
+int dzctl_selftest_register(uint8_t code, dzctl_selftest_fn fn)
+{
+    if (!fn || code == 0u || code > 32u) return -1;
+    for (uint8_t i = 0; i < s_st_n; i++) if (s_st_reg[i].code == code && s_st_reg[i].fn == fn) return 0;
+    if (s_st_n >= DZCTL_ST_MAX) return -1;
+    s_st_reg[s_st_n].code = code; s_st_reg[s_st_n].fn = fn; s_st_n++;
+    return 0;
+}
+
+uint32_t dzctl_selftest_run(uint32_t t_ms, uint32_t extra_fail_mask)
+{
+    uint32_t m = extra_fail_mask;
+    for (uint8_t i = 0; i < s_st_n; i++) if (!s_st_reg[i].fn()) m |= 1u << (s_st_reg[i].code - 1u);
+    dzctl_selftest_report(m, t_ms);
+    return m;
+}
+
+uint32_t dzctl_selftest_mask(void) { return s_st_mask; }
+
+void dzctl_selftest_reply(uint32_t fail_mask, dzframe_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->kind = DZF_DATA; out->id = DZCTL_ID_CMD;
+    (void)dzframe_put_u8(out, DZCTL_CMD_SELFTEST);
+    (void)dzframe_put_u32(out, fail_mask);
+}
 uint32_t dzctl_hash32(const void *data, uint32_t len)
 {
     const uint8_t *p = (const uint8_t *)data;

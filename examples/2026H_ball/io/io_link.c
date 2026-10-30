@@ -23,6 +23,8 @@
 #include "dzctl.h"
 #include "link_relay.h"
 #include "rtosmon.h"
+#define DZRT_PARAMS_T params_t
+#include "dz_runtime.h"
 
 #define LINK_ID_BALL_SP 0x01u
 static dzctl_wd_t WD;
@@ -30,13 +32,33 @@ static dzframe_parser_t LL;   /* LINK 上位机帧 */
 static float s_host_sp_px;    /* 上位机给的钢珠目标 */
 float io_host_ball_sp_px(void) { return s_host_sp_px; }
 
+static uint8_t link_seq;
+static dzrt_t RT;              /* 通用运行时：自检 / 运行模式 / 存参（dz_runtime.h） */
+static params_t s_par_def;     /* 上电时当前档的默认值（flash 坏 → 回到它） */
+static void link_send(dzframe_t *f);
+static void link_send_c(const dzframe_t *f) { dzframe_t g = *f; link_send(&g); }
+static bool io_still(void)
+{
+    coord_state_t s = io_coord()->st;
+    return s == COORD_IDLE || s == COORD_DONE || s == COORD_ESTOP || s == COORD_FAULT;
+}
+static bool st_subsys(void) { return subsys_sched_selftest(io_coord()->sched) < 0; }
+
 void io_link_init(void)
 {
     dzframe_parser_init(&LL);
     dzctl_wd_init(&WD, 1000u);   /* 上位机心跳看门狗（侧车每 250 ms 发心跳；脱机比赛不布防） */
 }
 
-static uint8_t link_seq;
+/* coord/sched 建好之后调用（io_main app_init 末尾）：读 flash 参数、跑自检（失败 → 急停）、读运行模式 */
+void io_link_boot(void)
+{
+    s_par_def = g_project_params[io_coord()->profile_idx];
+    (void)dzrt_boot(&RT, &g_project_params[io_coord()->profile_idx], &s_par_def, io_still, link_send_c);
+    (void)dzctl_selftest_register(DZCTL_ST_SUBSYS, st_subsys);
+    if (dzrt_selftest(&RT, pal_millis()) != 0u) { dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); coord_event(io_coord(), COORD_EV_ESTOP); }
+    dzrt_start(&RT, io_coord()->st != COORD_ESTOP, false);
+}
 
 static void link_send(dzframe_t *f)
 {
@@ -71,7 +93,7 @@ void io_link_read(void)
     uint8_t buf[32]; uint16_t got = 0, i;
     dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_project_params[io_coord()->profile_idx]);
-    if (dzctl_wd_expired(&WD, pal_millis())) {
+    if (dzrt_needs_host(&RT) && dzctl_wd_expired(&WD, pal_millis())) {
         dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, pal_millis(), (float)(uint32_t)(pal_millis() - WD.last_ms));
         coord_event(io_coord(), COORD_EV_ESTOP);
     }   /* 急停路径负责输出归零 */
@@ -92,6 +114,7 @@ void io_link_read(void)
                 link_send(&ack);
             }
         }
+        else if (dzrt_cmd(&RT, &f)) { }                   /* 'W' 存参 / 'M' 切模式 / 'H' 重跑自检（dz_runtime.h） */
         else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) handle_cmd(&f);
         else if (f.kind == DZF_DATA && f.id == LINK_ID_BALL_SP && f.len == 4u) {
             float v; memcpy(&v, f.payload, 4u);
@@ -104,6 +127,8 @@ void io_link_write(uint32_t now)
 {
     static uint32_t last_tx;
     static uint32_t last_hb = 0u - 500u;   /* 复位后第一拍就发心跳，上位机马上认出 schema */
+    static bool hb_was_estop;
+    bool estop;
     dzframe_t f;
     if (now - last_tx >= LINK_TELEM_PERIOD_MS) {
         link_telem_t t;
@@ -120,9 +145,16 @@ void io_link_write(uint32_t now)
         t.cpu_pm = rtosmon_cpu_permille(&g_rtosmon); t.stk_min_w = rtosmon_stack_min_words(&g_rtosmon);   /* 裸机 = 0xFFFF */
         if (link_telem_pack(&f, &t)) link_send(&f);
     }
-    if (now - last_hb >= 500u) {
+    RT.p = &g_project_params[io_coord()->profile_idx];
+    {
+        bool was_sa = !dzrt_needs_host(&RT);
+        coord_state_t cs = io_coord()->st;
+        estop = cs == COORD_ESTOP || cs == COORD_FAULT;
+        dzrt_poll(&RT, now, estop, -1);
+        if (was_sa != !dzrt_needs_host(&RT)) dzctl_wd_init(&WD, 1000u);
+    }
+    if (dzrt_hb_due(now, estop, &hb_was_estop, &last_hb)) {   /* 置 DZCTL_HB_ESTOP；急停上升沿立即发 */
         dzctl_table_t pt = link_param_table(&g_project_params[io_coord()->profile_idx]);
-        last_hb = now;
         dzctl_set_flags(SAFETY_F_SAFE_BOOT | SAFETY_F_STALL, false);
         dzctl_set_flags(io_safety_flags(), true);
         dzctl_heartbeat(&pt, 0, &f);
@@ -133,6 +165,7 @@ void io_link_write(uint32_t now)
 #else   /* 板上没有 LINK 串口：空实现，目标恒 0 */
 float io_host_ball_sp_px(void) { return 0.0f; }
 void io_link_init(void) {}
+void io_link_boot(void) {}
 void io_link_read(void) {}
 void io_link_write(uint32_t now) { (void)now; }
 #endif

@@ -13,7 +13,7 @@ endif
 M0_DEV  := $(M0_SDK)/ti/devices/msp/m0p
 MCU     := $(BOARD_CPU)
 CFLAGS  := -std=c11 -Os -g3 $(MCU) $(WARN) -ffunction-sections -fdata-sections $(BOARD_DEFS) $(BOARD_NVM_DEFS)
-HAL_INC := $(SYSCFG_DIR) $(M0_SDK) $(firstword $(wildcard $(M0_SDK)/third_party/CMSIS/Core/Include) third_party/CMSIS_5/CMSIS/Core/Include)
+HAL_INC := $(SYSCFG_DIR) $(M0_SDK) $(firstword $(wildcard $(M0_SDK)/third_party/CMSIS/Core/Include) third_party/CMSIS_6/CMSIS/Core/Include)
 # DriverLib 只编用到的源文件（其余外设在部分型号上不存在）；系统控制按器件族选
 HAL_SRC := $(addprefix $(M0_SDK)/ti/driverlib/,dl_common.c dl_timer.c dl_uart.c dl_i2c.c dl_spi.c dl_adc12.c dl_dac12.c dl_dma.c dl_flashctl.c m0p/dl_interrupt.c \
            m0p/sysctl/dl_sysctl_mspm0g1x0x_g3x0x.c) $(SYSCFG_DIR)/ti_msp_dl_config.c \

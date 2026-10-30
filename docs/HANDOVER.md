@@ -46,12 +46,12 @@
 仍未做（按清单优先级）：实板验证、第二道例题（建议跟随小车）、参数预设/掉电保存、界面上的回读/对比按钮、赛前准备清单。
 ### 第 10 项：直接使用外部代码的规矩（2026-10-29，UTC+8）
 - `third_party/vendored/<来源>/`：搬来的代码 + 原样 LICENSE + SOURCE.md；文件头 `Source: <repo>@<commit> <path>`。`.gitignore` 改为 `third_party/*` + `!third_party/vendored/`。
-- `tools/check_vendored.py` 在 make check 里强制。GPL 代码（PID_Helper 辨识，第 13 项）放这里；侧车通过 `dzbench/tuning/` 薄层调用，PyInstaller 需加 `--paths third_party/vendored`。
+- `tools/check_vendored.py` 在 make check 里强制。只收 MIT/BSD/Apache/zlib（GPL/LGPL/AGPL/无许可一律拒；原 PID_Helper GPL 移植已于 2026-10-31 删除，workflow/构建文件再引用已删目录也会失败）。
 - 已有的“参考 …”文件都是思路借鉴、代码自写，不加 Source: 头。
 - 顺带修：第 8 项 params_readback 没有界面入口导致 test_wiring 失败 → 参数面板加“回读”按钮。
 
 ### 第 13 项：PID_Helper 辨识直接移植（2026-10-29，UTC+8）
-- 本体 `third_party/vendored/pid_helper/pid_helper_ident.py`（GPL-3.0，逐函数移植，改动列在 SOURCE.md）；适配层 `app/sidecar/dzbench/tuning/identify.py`：`steady_state`、`open_loop_pid`、分阶段打分。
+- 原 GPL-3.0 移植（third_party/vendored/pid_helper）已于 2026-10-31 删除；`app/sidecar/dzbench/tuning/identify.py` 为净室实现（见 docs/参考来源.md）。
 - experiment.py 的自写稳态判定已删除（不留两份）；StagedSearch / 四段阶跃 / 相对打分仍是自写。
 - 待做：`open_loop_test` 只有门禁（require_open_loop）没有执行入口，接上时直接调 `identify.open_loop_pid`。
 
@@ -88,13 +88,13 @@
 
 ## 2026-10-30（UTC+8）：参考仓库 15 项缺口（/workspace/refs/REFS_REVIEW.md“优先级”表，按顺序做）
 1. 自定义 HEX/文本帧结构表 → `app/sidecar/dzbench/framedef.py` + 连接设置“非工作台帧”。[仿真]
-2. 完整 PSO + 分阶段搜索（仿真跑，实机只验 top-k）→ `app/sidecar/dzbench/tuning/search.py` + vendored `pid_helper_pso.py`。[仿真]；没加侧车 op / 界面，下一步可把 identify 的 FOPDT 直接喂给它。
+2. 完整 PSO + 分阶段搜索（仿真跑，实机只验 top-k）→ `app/sidecar/dzbench/tuning/search.py`。[仿真]；没加侧车 op / 界面，下一步可把 identify 的 FOPDT 直接喂给它。
    - 已接界面：Agent 栏“仿真搜索”→ op `tune_search` → 候选“上板验证”= `propose{source:"仿真搜索"}` 提议卡（确认后才写）。`wide` 可选宽范围。
    - 评测稳定性：`dzbench/agent/evals.py` 等阶跃改按板子时间判定（wait_step_in_window），不再固定 sleep；满载 CPU 下 2026H 评测通过。
    - 上板验证可勾“全部采纳后自动阶跃”：service.propose_hint(verify_step) / verify_after_decide，server 的 proposal_decide 在整组采纳后后台跑 run_step_test，护栏判定走 tune_round。
 3. 速度/位置环预设 + 平滑切换 → 快照 `mode` 标签 + `params_restore(source=snapshot, ramp_s)`（session.py / snapshots.ramp_plan，界面快照页“—/速度环/位置环”和过渡秒数）。[仿真]；固件参数表没加模式字段（真要切环结构需固件自己有 mode 参数，可作为普通参数放进预设）。
 4. 最好一轮自动记录 + 一键回滚 + max_step_ratio → service._save_best_snapshot（快照“自动-最好一轮”）、Agent 菜单“回到最好一轮”（tune_best / params_restore source=best）、config `tune.max_step_ratio` → TuneGuard.profile（只收紧）。[仿真]
-5. K230 视觉脚本库 → `third_party/vendored/k230_edc_skill/`、`k230_mspm0g_contest/`（上游原样 + `DZ_FRAME` 补丁）+ `boards/k230-vision/board.yaml` + `tools/test_k230_vision.py`；说明见 docs/08“K230 视觉脚本库”。[编译]；没在 K230 上跑过；EDC-Skill 无许可证，公开前要作者许可；钢球 kmodel 不在仓库。
+5. K230 视觉脚本库 → `k230_mspm0g_contest/`（上游原样 + `DZ_FRAME` 补丁）+ `boards/k230-vision/board.yaml` + `tools/test_k230_vision.py`；说明见 docs/08“K230 视觉脚本库”。[编译]；没在 K230 上跑过；EDC-Skill 无许可证，公开前要作者许可；钢球 kmodel 不在仓库。
 6. 视觉知识包 → `docs/agent-knowledge/vision-{k230,color,tuning}.md`（触发词按需加载，knowledge.py 不用改）+ app/sidecar/tests/test_knowledge_vision.py。[仿真]；没做真实对话里的效果评测。
 7. 波形测量 → `firmware/algo/wavemeas`（移植 firework 时域特征 + 分类，自写过零测频/占空比/DFT 相位）+ `dzbench/wavemeas.py` + op `wave_measure`（频谱视图参数行、相位参考下拉）。[仿真]；未上板；原版分类对非 50% 占空比方波不判 SQUARE（照原版）。阈值触发、任意波形输出没做。
 8. ADC/DAC PAL → PAL 1.6.0：`pal_adc_block_read`（软件定时，四端口共用 `firmware/pal/pal_adc_block.inc`）、`pal_dac_write/info` + board.yaml `dac:`（只 host-sim 实现，真板端口 DZ_ENOTSUP，validate_board 拒绝真板写 dac）。端口版本 host-sim 2.5.0 / cubemx 1.8.0 / f4-hal 1.4.0 / mspm0 0.8.0。[仿真]；没做定时器触发 + DMA、真板 DAC。
@@ -106,6 +106,6 @@
 12. 协处理器 SSH 部署（缺口 12）：dzbench/deploy.py + 菜单“协处理器部署…”（推送 / 启动 / 停止 / 日志），只走密钥登录。[仿真]（假 ssh/scp）；真板未接，预设用户/目录待核对。
 13. 日志导入导出 + 分格（缺口 13）：dzbench/logio.py（CSV / VOFA+ FireWater → .dzlog 回放，op log_import，底栏“导入…”）、export.py fmt=vofa + 无 schema 文本记录也能导出（底栏格式下拉）、textparse 实时认 FireWater；曲线区“分格 / 按单位 / 叠加”三种布局（plot.ts Layout，记 localStorage）。[仿真]；没拿真 VOFA+ 打开过导出文件，界面没在桌面端点过。
 14. 串口线控 + 重连（缺口 14）：session.serial_lines_set / serial_pulse（esp_reset / esp_boot / stm32_reset / stm32_boot）/ serial_modem、stall_s 卡死检测、reconnecting 进度事件；界面连接栏“线控…”。[仿真]（假串口对象）；真 USB 转串口未接，STM32 脉冲极性待按板核对。
-15. 磁编码器 + FOC（缺口 15）：firmware/drivers/as5600（RAW ANGLE、零点 / 方向、多圈、速度、磁铁状态）+ firmware/algo/foc（电压型 SVPWM、开环、角度闭环、对齐）。[仿真]（tests/host/test_foc.c，简化 PMSM 模型）；真芯片 / 真电机未接，无电流环，PWM 输出要应用自己接 pal。
+15. 磁编码器 + FOC（缺口 15）【2026-10-31 两个模块已停用为桩（2.0.0，参照过 GPL 例程），待净室重写，下文为原记录】：firmware/drivers/as5600（RAW ANGLE、零点 / 方向、多圈、速度、磁铁状态）+ firmware/algo/foc（电压型 SVPWM、开环、角度闭环、对齐）。[仿真]（tests/host/test_foc.c，简化 PMSM 模型）；真芯片 / 真电机未接，无电流环，PWM 输出要应用自己接 pal。
 16. FOC 串级 + 三相 PWM：firmware/algo/foc 1.1.0（foc_velocity_step / foc_pos_step / foc_duty_to_pal）+ PAL 1.8.0 pal_pwm3_set / pal_pwm3_check、board.yaml `pwm3:`（boardlib.check_pwm3，tools/test_pwm3_caps.py）；端口 host-sim 2.6.0 / cubemx 1.11.0 / mspm0 0.11.0。[仿真] host-sim，[编译] cubemx / mspm0；样例板没加 pwm3，真板未跑。
 17. 产品逻辑重组（功能冻结期，按 LOGIC_AUDIT）：① 入口规则表 docs/dev/entrypoints.yaml + tools/check_entrypoints.py（make check）。新加按钮 / op / Agent 工具必须先在表里登记一个入口。② 界面按时间线 8 步分页（app/ui/src/steps.ts）+ 常驻 排障 / 工具箱 / 急停；摆放由 check_entrypoints 核对。③ 参数生命周期条（草稿→RAM→快照→flash→yaml）；恢复合成 params_restore{source}、提议合成 propose{changes,source}，旧 op 已删。④ 标定向导 app/ui/src/calwiz.ts（极性 / 循迹 / FOC / IMU / 视觉），只读录制 + propose{source:"标定"} 提议卡在标定页确认。⑤ 按症状排障 app/ui/src/symptoms.ts（排障菜单，只做导航）；对话框启动时挪到 body（右栏隐藏时也能弹）。⑥ 项目页引导流程 app/ui/src/projflow.ts + 侧车 dzbench/projflow.py：读题→选型→导入工程→资源分配→生成，“运行”只在 ~/.dzbench/flow 暂存，“确认写入”才写；只调用 tools/ 脚本（req.py 等由另一位维护，别在这里改它们）。⑦ 评分页 app/ui/src/score.ts + dzbench/scoring.py：评分项矩阵（DS 计分矩阵结构）、N 轮按钮 / 遥测条件、最差一轮、证据经 req.py newlog 存 docs/verify，“写回 requirements…”先给 diff、确认才写 evidence 一行（op score_writeback）；项目页确认一步自动跑下一步预览，题号从 PDF 名猜、板名去“副本 / (6)”噪声、.uvprojx 自动找、应用默认 port_selftest（没有 project.yaml 时也能先把板卡自检注入 Keil）；第 ⑤ 步按能力标签从 tools/catalog/subsys_catalog.yaml 挑子系统、add_subsys 起稿 project.yaml（新子系统要在目录里登记 serves），第 ② 步下拉框选器件，真改 Keil 二次确认（flow_accept step=keil）；第 ③ 步没工程时“从零新建”（step=scratch：alloc → tools/gen_ioc.py 写 .ioc → ioc_import 反导核对 → 人在 CubeMX 点一次 GENERATE → 没有 CubeMX 时 tools/gen_core.py 写合成 Core，scratch_ready 立即为真、自动导入；MSPM0 用 tools/gen_syscfg.py（本机 SysConfig CLI ~/ti/sysconfig_1.28.0，求解器分引脚）直接出 boards/<板>/；候选按 alloc 试跑把装不下的排后；第 ⑤ 步确认后自动 make，并出 EIDE（tools/gen_eide.py）、MSPM0 的 CCS / Keil（tools/gen_m0_keil.py）。从零走查 H 题到编译通过 7 次人工）。真实工程走查 /workspace/walk/shots/walk_*：p1 12→8、p2 13→9 次人工操作。⑧ 文档：过程文档在 docs/dev/（19、23、24、25、27、29、MORNING、QUESTIONS），docs/README 按 8 步分组；新写过程文档放 docs/dev/，使用说明留 docs/ 顶层。
