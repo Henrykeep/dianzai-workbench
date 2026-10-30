@@ -98,7 +98,8 @@ def test_unplug_replug(board, side):
     ui.wait(lambda e: e["type"] == "param", start=m, timeout=10)    # 重读了参数
     time.sleep(0.5)
     assert board_sp(board) == 0.0, "插回去不自动解除急停"
-    ui.ok("cmd", c="R")
+    m = ui.mark(); ui.ok("cmd", c="R")
+    ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "cleared", 10, m)   # 固件心跳 bit10 清零才解锁
     drive(ui, board)
 
 
@@ -155,7 +156,8 @@ def test_sidecar_killed_and_restarted(board, home):
         assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 6), "重启后自动连回原来的板子"
         time.sleep(0.5)
         assert board_sp(board) == 0.0
-        ui.ok("cmd", c="R")
+        m = ui.mark(); ui.ok("cmd", c="R")
+        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "cleared", 10, m)
         drive(ui, board)
         ui.ok("disconnect")
         ui.close()

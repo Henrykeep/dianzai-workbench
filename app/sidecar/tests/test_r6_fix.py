@@ -390,3 +390,27 @@ def test_estop_event_keys_match_contract():
     for st, (need, opt) in Session.ESTOP_EVENT_KEYS.items():
         for k in need | opt:
             assert f"`{k}`" in doc, (st, k)                       # 约定文档与代码一致
+
+
+def test_cleared_only_after_firmware_bit10_clears():
+    """解除只以固件心跳 bit10 清零为准：发 R 后、bit10 仍为 1 的心跳期间不解锁、不推 cleared；第一帧 bit10=0 才推，且只推一次。"""
+    import struct
+    ev = []
+    s = Session(emit=ev.append)
+    s.port, s.board_uid = "sim:x", None
+    s._send = lambda *a, **k: True
+    hb = lambda w: s._on_heartbeat(struct.pack("<IIII", 0x1234, 0, 0, w))   # noqa: E731
+    s._uid_marked = True
+    s.last_hb = 1.0
+    hb(1 << 10)
+    assert s.tx_locked
+    ev.clear()
+    assert s.cmd("R")
+    for _ in range(3):
+        hb(1 << 10)                                  # 固件还没处理 R：照旧锁着
+    assert s.tx_locked and not [e for e in ev if e.get("state") == "cleared"]
+    hb(0)
+    hb(0)
+    cl = [e for e in ev if e.get("type") == "estop" and e.get("state") == "cleared"]
+    assert not s.tx_locked and len(cl) == 1 and cl[0]["latency_ms"] >= 0
+    assert set(cl[0]) <= Session.ESTOP_EVENT_KEYS["cleared"][0] | Session.ESTOP_EVENT_KEYS["cleared"][1]

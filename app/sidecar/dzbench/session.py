@@ -127,6 +127,7 @@ class Session:
         self.flash_saved_writes = -1         # 黑匣子报“参数已存进 flash / 上电读了 flash”时的 param_writes；-1 = 没见过
         self.run_mode: str | None = None     # 板子运行模式 tethered / standalone；固件上报后才有，否则 None
         self.tx_locked = False               # 急停后锁住侧车的一切主动发送；只有人点“解除急停 R”才解（重连/侧车重启都不解，见 latch.py）
+        self.clear_pending_at: float | None = None   # 发了 'R'、等固件心跳 bit10 清零确认的起点（monotonic）
         self.estop_requested_at: float | None = None
         self.estop_source: str | None = None  # 当前锁存的来源：ui / agent / heartbeat_lost / firmware:<cause> / selftest / latch_restored
 
@@ -483,8 +484,11 @@ class Session:
                             self._pending_marks.append(("estop", "按板子身份恢复急停锁存（换了端口也保持）", self.estop_source))
                     if len(payload) >= 12:
                         self.fw_rev = struct.unpack_from("<I", payload, 8)[0] or None
+                    if len(payload) < 16:
+                        self._confirm_clear(0)      # 老固件心跳没有状态字（没有 bit10）：发 'R' 后下一帧心跳即视为已解除
                     if len(payload) >= 16:
                         w = struct.unpack_from("<I", payload, 12)[0]
+                        self._confirm_clear(w)
                         if w != self.hb_status:
                             was = self.hb_status or 0
                             self.hb_status = w
@@ -703,7 +707,7 @@ class Session:
     # 急停事件约定（docs/dev/events.md）：必有键 + 可选键；测试断言键集合精确等于约定
     ESTOP_EVENT_KEYS = {"requested": ({"type", "seq", "state", "source", "t", "ok", "message_zh"}, set()),
                         "latched": ({"type", "seq", "state", "source", "t"}, {"cause", "message_zh", "latency_ms"}),
-                        "cleared": ({"type", "seq", "state", "source", "t"}, {"message_zh"})}
+                        "cleared": ({"type", "seq", "state", "source", "t"}, {"message_zh", "latency_ms"})}
 
     def estop_ev(self, state: str, source: str | None, **kw) -> dict:
         """统一急停事件（与 link.state 同风格）：{type:"estop", seq, state: requested|latched|cleared, source, cause?, message_zh?, t}。"""
@@ -878,14 +882,25 @@ class Session:
 
     def cmd(self, c: str, n: int | None = None) -> bool:
         ok = self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
-        if ok and c == "R":                           # 人按了“解除急停 R”（界面；Agent 不能发 R）：侧车发送一起解锁
-            with self.hblock:                         # 与心跳处理互斥：不会刚解锁又被同一帧旧状态锁回
-                latch.clear(self.port, self.board_uid)
-                was, self.tx_locked, self.estop_source = self.tx_locked, False, None
-            if was:
-                self.emit({"type": "tx_locked", "on": False})
-                self.emit(self.estop_ev("cleared", "ui", message_zh="已由人工解除急停"))
+        if ok and c == "R":                           # 人按了“解除急停 R”（界面；Agent 不能发 R）
+            with self.hblock:                         # 不在这里解锁、不提前宣告：等固件心跳 bit10 清零（_confirm_clear）
+                if self.tx_locked:
+                    self.clear_pending_at = time.monotonic()
+                    if not self.last_hb:              # 从没收到过工作台心跳（非工作台固件 / 文本设备）：没有 bit10 可等，R 发出即解除
+                        self._confirm_clear(0)
         return ok
+
+    def _confirm_clear(self, w: int) -> None:
+        """心跳处理里调用（持 hblock）：发过 'R' 之后第一帧 bit10=0 的心跳才算固件已解除 → 解锁、清持久化、推 cleared。"""
+        if self.clear_pending_at is None or w & (1 << 10):
+            return
+        ms = round((time.monotonic() - self.clear_pending_at) * 1000)
+        self.clear_pending_at = None
+        latch.clear(self.port, self.board_uid)
+        was, self.tx_locked, self.estop_source = self.tx_locked, False, None
+        if was:
+            self.emit({"type": "tx_locked", "on": False})
+            self.emit(self.estop_ev("cleared", "ui", message_zh="已由人工解除急停", latency_ms=ms))
 
     def _check_tx(self) -> None:
         if self.tx_locked:

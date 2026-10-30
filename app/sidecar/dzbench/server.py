@@ -63,6 +63,13 @@ class Server:
     # 线程安全的广播
     def emit(self, msg: dict) -> None:
         if self.loop:
+            if msg.get("type") == "estop" and msg.get("state") == "cleared":
+                # 固件确认解除（心跳 bit10 清零）后才有 cleared；固定提醒紧跟其后、同一协程里保序，只一次
+                async def _both():
+                    await self._broadcast(msg)
+                    await self._broadcast(cleared_notice())
+                self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_both()))
+                return
             self.loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._broadcast(msg)))
 
     async def _broadcast(self, msg: dict) -> None:
@@ -187,11 +194,8 @@ class Server:
                 s.release_estop_events()           # 锁存确认（若已到）排在 requested 之后
             return r
         if op == "cmd":
-            was = s.tx_locked
-            r = s.cmd(m["c"], m.get("n"))
-            if r and m["c"] == "R" and was:      # 解除急停：只发 'R'，不重发运动/设定值，不恢复调参（已取消的保持取消）
-                await self._broadcast(cleared_notice())
-            return r
+            # 解除急停：只发 'R'，不重发运动/设定值，不恢复调参。cleared + 固定提醒要等固件心跳 bit10 清零（Server.emit 里推）
+            return s.cmd(m["c"], m.get("n"))
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
