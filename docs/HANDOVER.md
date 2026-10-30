@@ -89,11 +89,11 @@
 ## 2026-10-30（UTC+8）：参考仓库 15 项缺口（/workspace/refs/REFS_REVIEW.md“优先级”表，按顺序做）
 1. 自定义 HEX/文本帧结构表 → `app/sidecar/dzbench/framedef.py` + 连接设置“非工作台帧”。[仿真]
 2. 完整 PSO + 分阶段搜索（仿真跑，实机只验 top-k）→ `app/sidecar/dzbench/tuning/search.py` + vendored `pid_helper_pso.py`。[仿真]；没加侧车 op / 界面，下一步可把 identify 的 FOPDT 直接喂给它。
-   - 已接界面：Agent 栏“仿真搜索”→ op `tune_search` → 候选“上板验证”= `tune_propose` 提议卡（确认后才写）。`wide` 可选宽范围。
+   - 已接界面：Agent 栏“仿真搜索”→ op `tune_search` → 候选“上板验证”= `propose{source:"仿真搜索"}` 提议卡（确认后才写）。`wide` 可选宽范围。
    - 评测稳定性：`dzbench/agent/evals.py` 等阶跃改按板子时间判定（wait_step_in_window），不再固定 sleep；满载 CPU 下 2026H 评测通过。
    - 上板验证可勾“全部采纳后自动阶跃”：service.propose_hint(verify_step) / verify_after_decide，server 的 proposal_decide 在整组采纳后后台跑 run_step_test，护栏判定走 tune_round。
-3. 速度/位置环预设 + 平滑切换 → 快照 `mode` 标签 + `snapshot_restore(ramp_s)`（session.py / snapshots.ramp_plan，界面快照页“—/速度环/位置环”和过渡秒数）。[仿真]；固件参数表没加模式字段（真要切环结构需固件自己有 mode 参数，可作为普通参数放进预设）。
-4. 最好一轮自动记录 + 一键回滚 + max_step_ratio → service._save_best_snapshot（快照“自动-最好一轮”）、Agent 菜单“回到最好一轮”（tune_best / tune_rollback_best）、config `tune.max_step_ratio` → TuneGuard.profile（只收紧）。[仿真]
+3. 速度/位置环预设 + 平滑切换 → 快照 `mode` 标签 + `params_restore(source=snapshot, ramp_s)`（session.py / snapshots.ramp_plan，界面快照页“—/速度环/位置环”和过渡秒数）。[仿真]；固件参数表没加模式字段（真要切环结构需固件自己有 mode 参数，可作为普通参数放进预设）。
+4. 最好一轮自动记录 + 一键回滚 + max_step_ratio → service._save_best_snapshot（快照“自动-最好一轮”）、Agent 菜单“回到最好一轮”（tune_best / params_restore source=best）、config `tune.max_step_ratio` → TuneGuard.profile（只收紧）。[仿真]
 5. K230 视觉脚本库 → `third_party/vendored/k230_edc_skill/`、`k230_mspm0g_contest/`（上游原样 + `DZ_FRAME` 补丁）+ `boards/k230-vision/board.yaml` + `tools/test_k230_vision.py`；说明见 docs/08“K230 视觉脚本库”。[编译]；没在 K230 上跑过；EDC-Skill 无许可证，公开前要作者许可；钢球 kmodel 不在仓库。
 6. 视觉知识包 → `docs/agent-knowledge/vision-{k230,color,tuning}.md`（触发词按需加载，knowledge.py 不用改）+ app/sidecar/tests/test_knowledge_vision.py。[仿真]；没做真实对话里的效果评测。
 7. 波形测量 → `firmware/algo/wavemeas`（移植 firework 时域特征 + 分类，自写过零测频/占空比/DFT 相位）+ `dzbench/wavemeas.py` + op `wave_measure`（频谱视图参数行、相位参考下拉）。[仿真]；未上板；原版分类对非 50% 占空比方波不判 SQUARE（照原版）。阈值触发、任意波形输出没做。
@@ -108,4 +108,4 @@
 14. 串口线控 + 重连（缺口 14）：session.serial_lines_set / serial_pulse（esp_reset / esp_boot / stm32_reset / stm32_boot）/ serial_modem、stall_s 卡死检测、reconnecting 进度事件；界面连接栏“线控…”。[仿真]（假串口对象）；真 USB 转串口未接，STM32 脉冲极性待按板核对。
 15. 磁编码器 + FOC（缺口 15）：firmware/drivers/as5600（RAW ANGLE、零点 / 方向、多圈、速度、磁铁状态）+ firmware/algo/foc（电压型 SVPWM、开环、角度闭环、对齐）。[仿真]（tests/host/test_foc.c，简化 PMSM 模型）；真芯片 / 真电机未接，无电流环，PWM 输出要应用自己接 pal。
 16. FOC 串级 + 三相 PWM：firmware/algo/foc 1.1.0（foc_velocity_step / foc_pos_step / foc_duty_to_pal）+ PAL 1.8.0 pal_pwm3_set / pal_pwm3_check、board.yaml `pwm3:`（boardlib.check_pwm3，tools/test_pwm3_caps.py）；端口 host-sim 2.6.0 / cubemx 1.11.0 / mspm0 0.11.0。[仿真] host-sim，[编译] cubemx / mspm0；样例板没加 pwm3，真板未跑。
-17. 产品逻辑重组（功能冻结期，按 LOGIC_AUDIT）：① 入口规则表 docs/dev/entrypoints.yaml + tools/check_entrypoints.py（make check）。新加按钮 / op / Agent 工具必须先在表里登记一个入口。② 界面按时间线 8 步分页（app/ui/src/steps.ts）+ 常驻 排障 / 工具箱 / 急停；摆放由 check_entrypoints 核对。
+17. 产品逻辑重组（功能冻结期，按 LOGIC_AUDIT）：① 入口规则表 docs/dev/entrypoints.yaml + tools/check_entrypoints.py（make check）。新加按钮 / op / Agent 工具必须先在表里登记一个入口。② 界面按时间线 8 步分页（app/ui/src/steps.ts）+ 常驻 排障 / 工具箱 / 急停；摆放由 check_entrypoints 核对。③ 参数生命周期条（草稿→RAM→快照→flash→yaml）；恢复合成 params_restore{source}、提议合成 propose{changes,source}，旧 op 已删。

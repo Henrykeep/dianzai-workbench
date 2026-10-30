@@ -146,8 +146,18 @@ class Server:
             return {"path": await run(None, lambda: s.export_readback(path))}
         if op == "snapshot_list":
             return snapshots.list_all(s.schema.hash) if s.schema else []
-        if op == "snapshot_restore":
-            return await run(None, lambda: s.snapshot_restore(m.get("name"), bool(m.get("defaults")), float(m.get("ramp_s", 0) or 0)))
+        if op == "params_restore":                 # 唯一的“回到…”参数入口：source = default（固件默认）| snapshot（某个快照）| best（最好一轮）
+            src, ramp = m.get("source"), float(m.get("ramp_s", 0) or 0)
+            if src == "best":
+                if self.svc._guard().best():
+                    return {"source": "best", **(await run(None, self.svc.rollback_best))}
+                src, m = "snapshot", {**m, "name": self.svc.BEST_SNAPSHOT}   # 侧车重启后护栏没了：用自动存的那份最好一轮
+                if not s.schema or not any(x.get("name") == m["name"] for x in snapshots.list_all(s.schema.hash)):
+                    raise LinkError("no_best", "还没有稳定的一轮可回（先做阶跃实验）")
+            if src not in ("default", "snapshot"):
+                raise LinkError("bad_arg", f"params_restore 的 source 只能是 default / snapshot / best，收到 {src!r}")
+            r = await run(None, lambda: s.snapshot_restore(m.get("name") if src == "snapshot" else None, src == "default", ramp))
+            return {"source": src, "name": m.get("name"), "written": r}
         if op == "precontest" or op == "precontest_export":
             from . import doctor, precontest
             repo = m.get("repo") or str(self.svc.gw.root)
@@ -166,8 +176,9 @@ class Server:
                     for f in sorted(d.glob("*.dzlog"), reverse=True)[:30]] if d.is_dir() else []
         if op == "replay":
             return await run(None, lambda: s.connect("replay:" + m["path"], log=False))
-        if op == "propose":
-            return self.agent.propose_param_change(m["name"], m["value"], m.get("reason", ""), m.get("source", "user"))
+        if op == "propose":                        # 唯一的提议入口：分析阶跃 / 仿真搜索 / 外部脚本；内置 Agent 的 propose_param_change 落同一种提议卡
+            ch = m.get("changes") or {m["name"]: m["value"]}
+            return self.svc.propose_hint(ch, m.get("reason", ""), bool(m.get("verify_step")), m.get("source"))
         if op == "proposal_decide":
             r = await run(None, self.agent.decide, int(m["id"]), bool(m["accept"]))
             if self.svc.verify_after_decide(int(m["id"]), r):   # 仿真搜索候选整组已采纳 → 自动验证阶跃（结果走 tune_round）
@@ -269,8 +280,6 @@ class Server:
         if op == "tune_search":                    # 开环阶跃 → 辨识 → 仿真 PSO/分阶段 → top-k（不写板子）
             return await run(None, lambda: self.svc.sim_search(m["y"], m["u"], float(m.get("seconds", 5)), m.get("strategy", "pso"),
                                                                bool(m.get("wide")), int(m.get("top_k", 3))))
-        if op == "tune_propose":
-            return self.svc.propose_hint(m["changes"], m.get("reason", "阶跃分析规则建议"), bool(m.get("verify_step")))
         if op == "agent_ask":
             return await run(None, self.svc.ask, m["text"])
         if op == "agent_undo":                     # 人点“撤销 Agent 上一步”：参数改回 / git revert
@@ -313,8 +322,6 @@ class Server:
         if op == "tune_best":                      # 只读：最好一轮（给“回到最好一轮”按钮的确认框）
             b = self.svc._guard().best()
             return {"round": b.n, "gains": b.gains, "score": round(b.score, 4)} if b else None
-        if op == "tune_rollback_best":             # 用户在确认框里点了确定 = 已人工确认
-            return await run(None, self.svc.rollback_best)
         if op == "tune_reset":
             return self.svc.reset_guard()
         if op == "tune_rule_round":                # 无 LLM 模式：规则给一项建议（仍是待确认提议）

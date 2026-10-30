@@ -368,3 +368,11 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .pop.tb{min-width:300px}
 .pop .row{display:flex;gap:var(--sp1);flex-wrap:wrap;padding:0 var(--sp2)}
 .app:not([data-step="调参"]) #rail [data-side="agent"]{display:none}
+
+/* 参数生命周期条 */
+.life{display:flex;gap:2px;padding:4px 6px;font-size:11px;border-bottom:1px solid var(--line,#333)}
+.life span{flex:1;cursor:pointer;padding:2px 4px;border-radius:3px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.life span+span{border-left:1px solid var(--line,#333)}
+.life span i{font-style:normal;display:block;opacity:.7}
+.life span.hot{opacity:1;color:var(--brass,#c9a24a)}
+

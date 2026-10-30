@@ -57,6 +57,7 @@ const ana = initAnalysis(plot, () => S.applied, notifySide);
 const showXDiv = () => { const d = plot.xDiv(); $("xdiv").textContent = `${d < 1 ? d * 1000 + " ms" : d + " s"}/div`; };
 
 const S = {
+  nsnap: 0 as number,
   lastLog: "" as string,
   schema: null as Schema | null,
   plotted: [] as Field[],       // 数值通道（画线）
@@ -337,7 +338,21 @@ function markParams() {
   flow();
   $<HTMLButtonElement>("p-send").disabled = !pend.size;
   $<HTMLButtonElement>("p-revert").disabled = !Object.keys(S.edit).length;
+  life();
 }
+// 参数生命周期条：草稿 → 板上 RAM → 快照 → flash → app.yaml，每一格写当前状态，点一下去对应入口
+function life() {
+  const ps = S.schema?.params ?? [], n = pending().length;
+  const off = ps.filter(p => S.applied[p.name] != null && Math.abs(+S.applied[p.name] - +p.default) > 1e-9).length;
+  const st: Record<string, string> = { edit: n ? `${n} 待下发` : "无草稿", ram: off ? `${off}≠默认` : "=默认", snap: `${S.nsnap ?? 0} 个`, flash: "去封箱", yaml: "去封箱" };
+  $("life").querySelectorAll<HTMLElement>("[data-l]").forEach(e => { e.querySelector("i")!.textContent = st[e.dataset.l!]; e.classList.toggle("hot", (e.dataset.l === "edit" && n > 0) || (e.dataset.l === "ram" && off > 0)); });
+}
+$("life").querySelectorAll<HTMLElement>("[data-l]").forEach(e => e.onclick = () => {
+  const l = e.dataset.l;
+  if (l === "edit" || l === "ram") (document.querySelector('#dock-tabs [data-d="params"]') as HTMLElement)?.click();
+  else if (l === "snap") (document.querySelector('#dock-tabs [data-d="snaps"]') as HTMLElement)?.click();
+  else (document.querySelector('#steps [data-step="封箱"]') as HTMLElement)?.click();
+});
 async function sendPending(only?: string[], undoing = false) {
   const list = pending().filter(p => !only || only.includes(p.name));
   for (const p of list) {
@@ -356,7 +371,7 @@ $("p-send").onclick = () => sendPending();
 $("p-revert").onclick = () => { S.edit = {}; syncParams(); };
 $("p-read").onclick = async () => { await call("param_read_all"); };
 $("p-rb").onclick = async () => { const r = await call("params_readback", {}); toast(`已回读到 ${r.path}`, "ok", 5000); };
-$("p-def").onclick = async () => { if (confirm("把全部参数恢复成固件默认值？")) { await call("snapshot_restore", { defaults: true }); toast("已恢复默认参数", "ok", 3000); } };
+$("p-def").onclick = async () => { if (confirm("把全部参数恢复成固件默认值？")) { await call("params_restore", { source: "default" }); toast("已恢复默认参数", "ok", 3000); } };
 
 // 顶栏流程：连接 → 调参 → 阶跃 → 判读 → 定稿，按当前状态点亮（done = 已经过，now = 下一步该做的）
 // 定稿 = 本次会话里参数 yaml 已经 git 提交（写回卡片确认 + 门禁通过）。之后再改参数就回到“调参”。
@@ -381,11 +396,13 @@ $("flow").querySelector<HTMLElement>('[data-s="save"]')!.onclick = () => {
 async function loadSnaps(list?: any[]) {
   if (!S.schema) return;
   list ??= await link.rpc("snapshot_list").catch(() => []);
+  // “自动-最好一轮”只走“回到… → 最好一轮”这一个入口，快照列表不再重复列
+  list = list!.filter(s => s.name !== "自动-最好一轮"); S.nsnap = list.length; life();
   $("snaps").innerHTML = list!.slice(0, 8).map(s => `<div class="hv"><span class="tag">${esc(s.time.slice(5, 16))}</span>${s.mode ? `<span class="tag">${s.mode === "speed" ? "速度环" : "位置环"}</span>` : ""}<span>${esc(s.name)}</span>
      <button class="btn ghost sm" data-s="${esc(s.name)}">恢复</button></div>`).join("") || `<div class="hint">调到好用的一组就存一下，翻车时一键恢复。</div>`;
   $("snaps").querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
     const ramp_s = Math.max(0, Math.min(10, Number($<HTMLInputElement>("snap-ramp").value) || 0));
-    await call("snapshot_restore", { name: b.dataset.s, ramp_s }); toast(`已恢复快照 ${b.dataset.s}${ramp_s ? `（${ramp_s} s 平滑过渡）` : ""}`, "ok", 3000);
+    await call("params_restore", { source: "snapshot", name: b.dataset.s, ramp_s }); toast(`已恢复快照 ${b.dataset.s}${ramp_s ? `（${ramp_s} s 平滑过渡）` : ""}`, "ok", 3000);
   });
 }
 async function saveSnap() {

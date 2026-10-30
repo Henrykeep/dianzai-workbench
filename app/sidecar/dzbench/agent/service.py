@@ -727,7 +727,7 @@ class AgentService:
 
     def sim_search(self, y: str, u: str, seconds: float = 5.0, strategy: str = "pso", wide: bool = False, top_k: int = 3) -> dict:
         """缺口第 2 项接到界面：最近 seconds 秒的开环阶跃（u 跳变）→ 辨识 FOPDT → 仿真 PSO/分阶段 → top-k。
-        候选只返回，不写板子；实机验证走 tune_propose（提议卡 → 你确认 → 限幅写入），每次一个候选。"""
+        候选只返回，不写板子；实机验证走 propose（提议卡 → 你确认 → 限幅写入），每次一个候选。"""
         from ..tuning.search import search_from_step
         w = [x for x in self.s.window(seconds) if y in x[1] and u in x[1]]
         if len(w) < 10:
@@ -743,10 +743,11 @@ class AgentService:
             raise LinkError("search_failed", str(e), "确认是开环台阶数据、反馈和控制量通道选对")
         return r | {"names": gn}
 
-    def propose_hint(self, changes: dict, reason: str, verify_step: bool = False) -> list[dict]:
+    def propose_hint(self, changes: dict, reason: str, verify_step: bool = False, source: str | None = None) -> list[dict]:
         """verify_step=True（仿真搜索“上板验证”勾了自动阶跃）：这组提议卡全部被你采纳后，自动做一次阶跃实验，
         TuneGuard 判定（继续/达标/回滚）走 tune_round 事件显示。有一张被拒 → 这组作废、不做实验。"""
-        out = [self.tools.propose_param_change(k, v, reason, "规则" if not verify_step else "仿真搜索") for k, v in changes.items()]
+        src = source or ("仿真搜索" if verify_step else "规则")
+        out = [self.tools.propose_param_change(k, v, reason or "阶跃分析规则建议", src) for k, v in changes.items()]
         if verify_step and out:
             if not hasattr(self, "verify_groups"):
                 self.verify_groups = {}

@@ -33,15 +33,15 @@ actions:
   - {id: scope,        label: 示波,             at: step:联调,   ui: pb,         ops: []}
   - {id: fft,          label: 频谱,             at: step:联调,   ui: fft,        ops: [fft]}
   - {id: event_tl,     label: 事件时间线,       at: step:联调,   ui: tl,         ops: [replay_ctl]}
-  # ── 标定 ──（向导见 HANDOVER 17+）
+  # ── 标定 ──（向导见 HANDOVER 17④）
   # ── 调参 ──
   - {id: params,       label: 参数编辑与下发,   at: step:调参,   ui: p-send,     ops: [param_set, param_read_all]}
   - {id: snap_save,    label: 存快照,           at: step:调参,   ui: snap-save,  ops: [snapshot_save, snapshot_list]}
-  - {id: restore,      label: 回到…,            at: step:调参,   ui: p-def,      ops: [snapshot_restore, tune_rollback_best, tune_best]}
+  - {id: restore,      label: 回到…,            at: step:调参,   ui: p-def,      ops: [params_restore, tune_best]}
   - {id: step_test,    label: 阶跃实验,         at: step:调参,   ui: ag-step,    ops: [tune_step_test]}
   - {id: sweep_test,   label: 扫频,             at: step:调参,   ui: ag-sweep,   ops: [tune_sweep_test]}
-  - {id: search,       label: 仿真搜索,         at: step:调参,   ui: ag-search,  ops: [tune_search, tune_propose]}
-  - {id: analyze,      label: 分析阶跃,         at: step:调参,   ui: ag-tune,    ops: [tune_analyze, tune_propose]}
+  - {id: search,       label: 仿真搜索,         at: step:调参,   ui: ag-search,  ops: [tune_search, propose]}
+  - {id: analyze,      label: 分析阶跃,         at: step:调参,   ui: ag-tune,    ops: [tune_analyze, propose]}
   - {id: rule,         label: 规则建议,         at: step:调参,   ui: ag-rule,    ops: [tune_rule_round]}
   - {id: proposals,    label: 提议卡采纳,       at: step:调参,   ui: props,      ops: [proposal_decide, agent_action_decide, change_decide, rollback]}
   - {id: pretune,      label: 调参前问答,       at: step:调参,   ui: ag-pre,     ops: [pretune_get, pretune_set]}
@@ -70,14 +70,14 @@ shared_ops:
   cmd: 板端单字符命令通道：解除急停 R、存 flash W、手发命令共用一条帧，动作各不相同
   replay_ctl: 回放控制；时间线点一条 = 跳到那一刻（同一回放，不是第二个入口）
   replay: 导入后直接回放
-  tune_propose: 分析阶跃 / 仿真搜索的候选都落成同一种提议卡（提议路径统一后改走 propose）
+  propose: 规则建议 / 分析阶跃 / 仿真搜索三条路的候选都落成同一种提议卡（source 字段区分来源），外部脚本也走它
+  params_restore: 回到…（默认 / 最好一轮）和快照页“恢复”是同一个恢复 op，只是 source 不同
 
 # 不在界面上、故意保留的 op（脚本 / 测试接口）
 script_ops:
+  polarity_check: 标定向导第 0 步的后端（下一提交接上标定页后从这里删）
   send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
-  polarity_check: 标定向导第 0 步的后端（向导界面未做；HANDOVER 17+ 标定页接上后从这里删）
-  propose: 外部脚本提一个待确认的参数提议（提议路径统一后界面也走这个）
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）
 agent_tools:

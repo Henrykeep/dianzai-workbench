@@ -46,7 +46,7 @@ export function initAgent(call: Call) {
       const e = document.createElement("div"); e.className = "h " + h.level;
       const ch = Object.entries(h.changes).map(([k, v]) => `${esc(k)}→${+v.toPrecision(4)}`).join(" ");
       e.innerHTML = `<span>${esc(h.text)}</span>${ch ? `<button class="btn sm">提议 ${ch}</button>` : ""}`;
-      e.querySelector("button")?.addEventListener("click", ev => { (ev.target as HTMLButtonElement).disabled = true; call("tune_propose", { changes: h.changes, reason: h.text }); });
+      e.querySelector("button")?.addEventListener("click", ev => { (ev.target as HTMLButtonElement).disabled = true; call("propose", { changes: h.changes, reason: h.text, source: "规则" }); });
       hs.append(e);
     });
     d.querySelectorAll<HTMLSelectElement>("select").forEach(s => s.onchange = () => {
@@ -76,7 +76,7 @@ export function initAgent(call: Call) {
       Object.entries(c.gains).forEach(([k, v]) => { if (r.names[k]) changes[r.names[k]] = v; });
       const e = document.createElement("div"); e.className = "h info";
       e.innerHTML = `<span>#${i + 1} 得分 ${n(c.score, 3)}：${Object.entries(changes).map(([k, v]) => `${esc(k)}=${+v.toPrecision(4)}`).join(" ")}</span><button class="btn sm">上板验证</button>`;
-      e.querySelector("button")!.addEventListener("click", ev => { (ev.target as HTMLButtonElement).disabled = true; call("tune_propose", { changes, reason: `仿真搜索候选 #${i + 1}（${r.strategy}，得分 ${c.score}）`, verify_step: d.querySelector<HTMLInputElement>(".vstep")!.checked }); });
+      e.querySelector("button")!.addEventListener("click", ev => { (ev.target as HTMLButtonElement).disabled = true; call("propose", { changes, source: "仿真搜索", reason: `仿真搜索候选 #${i + 1}（${r.strategy}，得分 ${c.score}）`, verify_step: d.querySelector<HTMLInputElement>(".vstep")!.checked }); });
       hs.append(e);
     });
   }
@@ -172,11 +172,11 @@ export function initAgent(call: Call) {
   $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
   $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
   $("ag-best").onclick = async () => {
+    // 回到… → 最好一轮：本次护栏有记录就回那一轮；侧车重启过（护栏清空）就回自动存的“自动-最好一轮”快照（同一个入口）
     const b = await call<any>("tune_best").catch(() => null);
-    if (!b) { add(`<span class="lbl">还没有稳定的一轮可回滚（先做阶跃实验）</span>`, "msg bot"); return; }
-    const g = Object.entries(b.gains).map(([k, v]) => `${k}=${+(+(v as number)).toPrecision(4)}`).join(" ");
-    if (!window.confirm(`回到第 ${b.round} 轮（得分 ${b.score}）：${g}？`)) return;
-    call<any>("tune_rollback_best").then(r => add(`<span class="lbl">已回到第 ${r.round} 轮：改了 ${r.applied.length} 个参数</span>`, "msg bot"), () => {});
+    const g = b ? Object.entries(b.gains).map(([k, v]) => `${k}=${+(+(v as number)).toPrecision(4)}`).join(" ") : "";
+    if (!window.confirm(b ? `回到第 ${b.round} 轮（得分 ${b.score}）：${g}？` : "本次没有护栏记录：回到上次自动存的最好一轮快照？")) return;
+    call<any>("params_restore", { source: "best" }).then(r => add(`<span class="lbl">${r.source === "best" ? `已回到第 ${r.round} 轮：改了 ${r.applied.length} 个参数` : "已从“自动-最好一轮”快照恢复"}</span>`, "msg bot"), () => {});
   };
   // 调试探针设置：后端 / 探针类型 / 序列号（op probe_config_get / probe_config_set）
   const KIND: Record<string, string> = { stlink: "ST-Link", daplink: "DAPLink（CMSIS-DAP）", jlink: "J-Link" };

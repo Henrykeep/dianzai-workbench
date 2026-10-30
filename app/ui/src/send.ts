@@ -1,4 +1,4 @@
-// 发送栏 + 预设（单发 / 定时）；真正发送都在侧车里，急停后侧车拒发（思路参考 SerialWeb，代码自写）
+// 发送栏 + 常用指令（单发 / 定时）；真正发送都在侧车里，急停后侧车拒发（思路参考 SerialWeb，代码自写）
 import { Msg } from "./ws";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -15,7 +15,7 @@ export function initSend(rpc: (op: string, a?: Record<string, unknown>) => Promi
   $("snd-go").onclick = go;
   inp.onkeydown = e => { if (e.key === "Enter") go(); };
   $("snd-save").onclick = () => {
-    const name = prompt("预设名", inp.value.slice(0, 12)); if (!name) return;
+    const name = prompt("常用指令名", inp.value.slice(0, 12)); if (!name) return;
     rpc("preset_save", { preset: { name, kind: k.value, payload: inp.value, eol: unesc(eol.value) } }).then(render).catch(err);
   };
   function render(list: any[]) {

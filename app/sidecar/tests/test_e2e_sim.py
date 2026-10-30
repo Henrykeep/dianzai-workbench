@@ -129,10 +129,32 @@ def test_websocket_server(home):
             assert {"telem", "status", "schema"} <= got
             await asyncio.sleep(0.5)
             p = await rpc(op="propose", name="kp", value=7, reason="test")
-            assert p["ok"] and p["data"]["status"] == "pending_user_confirmation"
+            assert p["ok"] and p["data"][0]["status"] == "pending_user_confirmation"
             assert srv.session.params["kp"] == pytest.approx(0.08), "提议不能直接生效"
-            d = await rpc(op="proposal_decide", id=p["data"]["id"], accept=True)
+            d = await rpc(op="proposal_decide", id=p["data"][0]["id"], accept=True)
             assert d["ok"] and d["data"]["applied"] == 2.0
+            # 提议路径统一：一组 changes、同一种卡；来源写在卡上
+            pg = await rpc(op="propose", changes={"kp": 1.5, "ki": 0.2}, reason="分析阶跃", source="规则")
+            assert pg["ok"] and len(pg["data"]) == 2
+            for c in pg["data"]:
+                await rpc(op="proposal_decide", id=c["id"], accept=False)
+            # 回到… 统一 params_restore：固件默认 / 某个快照 / 最好一轮（侧车刚起没有最好一轮 → 中文错误）
+            r = await rpc(op="params_restore", source="default")
+            assert r["ok"] and r["data"]["source"] == "default"
+            assert srv.session.params["kp"] == pytest.approx(0.08)
+            await rpc(op="param_set", name="kp", value=1.2)
+            assert (await rpc(op="snapshot_save", name="t"))["ok"]
+            await rpc(op="param_set", name="kp", value=0.5)
+            r = await rpc(op="params_restore", source="snapshot", name="t")
+            assert r["ok"] and srv.session.params["kp"] == pytest.approx(1.2)
+            nb = await rpc(op="params_restore", source="best")
+            assert not nb["ok"] and nb["error"]["code"] == "no_best"
+            from dzbench import snapshots
+            snapshots.save(srv.session.schema.hash, srv.svc.BEST_SNAPSHOT, {**srv.session.params, "kp": 0.7})
+            r = await rpc(op="params_restore", source="best")       # 护栏没记录 → 用自动存的最好一轮快照
+            assert r["ok"] and r["data"]["source"] == "snapshot" and srv.session.params["kp"] == pytest.approx(0.7)
+            assert (await rpc(op="params_restore", source="yesterday"))["error"]["code"] == "bad_arg"
+            assert not (await rpc(op="snapshot_restore", name="t"))["ok"], "旧 op 已合并"
             bad = await rpc(op="param_set", name="nope", value=1)
             assert not bad["ok"] and bad["error"]["code"] == "bad_param"
             assert (await rpc(op="estop"))["data"]["sent"]
