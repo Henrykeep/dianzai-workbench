@@ -5,7 +5,7 @@ import json
 import re
 from typing import Callable
 
-from .gateway import FORBIDDEN_TOOLS, GatewayError
+from .gateway import FORBIDDEN_TOOLS, GatewayError, human_only_error
 from .stuck import StuckDetector
 from .untrusted import wrap
 from .llm import LLMError
@@ -139,6 +139,7 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"rounds": {"type": "integer"}}}},
 ]
 assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
+assert not any(human_only_error(t["name"]) for t in TOOLS)   # 切换运行模式等只能由人做的操作不进工具表
 
 
 # ---------------------------------------------------------------- 模式（工具白名单）
@@ -305,6 +306,9 @@ class AgentLoop:
                 name, args = c["function"]["name"], {}
                 try:
                     args = json.loads(c["function"].get("arguments") or "{}")
+                    ho = human_only_error(name)
+                    if ho:
+                        raise GatewayError("human_only", ho["message"], ho["fix"])
                     if name not in self.handlers or any(f in name for f in FORBIDDEN_TOOLS):
                         raise GatewayError("denied", f"没有工具 {name}")
                     allow = MODES[self.mode]["tools"]

@@ -195,9 +195,17 @@ class Server:
             r = await run(None, lambda: deps.fetch(self.progress.deps or [], repo))
             await run(None, self.progress.refresh_deps)
             return r
-        if op == "run_selftest":                       # 入口已登记但未就绪（entrypoints.yaml ready: false）
-            raise LinkError("not_ready", "当前固件尚未提供自检触发与结果上报，暂不能从工作台执行板上自检。",
-                            "固件支持后此入口自动启用；在此之前可读取黑匣子查看复位原因与安全态记录")
+        if op == "run_selftest":                       # 读取固件心跳上报的板上自检结果（上电自检由板子执行），并刷新进度
+            if not s.status().get("alive"):
+                raise LinkError("not_connected", "未连接板子，无法读取板上自检结果。", "先连接板子（或仿真板），再执行自检")
+            st = s.fw_status().get("selftest")
+            if st is None:
+                raise LinkError("selftest_unreported", "当前固件没有上报自检结果（固件早于 dzctl 0.10.0，或该应用尚未接入自检上报，目前仅 car_2wd 支持）。",
+                                "将固件更新到包含自检上报的版本并重新烧录；在此之前可读取黑匣子查看复位原因与安全态记录")
+            pc = self.progress.changed()
+            if pc:
+                await self._broadcast(pc)
+            return {"selftest": st, "pass": bool(st.get("pass")), "failed_items": st.get("failed_items") or []}
         if op == "flow_preview" or op == "flow_accept":     # 项目页引导流程：先暂存区预览，确认才写（dzbench/projflow.py）
             from .projflow import Flow, FlowError
             fl = Flow(self.svc.gw.root)

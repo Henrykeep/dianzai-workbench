@@ -25,7 +25,7 @@ actions:
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
   # 进度阻塞项的修复按钮（进度条按 fix_action 动态生成）。ready: false = 入口已登记但功能未就绪（界面置灰，侧车返回 not_ready）
   - {id: fetch_deps,   label: 一键安装依赖,     at: always:排障, ui: fix-deps, dynamic: true, ops: [fetch_deps]}
-  - {id: run_selftest, label: 板上自检,         at: always:排障, ui: fix-selftest, dynamic: true, ready: false, ops: [run_selftest]}
+  - {id: run_selftest, label: 板上自检,         at: nav:进度,    ui: step-hint,  ops: []}   # #step-hint 里阻塞项 selftest_fail 的修复链接；op run_selftest 暂在 script_ops，前端接上后移回本行：读心跳上报的自检结果；固件没报时返回原因 + 怎么解决
   # ── 项目 ──
   - {id: project_ask,  label: 一句话新建工程,   at: step:项目,   ui: pj-ask-go,  ops: []}   # 只读 agent_config 判断是否已配置，配置入口仍是 llm_cfg
   - {id: project_sample, label: 打开示例项目,   at: step:项目,   ui: pj-sample,  ops: []}
@@ -67,7 +67,7 @@ actions:
   - {id: score,        label: 评分项逐项验收,   at: step:评分,   ui: score,      ops: [score_items, score_save, score_writeback]}
   # ── 封箱 ──
   - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
-  - {id: params_flash, label: 存参数到 flash,   at: step:封箱,   ui: pre-save,   ops: [cmd]}
+  - {id: params_flash, label: 存参数到 flash,   at: step:封箱,   ui: pre-save,   ops: [cmd]}   # 也是进度阻塞项 params_not_saved 的修复动作；op save_params 暂在 script_ops，前端把 pre-save 改发 save_params 后移到本行
   - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}
   - {id: yaml_wb,      label: 写回 yaml,        at: step:封箱,   ui: ag-yaml,    ops: [yaml_writeback]}
   # ── 工具箱 ──
@@ -95,12 +95,13 @@ shared_ops:
 script_ops:
   send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
-  save_params: 把当前参数写进板子 flash（W 指令，回 {ok,result,message_zh}）；界面“保存到板子”按钮待前端接
-  set_run_mode: 切联机/脱机（M 指令 + 确认字节）；必须先过界面确认卡（confirmed=true 才发），界面按钮待前端接
+  save_params: 把当前参数写进板子 flash（W 指令，回 {ok,result,message_zh}）；params_flash 动作 / 进度修复动作的后端。待前端迁移：pre-save 改发 save_params 后移到 params_flash 的 ops
+  run_selftest: 读心跳上报的板上自检结果并刷新进度（固件没报时返回原因 + 怎么解决）。待前端迁移：进度修复链接接上后移到 run_selftest 动作的 ops
+  set_run_mode: 切联机/脱机（M 指令 + 确认字节）；只认界面确认卡（confirmed=true 才发，未确认回 needs_confirm 原样给界面）；Agent 不提供此工具。待前端在封箱页（step:封箱）接确认卡后移到 actions
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
-  project.list: 读题页空状态（project 为 null）列出可打开的项目 （code、name、updated_at）；前端接上后移到 actions（建议登记在 nav 进度区、dynamic true，按钮按列表运行时生成）
+  project.list: 读题页空状态（project 为 null）列出可打开的项目 （code、name、updated_at）；前端接上后移到 actions（登记在 nav 进度区，不用 dynamic）
   project.open: 打开已有项目（参数 code）→ 设为当前项目并推 progress.changed；同上，前端接上后移走
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）
