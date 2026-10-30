@@ -100,6 +100,8 @@ script_ops:
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
+  project.list: 读题页空状态（project 为 null）列出可打开的项目 （code、name、updated_at）；前端接上后移到 actions（建议登记在 nav 进度区、dynamic true，按钮按列表运行时生成）
+  project.open: 打开已有项目（参数 code）→ 设为当前项目并推 progress.changed；同上，前端接上后移走
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）
 agent_tools:
@@ -107,6 +109,7 @@ agent_tools:
   step:烧录: [flash, flash_rollback, build, build_log, board_memory]
   always:排障: [decode_hardfault, read_symbol]
   step:项目: [repo_map, remember, list_files, read_file, propose_edit, update_plan, project_state, progress_get, flow_preview, flow_accept, project_chain, project_apply, quick_start]
+  nav:进度: [project_list, project_open]
   step:评分: [score_items, score_run, score_save, score_writeback]
   step:标定: [polarity_check]
   step:联调: [fft, wave_measure]
