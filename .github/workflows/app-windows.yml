@@ -18,7 +18,7 @@ jobs:
       - run: pip install -r app/sidecar/requirements.txt
       - run: bash tools/fetch_third_party.sh f4 f1 freertos mspm0   # 从零新建测试要 HAL 模板
       - run: make BOARD=host-sim APP=car_2wd && make BOARD=host-sim APP=2026H_ball
-      - run: python -m pytest -q app/sidecar/tests   # e2e 需要 host-sim（make + cc，ubuntu 自带）
+      - run: python -m pytest -q -rs -v app/sidecar/tests   # e2e 需要 host-sim（make + cc，ubuntu 自带）
   win-repo:                   # repo\ + mingw 交叉编的仿真板（Windows runner 上没有现成 make + gcc 组合）
     runs-on: ubuntu-latest
     steps:
@@ -50,7 +50,12 @@ jobs:
         run: |
           bash tools/fetch_third_party.sh f4 f1 freertos mspm0
           pip install -r app/sidecar/requirements.txt pyinstaller
-          python -m pytest -q app/sidecar/tests
+          python -m pytest -q -rs -v app/sidecar/tests
+      - name: keil_inject 自测（make check 里那份，含跨盘符；先观察，不挡打包）
+        shell: bash
+        continue-on-error: true
+        env: { PYTHONUTF8: "1", CUBE_HAL: "" }
+        run: python tools/test_keil_inject.py
       - name: 打包侧车
         shell: bash
         run: |
