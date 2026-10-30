@@ -1,4 +1,7 @@
 {
+ "_pending_rewrite": [
+  "firmware/algo/lpf"
+ ],
  "firmware/algo/abobs": {
   "decls": [
    "abobs.h: typedef struct { float alpha;",
@@ -190,7 +193,7 @@
    "foc.h: dz_err_t foc_selftest(void);"
   ],
   "hash": "e4118e9605097e5d",
-  "version": "1.1.0"
+  "version": "2.0.0"
  },
  "firmware/algo/follow": {
   "decls": [
@@ -241,27 +244,6 @@
   ],
   "hash": "b0766b33aad31559",
   "version": "1.0.0"
- },
- "firmware/algo/lpf": {
-  "decls": [
-   "lpf1.h: typedef struct { float cutoff_hz;",
-   "lpf1.h: float dt_s;",
-   "lpf1.h: } lpf1_cfg_t;",
-   "lpf1.h: typedef struct { float alpha;",
-   "lpf1.h: float y;",
-   "lpf1.h: bool primed;",
-   "lpf1.h: } lpf1_t;",
-   "lpf1.h: dz_err_t lpf1_init(lpf1_t *f, const lpf1_cfg_t *cfg);",
-   "lpf1.h: dz_err_t lpf1_init_alpha(lpf1_t *f, float alpha);",
-   "lpf1.h: float lpf1_update(lpf1_t *f, float x);",
-   "lpf1.h: bool lpf1_check_gap(lpf1_t *f, float actual_dt_s, float max_dt_s);",
-   "lpf1.h: void lpf1_reset(lpf1_t *f, float y0);",
-   "lpf1.h: void lpf1_clear(lpf1_t *f);",
-   "lpf1.h: float lpf1_value(const lpf1_t *f);",
-   "lpf1.h: dz_err_t lpf1_selftest(void);"
-  ],
-  "hash": "e12176c4fc49f183",
-  "version": "1.1.0"
  },
  "firmware/algo/mtspeed": {
   "decls": [
@@ -556,7 +538,7 @@
    "as5600.h: } dz_err_t as5600_selftest(void);"
   ],
   "hash": "d3520ffa3318ffc5",
-  "version": "1.0.0"
+  "version": "2.0.0"
  },
  "firmware/drivers/battery": {
   "decls": [
@@ -1490,6 +1472,8 @@
    "dzctl.h: #define DZCTL_HB_SA_RUNNING (1u << 15)",
    "dzctl.h: #define DZCTL_MODE_MAGIC 0xA5u",
    "dzctl.h: #define DZCTL_HB_PARAMS_DIRTY (1u << 16)",
+   "dzctl.h: #define DZCTL_ST_MAX 8u",
+   "dzctl.h: #define DZCTL_CMD_SELFTEST 'H'",
    "dzctl.h: #define DZCTL_SAVE_OK 0u",
    "dzctl.h: #define DZCTL_SAVE_BUSY 1u",
    "dzctl.h: #define DZCTL_SAVE_NO_NVM 2u",
@@ -1517,6 +1501,11 @@
    "dzctl.h: uint32_t dzctl_board_uid(void);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
    "dzctl.h: typedef enum { DZCTL_ST_SUBSYS = 1, DZCTL_ST_PARAMS = 2, DZCTL_ST_NVM = 3, DZCTL_ST_SENSOR = 4, DZCTL_ST_POWER = 5 } dzctl_selftest_item_t;",
+   "dzctl.h: typedef bool (*dzctl_selftest_fn)(void);",
+   "dzctl.h: int dzctl_selftest_register(uint8_t code, dzctl_selftest_fn fn);",
+   "dzctl.h: uint32_t dzctl_selftest_run(uint32_t t_ms, uint32_t extra_fail_mask);",
+   "dzctl.h: uint32_t dzctl_selftest_mask(void);",
+   "dzctl.h: void dzctl_selftest_reply(uint32_t fail_mask, dzframe_t *out);",
    "dzctl.h: void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms);",
    "dzctl.h: void dzctl_set_params_hash(uint32_t h);",
    "dzctl.h: uint32_t dzctl_hash32(const void *data, uint32_t len);",
@@ -1540,8 +1529,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "ccdf79ef04e6ae06",
-  "version": "0.11.0"
+  "hash": "98318db26082292f",
+  "version": "0.12.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

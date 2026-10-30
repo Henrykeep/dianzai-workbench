@@ -17,7 +17,37 @@ get() {  # get <目录> <仓库> <tag> [稀疏检出路径...]
   fi
 }
 ALL="${*:-}"
-cmsis()    { get CMSIS_5 ARM-software/CMSIS_5 5.9.0 CMSIS/Core/Include CMSIS/RTOS2/Include; }
+# CMSIS Core（Apache-2.0）：CMSIS_6 固定 tag 的源码包，校验包的 sha256，只解出 CMSIS/Core/Include（+ RTOS2 API 头，FreeRTOS 的
+# CMSIS_RTOS_V2 封装要 cmsis_os2.h）和 LICENSE。旧做法（CMSIS_5 稀疏克隆）在新克隆里会缺 core_cm3.h / core_cm4.h。
+CMSIS_TAG=v6.1.0
+CMSIS_SHA=d8a044e4b50b7112476d6855a12c729ae2b70b3f77a2a038c23890e9a3515973
+CMSIS_TREE_SHA=a7a3045f1d8a2bc50182c8dbe3dd4bc1cfca30d694cae5c522c667382c845b0c   # 解出的 Include 文件逐个 sha256 再汇总
+cmsis_verify() {  # 下载后立即校验：缺任何一个头 / 内容不一致 → 失败
+  local d=CMSIS_6 h miss=0
+  for h in core_cm0plus.h core_cm3.h core_cm4.h core_cm7.h cmsis_compiler.h cmsis_gcc.h cmsis_version.h \
+           m-profile/cmsis_gcc_m.h m-profile/armv7m_mpu.h; do
+    [ -s "$d/CMSIS/Core/Include/$h" ] || { echo "✗ [fetch/cmsis] 缺 $d/CMSIS/Core/Include/$h · 处理：rm -rf third_party/CMSIS_6 后重跑 make fetch"; miss=1; }
+  done
+  [ -s "$d/CMSIS/RTOS2/Include/cmsis_os2.h" ] && [ -s "$d/LICENSE" ] || { echo "✗ [fetch/cmsis] 缺 cmsis_os2.h 或 LICENSE"; miss=1; }
+  [ $miss = 0 ] || return 1
+  local got; got=$(cd "$d" && find CMSIS/Core/Include CMSIS/RTOS2/Include -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+  [ "$got" = "$CMSIS_TREE_SHA" ] || { echo "✗ [fetch/cmsis] $d 内容与 $CMSIS_TAG 不一致（$got）· 处理：rm -rf third_party/CMSIS_6 后重跑 make fetch"; return 1; }
+  echo "✓ CMSIS_6 $CMSIS_TAG Core/Include 完整（sha256 已校验）"
+}
+cmsis() {
+  if [ ! -d CMSIS_6 ]; then
+    local t; t=$(mktemp -d)
+    curl -fsSL -o "$t/c.tgz" "https://codeload.github.com/ARM-software/CMSIS_6/tar.gz/refs/tags/$CMSIS_TAG"
+    echo "$CMSIS_SHA  $t/c.tgz" | sha256sum -c - >/dev/null || { echo "✗ [fetch/cmsis] 源码包 sha256 不符"; rm -rf "$t"; return 1; }
+    local top="CMSIS_6-${CMSIS_TAG#v}"
+    tar xzf "$t/c.tgz" -C "$t" "$top/CMSIS/Core/Include" "$top/CMSIS/RTOS2/Include" "$top/LICENSE"
+    mkdir -p CMSIS_6.tmp && mv "$t/$top/CMSIS" "$t/$top/LICENSE" CMSIS_6.tmp/ && mv CMSIS_6.tmp CMSIS_6
+    rm -rf "$t"
+  else
+    echo "已存在 CMSIS_6，校验"
+  fi
+  cmsis_verify
+}
 f4()       { get stm32f4xx-hal-driver STMicroelectronics/stm32f4xx-hal-driver v1.8.5
              get cmsis-device-f4      STMicroelectronics/cmsis-device-f4      v2.6.11; cmsis; }
 f1()       { get stm32f1xx-hal-driver STMicroelectronics/stm32f1xx-hal-driver v1.1.9
@@ -35,5 +65,5 @@ m0pack()   { mkdir -p packs; local f=packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP
 for g in f4 f1 freertos mspm0 m0pack; do
   if [ -z "$ALL" ] || [[ " $ALL " == *" $g "* ]]; then $g; fi
 done
-[[ " $ALL " == *" cmsis "* ]] && cmsis
+if [[ " $ALL " == *" cmsis "* ]]; then cmsis; fi
 echo "✓ third_party 就绪"

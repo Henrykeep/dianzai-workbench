@@ -24,6 +24,10 @@ jobs:
           echo /opt/arm/arm-gnu-toolchain-13.3.rel1-x86_64-arm-none-eabi/bin >> "$GITHUB_PATH"
           tools/arm_toolchain.sh --check
       - run: tools/fetch_third_party.sh mspm0 f4 f1 freertos                     # 和 preflight 一样有全套 SDK：test_mspm0_board、从零新建（F1/F4 HAL）、FreeRTOS 板导入编译
+      - uses: actions/setup-node@v5                                            # make check 的许可扫描要读 app/ui/node_modules
+        with: { node-version: "22", cache: npm, cache-dependency-path: app/ui/package-lock.json }
+      - run: npm ci
+        working-directory: app/ui
       - run: make check
       - run: make test
       - run: make compat

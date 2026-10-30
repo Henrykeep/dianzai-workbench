@@ -90,7 +90,7 @@ def test_2026h_estop_and_replay(home):
     log = s.status()["log"]
     try:
         assert wait(lambda: s.schema and s.window(1))
-        assert s.estop()["sent"]
+        assert s.estop()["ok"]
         assert wait(lambda: s.window(0.1) and s.window(0.1)[-1][1]["state"] == 3), "state 应变为 ESTOP"
         n_live = len(s.samples)
     finally:
@@ -165,7 +165,7 @@ def test_websocket_server(home):
             assert not (await rpc(op="snapshot_restore", name="t"))["ok"], "旧 op 已合并"
             bad = await rpc(op="param_set", name="nope", value=1)
             assert not bad["ok"] and bad["error"]["code"] == "bad_param"
-            assert (await rpc(op="estop"))["data"]["sent"]
+            assert (await rpc(op="estop"))["data"]["ok"]
             await rpc(op="disconnect")
         task.cancel()
 

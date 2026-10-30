@@ -36,7 +36,7 @@
 #include "safety.h"
 #include "blackbox.h"
 #include "persist.h"
-#include "runmode.h"
+#include "dz_runtime.h"
 #include "dz_compiler.h"
 #include "nvm_pal.h"
 
@@ -64,16 +64,12 @@ static safety_t s_safe;
 static bb_t s_bb;
 static bb_rec_t s_bb_ring[32];
 /* 掉电保存（板子 board.yaml mcu.nvm_kb > 0 才有；没有/坏了 → 全部照常跑，只是不保存） */
-#define KEY_PARAMS 1u
-#define KEY_BB     2u
-#define KEY_MODE   3u   /* 运行模式单独一条（存参数不改模式） */
+/* flash 键见 dz_runtime.h（参数 / 黑匣子 DZRT_KEY_BB / 运行模式）；自检、存参、运行模式由通用运行时处理 */
 #define CAR_EV_SELFTEST (BB_EV_APP + 0x10u)   /* 上电自检：arg = 失败项数 */
-static persist_flash_t s_nvf;
-static persist_kv_t s_kv;
+static dzrt_t s_rt;
 static persist_kvbb_t s_kvbb;
 static bb_store_t s_bbst;
 static bool s_have_kv;
-static volatile bool s_save_req;
 #if defined(RES_ADC_ISENSE_A) && defined(RES_ADC_ISENSE_B)
 #define HAVE_ISENSE 1
 static volatile float s_amp[2];   /* 主循环采样换算（ADC 不放进 1 kHz 中断） */
@@ -81,10 +77,6 @@ static volatile float s_amp[2];   /* 主循环采样换算（ADC 不放进 1 kHz
 #define HAVE_ISENSE 0
 #endif
 static bool use_current(void) { return HAVE_ISENSE && g_link_params.stall_src == 1u; }
-static runmode_t s_rm;
-static bool s_flash_ok;          /* flash 里有一份有效参数 */
-static uint32_t s_flash_h;       /* 那份参数的指纹（dzctl_hash32） */
-static volatile uint8_t s_mode_req = 0xFFu, s_mode_magic;
 static dzctl_wd_t s_wd;   /* 上位机心跳看门狗：调参时上位机崩溃/拔线 -> 输出归零并锁存急停 */
 
 /* 上位机改了参数：同步到 drive_plan 参数；PID 增益交给控制中断在自己的节拍里换（不在两次 update 之间撕裂）。 */
@@ -149,78 +141,16 @@ static dz_err_t wheel_init(wheel_t *w, pal_id_t pwm, pal_id_t in1, pal_id_t in2,
     return pid_init(&w->pid, &pc);
 }
 
-/* 上电读参数：结构哈希对得上、每个值都在 app.yaml 范围内才用；否则全部用默认值。返回 BB_EV_PARAM_LOAD 的 arg。 */
-static uint16_t load_params(void)
-{
-    link_params_t tmp;
-    uint16_t n0 = 0;
-    if (!s_have_kv) return 3u;
-    dz_err_t rc = persist_blob_load(&s_kv, KEY_PARAMS, LINK_SCHEMA_HASH, &tmp, (uint16_t)sizeof tmp);
-    if (rc != DZ_OK) return rc == DZ_EFAIL && persist_kv_get(&s_kv, KEY_PARAMS, &tmp, 0u, &n0) == DZ_EFAIL ? 1u : 2u;
-    dzctl_table_t src = link_param_table(&tmp), dst = link_param_table(&g_link_params);
-    for (uint8_t i = 0; i < src.n; i++) {
-        float v;
-        if (dzctl_set(&dst, i, dzctl_get(&src, i), &v) != DZCTL_OK) { g_link_params = g_link_params_default; return 2u; }
-    }
-    s_flash_ok = true; s_flash_h = dzctl_hash32(&g_link_params, (uint32_t)sizeof g_link_params);
-    return 0u;
-}
-
-/* 自检用：每个参数都在 app.yaml 范围内（RAM 被踩/默认表写错时能看出来） */
-static bool params_sane(void)
-{
-    dzctl_table_t t = link_param_table(&g_link_params);
-    for (uint8_t i = 0; i < t.n; i++) {
-        float g = dzctl_get(&t, i), v;
-        if (g != g || dzctl_set(&t, i, g, &v) != DZCTL_OK || v != g) return false;
-    }
-    return true;
-}
-
-static uint16_t nvm_boot(void)
-{
-    s_have_kv = nvm_pal_layout(&s_nvf, NULL, 0u) == DZ_OK && persist_kv_init(&s_kv, &s_nvf) == DZ_OK
-                && persist_kv_bb_store(&s_bbst, &s_kvbb, &s_kv, KEY_BB) == DZ_OK;
-    {
-        uint8_t m = RUNMODE_TETHERED; uint16_t n = 0;
-        if (s_have_kv && persist_kv_get(&s_kv, KEY_MODE, &m, 1u, &n) != DZ_OK) m = RUNMODE_TETHERED;
-        runmode_init(&s_rm, m);
-    }
-    return load_params();
-}
-
 static bool car_still(void)
 {
     float sa = encoder_speed_rps(&s_w[0].enc), sb = encoder_speed_rps(&s_w[1].enc);
     return s_estop || (s_state.cmd_v_mps == 0.0f && s_state.cmd_w_rps == 0.0f && sa * sa + sb * sb < 0.01f);
 }
 
-/* 切运行模式：只在停着时；写 flash 成功才生效。回 {'M', 结果}（上位机发起时）。 */
-static uint8_t set_mode(uint8_t mode)
-{
-    uint8_t rc = !car_still() ? 1u : !s_have_kv ? 2u : persist_kv_put(&s_kv, KEY_MODE, &mode, 1u) == DZ_OK ? 0u : 3u;
-    if (rc == 0u) { s_rm.mode = mode; s_rm.started = false; dzctl_wd_init(&s_wd, 1000u); }
-    return rc;
-}
+static subsys_sched_t *s_sched_p;
+static bool st_subsys(void) { return subsys_sched_selftest(s_sched_p) < 0; }   /* 应用自己的自检项：drive_plan 子系统 */
 
-/* 'W'：只在停着（急停锁存或指令为 0 且轮子不转）时写——F4 擦扇区会让 CPU 停顿约 0.3 s */
 static void send(const dzframe_t *f);
-static void save_params(void)
-{
-    float sa = encoder_speed_rps(&s_w[0].enc), sb = encoder_speed_rps(&s_w[1].enc);
-    bool still = s_estop || (s_state.cmd_v_mps == 0.0f && s_state.cmd_w_rps == 0.0f && sa * sa + sb * sb < 0.01f);
-    dz_err_t rc = !s_have_kv ? DZ_ENOTSUP : !still ? DZ_EBUSY
-                : persist_blob_save(&s_kv, KEY_PARAMS, LINK_SCHEMA_HASH, &g_link_params, (uint16_t)sizeof g_link_params);
-    if (rc == DZ_OK) { s_flash_ok = true; s_flash_h = dzctl_hash32(&g_link_params, (uint32_t)sizeof g_link_params); }
-    bb_log(&s_bb, pal_millis(), BB_EV_PARAM_SAVE, (uint16_t)(rc < 0 ? -rc : rc), 0.0f, 0.0f);
-    dzframe_t f;
-    memset(&f, 0, sizeof f);
-    f.kind = DZF_DATA; f.id = DZCTL_ID_CMD;
-    (void)dzframe_put_u8(&f, 'W');
-    (void)dzframe_put_u8(&f, (uint8_t)(rc == DZ_OK ? DZCTL_SAVE_OK : rc == DZ_EBUSY ? DZCTL_SAVE_BUSY
-                                       : rc == DZ_ENOTSUP ? DZCTL_SAVE_NO_NVM : DZCTL_SAVE_FAIL));
-    send(&f);
-}
 
 dz_err_t app_init(void)
 {
@@ -229,7 +159,8 @@ dz_err_t app_init(void)
     bool bad_boot = false;
     pal_reset_cause_t rc = pal_reset_cause();
     dzctl_estop_clear();        /* 上电：RAM 里的旧原因不算（仿真里 app_init 会重跑） */
-    uint16_t pl = nvm_boot();   /* 先读参数：下面的堵转配置要用 */
+    uint16_t pl = dzrt_boot(&s_rt, &g_link_params, &g_link_params_default, car_still, send);   /* 先读参数：下面的堵转配置要用 */
+    s_have_kv = s_rt.have_kv && persist_kv_bb_store(&s_bbst, &s_kvbb, &s_rt.kv, DZRT_KEY_BB) == DZ_OK;
     stall_cfg_t sc = { .load_on = g_link_params.stall_duty, .speed_on = STALL_SPEED_RPS,
                        .hold_ms = g_link_params.stall_ms, .start_ignore_ms = 200u, .retry_ms = 0u };   /* 只人工解除 */
     (void)bb_init(&s_bb, s_bb_ring, (uint16_t)(sizeof s_bb_ring / sizeof s_bb_ring[0]), s_have_kv ? &s_bbst : NULL);
@@ -252,19 +183,18 @@ dz_err_t app_init(void)
     if ((e = wheel_init(&s_w[0], RES_PWM_MOTOR_A, RES_GPIO_MOTOR_A_IN1, RES_GPIO_MOTOR_A_IN2, RES_ENCODER_MOTOR_A)) != DZ_OK) return e;
     if ((e = wheel_init(&s_w[1], RES_PWM_MOTOR_B, RES_GPIO_MOTOR_B_IN1, RES_GPIO_MOTOR_B_IN2, RES_ENCODER_MOTOR_B)) != DZ_OK) return e;
     if ((e = subsys_sched_init(&s_sched, list, 1, &s_state, &s_params)) != DZ_OK) return e;
-    {   /* 上电自检：不过也不罢工（上位机要能看到为什么），而是急停锁存 + 心跳标志 + 原因 */
-        uint32_t mask = (subsys_sched_selftest(&s_sched) >= 0 ? 1u << (DZCTL_ST_SUBSYS - 1) : 0u)
-                      | (!params_sane() ? 1u << (DZCTL_ST_PARAMS - 1) : 0u);
-        int bad = (int)((mask & 1u) + ((mask >> 1) & 1u));
-        dzctl_selftest_report(mask, pal_millis());
+    s_rt.bb = &s_bb;
+    s_sched_p = &s_sched;
+    (void)dzctl_selftest_register(DZCTL_ST_SUBSYS, st_subsys);
+    {   /* 上电自检（通用运行时 + 本应用注册的项）：不过也不罢工（上位机要能看到为什么），而是急停锁存 + 心跳标志 + 原因 */
+        uint32_t mask = dzrt_selftest(&s_rt, pal_millis());
+        int bad = 0;
+        for (uint32_t m = mask; m; m &= m - 1u) bad++;
         bad_boot = bad != 0 || s_estop;
-        dzctl_set_flags(DZCTL_HB_SELFTEST_FAIL, bad != 0);
         if (bad) { s_estop = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), (float)bad); }
         bb_log(&s_bb, pal_millis(), CAR_EV_SELFTEST, (uint16_t)bad, 0.0f, 0.0f);
     }
-    dzctl_set_flags(DZCTL_HB_PARAMS_MASK, false);
-    dzctl_set_flags((uint32_t)pl << DZCTL_HB_PARAMS_SHIFT, true);
-    runmode_boot(&s_rm, !bad_boot, g_link_params.sa_autostart != 0u);
+    dzrt_start(&s_rt, !bad_boot, g_link_params.sa_autostart != 0u);
     subsys_sched_set_mode(&s_sched, SUBSYS_MODE_RUN);
     dzframe_parser_init(&s_rx);
     dzctl_wd_init(&s_wd, 1000u);   /* 侧车每 250 ms 发一次心跳 */
@@ -313,12 +243,9 @@ static void handle_rx(uint32_t now)
             pal_irq_restore(st);
         } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'K') {
             car_sim_key(f.len >= 2u ? f.payload[1] : 1u);
+        } else if (dzrt_cmd(&s_rt, &f)) {                       /* 'W' 'M' 'H'：主循环里执行 */
         } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'M') {
-            s_mode_magic = f.len >= 3u ? f.payload[2] : 0u;      /* 主循环里处理（写 flash） */
-            s_mode_req = f.len >= 2u ? f.payload[1] : 0xFFu;
-            if (s_mode_req == 0xFFu) s_mode_req = 0xFEu;         /* 非法值也要回执 */
-        } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'W') {
-            s_save_req = true;                                   /* 主循环里写（不在收帧循环里卡住） */
+            dzrt_reply2(&s_rt, 'M', 4u);                         /* 缺确认字节：拒切也要回执 */
         } else if (dzctl_is_bb_request(&f)) {
             static uint8_t bseq;
             for (uint16_t k = 0; k < bb_count(&s_bb); k++) {
@@ -326,7 +253,7 @@ static void handle_rx(uint32_t now)
                 dzctl_bb_frame(r->t_ms, r->code, r->arg, r->a, r->b, bseq++, &ack);
                 send(&ack);
             }
-        } else if (!s_estop && runmode_needs_host(&s_rm) && f.kind == DZF_DATA && f.id == ID_CMD && f.len == 8u) {   /* 脱机：不收上位机目标 */
+        } else if (!s_estop && dzrt_needs_host(&s_rt) && f.kind == DZF_DATA && f.id == ID_CMD && f.len == 8u) {   /* 脱机：不收上位机目标 */
             s_state.cmd_v_mps = car_aux_limit_v(dzframe_get_f32(&f, 0));
             s_state.cmd_w_rps = dzframe_get_f32(&f, 4);
             s_state.cmd_ms = now;
@@ -342,7 +269,7 @@ void app_loop(void)
     uint32_t now = pal_millis();
     pal_wdg_kick();
     handle_rx(now);
-    if (runmode_needs_host(&s_rm) && dzctl_wd_expired(&s_wd, now)) { dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - s_wd.last_ms)); s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
+    if (dzrt_needs_host(&s_rt) && dzctl_wd_expired(&s_wd, now)) { dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - s_wd.last_ms)); s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
     if (car_aux_poll(now)) { dzctl_estop_note(DZCTL_ES_UNDERVOLT, now, car_aux_vbat()); s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }   /* 只置不清 */
     link_relay_guard(s_estop);   /* 急停（心跳超时/电池/安全锁存）中结束继电 */
 #if HAVE_ISENSE
@@ -366,38 +293,18 @@ void app_loop(void)
         if (s_estop && !was && s_have_kv) (void)bb_freeze(&s_bb);
         was = s_estop;
     }
-    if (s_save_req) { s_save_req = false; save_params(); }
-    if (s_mode_req != 0xFFu) {
-        uint8_t m = s_mode_req, rc = runmode_check_cmd(m, s_mode_magic, DZCTL_MODE_MAGIC);
-        dzframe_t f;
-        s_mode_req = 0xFFu;
-        if (rc == 0u) rc = set_mode(m);
-        memset(&f, 0, sizeof f); f.kind = DZF_DATA; f.id = DZCTL_ID_CMD;
-        (void)dzframe_put_u8(&f, 'M');
-        (void)dzframe_put_u8(&f, rc);
-        send(&f);
+    {
+        bool was_sa = !dzrt_needs_host(&s_rt);
+        dzrt_poll(&s_rt, now, s_estop, -1);
+        if (was_sa != !dzrt_needs_host(&s_rt)) dzctl_wd_init(&s_wd, 1000u);
     }
-    {   /* 板上按键：脱机下短按启停；长按 3 s 切模式（人发起，停着才切） */
-        bool key = false;
-#ifdef RES_GPIO_KEY
-        if (pal_gpio_read(RES_GPIO_KEY, &key) != DZ_OK) key = false;
-#endif
-        runmode_ev_t ev = runmode_button(&s_rm, key, now);
-        if (ev == RUNMODE_EV_TOGGLE) (void)set_mode(s_rm.mode == RUNMODE_STANDALONE ? RUNMODE_TETHERED : RUNMODE_STANDALONE);
-        else if (ev == RUNMODE_EV_START && !s_estop) s_rm.started = true;
-        else if (ev == RUNMODE_EV_STOP) s_rm.started = false;
-    }
-    if (!runmode_needs_host(&s_rm)) {   /* 脱机：目标来自板上参数；急停时不动 */
-        if (s_estop) s_rm.started = false;
-        s_state.cmd_v_mps = s_rm.started ? g_link_params.sa_v_mps : 0.0f;
+    if (!dzrt_needs_host(&s_rt)) {   /* 脱机：目标来自板上参数；急停时不动 */
+        s_state.cmd_v_mps = dzrt_sa_running(&s_rt) ? g_link_params.sa_v_mps : 0.0f;
         s_state.cmd_w_rps = 0.0f;
         s_state.cmd_ms = now;
     }
-    dzctl_set_flags(DZCTL_HB_STANDALONE, s_rm.mode == RUNMODE_STANDALONE);
-    dzctl_set_flags(DZCTL_HB_SA_RUNNING, s_rm.mode == RUNMODE_STANDALONE && s_rm.started);
     dzctl_set_flags(SAFETY_F_SAFE_BOOT | SAFETY_F_STALL, false);
     dzctl_set_flags(safety_flags(&s_safe), true);
-    dzctl_set_flags(DZCTL_HB_ESTOP, s_estop);
     s_state.cmd_v_mps = car_aux_limit_v(s_state.cmd_v_mps);
     subsys_sched_poll(&s_sched, now);
     uint32_t st = pal_irq_save();
@@ -415,15 +322,10 @@ void app_loop(void)
         pal_irq_restore(st);
         if (link_telem_pack(&f, &t)) { f.seq = seq++; send(&f); }
     }
-    if (now - last_hb >= 500u) {
+    static bool hb_was_estop;
+    if (dzrt_hb_due(now, s_estop, &hb_was_estop, &last_hb)) {   /* 急停上升沿立即发（与 link_app 同一个助手） */
         dzctl_table_t t = link_param_table(&g_link_params);
         dzframe_t f;
-        last_hb = now;
-        {
-            uint32_t h = dzctl_hash32(&g_link_params, (uint32_t)sizeof g_link_params);
-            dzctl_set_params_hash(h);
-            dzctl_set_flags(DZCTL_HB_PARAMS_DIRTY, !s_flash_ok || h != s_flash_h);
-        }
         dzctl_heartbeat(&t, seq++, &f);
         send(&f);
     }

@@ -48,3 +48,20 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 
 - 脱机运行：心跳 status bit11 = 上电自检失败（同时以原因 7 急停锁存），bit12-13 = 上电参数来源（0 flash / 1 没存过→默认 / 2 损坏或结构变了→默认 / 3 无 flash）。
   `'W'` 存参数后板回 `DATA 0x7E len=2 {'W', 结果}`（0 已写入 1 没停稳拒写 2 无 flash 3 写失败）。侧车 `save_params()`（WS op `save_params`）。示例：apps/car_2wd。
+
+## 0.12.0 通用运行时（每个应用默认都有）
+
+自检、运行模式、存参、重跑自检从 car_2wd 挪进通用运行时 `apps/include/dz_runtime.h`（`link_app.h` 已集成；car_2wd、2026H io 直接用）。
+应用只注册自己的自检项：`dzctl_selftest_register(code, fn)`（fn 返回 true = 通过；code 1..32，同 (code,fn) 重复注册只算一次，最多 `DZCTL_ST_MAX`=8 项）。
+通用项：参数越界（code 2）由运行时自己查。
+
+命令字节（上位机 → 板，DATA id=0x7E）：
+
+| 命令 | 字节 | 板回（DATA 0x7E） | 说明 |
+|---|---|---|---|
+| 存参 | `57`（'W'） | `57 rc`：0 已写 1 没停稳 2 无 flash 3 写失败 | 只在停稳时写 |
+| 切模式 | `4D mode A5`（'M'，0 联机 1 脱机） | `4D rc`：0 已切 1 没停稳 2 无 flash 3 写失败 4 确认字节/模式非法 | 只有 3 字节的 'M' 归运行时；2 字节 'M' 留给应用/仿真钩子 |
+| 重跑自检 | `48`（'H'） | `48 m0 m1 m2 m3`：u32 LE 失败 mask（bit = code−1） | 同时刷新心跳 selftest_mask / t_ms；不用 'S'（2026H 的 'S' 是停止） |
+
+心跳 status（同 0.10/0.11）：bit14 脱机、bit15 脱机已启动、bit 8..9 参数来源、PARAMS_DIRTY、SELFTEST_FAIL；尾部 selftest_mask / t / params_hash。
+上电自检不过 → 急停锁存（原因 SELFTEST），'R' 解除。脱机模式：不要求心跳；link_app 应用不收上位机设定值。侧车：`Session.run_selftest()`（WS op `run_selftest`）。

@@ -43,6 +43,8 @@ jobs:
         with: { workspaces: app/src-tauri }
       - uses: actions/download-artifact@v4
         with: { name: dz-repo, path: app/dz-repo }
+      - run: npm ci                    # 先装前端依赖：许可扫描/UI 单测要 node_modules（setup-node 已按 lock 缓存）
+        working-directory: app/ui
       - name: 单元测试（Windows 上自动跳过仿真 e2e）
         shell: bash
         env:
@@ -57,7 +59,7 @@ jobs:
           bash tools/fetch_third_party.sh m0pack   # MSPM0 器件包随侧车分发（BSD-3），pyOCD 烧 MSPM0 不用再联网装包
           python -m PyInstaller --onefile --log-level WARN -n dzbench \
             --add-data "third_party/packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack;packs" \
-            --paths app/sidecar --paths host/python --paths third_party/vendored/pid_helper --paths third_party/vendored/stm32_mcp_discovery \
+            --paths app/sidecar --paths host/python --paths third_party/vendored/stm32_mcp_discovery \
             --hidden-import serial.tools.list_ports --collect-submodules pypdf \
             app/sidecar/dzbench_entry.py
           mkdir -p app/src-tauri/binaries
@@ -66,8 +68,6 @@ jobs:
         shell: bash
         working-directory: app/dz-repo
         run: ../../dist/dzbench.exe tools/req.py --help | head -3
-      - run: npm ci
-        working-directory: app/ui
       - name: 安装包（resources 带上 repo\）
         shell: bash
         working-directory: app/src-tauri

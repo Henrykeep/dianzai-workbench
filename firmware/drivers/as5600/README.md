@@ -1,5 +1,7 @@
 # as5600 — AS5600 12 位磁编码器（I2C）
 
+> **2.0.0 已停用为桩**（原实现参照过 GPL 代码），下文为原设计记录，代码已不提供这些功能。
+
 读 RAW ANGLE（0x0C），软件零点 / 方向，多圈展开，速度一阶低通，磁铁状态检查。给 `firmware/algo/foc` 做转子角。
 
 ## board.yaml
@@ -21,4 +23,4 @@ float th = as5600_angle(&enc), w = as5600_velocity(&enc);
 ## 测试状态
 - 【仿真】主机单测（假 AS5600 挂 host-sim I2C）：12 位拼接、跨零多圈（正反）、方向、零点、速度、磁铁三种状态、I2C 失败计数。
 - 【未测】真芯片。
-- 参考：pid_helper STM32F1 / ESP32-C3 例程 `as5600_dev.c`、SimpleFOC `MagneticSensorI2C`（见 docs/参考来源.md）。
+- **2.0.0 已停用**：原实现参照过 GPL 的 pid_helper 例程，已移除，全部函数返回 DZ_ENOTSUP；待净室重写（docs/参考来源.md 待净室重写清单）。

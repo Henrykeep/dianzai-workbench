@@ -3,12 +3,14 @@
 # （或写进 script_ops 并说明为什么）；界面调用的每个 op 都在这里登记；Agent 工具都有归属步。
 # 依据：/workspace/walk/LOGIC_AUDIT.md §3.1（时间线导航）、§3.3（入口唯一 + op 无孤儿）。
 # ready: false = 入口已登记、功能未就绪（如等固件支持）；不写 = 已就绪。
-# at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件> | page:<旅程 id>（页内具名区域，index.html 用 data-region 标）。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
+# at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件> | page:<旅程 id>（页内具名区域，index.html 用 data-region 标）| <区域>:（独立区域，在 regions 里声明，如告警条 alerts:）。
+#   ui = index.html 里的元素 id；独立区域入口写区域选择器 [data-region="<区域>"]（区域固定在 index.html，里面的按钮由 ts 生成）。dynamic: true = 由 ts 动态生成、无固定位置（尽量不用）。
 
 # 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（读题定方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
 always:    [急停, 连接, 排障]
+regions:   [alerts]   # 独立区域（index.html data-region="alerts"：顶部告警条）
 nav:       [进度]   # 左侧导航 aside.nav：流程步骤 #steps 与下一步提示
 page:      [req, tune, seal]   # 页内具名区域 data-region page:req：读题页没有当前项目（project 为 null）时的空状态「新建项目 / 打开项目」；page:tune = 调参页页头「保存参数」；page:seal = 封箱页运行模式区
 
@@ -19,13 +21,13 @@ actions:
   - {id: connect,      label: 连接/断开,        at: always:连接, ui: connect,    ops: [connect, disconnect, list_ports, serial_lines, hello]}
   - {id: auto_rc,      label: 自动重连,         at: always:连接, ui: auto-rc,    ops: [auto_reconnect]}
   - {id: link_health,  label: 链路心跳条,       at: always:连接, ui: hbstrip,    ops: [health, timeline]}
-  - {id: alerts,       label: 告警确认,         at: always:连接, ui: al-ack, dynamic: true, ops: [alert_ack]}
+  - {id: alerts,       label: 告警确认,         at: "alerts:", ui: '[data-region="alerts"]', ops: [alert_ack]}   # 告警条（#alerts）里的“知道了”，由 main.ts renderAlerts 生成
   - {id: progress,     label: 项目进度,         at: nav:进度,    ui: steps,      ops: [progress.get]}   # #steps 各步状态 + 阻塞项（progress.ts 渲染，另订阅推送 progress.changed）；每页顶部 #pg-head 主按钮同源
   - {id: symptoms,     label: 按症状排查,       at: always:排障, ui: sym-open,   ops: []}
   - {id: doctor,       label: 自检,             at: always:排障, ui: doctor,     ops: [doctor]}
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
   # 进度阻塞项的修复按钮（进度条按 fix_action 动态生成）。ready: false = 入口已登记但功能未就绪（界面置灰，侧车返回 not_ready）
-  - {id: fetch_deps,   label: 一键安装依赖,     at: always:排障, ui: fix-deps, dynamic: true, ops: [fetch_deps]}
+  - {id: fetch_deps,   label: 一键安装依赖,     at: always:排障, ui: doc-list,   ops: [fetch_deps]}   # 固定在自检对话框 #doc 的结果列表（missing_deps 的 fix_action 跳到自检）
   # ── 项目 ──
   - {id: project_new,  label: 新建项目,         at: page:req,   ui: pj-new,     ops: []}   # 只把焦点移到一句话输入（project_ask），不另起新建流程
   - {id: project_open, label: 打开项目,         at: page:req,   ui: pj-open,    ops: [project.list, project.open]}   # 列表按钮 .pj-item 是这一入口的选项，选中即 project.open {code}
@@ -70,7 +72,7 @@ actions:
   # ── 封箱 ──
   - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
   - {id: run_mode,     label: 切换运行模式,     at: page:seal,   ui: seal-mode,  ops: [set_run_mode]}   # 先 confirmed=false，needs_confirm 出确认卡，人确认后 confirmed=true；Agent 只给跳转（human_only）
-  - {id: run_selftest, label: 板上自检,         at: page:seal,   ui: seal-selftest, ops: [run_selftest]}   # 也是进度阻塞项 selftest_fail 的修复动作；固件没报时照写 selftest_unreported 的原因 + 处理
+  - {id: run_selftest, label: 板上自检,         at: page:tune,   ui: seal-selftest, ops: [run_selftest]}   # 也是进度阻塞项 selftest_fail 的修复动作；固件没报时照写 selftest_unreported 的原因 + 处理
   - {id: params_flash, label: 存参数到 flash,   at: page:tune,   ui: tb-save,    ops: [save_params]}   # 调参页页头常驻；也是进度阻塞项 params_not_saved 的修复动作。原赛前检查对话框里的 cmd W 按钮已去掉（一个功能一个入口）
   - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}
   - {id: yaml_wb,      label: 写回 yaml,        at: step:封箱,   ui: ag-yaml,    ops: [yaml_writeback]}

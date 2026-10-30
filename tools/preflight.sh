@@ -19,6 +19,8 @@ if [ -d "$src/third_party" ]; then
     cp -a "$d" "$tmp/repo/third_party/$n"
   done
 fi
+# 前端 node_modules（npm ci 装好的工具链，make licenses 的 npm 检查要用）：有就复制，和 CI 的 npm ci 等价
+[ -d "$src/app/ui/node_modules" ] && cp -a "$src/app/ui/node_modules" "$tmp/repo/app/ui/node_modules"
 for v in $(env | sed -n 's/^\(\(DZBENCH\|PYOCD\)_[A-Z_]*\)=.*/\1/p'); do unset "$v"; done
 # 已装的 Python 包（pip --user）是工具链不是“机器状态”，保留；其余 HOME 内容一律看不到
 export PYTHONUSERBASE="$(python3 -m site --user-base)"

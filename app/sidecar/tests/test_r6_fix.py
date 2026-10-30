@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import time
+import pathlib
 
 import pytest
 
 from wsui import UI, ServerThread
+from dzbench.session import Session
 
 
 def _locked(ui):
@@ -184,9 +186,13 @@ def test_estop_latency_under_200ms(home, busy):
         e = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
         dt = time.monotonic() - t0
         assert dt <= 0.2, f"急停事件 {dt * 1000:.0f} ms"
-        assert e["source"] == "ui" and e["sent"] is True and s.tx_locked
+        assert e["source"] == "ui" and e["ok"] is True and s.tx_locked
+        need, opt = Session.ESTOP_EVENT_KEYS["requested"]
+        assert set(e) - {"rid"} == need | opt, set(e)            # 精确等于约定：没有 sent / src / message
         la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
         assert la["source"] == "ui" and la["cause"] == "manual"
+        need, opt = Session.ESTOP_EVENT_KEYS["latched"]
+        assert need <= set(la) <= need | opt, set(la)            # latency_ms 可选诊断字段
     finally:
         ui.close(); st.stop()
 
@@ -202,7 +208,10 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
     try:
         ui.ok("connect", port="sim:car_2wd")
         _wait_status(ui, lambda e: e.get("alive"))
-        time.sleep(0.6)
+        t1 = time.monotonic()
+        while not s.params and time.monotonic() - t1 < 10:   # 参数读完（启动期的读参线程不再抢串口）
+            time.sleep(0.05)
+        time.sleep(0.3)
         held = threading.Event()
 
         def hog():
@@ -211,12 +220,30 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
                 time.sleep(3)
         threading.Thread(target=hog, daemon=True).start()
         held.wait(2)
+        hb_t = {}
+        orig_hb = s._on_heartbeat
+
+        def spy_hb(payload):
+            orig_hb(payload)
+            if s.estop_cause and "cause" not in hb_t:
+                hb_t["cause"] = time.monotonic()        # 带 estop_cause 的那帧心跳到达并处理完（收线程，持锁期间）
+        s._on_heartbeat = spy_hb
         m = ui.mark()
         t0 = time.monotonic()
         ui.ws.send(json.dumps({"op": "estop", "rid": 77, "src": "急停按钮"}))
-        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
+        rq = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
         assert time.monotonic() - t0 <= 0.2
         assert s.tx_locked
+        la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
+        t_l = time.monotonic()
+        # 本地服务这一段（带原因的心跳到达 → WS latched）必须与持锁无关；总时长另含固件心跳周期（固件侧在修，≤500 ms 一拍）
+        side = t_l - hb_t["cause"]
+        assert side <= 0.05, f"持锁时 心跳到达→latched {side * 1000:.0f} ms"
+        # 固件急停上升沿即时心跳 + 侧车先记 requested 再发：实测持锁 3 s 下 p50 3.3 ms / p95 3.9 ms（24 次），收紧到 200 ms
+        assert t_l - t0 <= 0.2, f"持锁时 点击→latched {(t_l - t0) * 1000:.0f} ms"
+        assert la["seq"] > rq["seq"] and la.get("latency_ms") is not None   # 锁存确认排在 requested 之后
+        assert held.is_set() and time.monotonic() - t0 < 2.5    # 整个过程 hog 线程一直持着锁
+        assert la["cause"] == "manual" and s.fw_status()["estop_cause"]
     finally:
         ui.close(); st.stop()
 
@@ -232,7 +259,6 @@ def _hb(payload_w=None, cause=None):
 @pytest.mark.parametrize("how", ["bit10", "estop_cause"])
 def test_firmware_estop_latches_sidecar(home, how):
     from dzbench._dzlink import HEARTBEAT, encode
-    from dzbench.session import Session
     from dzbench import latch
     s = Session(emit=lambda m: None)
     s.port = "/dev/ttyFAKE0"
@@ -322,3 +348,37 @@ def test_estop_cause_single_source():
     body = inspect.getsource(progress.collect)
     assert 'st.get("estop_cause")' not in body and 'st["estop_cause"]' not in body
     assert 'fw.get("estop_cause")' not in body
+
+
+@pytest.mark.parametrize("how", ["requested", "firmware", "flag_then_cause"])
+def test_no_separate_estop_cause_event_cause_rides_latched(home, how):
+    """不再推 type:"estop_cause"；cause / message_zh 随 estop state:"latched" 下发（人按 / 板子自己 / 急停位先到原因后到）。"""
+    from dzbench._dzlink import HEARTBEAT, encode
+    out = []
+    s = Session(emit=out.append)
+    s.port = "/dev/ttyFAKE1"
+    s._bind_schema = lambda h: None
+    if how == "requested":
+        s.estop_source, s.tx_locked, s.estop_requested_at = "ui", True, time.monotonic()
+    if how == "flag_then_cause":
+        s._on_bytes(encode(HEARTBEAT, 0, 1, _hb(1 | (1 << 10))))
+    s._on_bytes(encode(HEARTBEAT, 0, 2, _hb(1 | (1 << 10), cause=3)))
+    assert not [m for m in out if m.get("type") == "estop_cause"]
+    la = [m for m in out if m.get("type") == "estop" and m.get("state") == "latched" and m.get("cause")]
+    assert la and la[-1]["cause"] == "stall" and la[-1]["message_zh"], out
+    assert la[-1]["source"] == ("ui" if how == "requested" else "firmware:stall")
+    assert {"seq", "t"} <= la[-1].keys()
+
+
+def test_estop_event_keys_match_contract():
+    s = Session()
+    for st, kw in (("requested", {"ok": True, "message_zh": "x"}),
+                   ("latched", {"cause": "manual", "message_zh": "x", "latency_ms": 12}),
+                   ("latched", {}), ("cleared", {"message_zh": "x"})):
+        need, opt = Session.ESTOP_EVENT_KEYS[st]
+        e = s.estop_ev(st, "ui", **kw)
+        assert need <= set(e) <= need | opt and set(e) == need | set(kw), (st, set(e))
+    doc = (pathlib.Path(__file__).resolve().parents[3] / "docs/dev/events.md").read_text(encoding="utf-8")
+    for st, (need, opt) in Session.ESTOP_EVENT_KEYS.items():
+        for k in need | opt:
+            assert f"`{k}`" in doc, (st, k)                       # 约定文档与代码一致

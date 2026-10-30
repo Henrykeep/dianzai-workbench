@@ -227,7 +227,6 @@ UVX = """<?xml version="1.0"?>
 
 def test_project_chain_includes_keil_inject(repo, tmp_path):
     """导入真工程：①–⑤ + Keil 注入仍是一张卡（自动找 MDK-ARM/*.uvprojx）；确认后 .uvprojx 有 dz/ 组且留 .bak。点 2 下。"""
-    import shutil
     pj = tmp_path / "Car"; shutil.copytree(REPO / "tools/testdata/real/projects/Bldc - 副本 (6)", pj)
     uv = pj / "MDK-ARM" / "Bldc.uvprojx"
     (repo / "boards").unlink(); (repo / "boards").mkdir()                        # 导入要写 boards/：别写进真仓库
