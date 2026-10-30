@@ -34,6 +34,10 @@ def tree_hash(d: pathlib.Path) -> str:
 
 
 BOARDS = pathlib.Path(tempfile.mkdtemp(prefix="dz-import-boards-"))
+import atexit  # noqa: E402
+import signal  # noqa: E402
+atexit.register(shutil.rmtree, BOARDS, True)  # 正常退出/异常都清临时板根
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))  # 被 kill（TERM）也走 atexit 清理
 os.environ["DZ_BOARDS_DIR"] = str(BOARDS)  # subsys_kit 等按名找板时也看这里   # 导入的板放临时目录：中途被杀也不在仓库 boards/ 留 zz-test-*
 
 
