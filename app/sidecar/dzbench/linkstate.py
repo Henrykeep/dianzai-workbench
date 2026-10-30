@@ -23,6 +23,7 @@ import time
 LOST_AFTER_S = 2.0        # 4 个板子心跳周期
 PUSH_EVERY_S = 1.0        # 状态不变时的保活推送间隔
 STALE_AFTER_MS = 3000
+FW_FIELDS = ("run_mode", "selftest", "params_saved", "params_hash", "estop_cause")   # 固件上报的状态快照字段
 MODES = ("tethered", "standalone")   # 板子运行模式（联机 / 脱机），固件上报才有；没报 = mode: null     # UI 超过这么久没收到 link.state = 侧车无响应
 
 
@@ -47,7 +48,8 @@ class LinkState:
         self.last: dict | None = None     # 最近一次推送的内容（hello 里给新连上的窗口）
 
     def update(self, now: float, *, port: str, port_open: bool, reconnecting: bool,
-               t_connect: float, last_frame: float, reason: str = "", mode: str | None = None) -> dict | None:
+               t_connect: float, last_frame: float, reason: str = "", mode: str | None = None,
+               fw: dict | None = None) -> dict | None:
         board = board_state(now, port_open, reconnecting, t_connect, last_frame)
         if board == "lost" and not reason:
             reason = "transport_closed" if reconnecting else "no_frames"
@@ -57,6 +59,9 @@ class LinkState:
             mode = None
         key = (board, port if board != "disconnected" else "", reason, mode)
         changed = key != self._key
+        fw = fw or {k: None for k in FW_FIELDS}
+        if fw != getattr(self, "_fw", None):          # 板上状态变化（自检、参数保存、急停原因）也立即推，但不改 since
+            self._fw, self._pushed = fw, -1e9
         if changed:
             self._key, self._since_ms = key, int(time.time() * 1000)
         if not changed and now - self._pushed < PUSH_EVERY_S:
@@ -67,5 +72,5 @@ class LinkState:
         self.last = {"type": "link.state", "seq": self._seq, "sidecar": "ok", "board": board,
                 "port": key[1] or None, "since": self._since_ms,
                 "last_rx_ms": int((now - last_frame) * 1000) if heard else None,
-                "reason": reason or None, "mode": mode, "stale_after_ms": STALE_AFTER_MS}
+                "reason": reason or None, "mode": mode, "stale_after_ms": STALE_AFTER_MS, **fw}
         return self.last

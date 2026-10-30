@@ -5,7 +5,7 @@ w.touch(50_000); if (w.tick(100_000).timeout) throw "有事件不超时";
 if (!w.tick(50_000 + AGENT_TIMEOUT_MS + 1).timeout) throw "60 s 无事件超时";
 if (w.tick(200_000).timeout) throw "只触发一次";
 const w2 = new Watch(); w2.start(0); w2.stop(); if (w2.tick(999_999).timeout) throw "已结束不超时";
-const t = timeoutCard(); if (t.title !== "Agent 超过 60 秒未响应" || !t.why.includes("侧车") || !t.why.includes("模型服务") || !t.retry) throw "超时卡";
+const t = timeoutCard(); if (t.title !== "Agent 超过 60 秒未响应" || !t.why.includes("本地服务") || !t.why.includes("模型服务") || !t.retry) throw "超时卡";
 // mock：侧车 ce43c8e 的真实形状
 const c403 = errorCard({ code: "llm_403", message: "网关拒绝了请求（403）。检查 DZ_LLM_API_KEY", detail: "", fix_action: "llm_cfg", retryable: false });
 if (c403.title !== "Agent 出错：模型服务拒绝请求" || !c403.settings || c403.retry) throw "403 " + JSON.stringify(c403);

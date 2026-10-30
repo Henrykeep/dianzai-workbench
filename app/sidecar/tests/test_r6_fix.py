@@ -307,3 +307,18 @@ def test_estop_clear_sends_only_R_and_notifies(home):
         assert not s.tx_locked
     finally:
         ui.close(); st.stop()
+
+
+def test_estop_cause_single_source():
+    """急停原因只有一个来源 progress.estop_cause_of：fw_status 优先，没上报再读 status.estop_cause；collect 里不再有别的判定。"""
+    import inspect
+    from dzbench import progress
+    a, b = {"cause": "stall", "message_zh": "堵转"}, {"cause": "manual", "message_zh": "手动"}
+    assert progress.estop_cause_of({"estop_cause": a}, {"estop_cause": b}) is a
+    assert progress.estop_cause_of({"estop_cause": None}, {"estop_cause": b}) is b
+    assert progress.estop_cause_of({}, {}) is None
+    src = inspect.getsource(progress)
+    assert src.count("estop_cause_of(") == 2, "只允许定义一处 + collect 调用一处"
+    body = inspect.getsource(progress.collect)
+    assert 'st.get("estop_cause")' not in body and 'st["estop_cause"]' not in body
+    assert 'fw.get("estop_cause")' not in body

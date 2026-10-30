@@ -1,6 +1,7 @@
 // 项目进度适配层：结构与后端草案 progress.get 一致。接口没上线前，用前端现有数据推断同样的结构；
 // 上线后 fetchProgress() 优先用接口结果，界面代码不用改。步骤状态的判断只写在这里。
 import { STEPS, Step, STEP_HINT } from "./steps";
+import { entry } from "./entry";
 
 export type State = "todo" | "doing" | "done" | "blocked";
 export type BlockerCode = "no_board" | "missing_deps" | "gains_zero" | "estop" | "selftest_fail" | "params_not_saved";
@@ -20,24 +21,27 @@ export interface Progress {
   mode?: string | null;
 }
 // fix_action / next.action 都是 entrypoints.yaml 的动作 id；这里只记“去哪一步、点哪个已有元素”，不新增入口
-export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; ready?: boolean }> = {
+export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; jump?: boolean }> = {
+  // jump = 只跳到那一页并聚焦按钮，不替用户点（切换运行模式必须人确认；Agent 只给跳转）
+  project_list: { step: "项目", ui: "pj-open", label: "打开项目" },   // project.open 失败的 fix_action：回空状态重新选
+  set_run_mode: { step: "封箱", ui: "seal-mode", label: "前往封箱", jump: true },
   connect: { ui: "connect", label: "连接" }, estop_clear: { ui: "cmd-r", label: "解除急停" }, doctor: { ui: "doctor", label: "运行自检" },
   blackbox: { ui: "pre-bbtn", label: "读黑匣子" }, llm_cfg: { ui: "ag-cfg", label: "大模型设置" },
   project_flow: { step: "项目", ui: "pflow" }, project_ask: { step: "项目", ui: "pj-ask-go" }, flash: { step: "烧录", ui: "fw-flash" },
   build: { step: "烧录", ui: "fw-build", label: "编译" }, cal_polarity: { step: "标定", ui: "calwiz", label: "极性自检" },
   tune_relay: { step: "调参", ui: "ag-relay", label: "自整定" }, params: { step: "调参", ui: "p-send", label: "下发参数" },
-  params_flash: { step: "封箱", ui: "pre-save", label: "写入 Flash" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
+  params_flash: { step: "调参", ui: "tb-save", label: "保存参数" }, run_selftest: { step: "封箱", ui: "seal-selftest", label: "读取自检" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
   fetch_deps: { ui: "doctor", label: "安装依赖" },   // missing_deps：自检对话框里按提示安装
-  run_selftest: { ui: "", label: "运行自检", ready: false },   // 入口表标「未就绪」：等固件
 };
 // fix_action → 按钮：可执行 / 未就绪（置灰「等待固件支持」）/ 未登记（置灰写明原因）。不出现点了没反应的按钮
 export type Fix = { kind: "run" | "wait" | "none"; label: string; note?: string };
 export function resolveFix(id: string | null | undefined, has: (ui: string) => boolean = ui => !!document.getElementById(ui)): Fix | null {
   if (!id) return null;
+  const e = entry(id);   // 入口表 ready: false 优先：登记了但未就绪 → 置灰「等待固件支持」
+  if (e && !e.ready) return { kind: "wait", label: ACTIONS[id]?.label ?? e.label, note: "等待固件支持" };
   const t = ACTIONS[id];
   if (!t) return { kind: "none", label: "暂不可用", note: `工作台还没有这个操作的入口（${id}）` };
   const label = t.label ?? ACTION_LABEL[id] ?? "处理";
-  if (t.ready === false) return { kind: "wait", label, note: "等待固件支持" };
   if (!t.step && !has(t.ui)) return { kind: "none", label, note: "当前界面没有这个入口" };
   return { kind: "run", label };
 }
@@ -108,7 +112,7 @@ export function pageHead(p: Progress): { text: string; label: string; action?: s
 }
 const LABEL: Record<State, string> = { todo: "未开始", doing: "进行中", done: "已完成", blocked: "已阻塞" };
 export function runAction(a: string, go: (s: Step) => void) {
-  const t = ACTIONS[a]; if (!t || t.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => document.getElementById(t.ui)?.click(), 0);
+  const t = ACTIONS[a]; if (!t || entry(a)?.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => { const el = document.getElementById(t.ui); if (t.jump) el?.focus(); else el?.click(); }, 0);
 }
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
 export function render(p: Progress, go: (s: Step) => void) {
@@ -134,9 +138,11 @@ export function render(p: Progress, go: (s: Step) => void) {
   const ph = document.getElementById("pg-head");
   if (ph) {
     const hd = pageHead(p);
+    const extra = document.getElementById("pg-tune");   // 调参页「保存参数」常驻在页头，重画时保留
     ph.innerHTML = `<p class="pg-t"></p><button class="btn pri" type="button"></button>`;
+    if (extra) ph.querySelector("p")!.after(extra);
     ph.querySelector("p")!.textContent = hd.text;
-    const b = ph.querySelector("button")!; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto;
+    const b = ph.querySelector<HTMLButtonElement>(":scope > button.pri")!   /* 不能取第一个 button：调参页常驻的「保存参数」也在页头 */; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto;
     b.onclick = () => { if (hd.action) runAction(hd.action, go); else if (hd.goto) go(JOURNEY.find(j => j.id === hd.goto)!.pages[0] as Step); };
   }
   const h = document.getElementById("step-hint"); if (!h) return;

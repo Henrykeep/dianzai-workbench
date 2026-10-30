@@ -37,6 +37,7 @@ def check_schema(snap):
 
 
 import pathlib as _pl, yaml as _yaml
+SCRIPT_OPS_ = _yaml.safe_load((_pl.Path(__file__).resolve().parents[3] / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["script_ops"]
 ENTRY_IDS = {a["id"] for a in _yaml.safe_load((_pl.Path(__file__).resolve().parents[3] / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["actions"]}
 
 
@@ -188,7 +189,11 @@ def test_fix_actions_fetch_deps_and_run_selftest_entries():
     e = _entries()
     assert P.FIX["missing_deps"] == "fetch_deps" and P.FIX["selftest_fail"] == "run_selftest"
     assert e["fetch_deps"].get("ready", True) is True and e["fetch_deps"]["ops"] == ["fetch_deps"]
-    assert e["run_selftest"]["ready"] is False and e["run_selftest"]["ops"] == ["run_selftest"]
+    # 前端已接上（frontend-polish）：三个 op 从 script_ops 移到 actions，位置 page:tune / page:seal，不用 dynamic
+    assert e["run_selftest"].get("ready", True) is True and e["run_selftest"]["ops"] == ["run_selftest"] and "run_selftest" not in SCRIPT_OPS_
+    assert not e["run_selftest"].get("dynamic") and e["run_selftest"]["at"] == "page:seal"
+    assert P.FIX["params_not_saved"] == "params_flash" and e["params_flash"]["ops"] == ["save_params"] and e["params_flash"]["at"] == "page:tune"
+    assert "save_params" not in SCRIPT_OPS_ and "set_run_mode" not in SCRIPT_OPS_
 
 
 def test_fetch_deps_reuses_doctor_fixes(tmp_path):
@@ -219,7 +224,13 @@ def test_server_fetch_deps_and_run_selftest(home, monkeypatch):
     assert not any(b["code"] == "missing_deps" for b in sv.progress.snapshot()["blockers"])
     with pytest.raises(LinkError) as ei:
         asyncio.run(sv._op({"op": "run_selftest"}))
-    assert ei.value.code == "not_ready"
+    assert ei.value.code == "not_connected" and ei.value.fix          # 未连接：原因 + 怎么解决
+    sv.session.status = lambda: {"alive": True}
+    with pytest.raises(LinkError) as ei:
+        asyncio.run(sv._op({"op": "run_selftest"}))
+    assert ei.value.code == "selftest_unreported" and "固件" in ei.value.fix   # 固件没报自检：不再是 not_ready
+    sv.session.selftest = {"pass": True, "failed_items": [], "t": 1.0}
+    assert asyncio.run(sv._op({"op": "run_selftest"}))["pass"] is True
 
 
 def test_current_project_persist_hello_and_req(home, monkeypatch):

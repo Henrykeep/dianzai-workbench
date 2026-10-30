@@ -35,12 +35,15 @@ HB_TIMEOUT_S = 2.0          # = linkstate.LOST_AFTER_S；板子心跳 500 ms，�
 class LinkError(Exception):
     """带“怎么修”的错误：UI 原样显示 message 和 fix。"""
 
-    def __init__(self, code: str, message: str, fix: str = ""):
+    def __init__(self, code: str, message: str, fix: str = "", fix_action: str | None = None):
         super().__init__(message)
-        self.code, self.message, self.fix = code, message, fix
+        self.code, self.message, self.fix, self.fix_action = code, message, fix, fix_action
 
     def as_dict(self) -> dict:
-        return {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        d = {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        if self.fix_action:
+            d["fix_action"] = self.fix_action
+        return d
 
 
 class Session:
@@ -928,7 +931,17 @@ class Session:
                                     reconnecting=self.reconnecting or (self.resuming and self.tr is None), t_connect=self._t_tr,
                                     last_frame=self.last_frame,
                                     reason="resuming" if self.resuming and self.tr is None else self.down_reason,
-                                    mode=self.run_mode)
+                                    mode=(run_mode_dict(self.hb_status) or {}).get("mode") or self.run_mode,
+                                    fw=self.fw_status())
+
+    def fw_status(self) -> dict:
+        """固件上报的板上状态快照（link.state / progress 共用，字段名与固件一致）；没上报 = null。"""
+        with self.lock:
+            hb = self.hb_status
+            return {"run_mode": run_mode_dict(hb), "selftest": self.selftest,
+                    "params_saved": None if self.params_hash is None or hb is None else not (hb & (1 << 16)),
+                    "params_hash": None if self.params_hash is None else f"{self.params_hash:08x}",
+                    "estop_cause": self.estop_cause}
 
     def status(self) -> dict:
         now = time.monotonic()

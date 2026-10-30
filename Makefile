@@ -216,6 +216,8 @@ check:
 	$(PY) tools/check_entrypoints.py
 	$(PY) tools/check_ui_layout.py --selftest
 	$(PY) tools/check_ui_layout.py
+	$(PY) tools/check_copy.py --selftest
+	$(PY) tools/check_copy.py
 	$(PY) tools/check_deps.py
 	$(PY) tools/check_deps.py --selftest
 	$(PY) tools/iface_hash.py --check

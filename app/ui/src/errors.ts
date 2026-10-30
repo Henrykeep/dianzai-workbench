@@ -9,8 +9,8 @@ const RULES: [RegExp, Omit<Human, "raw">][] = [
   [/merge conflict|CONFLICT/i, { what: "Git 合并冲突", why: "同一文件被两处同时修改", fix: "在编辑器中解决冲突后再提交" }],
   [/non-fast-forward|rejected/i, { what: "Git 推送被拒绝", why: "远端有本地没有的提交", fix: "先拉取并合并远端更新，再推送" }],
   [/check_[a-z_]+\.py|make check|门禁/i, { what: "门禁检查未通过", why: "提交内容不符合仓库规则", fix: "展开详情查看未通过的条目，按提示修改" }],
-  [/unknown op|未知操作/i, { what: "侧车不支持该操作", why: "侧车版本较旧", fix: "更新并重启侧车" }],
-  [/Broken ?pipe|ConnectionClosed|no close frame/i, { what: "与侧车的连接中断", why: "侧车进程退出或重启", fix: "等待侧车恢复；状态栏恢复为「已连接」后重试" }],
+  [/unknown op|未知操作/i, { what: "本地服务不支持该操作", why: "本地服务版本较旧", fix: "更新并重启本地服务" }],
+  [/Broken ?pipe|ConnectionClosed|no close frame/i, { what: "与本地服务的连接中断", why: "本地服务进程退出或重启", fix: "等待本地服务恢复；状态栏恢复为「已连接」后重试" }],
 ];
 export function humanize(raw: string): Human | null {
   for (const [re, h] of RULES) if (re.test(raw)) return { ...h, raw };
