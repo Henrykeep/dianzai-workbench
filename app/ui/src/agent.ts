@@ -346,11 +346,15 @@ export function initAgent(call: Call) {
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
     add(esc(text), "msg me");
     const w = add(`<span class="lbl">思考中…</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
-    tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null;
-    try { const r = await call<string>("agent_ask", { text }); w.firstElementChild!.outerHTML = `<div>${esc(r).replace(/\n/g, "<br>")}</div>`; }
+    tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
+    try {
+      const r = await call<string>("agent_ask", { text });
+      if (r.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
+       else w.firstElementChild!.outerHTML = `<div>${esc(r).replace(/\n/g, "<br>")}</div>`;
+    }
     catch { w.remove(); }
     // 不清 tools/mode：工具事件会比回答晚到（侧车线程 → 事件循环），留给这条消息直到下一问
-    finally { $<HTMLButtonElement>("ag-send").disabled = false; }
+    finally { live = null; $<HTMLButtonElement>("ag-send").disabled = false; }
   };
 
   // ---------------------------------------------------------------- 设置
@@ -359,6 +363,9 @@ export function initAgent(call: Call) {
   let provs: Record<string, Prov> = {}, prov = "deepseek";
   const fv = (id: string) => $<HTMLInputElement>(id).value.trim();
   const form = () => ({ provider: prov, base_url: fv("cfg-url"), model: fv("cfg-model"), api_key: fv("cfg-key") });
+  const extra = () => ({ failover: $<HTMLInputElement>("cfg-fo").checked, local_model: $<HTMLSelectElement>("cfg-local").value,
+    tool_mode: $<HTMLSelectElement>("cfg-tm").value, price_in: fv("cfg-pin") || null, price_out: fv("cfg-pout") || null });
+  function olSt(cls: string, html: string) { const el = $("cfg-ol-st"); el.className = "cst " + cls; el.innerHTML = html; }
   function cfgSt(cls: string, html: string) { const el = $("cfg-st"); el.className = "cst " + cls; el.innerHTML = html; }
   function pickProv(k: string, fill: boolean) {
     prov = k;
@@ -379,6 +386,14 @@ export function initAgent(call: Call) {
     const key = $<HTMLInputElement>("cfg-key"); key.value = ""; key.type = "password";
     key.placeholder = c.has_key ? `已保存 ${c.key_hint}（留空 = 不改）` : "sk-…（Ollama 本地可留空）";
     cfgSt(c.configured ? "ok" : "", c.configured ? `已配置 · ${esc(c.model)}` : "还没测试");
+    $("cfg-local").innerHTML = c.local_models.map((x: { model: string; size: string; note: string }) =>
+      `<option value="${esc(x.model)}" ${x.model === c.local_model ? "selected" : ""}>${esc(x.model)} · ${esc(x.size)}</option>`).join("");
+    const note = () => c.local_models.find((x: { model: string }) => x.model === $<HTMLSelectElement>("cfg-local").value)?.note ?? "";
+    $("cfg-local").onchange = () => olSt("", esc(note()));
+    $<HTMLInputElement>("cfg-fo").checked = c.failover !== false;
+    $<HTMLSelectElement>("cfg-tm").value = c.tool_mode || "auto";
+    $<HTMLInputElement>("cfg-pin").value = c.price_in ?? ""; $<HTMLInputElement>("cfg-pout").value = c.price_out ?? "";
+    olSt("", `${esc(note())}。先点右边检查一次`);
     $<HTMLDialogElement>("cfg").show();   // 非模态：设置开着时急停按钮也必须点得到
   }
   $("ag-cfg").onclick = () => openCfg();
@@ -392,11 +407,29 @@ export function initAgent(call: Call) {
       ? `<b>通了</b> · ${esc(r.model)} · ${r.ms} ms${r.reply ? ` · 回复“${esc(r.reply)}”` : ""}`
       : `<b>没通</b> · ${esc(r.message)}${r.fix ? `<br><span class="fix">→ ${esc(r.fix)}</span>` : ""}`);
   };
+  $("cfg-list").onclick = async () => {
+    const ids: string[] = await call("agent_models", { form: form() }).catch(() => []);
+    $("cfg-models").innerHTML = ids.map(i => `<option value="${esc(i)}">`).join("");
+    cfgSt(ids.length ? "" : "bad", ids.length ? `这个服务有 ${ids.length} 个模型，点“模型”框挑一个` : "这个服务没开放模型列表，照服务商文档手填");
+    if (ids.length) $<HTMLInputElement>("cfg-model").focus();
+  };
+  $("cfg-ol").onclick = async () => {
+    const b = $<HTMLButtonElement>("cfg-ol"), want = $<HTMLSelectElement>("cfg-local").value;
+    b.disabled = true; olSt("busy", `<span class="spin"></span>检查本机 Ollama…`);
+    const r = await call("agent_ollama", { action: "check" }).catch(() => ({ ok: false, message: "侧车没响应" }));
+    if (!r.ok) { b.disabled = false; return olSt("bad", `<b>没找到 Ollama</b> · ${esc(r.message)}${r.fix ? `<br><span class="fix">→ ${esc(r.fix)}</span>` : ""}`); }
+    if (!r.models.some((n: string) => n === want || n === want + ":latest")) {
+      olSt("busy", `<span class="spin"></span>Ollama 在跑；正在拉 ${esc(want)}（几个 GB，视网速要几分钟）…`);
+      const p = await call("agent_ollama", { action: "pull", model: want }).catch(() => ({ ok: false, status: "失败" }));
+      if (!p.ok) { b.disabled = false; return olSt("bad", `<b>拉取没成功</b> · ${esc(p.status || p.message || "")}`); }
+    }
+    b.disabled = false; olSt("ok", `<b>本地就绪</b> · ${esc(want)} · 云端连不上时自动切过去`);
+  };
   $<HTMLDialogElement>("cfg").onclose = () => {
     sessionStorage.setItem("dz-cfg-seen", "1");
     if ($<HTMLDialogElement>("cfg").returnValue !== "save") return;
     const done = add(`<span class="lbl">大模型</span>保存中…`, "msg bot");
-    call("agent_config", { set: { ...form(), repo: fv("cfg-repo") } })
+    call("agent_config", { set: { ...form(), ...extra(), repo: fv("cfg-repo") } })
       .then(() => { done.innerHTML = `<span class="lbl">大模型</span>已保存：${esc(fv("cfg-model"))}。下一句话起用它回答。`; })
       .catch(() => done.remove());
   };
@@ -440,8 +473,40 @@ export function initAgent(call: Call) {
     if (r) add(`<span class="lbl">模式</span> 已切到「${esc(r.name)}」`);
   };
 
+  // ---------------------------------------------------------------- 流式 / 用量 / 断线
+  let live: HTMLElement | null = null, streamed = "";
+  function onDelta(t: string) {      // 流式：边收边显示；工具调用后的新一段从头接
+    if (!live) return;
+    streamed += t;
+    const first = live.firstElementChild as HTMLElement;
+    if (first.classList.contains("lbl")) first.outerHTML = `<div class="stream"></div>`;
+    (live.firstElementChild as HTMLElement).innerHTML = esc(streamed).replace(/\n/g, "<br>");
+  }
+  function modeLine(m: Msg) {
+    if (!mode) return;
+    if (m.type === "agent_mode") {
+      mode.dataset.base = m.mode === "local" ? `本地 ${m.name}${m.fallback ? " · 云端连不上，已自动切到本地" : ""}` : `大模型 ${m.name}`;
+      mode.classList.toggle("local", m.mode === "local");
+    }
+    if (m.type === "agent_usage") mode.dataset.use = ` · ${(m.prompt + m.completion).toLocaleString()} tokens${m.cost != null ? ` · ¥${m.cost.toFixed(4)}` : ""}`;
+    if (m.type === "agent_retry") mode.dataset.use = ` · 服务忙，第 ${m.attempt} 次重试…`;
+    if (m.type === "agent_toolmode") mode.dataset.use = ` · ${m.model} 不支持原生工具调用，已改 JSON 兜底`;
+    mode.textContent = (mode.dataset.base ?? "") + (mode.dataset.use ?? "");
+  }
+  function renderDown(m: Msg) {      // 没模型 / 连不上：说清楚、其它功能照常，给“重试 / 设置”
+    const c = add(`<div class="down"><span class="dot"></span><div><b>Agent 暂时用不了</b><p>${esc(m.message)}</p>
+      ${m.fix ? `<p class="fix">${esc(m.fix)}</p>` : ""}<p class="ok">调参、示波、急停、阶跃测试、评分页都不依赖 Agent，照常能用。</p></div></div>
+      <div class="act"><button class="btn" data-r="cfg">大模型设置</button><button class="btn pri" data-r="retry">重试</button></div>`, "card down-card");
+    c.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg();
+    c.querySelector<HTMLElement>("[data-r=retry]")!.onclick = () => { c.remove(); $<HTMLInputElement>("ag-in").value = m.text; $<HTMLFormElement>("ag-form").requestSubmit(); };
+  }
+
   return {
     onMsg(m: Msg) {
+      if (m.type === "agent_delta") onDelta(m.text);
+      if (m.type === "agent_tool") streamed = "";
+      if (["agent_mode", "agent_usage", "agent_retry", "agent_toolmode"].includes(m.type)) modeLine(m);
+      if (m.type === "agent_unreachable") renderDown(m);
       if (m.type === "agent_plan") renderPlan(m);
       if (m.type === "agent_tune_pending") renderTune(m);
       if (m.type === "agent_journal") renderJournal(m.items);
@@ -449,7 +514,6 @@ export function initAgent(call: Call) {
       if (m.type === "agent_action") renderAction(m);
       if (m.type === "tune_round") renderRound(m);
       if (m.type === "sweep_result") renderSweep(m);
-      if (m.type === "agent_mode" && mode) mode.textContent = m.mode === "offline" ? `${m.name} · 无需联网${m.fallback ? "（大模型连不上，已自动切换）" : ""}` : `大模型 ${m.name}`;
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
     },
     add,

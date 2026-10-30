@@ -647,3 +647,19 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 .dlg.llm .cst .spin{display:inline-block;width:10px;height:10px;margin-right:var(--sp2);border-radius:50%;border:2px solid var(--line2);border-top-color:var(--acc);animation:cspin .8s linear infinite;vertical-align:-1px}
 @keyframes cspin{to{transform:rotate(360deg)}}
 .dlg.llm .act{margin-top:var(--sp3);padding-top:var(--sp3);border-top:1px solid var(--line)}
+.dlg.llm .lrow{display:flex;justify-content:space-between;align-items:baseline}
+.dlg.llm .lk{border:0;background:none;padding:0;color:var(--acc);font-size:var(--t-xs);cursor:pointer}
+.dlg.llm .sw{flex-direction:row;align-items:center;gap:var(--sp2);color:var(--text)}
+.dlg.llm .sw input{accent-color:var(--acc)}
+.dlg.llm .testrow select{flex:1;min-width:0}
+.dlg.llm .row2 .row2{gap:var(--sp2)}
+#cfg-ol-st:empty{display:none}
+.msg.bot .mode.local{color:var(--warn)}
+.msg.bot .stream{white-space:normal}
+.card.down-card{flex:none;padding:var(--sp4);background:var(--s2);box-shadow:inset 0 0 0 1px var(--line)}
+.card.down-card .down{display:flex;gap:var(--sp3)}
+.card.down-card .dot{flex:none;width:8px;height:8px;margin-top:6px;border-radius:50%;background:var(--warn);box-shadow:0 0 0 4px var(--warn-bg)}
+.card.down-card b{font-weight:500;color:var(--ink)}
+.card.down-card p{margin-top:var(--sp1);font-size:var(--t-sm);color:var(--muted);line-height:1.5}
+.card.down-card p.fix{color:var(--text)} .card.down-card p.ok{color:var(--ok)}
+.card.down-card .act{display:flex;gap:var(--sp2);justify-content:flex-end;margin-top:var(--sp3)}
