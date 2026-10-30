@@ -37,6 +37,23 @@ def _safe(name: str) -> str:
     return s
 
 
+def board_name(src: pathlib.Path) -> str:
+    """默认板名：工程文件夹名去掉“副本 / copy / (6)”这类复制噪声；剩不下字母数字就用 .ioc 文件名。"""
+    for cand in (src.name, *(f.stem for f in sorted(src.glob("*.ioc")))):
+        s = re.sub(r"副本|\bcopy\b|\(\d+\)|（\d+）", " ", cand, flags=re.I)
+        s = re.sub(r"[^A-Za-z0-9_]+", "-", s).strip("-_").lower()
+        s = re.sub(r"-{2,}", "-", s)
+        if s:
+            return s
+    return "board"
+
+
+def find_uvprojx(src: pathlib.Path) -> str:
+    """工程里的 Keil .uvprojx（CubeMX 一般在 MDK-ARM/ 下）；没有就空串。"""
+    fs = sorted(src.glob("*.uvprojx")) + sorted(src.glob("*/*.uvprojx"))
+    return str(fs[0]) if fs else ""
+
+
 _ALIAS = re.compile(r"^(\s*)([A-Za-z0-9_]+):(\s*)([A-Za-z0-9_]+)(\s*#\s*(.*))?$")
 
 
@@ -128,7 +145,7 @@ class Flow:
             src = pathlib.Path(m.get("project") or "").expanduser()
             if not (src.is_dir() and list(src.glob("*.ioc"))):
                 raise FlowError("no_ioc", f"{src} 里没有 .ioc", "选 CubeMX 工程根目录（有 .ioc 和 Core/）")
-            name = _safe(m.get("name") or src.name.lower())
+            name = _safe(m.get("name") or board_name(src))
             st = self.stage(code, "import")
             root = st / "root"; (root / "boards").mkdir(parents=True)
             for e in self.repo.iterdir():                      # 暂存根：仓库顶层逐项软链，boards/ 另建
@@ -148,7 +165,7 @@ class Flow:
             need_repair = "USER CODE 标记被改坏" in r["out"] and not m.get("accept_repair")
             exists = (self.repo / "boards" / name).exists()
             return r | {"name": name, "aliases": al, "need_repair": need_repair, "files": self._files(bd) if bd.is_dir() else {},
-                        "target": str(self.repo / "boards" / name), "overwrite": exists}
+                        "target": str(self.repo / "boards" / name), "overwrite": exists, "uvprojx": find_uvprojx(src)}
         if step == "alloc":
             sch = tgt / "scheme.yaml"
             if not sch.exists():
@@ -170,7 +187,8 @@ class Flow:
                 r = self._run(["tools/gen_project.py", pj, "-o", st / "gen"])
                 out.update(cmd=r["cmd"], rc=r["rc"], out=r["out"], files=self._files(st / "gen"))
             else:
-                out["out"] = f"{pj} 还没有：project.yaml（子系统 / 共享状态）由 tools/new_subsys.py 起稿，见 docs/07。\n"
+                out["out"] = (f"{pj} 还没有：project.yaml（子系统 / 共享状态）由 tools/new_subsys.py 起稿，见 docs/07。\n"
+                              "现在可以先做的：应用填 port_selftest、选上你的 .uvprojx，把板卡自检模块注入 Keil，上板确认引脚和串口通了再写子系统。\n")
                 out["rc"] = 1
             if m.get("uvprojx"):
                 uv = pathlib.Path(m["uvprojx"]).expanduser()

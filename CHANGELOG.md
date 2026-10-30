@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 项目页少按键（拿用户两个真实工程 + 2026 题 PDF 无头走查后改的，通用规则、无题目专用代码）：确认后自动跑下一步预览；工程目录填完即运行（同目录失焦不重跑）；题号按 PDF 名猜；板名去掉“副本 / (6)”噪声（原来是 bldc---6），不行用 .ioc 名；.uvprojx 自动找；应用默认 port_selftest，没有 project.yaml 也能先注入 Keil。人工操作：p1（F407 Bldc + H题）12→8，p2（F103 Car_Mode1021 + D题，含接受修复）13→9；Keil 注入只在工程副本上确认过，未在 µVision 打开。
 - [仿真] 评分页写回 requirements.yaml：存完证据点“写回 requirements…”，侧车 score_writeback 先给 diff（只在该项 evidence 末尾加一行 { path 相对路径, layer, date, result pass/partial/fail, note 结论 + 最差一轮 }，按行插入，注释和排版不动；没有 evidence 键就补上），点“确认写回”才写，预览后文件被改过就拒绝。插完重新解析核对这一条确实进了这一项，认不出排版就让人手贴。顺带修：评分项的 accept / runs 写在评分项上（不在 metric 里）时评分页没认出规格。tests/test_scoring.py 用 2026H 真 requirements.yaml 测 B3（已有两行证据）/ B4（无 evidence），req.py check 不报新条目错误。[仿真] 无头 Chrome 走完 保存 → diff → 确认写回
 - [仿真] 评分页证据图：run_NN.png 改为只画这一轮截取的那段（时间从 0 起），每格标通道名和单位，设定值通道虚线画在被控量那格，标题写评分项和轮次（score.ts snapRun；原来是截示波区当时的窗口、没有通道名）。UI 单测 lanesOf。[仿真] 无头 Chrome 连 host-sim 存证据核对
 - [未测] 文档整理（产品逻辑重组 6）：过程文档 19 / 23 / 24 / 25 / 27 / 29 / MORNING / QUESTIONS 挪到 docs/dev/（HANDOVER 不动），llms.txt、docs/README、HANDOVER、docs 07/17/18/31 与代码注释（session.py、agent/guard.py、agent/experiment.py、catalog/parts.yaml）里的路径同步；docs/README 按 8 步（项目 / 烧录 / 模块 / 联调 / 标定 / 调参 / 评分 / 封箱）分组，文件名不改；README 去掉过时说法（“第 0 阶段”“178 项主机测试”“仅本地 git，不推送”），验证状态改成现在的实情（preflight 范围、还没有 [上板]）。只动文档和注释；固件 README / 头文件和 examples io 里“见 QUESTIONS NN”的纯文字提法没改（不是路径，改了要动模块版本 / 别人在改的 io）

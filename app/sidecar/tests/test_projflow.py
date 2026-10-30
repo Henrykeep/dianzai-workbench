@@ -1,6 +1,6 @@
 """项目页引导流程：运行只写暂存区，确认才写目标（dzbench/projflow.py）。"""
 import pathlib, subprocess, yaml, pytest
-from dzbench.projflow import Flow, FlowError, alias_rows, apply_alias_edits
+from dzbench.projflow import Flow, FlowError, alias_rows, apply_alias_edits, board_name, find_uvprojx
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 PROJ = REPO / "tools/testdata/real/projects/Car_Mode1021"
@@ -41,3 +41,12 @@ def test_import_preview_does_not_touch_boards(tmp_path):
     r = Flow(REPO, home=tmp_path).preview("import", {"code": "T", "project": str(PROJ), "name": "pf_test_board"})
     assert r["name"] == "pf_test_board" and _snap(REPO / "boards") == before
     assert subprocess.run(["git", "status", "--porcelain", "boards"], cwd=REPO, capture_output=True, text=True).stdout == ""
+
+
+def test_board_name_strips_copy_noise_and_finds_uvprojx(tmp_path):
+    d = tmp_path / "Bldc - 副本 (6) - 副本"; (d / "MDK-ARM").mkdir(parents=True)
+    (d / "Bldc.ioc").write_text(""); (d / "MDK-ARM" / "Bldc.uvprojx").write_text("")
+    assert board_name(d) == "bldc"
+    assert find_uvprojx(d).endswith("MDK-ARM/Bldc.uvprojx")
+    e = tmp_path / "副本"; e.mkdir(); (e / "F407_motor.ioc").write_text("")
+    assert board_name(e) == "f407_motor" and find_uvprojx(e) == ""
