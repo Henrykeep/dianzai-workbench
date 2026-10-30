@@ -8,7 +8,7 @@
 调节时间 20（≤ t_max/3 满分，≥ t_max 0 分，线性）。总分 = 各题平均。跑一次约 1~2 分钟。
 """
 from __future__ import annotations
-import argparse, json, math, os, pathlib, subprocess, sys, tempfile, time
+import argparse, json, math, os, pathlib, re, subprocess, sys, tempfile, time
 
 import yaml
 
@@ -37,12 +37,14 @@ def _lin(x, good, bad):
     return max(0.0, min(1.0, (bad - x) / (bad - good))) if bad != good else float(x <= good)
 
 
-def step(svc, s, st, acc):
+def step(svc, s, st, acc, csv=None):
     r = svc.run_step_test()
     m = r["metrics"]
     hold, pre = float(st.get("hold_s", 1.5)), float(st.get("pre_s", 0.6))
     w = s.window(hold + pre * 0.5)
     t = [a for a, _ in w]; y = [float(v[st["y"]]) for _, v in w]; sp = [float(v[st["sp"]]) for _, v in w]
+    if csv:
+        csv.write_text("t_s,sp,y\n" + "".join(f"{a:.4f},{b:.6g},{c:.6g}\n" for a, b, c in zip(t, sp, y)))
     a = accept_eval(t, y, sp, acc) or {"pass": False, "why": "数据太少", "total": math.nan}
     return m, a
 
@@ -64,15 +66,28 @@ def flow(p, out, journey):
     for j in journey:
         if j["stage"] in na:
             mode, note = "na", na[j["stage"]]
-        elif not j["supported"]:
+        elif j["support"] == "none":
             mode, note = "uncovered", j.get("human", "")
         elif ok.get(j.get("auto_if")):
             mode, note = "auto", j.get("where", "")
         else:
             mode, note = "human", j.get("human", "")
-        steps.append({"stage": j["stage"], "supported": j["supported"], "mode": mode, "note": note})
+        steps.append({"stage": j["stage"], "support": j["support"], "mode": mode, "note": note})
     n_auto = sum(x["mode"] == "auto" for x in steps); n_app = sum(x["mode"] != "na" for x in steps)
     return {"steps": steps, "auto": n_auto, "applicable": n_app, "ratio": round(n_auto / max(1, n_app), 3)}
+
+
+def _case_src(p):
+    return ROOT / (p.get("src") or (f"apps/{p['app']}" if (ROOT / "apps" / p["app"]).is_dir() else f"examples/{p['app']}"))
+
+
+def readiness(p, items, out_dir):
+    """脱机就绪：工程源码里有没有对应调用；“自测留数据”看基准是否把阶跃原始数据存了档。"""
+    src = _case_src(p)
+    text = "\n".join(f.read_text(errors="replace") for f in src.rglob("*.c"))
+    res = [{"item": it["item"], "ok": (out_dir / f"{p['id']}.csv").exists() if it.get("bench") else bool(re.search(it["uses"], text))}
+           for it in items]
+    return {"items": res, "ok": sum(x["ok"] for x in res), "n": len(res)}
 
 
 def _sloc(path):
@@ -86,7 +101,7 @@ def reuse(p):
     """复用率 = 复用模块代码行 /（复用 + 本工程专用代码行），按这次仿真构建真正编进去的源文件（编译器 .d 依赖）统计。
     复用 = firmware/、apps/include/、ports/；专用 = 工程目录里除仿真对象模型以外的；生成的（build/）和仿真对象模型单列不计入比值。
     注意：按文件计，模块里没调用到的函数也算在内。"""
-    src = ROOT / (p.get("src") or (f"apps/{p['app']}" if (ROOT / "apps" / p["app"]).is_dir() else f"examples/{p['app']}"))
+    src = _case_src(p)
     plant = [(src / x).resolve() for x in p.get("plant_files") or []]
     files = set()
     for d in (ROOT / "build/host-sim" / p["app"]).rglob("*.d"):
@@ -114,10 +129,11 @@ def reuse(p):
     return {**cat, "ratio": round(cat["reused"] / base, 3) if base else None, "src": src.relative_to(ROOT).as_posix()}
 
 
-def run_problem(p, cfg, journey):
+def run_problem(p, cfg, journey, out_dir):
     st = cfg["step_tests"][p.get("experiment") or p["app"]]
     acc = p["accept"]
     out = {"id": p["id"], "kind": p.get("kind", "project"), "title": p["title"], "app": p["app"], "stages": {}}
+    (out_dir / f"{p['id']}.csv").unlink(missing_ok=True)
     t0 = time.monotonic()
     s = Session()
     try:
@@ -128,7 +144,7 @@ def run_problem(p, cfg, journey):
             raise RuntimeError("仿真板没起来或没遥测")
         time.sleep(1.0)
         svc = AgentService(s, AgentTools(s, lambda e: None), lambda e: None)
-        m, a = step(svc, s, st, acc)
+        m, a = step(svc, s, st, acc, out_dir / f"{p['id']}.csv")
         out["stages"]["default_step"] = {"metrics": m, "accept": a}
         if p.get("tune") == "relay":
             names = st.get("gains") or {}
@@ -142,7 +158,7 @@ def run_problem(p, cfg, journey):
                     if names.get(k):
                         s.set_param(names[k], float(r["gains"][k]), verify=True)   # 相当于用户点“采纳”
                 time.sleep(0.5)
-                m, a = step(svc, s, st, acc)
+                m, a = step(svc, s, st, acc, out_dir / f"{p['id']}.csv")
                 out["stages"]["tuned_step"] = {"metrics": m, "accept": a}
             else:
                 m, a = {"ok": False}, {"pass": False, "why": "继电起步失败"}
@@ -157,7 +173,8 @@ def run_problem(p, cfg, journey):
             s.disconnect()
         except Exception:  # noqa: BLE001
             pass
-    out["automation"] = flow(p, out, journey)
+    out["automation"] = flow(p, out, journey["stages"])
+    out["readiness"] = readiness(p, journey["readiness"], out_dir)
     out["reuse"] = reuse(p)
     out["elapsed_s"] = round(time.monotonic() - t0, 1)
     return out
@@ -182,21 +199,23 @@ def advice(r):
 
 
 def table(res):
-    rows = ["| 用例 | 类型 | 分数 | 验收 | 超调 % | 调节 s | AI 自动化 | 复用率 | 说明 |", "|---|---|---:|---|---:|---:|---:|---:|---|"]
+    rows = ["| 用例 | 类型 | 分数 | 验收 | 超调 % | 调节 s | AI 自动化 | 复用率 | 脱机就绪 | 说明 |", "|---|---|---:|---|---:|---:|---:|---:|---:|---|"]
     for r in res["problems"]:
         f, a, u = r["final"], r["automation"], r["reuse"]
         rows.append(f"| {r['id']} | {r.get('kind', '')} | {r['score']:.1f} | {'✓' if f.get('pass') else '✗'} | "
                     f"{_f(f.get('overshoot_pct'), '{:.1f}')} | {_f(f.get('settling_s'))} | {a['auto']}/{a['applicable']} = {a['ratio']:.0%} | "
-                    f"{_f(u['ratio'], '{:.0%}')}（{u['reused']}/{u['reused'] + u['case']} 行） | {f.get('why') or ''} |")
-    rows.append(f"| **平均** | | **{res['total']:.1f}** | {res['passed']}/{len(res['problems'])} | | | {res['auto_ratio']:.0%} | {_f(res['reuse_ratio'], '{:.0%}')} | |")
+                    f"{_f(u['ratio'], '{:.0%}')}（{u['reused']}/{u['reused'] + u['case']} 行） | {r['readiness']['ok']}/{r['readiness']['n']} | {f.get('why') or ''} |")
+    rows.append(f"| **平均** | | **{res['total']:.1f}** | {res['passed']}/{len(res['problems'])} | | | {res['auto_ratio']:.0%} | {_f(res['reuse_ratio'], '{:.0%}')} | | |")
     rows.append("")
-    rows += ["", "## 全流程覆盖（✓自动 · 人=要人做 · 0=工作台未覆盖 · —不适用）", "",
-             "| 用例 | " + " | ".join(x["stage"] for x in res["problems"][0]["automation"]["steps"]) + " |",
+    rows += ["", "## 全流程覆盖（✓AI 自动 · 人=要人做 · 0=工作台未覆盖 · —不适用；表头 *=工作台仅部分支持）", "",
+             "| 用例 | " + " | ".join(x["stage"] + ("*" if x["support"] == "partial" else "") for x in res["problems"][0]["automation"]["steps"]) + " |",
              "|---|" + "---|" * len(res["problems"][0]["automation"]["steps"])]
     sym = {"auto": "✓", "human": "人", "uncovered": "0", "na": "—"}
     rows += [f"| {r['id']} | " + " | ".join(sym[x["mode"]] for x in r["automation"]["steps"]) + " |" for r in res["problems"]]
     rows.append("")
     rows.append("需要人的步骤：" + "；".join(f"{r['id']}：" + "、".join(x["stage"] for x in r["automation"]["steps"] if x["mode"] == "human") for r in res["problems"]))
+    rows += ["", "脱机就绪缺项：" + "；".join(f"{r['id']}：" + ("、".join(x["item"] for x in r["readiness"]["items"] if not x["ok"]) or "无")
+                                          for r in res["problems"]), ""]
     rows.append("复用率按仿真构建实际编译的源文件计（host-sim 会编进整个模块库，所以是上限）；仿真对象模型和生成代码不计入。")
     bad = [r for r in res["problems"] if not r["final"].get("pass")]
     rows += ["", "## 未通过与建议", ""] + ([f"- **{r['id']}**：{r['final'].get('why') or '未通过'} → {advice(r)}" for r in bad] or ["- 无"])
@@ -217,9 +236,10 @@ def main():
     rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     dirty = bool(subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip())
     res = {"commit": rev + ("-dirty" if dirty else ""), "time": time.strftime("%Y-%m-%d %H:%M:%S %z"), "problems": []}
+    out = pathlib.Path(args.out); out.mkdir(parents=True, exist_ok=True)
     for p in probs:
         print(f"… {p['id']} {p['title']}", flush=True)
-        res["problems"].append(run_problem(p, cfg, journey))
+        res["problems"].append(run_problem(p, cfg, journey, out))
     res["total"] = round(sum(r["score"] for r in res["problems"]) / max(1, len(res["problems"])), 1)
     res["auto_ratio"] = round(sum(r["automation"]["ratio"] for r in res["problems"]) / max(1, len(res["problems"])), 3)
     rr = [r["reuse"]["ratio"] for r in res["problems"] if r["reuse"]["ratio"] is not None]
@@ -229,7 +249,6 @@ def main():
     if args.baseline and pathlib.Path(args.baseline).exists():
         b = {r["id"]: r["score"] for r in json.loads(pathlib.Path(args.baseline).read_text())["problems"]}
         md += "\n对比基线：" + "，".join(f"{r['id']} {r['score'] - b[r['id']]:+.1f}" for r in res["problems"] if r["id"] in b) + "\n"
-    out = pathlib.Path(args.out); out.mkdir(parents=True, exist_ok=True)
     (out / "results.json").write_text(json.dumps(res, ensure_ascii=False, indent=1, default=str))
     (out / "results.md").write_text(md)
     print(md); print(f"→ {out}/results.json, results.md")

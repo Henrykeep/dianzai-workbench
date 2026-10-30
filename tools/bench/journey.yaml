@@ -1,13 +1,24 @@
-# make bench 的全流程阶段表：真实队伍从拿题到比赛结束（统筹者《开发全流程旅程图》，改阶段只改这里）。
-# supported：工作台有没有这项能力；where：在哪；human：基准没自动完成时要人做什么；
-# auto_if：基准里哪一步真跑通了就算 AI 自动完成（build_link | relay | default_step），没有 = 基准不自动做。
-- {stage: 拆指标, supported: true, where: "tools/req.py（requirements.yaml）", human: "人写 requirements.yaml"}
-- {stage: 定方案选板器件, supported: true, where: "tools/scheme.py", human: "人写/确认 scheme.yaml"}
-- {stage: 分工, supported: false, human: "队内人工分工"}
-- {stage: 工程与引脚, supported: true, where: "tools/alloc.py、新建工程向导", human: "基准沿用已有工程，未走向导"}
-- {stage: 驱动点亮, supported: true, where: "make test（tests/host 驱动单测）", human: "基准不跑，靠 make test；实物需人上板"}
-- {stage: 子系统联调, supported: true, where: "仿真板自动构建 + 链路 schema 识别", auto_if: build_link, human: "没连上"}
-- {stage: 标定调参, supported: true, where: "无初值一键起步（继电 → TL 规则）", auto_if: relay, human: "沿用人写的默认参数；标定靠人"}
-- {stage: 对照评分自测, supported: true, where: "阶跃实验 + accept.py", auto_if: default_step, human: "没跑到评分"}
-- {stage: 设计报告封箱, supported: true, where: "tools/report.py（未接入基准）", human: "人出报告并封箱"}
-- {stage: 现场应急修改, supported: false, human: "现场人工改"}
+# make bench 的阶段表与脱机就绪检查。阶段照 /workspace/charter/旅程图.md（统筹者《开发全流程旅程图》）1–13，改阶段只改这里。
+# support：full（工作台有，且 AI/界面能驱动）| partial（有 CLI/清单，非 AI 驱动）| none（未覆盖，记 0）
+# auto_if：基准里哪一步真跑通了就算 AI 自动完成（build_link | relay | default_step）；没有 auto_if = 基准不自动做。
+stages:
+  - {stage: 拆指标, support: partial, where: "tools/req.py（CLI，非 AI 驱动）", human: "人写 requirements.yaml"}
+  - {stage: 定方案选型, support: partial, where: "tools/scheme.py（CLI，非 AI 驱动）", human: "人写/确认 scheme.yaml"}
+  - {stage: 分工BOM接线表, support: none, human: "队内人工"}
+  - {stage: 搭工程配引脚, support: full, where: "新建工程向导、tools/alloc.py", human: "基准沿用已有工程，未走向导"}
+  - {stage: 驱动点亮, support: full, where: "仿真板自动构建启动", auto_if: build_link, human: "构建/启动失败"}
+  - {stage: 子系统联调, support: full, where: "链路 schema/遥测自动识别", auto_if: build_link, human: "没连上"}
+  - {stage: 标定, support: none, human: "零点/比例/死区人工标定"}
+  - {stage: 调参, support: full, where: "无初值一键起步（继电 → TL 规则）", auto_if: relay, human: "沿用人写的默认参数"}
+  - {stage: 对照评分自测, support: full, where: "阶跃实验 + accept.py，数据存 build/bench/", auto_if: default_step, human: "没跑到评分"}
+  - {stage: 冻结脱机演示, support: partial, where: "precontest.py 赛前检查（界面，非基准）", human: "人打 tag、固化参数、演练"}
+  - {stage: 设计报告, support: partial, where: "tools/report.py（CLI）", human: "人写报告"}
+  - {stage: 封箱, support: partial, where: "precontest.py 封箱清单", human: "人封箱"}
+  - {stage: 测评现场应急, support: none, human: "现场人工改"}
+
+# 脱机就绪（赛制：作品脱离电脑运行、上电自检、参数掉电保存、自测留数据）：在工程自己的源码里找对应调用（正则），通用不看题。
+readiness:
+  - {item: 参数掉电保存, uses: 'persist_(kv_put|blob_save)\('}
+  - {item: 上电自检, uses: '(selftest|self_test)\s*\('}
+  - {item: 板上事件记录, uses: 'bb_log\('}
+  - {item: 自测留数据, bench: samples}
