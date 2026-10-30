@@ -41,7 +41,7 @@ def pytest_collection_modifyitems(config, items):
         m = it.get_closest_marker("needs_third_party")
         miss = [d for d in (m.args if m else ()) if not (THIRD / d).is_dir()]
         if miss:
-            it.add_marker(pytest.mark.skip(reason=f"缺 third_party/{', '.join(miss)}：tools/fetch_third_party.sh f4 f1 freertos mspm0"))
+            it.add_marker(pytest.mark.skip(reason=f"缺 third_party/{', '.join(miss)}：在仓库根目录运行 make fetch"))
 
 
 @pytest.fixture(autouse=True)
