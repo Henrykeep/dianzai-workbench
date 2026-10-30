@@ -100,3 +100,4 @@
 8. ADC/DAC PAL → PAL 1.6.0：`pal_adc_block_read`（软件定时，四端口共用 `firmware/pal/pal_adc_block.inc`）、`pal_dac_write/info` + board.yaml `dac:`（只 host-sim 实现，真板端口 DZ_ENOTSUP，validate_board 拒绝真板写 dac）。端口版本 host-sim 2.5.0 / cubemx 1.8.0 / f4-hal 1.4.0 / mspm0 0.8.0。[仿真]；没做定时器触发 + DMA、真板 DAC。
    - ADC 块采样硬件路径（cubemx 1.10.0 F1/F4 TRGO+DMA ≤200 kHz；mspm0 0.10.0 TIMG 事件+DMA ≤500 kHz），board.yaml adc.block 开启，不满足条件退回软件定时。[编译]，样例板 CubeMX 文件手改，未上板。
    - PAL 1.7.0：真板 DAC（cubemx HAL_DAC、mspm0 DAC12），validate_board 按芯片型号（boardlib.DAC_PARTS）放行/拒绝；样例板 skystar-cubemx PA4、天猛星 PA15。[编译]，CubeMX/SysConfig 文件是手改的。
+9. 调参前问答：Agent 菜单“调参前问答” → op pretune_get/pretune_set → dzbench/agent/pretune.py；偏好进 Agent 上下文 + 只收紧护栏（超调上限、权重、保守步子）。[仿真]；对话框未在桌面端点过，输出安全限没落到固件限幅。

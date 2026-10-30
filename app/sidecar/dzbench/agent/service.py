@@ -16,7 +16,7 @@ from ..flash import FlashError, Flasher, schema_hash_of
 from ..session import LinkError, Session
 from ..transport import ROOT
 from . import llm as llm_mod
-from . import risk, yamlpar
+from . import pretune as pretune_mod, risk, yamlpar
 from .guard import GuardError, TuneGuard, key_samples
 from .gateway import Gateway, GatewayError
 from .journal import BoardMemory, Journal, board_key
@@ -62,6 +62,7 @@ class AgentService:
         self.cfg = cfg_mod.load(self.gw.root)
         self.flasher = Flasher(session, self.cfg)
         self.guard: TuneGuard | None = None
+        self.pretune: pretune_mod.PreTune | None = None   # 调参前问答（人确认过的偏好；只收紧护栏）
         self.staged = StagedSearch()
         self.actions: dict[int, dict] = {}
         self._aid = itertools.count(1)
@@ -276,8 +277,26 @@ class AgentService:
                                    max_rounds=t["max_rounds_sim"] if self.sim else min(int(t["max_rounds_hw"]), 10),
                                    weights=t.get("weights", "balanced"),
                                    max_step_ratio=(float(t["max_step_ratio"]) if t.get("max_step_ratio") else None))
+            if self.pretune:
+                self.pretune.apply(self.guard)
             self.staged = StagedSearch(order=tuple(self._gains()) or ("kp", "ki", "kd"))
         return self.guard
+
+    # -------------------------------------------------------------- 调参前问答（缺口 9）
+    def pretune_get(self) -> dict:
+        return {"questions": pretune_mod.QUESTIONS, "current": pretune_mod.to_dict(self.pretune)}
+
+    def pretune_set(self, answers: dict | None) -> dict:
+        """界面对话框里人点“确认” = 已人工确认。answers 为 None / 空 = 清掉偏好。护栏重建（新偏好从下一轮起生效）。"""
+        if not answers:
+            self.pretune = None; self.guard = None
+            self.loop.note("用户清掉了调参前问答的偏好，回到默认调参策略。")
+            return {"current": None, "applied": []}
+        self.pretune = pretune_mod.from_answers(answers)
+        self.guard = None
+        applied = self.pretune.apply(TuneGuard({}, self.sim, weights="balanced"))   # 预览改了什么；真护栏在 _guard 里重建时套用
+        self.loop.note(self.pretune.prompt_text())
+        return {"current": pretune_mod.to_dict(self.pretune), "applied": applied}
 
     def reset_guard(self) -> dict:
         self.guard = None

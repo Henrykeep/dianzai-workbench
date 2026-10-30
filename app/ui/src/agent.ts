@@ -178,6 +178,30 @@ export function initAgent(call: Call) {
     if (!window.confirm(`回到第 ${b.round} 轮（得分 ${b.score}）：${g}？`)) return;
     call<any>("tune_rollback_best").then(r => add(`<span class="lbl">已回到第 ${r.round} 轮：改了 ${r.applied.length} 个参数</span>`, "msg bot"), () => {});
   };
+  // 调参前问答（缺口 9）：问题由侧车给，人点“确认”才生效
+  $("ag-pre").onclick = async () => {
+    const r = await call<any>("pretune_get").catch(() => null);
+    if (!r) return;
+    const cur = r.current || {};
+    $("pre-q").innerHTML = r.questions.map((q: any) => {
+      const v = cur[q.key] ?? "";
+      const inp = q.choices
+        ? `<select class="in" name="${q.key}"><option value="">—</option>${Object.entries(q.choices).map(([k, t]) => `<option value="${esc(k)}" ${k === v ? "selected" : ""}>${esc(t as string)}</option>`).join("")}</select>`
+        : `<input class="in" name="${q.key}" ${q.type === "number" ? 'type="number" min="0" max="100" step="0.5"' : ""} value="${esc(String(v))}">`;
+      return `<label>${esc(q.q)}${inp}</label>`;
+    }).join("");
+    $<HTMLDialogElement>("pre-dlg").show();
+  };
+  $<HTMLDialogElement>("pre-dlg").addEventListener("close", () => {
+    const d = $<HTMLDialogElement>("pre-dlg");
+    if (d.returnValue === "cancel" || !d.returnValue) return;
+    const answers: Record<string, string> = {};
+    if (d.returnValue === "save")
+      $("pre-q").querySelectorAll<HTMLInputElement | HTMLSelectElement>("[name]").forEach(e => { if (e.value.trim()) answers[e.name] = e.value.trim(); });
+    call<any>("pretune_set", { answers: d.returnValue === "save" ? answers : null }).then(r => add(r.current
+      ? `<span class="lbl">调参偏好已记下：${esc(r.current.summary)}${r.applied.length ? "；护栏：" + esc(r.applied.join("，")) : ""}</span>`
+      : `<span class="lbl">调参偏好已清掉，回到默认策略</span>`, "msg bot"), () => {});
+  });
   $("ag-guard").onclick = () => call("tune_reset").then(() => add(`<span class="lbl">调参护栏已重置：之前的轮次和“最好一轮”不再参考</span>`, "msg bot"), () => {});
   $("ag-new").onclick = () => call("agent_reset").then(() => { feed.innerHTML = AGENT_IDLE; }, () => {});
   $("ag-yaml").onclick = () => call("yaml_writeback").then(renderChange, () => {});

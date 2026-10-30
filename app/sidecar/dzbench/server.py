@@ -270,6 +270,10 @@ class Server:
             return self.svc.loop.reset()
         if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”（烧录要几秒，放线程池）
             return await run(None, self.svc.action_decide, int(m["id"]), bool(m["accept"]))
+        if op == "pretune_get":                    # 调参前问答：问题 + 当前偏好
+            return self.svc.pretune_get()
+        if op == "pretune_set":                    # 人在对话框点“确认”
+            return self.svc.pretune_set(m.get("answers"))
         if op == "tune_best":                      # 只读：最好一轮（给“回到最好一轮”按钮的确认框）
             b = self.svc._guard().best()
             return {"round": b.n, "gains": b.gains, "score": round(b.score, 4)} if b else None

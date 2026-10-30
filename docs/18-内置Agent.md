@@ -121,6 +121,10 @@ make agent-eval ARGS=--offline      # 离线助手对照组
 | human | flash erase mem_write；实机的 run_step_test rollback_best | 变成“需要你确认”动作卡，人点“执行”才跑；烧录卡片里先给 dry-run 预览 |
 | forbid | raw_cmd disable_estop unlock_rdp estop，以及**任何没登记的工具** | 永远拒绝 |
 
+## 调参前问答（agent/pretune.py）
+
+菜单“调参前问答”：先答对象类型、执行器、能接受的超调、输出安全限、目标侧重、步子，再加自由补充。确认后偏好进 Agent 上下文（优先于默认启发式，硬约束不可违反），并只收紧护栏：超调上限压低达标线、目标选打分权重、保守档单步 ≤±20%。“清掉偏好”回到默认。思路取自 llm-pid-tuner pre_tuning_dialog.py（MIT），改成固定问题 + 规则解析，不需要大模型。
+
 ## 调参护栏（agent/guard.py，思路参考 llm-pid-tuner，MIT）
 
 - **LLM（或规则）只提议，程序判定**：每轮 `run_step_test` 做标准阶跃（按 `dzbench.json` 的 `step_test` 通过 dzctl/DATA 下发），程序给出 continue / done / rollback / stop；模型说 DONE 只是建议。
