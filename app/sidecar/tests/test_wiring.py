@@ -26,10 +26,10 @@ def test_every_ui_op_is_served():
 
 
 def test_every_server_op_has_a_caller():
-    # 进度条的修复按钮按 fix_action 动态生成（dzbench/progress.py FIX → entrypoints.yaml 里 dynamic 的同名动作）
+    # 进度条的修复按钮按 fix_action 生成（dzbench/progress.py FIX → entrypoints.yaml 里同名动作；位置已固定登记，不再靠 dynamic）
     from dzbench.progress import FIX
     acts = yaml.safe_load((APP.parent / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["actions"]
-    fix_ops = {op for a in acts if a.get("dynamic") and a["id"] in FIX.values() for op in a.get("ops") or []}
+    fix_ops = {op for a in acts if a["id"] in FIX.values() for op in a.get("ops") or []}
     orphan = SERVER_OPS - ui_ops() - set(SCRIPT_ONLY) - fix_ops
     assert not orphan, f"侧车 op 没有界面入口也没写进 SCRIPT_ONLY：{orphan}"
     assert not (set(SCRIPT_ONLY) - SERVER_OPS), "SCRIPT_ONLY 里有已删掉的 op"
