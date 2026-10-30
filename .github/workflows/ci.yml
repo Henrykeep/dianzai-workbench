@@ -15,7 +15,7 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install pyyaml jsonschema -r app/sidecar/requirements.txt
       - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi   # ELF 符号测试要它，否则静默跳过
-      - run: tools/fetch_third_party.sh mspm0 f4 f1                              # test_mspm0_board 要 SDK；项目页从零新建（test_projflow / test_agent_steps）要 F1/F4 HAL
+      - run: tools/fetch_third_party.sh mspm0 f4 f1 freertos                     # 和 preflight 一样有全套 SDK：test_mspm0_board、从零新建（F1/F4 HAL）、FreeRTOS 板导入编译
       - run: make check
       - run: make test
       - run: make compat
