@@ -23,6 +23,7 @@ export interface Progress {
 // fix_action / next.action 都是 entrypoints.yaml 的动作 id；这里只记“去哪一步、点哪个已有元素”，不新增入口
 export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; jump?: boolean }> = {
   // jump = 只跳到那一页并聚焦按钮，不替用户点（切换运行模式必须人确认；Agent 只给跳转）
+  project_list: { step: "项目", ui: "pj-open", label: "打开项目" },   // project.open 失败的 fix_action：回空状态重新选
   set_run_mode: { step: "封箱", ui: "seal-mode", label: "前往封箱", jump: true }, save_params: { step: "调参", ui: "tb-save", label: "保存参数" },
   connect: { ui: "connect", label: "连接" }, estop_clear: { ui: "cmd-r", label: "解除急停" }, doctor: { ui: "doctor", label: "运行自检" },
   blackbox: { ui: "pre-bbtn", label: "读黑匣子" }, llm_cfg: { ui: "ag-cfg", label: "大模型设置" },
@@ -141,7 +142,7 @@ export function render(p: Progress, go: (s: Step) => void) {
     ph.innerHTML = `<p class="pg-t"></p><button class="btn pri" type="button"></button>`;
     if (extra) ph.querySelector("p")!.after(extra);
     ph.querySelector("p")!.textContent = hd.text;
-    const b = ph.querySelector("button")!; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto;
+    const b = ph.querySelector<HTMLButtonElement>(":scope > button.pri")!   /* 不能取第一个 button：调参页常驻的「保存参数」也在页头 */; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto;
     b.onclick = () => { if (hd.action) runAction(hd.action, go); else if (hd.goto) go(JOURNEY.find(j => j.id === hd.goto)!.pages[0] as Step); };
   }
   const h = document.getElementById("step-hint"); if (!h) return;
