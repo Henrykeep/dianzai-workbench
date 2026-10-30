@@ -64,3 +64,20 @@ def test_replay_recorded_real_llm_transcripts(capsys):
         assert evalrun.replay(str(f)) in (0, 1)
         out = capsys.readouterr().out
         assert "总分" in out and "sk-" not in f.read_text(encoding="utf-8")
+
+
+def test_style_check_and_categories():
+    from dzbench.agent import evals
+    assert evals.style_issues("超调量 12%，调节时间 0.8 s。") == []
+    assert evals.style_issues("搞定啦 ✅！") and evals.style_issues("好的呀")
+    cs = evals.load()
+    assert {c["category"] for c in cs} == set(evals.CATEGORIES) and all("category" in c for c in cs)
+
+
+def test_run_bench_stable_entry_replays_offline():
+    """make bench 的稳定入口：run_bench(replay_from=…) 离线复评，返回带分类通过率的报告。"""
+    import pathlib
+    from dzbench.agent.evalrun import run_bench
+    fx = pathlib.Path(__file__).parent / "fixtures/agent_evals/before_glm-5.2.json"
+    r = run_bench(replay_from=str(fx))
+    assert r["total"] == 20 and set(r["categories"]) == {"state", "act", "data"}

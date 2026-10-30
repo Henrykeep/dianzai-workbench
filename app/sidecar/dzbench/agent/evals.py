@@ -13,6 +13,15 @@ def load() -> list[dict]:
     return json.loads(CASES.read_text(encoding="utf-8"))["cases"]
 
 
+STYLE_BAD = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]|！|!{2,}|哈哈|嘿嘿|呀|啦|哦~|哟|亲[，,]|宝子|～")
+CATEGORIES = {"state": "状态感知", "act": "动手执行", "data": "数据研判"}
+
+
+def style_issues(text: str) -> list[str]:
+    """企业级文风：无表情符号、无口语语气词、无感叹号。返回命中的片段（空 = 合格）。"""
+    return sorted({m.group(0) for m in STYLE_BAD.finditer(text or "")})
+
+
 def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
     calls = [c["tool"] for c in tr.get("calls", [])]
     text, bad = tr.get("text", ""), []
@@ -42,6 +51,8 @@ def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
     for x in case.get("text_all", []):
         if x not in text:
             bad.append(f"回答里应出现 {x}")
+    if case.get("style", True) and (st := style_issues(text)):
+        bad.append(f"文风不专业：{st}")
     return not bad, bad
 
 

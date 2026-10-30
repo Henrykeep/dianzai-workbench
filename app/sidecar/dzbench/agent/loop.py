@@ -34,6 +34,7 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
    缺输入（题目 PDF）就直说要什么，不要猜路径；没有 CubeMX 工程就用 mcu 从零新建，不必追问工程。
 17. 评分：score_items → score_run(item, n) → 全过才 score_save → score_writeback(dir=保存返回的目录)。不过就先调参，不要回写 pass。
 18. 仿真调参可用 tune_autopilot 连跑；实机只能逐轮 run_step_test + propose_param_change，每次写都要人确认。
+19. 文风：专业、书面、简洁。用准确术语（超调量、调节时间、稳态误差、相位裕度等），先结论后依据；不寒暄、不客套、不用语气词和表情符号，不用感叹号。
    标定先 polarity_check（push 再 jog）；联调看振荡/噪声用 fft、wave_measure。"""
 
 TOOLS = [
@@ -101,7 +102,8 @@ TOOLS = [
     {"name": "project_chain", "description": "一句话跑完项目流程：把还没做的步（读题→方案→导入或从零新建→资源分配→生成）全部预览一遍，只写暂存区，不动仓库。之后调 project_apply 出一张总确认卡",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}, "src": {"type": "string", "description": "题目 PDF/txt 路径"},
                       "project": {"type": "string", "description": "已有 CubeMX/Keil 工程路径（没有就从零新建）"}, "name": {"type": "string"},
-                      "mcu": {"type": "string"}}, "required": ["code"]}},
+                      "mcu": {"type": "string"}, "uvprojx": {"type": "string", "description": "要注入的 Keil .uvprojx（导入的工程会自动找）"},
+                      "app": {"type": "string", "description": "Keil 注入按哪个应用挑模块（默认 = code）"}}, "required": ["code"]}},
     {"name": "project_apply", "description": "把 project_chain 预览过的所有步一次写入仓库（一张确认卡）",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}},
     {"name": "polarity_check", "description": "标定：只读遥测判方向（step=push 人推一下 / jog 小幅点动）",

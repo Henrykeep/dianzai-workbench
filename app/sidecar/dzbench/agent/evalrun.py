@@ -36,7 +36,14 @@ def summarize(runs: list[dict], meta: dict) -> dict:
     n_ok = sum(r["ok"] for r in runs)
     valid = modes == ["llm"]
     avg = {k: round(sum(r.get(k, 0) for r in runs) / len(runs), 1) if runs else 0 for k in ("turns", "seconds", "tokens")}
-    return {"meta": meta, "valid": bool(valid), "modes": modes, "passed": n_ok, "total": len(runs), "avg": avg,
+    cat = {c["id"]: c.get("category", "other") for c in evals.load()}
+    by_cat: dict = {}
+    for r in runs:
+        k = by_cat.setdefault(cat.get(r["id"], "other"), {"passed": 0, "total": 0})
+        k["passed"] += bool(r["ok"]); k["total"] += 1
+    for k in by_cat.values():
+        k["rate"] = round(k["passed"] / k["total"], 3)
+    return {"meta": meta, "valid": bool(valid), "categories": by_cat, "modes": modes, "passed": n_ok, "total": len(runs), "avg": avg,
             "score": round(n_ok / len(runs), 3) if runs else 0.0, "cases": cases, "runs": runs}
 
 
@@ -47,6 +54,9 @@ def to_markdown(rep: dict) -> str:
          f"- 板：{', '.join(m['ports'])}；每例重复 {m['repeat']} 次；用时 {m['seconds']:.0f} s",
          f"- **总分 {rep['passed']}/{rep['total']} = {rep['score']:.0%}**；每例平均 {rep['avg']['turns']} 次工具调用、"
          f"{rep['avg']['seconds']} s、{rep['avg']['tokens']:.0f} token", ""]
+    if rep.get("categories"):
+        L += ["| 类别 | 通过 | 通过率 |", "|---|---|---|"] + [
+            f"| {evals.CATEGORIES.get(k, k)} | {v['passed']}/{v['total']} | {v['rate']:.0%} |" for k, v in sorted(rep["categories"].items())] + [""]
     if not rep["valid"]:
         L += ["> ⚠ 本次有回合退回了离线助手（模式：" + "/".join(rep["modes"]) + "），**不能当大模型成绩**。检查 Key / 网络 / 额度。", ""]
     L += ["| 用例 | 通过 | 工具调用 | 确认卡 | 秒 | token | 失败原因 |", "|---|---|---|---|---|---|---|"]
@@ -106,6 +116,35 @@ def main(argv=None, llm=None, run_sim=None) -> int:
         print("⚠ 有回合退回了离线助手，这次不算大模型成绩。", file=sys.stderr)
         return 2
     return 0 if rep["passed"] == rep["total"] else 1
+
+
+def run_bench(model: str | None = None, base_url: str | None = None, ports=DEFAULT_PORTS, repeat: int = 1,
+              only: list[str] | None = None, out: str | None = None, replay_from: str | None = None) -> dict:
+    """稳定入口（make bench 调这个）：跑评测集，返回报告 dict（含 score / categories / cases）。
+    Key 只从环境（DZBENCH_API_KEY）或 Agent 设置读，不经参数，不进报告。replay_from=录好的 report.json → 离线复评，不连模型。"""
+    import os
+    if replay_from:
+        return rescore(replay_from)
+    if model:
+        os.environ["DZBENCH_MODEL"] = model
+    if base_url:
+        os.environ["DZBENCH_BASE_URL"] = base_url
+    import pathlib
+    import tempfile
+    o = out or tempfile.mkdtemp(prefix="dzbench-bench-")
+    argv = ["--ports", ",".join(ports), "--repeat", str(repeat), "--out", o] + (["--only", ",".join(only)] if only else [])
+    rc = main(argv)
+    p = pathlib.Path(o) / "report.json"
+    rep = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {"valid": False}
+    return rep | {"rc": rc, "out": o}
+
+
+def rescore(path: str) -> dict:
+    old = json.loads(open(path, encoding="utf-8").read())
+    cases = {c["id"]: c for c in evals.load()}
+    runs = [r | dict(zip(("ok", "why"), evals.grade(cases[r["id"]], r["transcript"])))
+            for r in old["runs"] if r["id"] in cases and "transcript" in r]
+    return summarize(runs, old["meta"])
 
 
 def replay(path: str) -> int:
