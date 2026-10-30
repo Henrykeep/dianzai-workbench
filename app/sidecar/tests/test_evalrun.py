@@ -95,3 +95,13 @@ def test_read_category_keys_come_from_problem_text():
         txt = (root / path).read_text(encoding="utf-8")
         assert all(k in txt for k in c["text_all"]), c["id"]
         assert "flow_accept" in c["must_not_call"]
+
+
+def test_style_range_tilde_and_agent_error_shape():
+    """数字区间里的 ～ 不算口语；llm-ua 的 agent_error 事件让该轮记 error（成绩无效）。"""
+    from dzbench.agent.evals import style_issues
+    from dzbench.agent.evals import turn_mode
+    assert style_issues("Io 在 0.2A～2.0A 间变化") == [] and style_issues("好的～") == ["～"]
+    err = {"type": "agent_error", "code": "internal", "message": "x", "detail": "KeyError", "fix_action": None, "retryable": True}
+    assert turn_mode([{"type": "agent_mode", "mode": "llm"}, err]) == "error"
+    assert turn_mode([{"type": "agent_mode", "mode": "llm"}]) == "llm"

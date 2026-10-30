@@ -13,7 +13,7 @@ def load() -> list[dict]:
     return json.loads(CASES.read_text(encoding="utf-8"))["cases"]
 
 
-STYLE_BAD = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]|！|!{2,}|哈哈|嘿嘿|呀|啦|哦~|哟|亲[，,]|宝子|～")
+STYLE_BAD = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]|！|!{2,}|哈哈|嘿嘿|呀|啦|哦~|哟|亲[，,]|宝子|～(?!\\s*[0-9])")
 CATEGORIES = {"state": "状态感知", "act": "动手执行", "data": "数据研判", "read": "题目研判"}
 
 
@@ -87,6 +87,15 @@ def wait_step_in_window(s, st: dict, hold_s: float, timeout: float = 60.0) -> No
     raise TimeoutError(f"{timeout:g} s 内仿真板没录到完整阶跃（{sp}）")
 
 
+def turn_mode(ev: list[dict]) -> str:
+    """一轮的模式：llm / local（中途切了本地，成绩无效）/ error（agent_unreachable：限流/断网/Key 错；
+    agent_error：llm-ua 的崩溃兜底 {type, code, message, detail, fix_action, retryable}）—— 这例没测到模型。"""
+    if any(e.get("type") in ("agent_unreachable", "agent_error") for e in ev):
+        return "error"
+    modes = [e["mode"] for e in ev if e.get("type") == "agent_mode"]
+    return "local" if "local" in modes else (modes[0] if modes else "")
+
+
 def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | None = None, log=print) -> list[dict]:
     """连仿真板，每个用例前给一次设定值阶跃（后台一直发，防断线停车），用 AgentService 真跑一轮对话再打分。
 
@@ -154,10 +163,7 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
             calls = [{"tool": e["name"], "args": e["args"], "ok": e.get("ok", True)} for e in ev if e.get("type") == "agent_tool"]
             acts = [e["tool"] for e in ev if e.get("type") == "agent_action"]
             ok, why = grade(case, {"calls": calls, "text": text, "actions": acts})
-            modes = [e["mode"] for e in ev if e.get("type") == "agent_mode"]     # 中途切了本地就记 local（成绩无效）
-            mode = "local" if "local" in modes else (modes[0] if modes else "")
-            if any(e.get("type") == "agent_unreachable" for e in ev):
-                mode = "error"            # 限流/断网/Key 错：这例没测到模型，整份成绩无效
+            mode = turn_mode(ev)
             use = next((e for e in reversed(ev) if e.get("type") == "agent_usage"), None)     # 客户端累计值 → 本例增量
             cum = int(use["prompt"]) + int(use["completion"]) if use else tok0
             tokens, tok0 = (cum - tok0 if cum >= tok0 else cum), cum
