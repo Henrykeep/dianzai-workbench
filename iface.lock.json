@@ -244,6 +244,17 @@
  },
  "firmware/algo/lpf": {
   "decls": [
+   "biquad.h: typedef struct { float b0, b1, b2, a1, a2;",
+   "biquad.h: float d1, d2;",
+   "biquad.h: float y;",
+   "biquad.h: bool primed;",
+   "biquad.h: } biquad_t;",
+   "biquad.h: dz_err_t lpf2p_init(biquad_t *f, float cutoff_hz, float sample_hz);",
+   "biquad.h: dz_err_t notch_init(biquad_t *f, float center_hz, float bw_hz, float att_db, float sample_hz);",
+   "biquad.h: float biquad_update(biquad_t *f, float x);",
+   "biquad.h: void biquad_reset(biquad_t *f, float x0);",
+   "biquad.h: void biquad_clear(biquad_t *f);",
+   "biquad.h: dz_err_t biquad_selftest(void);",
    "lpf1.h: typedef struct { float cutoff_hz;",
    "lpf1.h: float dt_s;",
    "lpf1.h: } lpf1_cfg_t;",
@@ -260,8 +271,8 @@
    "lpf1.h: float lpf1_value(const lpf1_t *f);",
    "lpf1.h: dz_err_t lpf1_selftest(void);"
   ],
-  "hash": "e12176c4fc49f183",
-  "version": "1.1.0"
+  "hash": "b5e17aceb62f00f0",
+  "version": "1.2.0"
  },
  "firmware/algo/mtspeed": {
   "decls": [
