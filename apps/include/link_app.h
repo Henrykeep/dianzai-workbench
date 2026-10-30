@@ -33,7 +33,8 @@ typedef struct {
     uint32_t last_tx, last_hb;
     uint8_t seq, bb_seq;
     bool hb_was_estop;
-    volatile bool estop;
+    volatile bool estop;                    /**< 输出禁止：锁存中，或 'R' 解除后尚未收到新设定值/命令（不自动恢复） */
+    volatile bool latched;                  /**< 急停锁存（心跳 bit10 / 原因）；'R' 清 */
     volatile float sp[4];
     volatile uint32_t sp_ms;
     void (*on_params)(void);
@@ -62,13 +63,13 @@ static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*
     dzframe_parser_init(&L->rx);
     dzctl_wd_init(&L->wd, 1000u);           /* 侧车每 250 ms 发一次心跳 */
     L->last_tx = 0; L->last_hb = 0u - 500u; /* 复位后第一拍就发心跳（带 schema 哈希） */
-    L->seq = 0; L->hb_was_estop = false; L->estop = false; L->sp_ms = 0;
+    L->seq = 0; L->hb_was_estop = false; L->estop = false; L->latched = false; L->sp_ms = 0;
     for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
     L->on_params = on_params; L->on_cmd = on_cmd; L->bb = 0;
     s_link_app_self = L;
     dzctl_estop_clear();                    /* 上电：RAM 里的旧原因不算（仿真里 app_init 会重跑） */
     if (dzrt_boot(&L->rt, &g_link_params, &g_link_params_default, link_app_still_default, link_app_send_fwd) == 0u && on_params) on_params();
-    if (dzrt_selftest(&L->rt, pal_millis()) != 0u) { L->estop = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); }
+    if (dzrt_selftest(&L->rt, pal_millis()) != 0u) { L->estop = L->latched = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); }
     dzrt_start(&L->rt, !L->estop, false);
 }
 
@@ -92,7 +93,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         for (uint16_t i = 0; i < got; i++) {
             if (!dzframe_feed(&L->rx, buf[i], &f)) continue;
             dzctl_wd_feed(&L->wd, &f, now);
-            if (dzctl_is_estop(&f)) { L->estop = true; dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
+            if (dzctl_is_estop(&f)) { L->estop = L->latched = true; dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
             else if (link_relay_frame(&f, L->estop, &L->seq, &ack)) link_app_send(&ack);
             else if (dzctl_is_bb_request(&f)) {
                 for (uint16_t k = 0; L->bb && k < bb_count(L->bb); k++) {
@@ -107,27 +108,32 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
             else if (f.kind == DZF_DATA && f.id == 1u && f.len >= 4u && f.len % 4u == 0u) {
                 for (unsigned k = 0; k < 4u && 4u * k < f.len; k++) L->sp[k] = dzframe_get_f32(&f, 4u * k);
                 L->sp_ms = now;
+                if (!L->latched) L->estop = false;   /* 解除后由人/Agent 重新给设定值才恢复输出 */
             }
             else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) {
                 uint8_t c = f.payload[0], n = f.len >= 2u ? f.payload[1] : 0u;
-                if (c == 'R') { L->estop = false; dzctl_estop_clear(); }
-                else if (L->on_cmd) L->on_cmd(c, n);
+                if (c == 'R') {                    /* 只解锁存：设定值清零、输出保持禁止，不自动恢复 */
+                    L->latched = false; dzctl_estop_clear();
+                    for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
+                    L->sp_ms = now;
+                }
+                else { if (!L->latched) L->estop = false; if (L->on_cmd) L->on_cmd(c, n); }
                 link_app_sim_cmd(c, n);
             }
         }
     }
     if (dzrt_needs_host(&L->rt) && dzctl_wd_expired(&L->wd, now)) {   /* 上位机掉线：急停 */
-        L->estop = true;
+        L->estop = L->latched = true;
         dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - L->wd.last_ms));
     }
     link_relay_guard(L->estop);                           /* 急停中结束继电 */
     L->rt.bb = (bb_t *)L->bb;
     {
         bool was_sa = !dzrt_needs_host(&L->rt);
-        dzrt_poll(&L->rt, now, L->estop, -1);
+        dzrt_poll(&L->rt, now, L->latched, -1);
         if (was_sa != !dzrt_needs_host(&L->rt)) dzctl_wd_init(&L->wd, 1000u);   /* 切模式：看门狗重新计 */
     }
-    if (dzrt_hb_due(now, L->estop, &L->hb_was_estop, &L->last_hb)) {   /* 急停上升沿立即发 */
+    if (dzrt_hb_due(now, L->latched, &L->hb_was_estop, &L->last_hb)) {   /* 急停上升沿立即发 */
         dzctl_heartbeat(&t, L->seq++, &f);
         link_app_send(&f);
     }

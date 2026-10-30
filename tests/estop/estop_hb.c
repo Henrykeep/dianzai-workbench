@@ -1,5 +1,7 @@
 /* 急停心跳时延测试（host-sim）：注入上位机 ESTOP 帧 → 第一帧带 DZCTL_HB_ESTOP(bit10) 的心跳，必须 ≤ 5 ms；
  * 且任何带急停原因（payload[16..19] != 0）的心跳都必须同时置 bit10。用法：estop_hb <trial>，输出 "trial latency_us bad"。
+ * 之后发 'R'：锁存必须解除（后续心跳 bit10 清、原因清），且 1 s 内不收新设定值时所有输出（PWM，蜂鸣器除外）保持急停时的值——不自动恢复。
+ * 输出 "trial latency_us bad resume_bad cleared"。
  * 与应用的 host-sim 目标文件（去掉 main_host.c.o）一起链接，见 tools/test_estop_hb.sh。 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -10,7 +12,7 @@
 #include "dzctl.h"
 void host_sim_app_setup(void);
 static dzframe_parser_t P;
-static long long t_inj = -1, t_hb = -1; static int bad;
+static long long t_inj = -1, t_hb = -1, t_r = -1; static int bad, cleared;
 static void sendf(dzframe_t *f) { uint8_t b[DZFRAME_MAX_FRAME]; size_t n = dzframe_encode(b, sizeof b, f); host_sim_uart_inject_rx(RES_UART_LINK, b, (uint16_t)n); }
 static void drain(void)
 {
@@ -19,6 +21,7 @@ static void drain(void)
         for (uint16_t i = 0; i < n; i++) if (dzframe_feed(&P, b[i], &f) && f.kind == DZF_HEARTBEAT && f.len >= 16) {
             uint32_t st = dzframe_get_u32(&f, 12);
             if (f.len >= 20 && dzframe_get_u32(&f, 16) != 0u && !(st & DZCTL_HB_ESTOP)) bad++;
+            if (t_r >= 0 && !(st & DZCTL_HB_ESTOP) && (f.len < 20 || dzframe_get_u32(&f, 16) == 0u)) cleared = 1;
             if (t_inj >= 0 && (st & DZCTL_HB_ESTOP) && t_hb < 0) t_hb = (long long)host_sim_now_us();
         }
 }
@@ -39,6 +42,20 @@ int main(int argc, char **argv)
             host_sim_run_us(100); drain();
         }
     }
-    printf("%d %lld %d\n", k, t_hb < 0 ? -1 : t_hb - t_inj, bad);
+    /* 'R' 解除：锁存清、设定值清零、输出不自动恢复 */
+    uint16_t snap[BOARD_PWM_COUNT]; int resume_bad = 0;
+    for (unsigned i = 0; i < BOARD_PWM_COUNT; i++) snap[i] = host_sim_pwm_duty((pal_id_t)i);
+    { dzframe_t c = {0}; c.kind = DZF_DATA; c.id = DZCTL_ID_CMD; c.payload[0] = 'R'; c.len = 1; sendf(&c); t_r = (long long)host_sim_now_us(); }
+    for (int ms = 0; ms < 1000; ms++) {
+        if (ms % 50 == 0) { dzframe_t h = {0}; h.kind = DZF_HEARTBEAT; sendf(&h); }
+        app_loop(); drain(); host_sim_run_us(1000); drain();
+        for (unsigned i = 0; i < BOARD_PWM_COUNT; i++) {
+#ifdef RES_PWM_BUZZER_PWM
+            if (i == (unsigned)RES_PWM_BUZZER_PWM) continue;
+#endif
+            if (host_sim_pwm_duty((pal_id_t)i) != snap[i]) resume_bad++;
+        }
+    }
+    printf("%d %lld %d %d %d\n", k, t_hb < 0 ? -1 : t_hb - t_inj, bad, resume_bad, cleared);
     return 0;
 }
