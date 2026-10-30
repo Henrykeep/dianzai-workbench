@@ -106,3 +106,16 @@ def test_style_range_tilde_and_agent_error_shape():
     err = {"type": "agent_error", "code": "internal", "message": "x", "detail": "KeyError", "fix_action": None, "retryable": True}
     assert turn_mode([{"type": "agent_mode", "mode": "llm"}, err]) == "error"
     assert turn_mode([{"type": "agent_mode", "mode": "llm"}]) == "llm"
+
+
+def test_bench_does_not_fail_over_to_local(monkeypatch):
+    """评测里云端断一次不能切到本地 Ollama 并一直用下去（v7 GLM：15/29 例作废）。"""
+    from dzbench.agent import evalrun, llm as llm_mod
+    seen = {}
+    monkeypatch.setattr(llm_mod, "load_config", lambda: {"api_key": "x", "base_url": "http://127.0.0.1:9", "model": "m"})
+    monkeypatch.setattr(llm_mod, "build", lambda cfg, **k: seen.update(cfg) or (_ for _ in ()).throw(SystemExit(0)))
+    try:
+        evalrun.main(["--only", "nope"])
+    except SystemExit:
+        pass
+    assert seen.get("failover") is False

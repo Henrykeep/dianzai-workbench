@@ -42,6 +42,7 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
 
 READ_ONLY = {"read_file", "list_files", "repo_map", "list_params", "read_telemetry", "step_analysis", "board_memory", "read_symbol",
              "build_log", "project_state", "score_items", "tune_context"}
+PARAM_WRITES = {"propose_param_change", "tune_autopilot", "swarm_search", "rollback_best"}
 READ_CAP = 8                                   # 一轮里只读工具的上限（r4 验收：读了十几次才动手）
 BIG_TASK = re.compile(r"新建|从零|建项目|建工程|一路做|做到.*(跑通|调好)|整个项目")
 
@@ -305,6 +306,9 @@ class AgentLoop:
                     allow = MODES[self.mode]["tools"]
                     if allow is not None and name not in allow:
                         raise GatewayError("mode", f"当前是{MODES[self.mode]['name']}模式，不能用 {name}；需要的话请用户切换模式")
+                    if name in PARAM_WRITES and any(r["name"] == "observe" for r in results):
+                        raise GatewayError("observe_first", "本轮已经在观察（observe），观察期间不改参数",
+                                           "等观察结果出来、确认信号正常且结论稳定后，下一轮再提改参数")
                     if name in READ_ONLY:
                         reads += 1
                         if reads > READ_CAP:
