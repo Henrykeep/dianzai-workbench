@@ -663,3 +663,4 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 .card.down-card p{margin-top:var(--sp1);font-size:var(--t-sm);color:var(--muted);line-height:1.5}
 .card.down-card p.fix{color:var(--text)} .card.down-card p.ok{color:var(--ok)}
 .card.down-card .act{display:flex;gap:var(--sp2);justify-content:flex-end;margin-top:var(--sp3)}
+.dlg.llm .cst.warn{background:var(--warn-bg);color:var(--warn)}
