@@ -1,6 +1,6 @@
 """仿真里的 PID 搜索：PSO 粒子群 / 分阶段（P→I→D→微调），实机只拿 top-k 候选逐个验证。
 
-算法本体是 PID_Helper（GPL-3.0）的移植：third_party/vendored/pid_helper/pid_helper_pso.py（见 SOURCE.md）。
+搜索算法暂不可用：原 GPL-3.0 实现（third_party/vendored/pid_helper）已按许可规则删除，净室重写前 optimize 抛 SearchUnavailable。
 本文件只做：kp/ki/kd ↔ p/i/d、FOPDT 仿真对象 + 闭环阶跃指标（evaluate）、搜索主循环、门禁。
 - PSO：只许 sim=True（agent/experiment.require_swarm），有随机性，固定 rng_seed 可复现。
 - 结果只是“候选”：实机上每个都要走 TuneGuard / 提议确认，不在这里写参数。
@@ -8,10 +8,7 @@
 from __future__ import annotations
 
 import math
-import random
 
-from . import identify  # noqa: F401  确保 vendored 路径已加进 sys.path
-import pid_helper_pso as PSO  # noqa: E402
 
 from ..agent.experiment import require_swarm
 
@@ -60,58 +57,19 @@ def simulate_fopdt(gains: dict, K: float, T: float, L: float, *, dt: float = 0.0
             "steady_error": round(sse, 5), "control_ripple": round(ripple, 6)}
 
 
+class SearchUnavailable(ValueError):
+    """搜索算法暂不可用（中文原因）。"""
+
+
 def optimize(evaluate, seed: dict, *, strategy: str = "pso", sim: bool, iterations: int = 12, swarm: int = 8,
              profile: str = "balanced", top_k: int = 3, rng_seed: int = 0, bounds: dict | None = None,
              wide: bool = False) -> dict:
-    """wide=False（默认）= PID_Helper 原版：只在初值附近搜；wide=True = 宽范围：PSO 边界放到初值的 0–4 倍（至少 kp≤1/ki≤0.5/kd≤0.1）、
-    分阶段每步 ±25/50/100%。evaluate(gains{kp,ki,kd}) → 指标 dict。返回 {baseline, best, top[k], evals, strategy}；score 越小越好，1.0 = 和初值一样。"""
+    """PSO（只许仿真）/ 分阶段搜索。门禁先查，再报不可用。"""
     if strategy == "pso":
         require_swarm(sim)
     elif strategy != "staged":
         raise ValueError(f"strategy 只能 pso / staged，不是 {strategy!r}")
-    if profile not in PSO.PROFILES:
-        raise ValueError(f"profile 只能 {'/'.join(PSO.PROFILES)}")
-    rnd = random.Random(rng_seed).random
-    s0 = _to(seed)
-    base = evaluate(_from(s0))
-    seen: dict[tuple, dict] = {}
-
-    def ev(p: dict) -> float:
-        key = tuple(round(p[k], 6) for k in PSO.KEYS)
-        if key not in seen:
-            m = evaluate(_from(p))
-            seen[key] = {"gains": _from(p), "metrics": m, "score": PSO.score(m, base, profile)}
-        return seen[key]["score"]
-
-    ev(s0)
-    if strategy == "pso":
-        pb = {MAP[k]: tuple(v) for k, v in bounds.items()} if bounds else None
-        if pb is None and wide:
-            pb = {"p": (0.0, max(4 * s0["p"], 1.0)), "i": (0.0, max(4 * s0["i"], 0.5)), "d": (0.0, max(4 * s0["d"], 0.1))}
-        opt = PSO.default_options(s0, swarm, pos_bounds=pb)
-        sw = PSO.create_swarm(s0, opt, rnd)
-        gbest, gscore = dict(s0), ev(s0)
-        for _ in range(iterations):
-            sw = [PSO.record_score(pt, ev(pt["position"])) for pt in sw]
-            for pt in sw:
-                if pt["best_score"] < gscore:
-                    gbest, gscore = dict(pt["best_position"]), pt["best_score"]
-            sw = PSO.advance(sw, gbest, opt, rnd)
-    else:
-        cur, cs = dict(s0), ev(s0)
-        for stage in ("p", "i", "d", "micro"):
-            for _ in range(max(1, iterations // 4)):
-                cands = PSO.micro_candidates(cur) if stage == "micro" else PSO.staged_candidates(stage, cur, pcts=[25, 50, 100] if wide else None)
-                if bounds:
-                    cands = [c for c in cands if all(bounds[k][0] <= c[v] <= bounds[k][1] for k, v in MAP.items() if k in bounds)]
-                best = min(cands, key=ev, default=None)
-                if best is None or ev(best) >= cs:
-                    break
-                cur, cs = best, ev(best)
-    ranked = sorted(seen.values(), key=lambda x: x["score"])
-    return {"strategy": strategy, "profile": profile, "wide": wide, "evals": len(seen), "baseline": {"gains": dict(seed), "metrics": base},
-            "best": ranked[0], "top": ranked[:top_k],
-            "note": "仿真候选：实机逐个验证，每个都过护栏/人工确认" if sim else "实机候选：每个都过护栏/人工确认"}
+    raise SearchUnavailable("仿真 PID 搜索暂不可用：原 GPL 实现已删除，净室重写中")
 
 
 def search_from_step(t: list[float], y: list[float], u: list[float], seed: dict | None = None, **kw) -> dict:

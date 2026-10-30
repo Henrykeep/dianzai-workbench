@@ -51,7 +51,7 @@
 - 顺带修：第 8 项 params_readback 没有界面入口导致 test_wiring 失败 → 参数面板加“回读”按钮。
 
 ### 第 13 项：PID_Helper 辨识直接移植（2026-10-29，UTC+8）
-- 本体 `third_party/vendored/pid_helper/pid_helper_ident.py`（GPL-3.0，逐函数移植，改动列在 SOURCE.md）；适配层 `app/sidecar/dzbench/tuning/identify.py`：`steady_state`、`open_loop_pid`、分阶段打分。
+- 原 GPL-3.0 移植（third_party/vendored/pid_helper）已于 2026-10-31 删除；`app/sidecar/dzbench/tuning/identify.py` 为净室实现（见 docs/参考来源.md）。
 - experiment.py 的自写稳态判定已删除（不留两份）；StagedSearch / 四段阶跃 / 相对打分仍是自写。
 - 待做：`open_loop_test` 只有门禁（require_open_loop）没有执行入口，接上时直接调 `identify.open_loop_pid`。
 
@@ -88,13 +88,13 @@
 
 ## 2026-10-30（UTC+8）：参考仓库 15 项缺口（/workspace/refs/REFS_REVIEW.md“优先级”表，按顺序做）
 1. 自定义 HEX/文本帧结构表 → `app/sidecar/dzbench/framedef.py` + 连接设置“非工作台帧”。[仿真]
-2. 完整 PSO + 分阶段搜索（仿真跑，实机只验 top-k）→ `app/sidecar/dzbench/tuning/search.py` + vendored `pid_helper_pso.py`。[仿真]；没加侧车 op / 界面，下一步可把 identify 的 FOPDT 直接喂给它。
+2. 完整 PSO + 分阶段搜索（仿真跑，实机只验 top-k）→ `app/sidecar/dzbench/tuning/search.py`。[仿真]；没加侧车 op / 界面，下一步可把 identify 的 FOPDT 直接喂给它。
    - 已接界面：Agent 栏“仿真搜索”→ op `tune_search` → 候选“上板验证”= `propose{source:"仿真搜索"}` 提议卡（确认后才写）。`wide` 可选宽范围。
    - 评测稳定性：`dzbench/agent/evals.py` 等阶跃改按板子时间判定（wait_step_in_window），不再固定 sleep；满载 CPU 下 2026H 评测通过。
    - 上板验证可勾“全部采纳后自动阶跃”：service.propose_hint(verify_step) / verify_after_decide，server 的 proposal_decide 在整组采纳后后台跑 run_step_test，护栏判定走 tune_round。
 3. 速度/位置环预设 + 平滑切换 → 快照 `mode` 标签 + `params_restore(source=snapshot, ramp_s)`（session.py / snapshots.ramp_plan，界面快照页“—/速度环/位置环”和过渡秒数）。[仿真]；固件参数表没加模式字段（真要切环结构需固件自己有 mode 参数，可作为普通参数放进预设）。
 4. 最好一轮自动记录 + 一键回滚 + max_step_ratio → service._save_best_snapshot（快照“自动-最好一轮”）、Agent 菜单“回到最好一轮”（tune_best / params_restore source=best）、config `tune.max_step_ratio` → TuneGuard.profile（只收紧）。[仿真]
-5. K230 视觉脚本库 → `third_party/vendored/k230_edc_skill/`、`k230_mspm0g_contest/`（上游原样 + `DZ_FRAME` 补丁）+ `boards/k230-vision/board.yaml` + `tools/test_k230_vision.py`；说明见 docs/08“K230 视觉脚本库”。[编译]；没在 K230 上跑过；EDC-Skill 无许可证，公开前要作者许可；钢球 kmodel 不在仓库。
+5. K230 视觉脚本库 → `k230_mspm0g_contest/`（上游原样 + `DZ_FRAME` 补丁）+ `boards/k230-vision/board.yaml` + `tools/test_k230_vision.py`；说明见 docs/08“K230 视觉脚本库”。[编译]；没在 K230 上跑过；EDC-Skill 无许可证，公开前要作者许可；钢球 kmodel 不在仓库。
 6. 视觉知识包 → `docs/agent-knowledge/vision-{k230,color,tuning}.md`（触发词按需加载，knowledge.py 不用改）+ app/sidecar/tests/test_knowledge_vision.py。[仿真]；没做真实对话里的效果评测。
 7. 波形测量 → `firmware/algo/wavemeas`（移植 firework 时域特征 + 分类，自写过零测频/占空比/DFT 相位）+ `dzbench/wavemeas.py` + op `wave_measure`（频谱视图参数行、相位参考下拉）。[仿真]；未上板；原版分类对非 50% 占空比方波不判 SQUARE（照原版）。阈值触发、任意波形输出没做。
 8. ADC/DAC PAL → PAL 1.6.0：`pal_adc_block_read`（软件定时，四端口共用 `firmware/pal/pal_adc_block.inc`）、`pal_dac_write/info` + board.yaml `dac:`（只 host-sim 实现，真板端口 DZ_ENOTSUP，validate_board 拒绝真板写 dac）。端口版本 host-sim 2.5.0 / cubemx 1.8.0 / f4-hal 1.4.0 / mspm0 0.8.0。[仿真]；没做定时器触发 + DMA、真板 DAC。
