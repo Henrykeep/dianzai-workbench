@@ -57,7 +57,7 @@
 
 ### 第 11 项：Agent 护栏（2026-10-29，UTC+8）
 - `agent/stuck.py`（OpenHands 移植）、`agent/untrusted.py`（工具结果包 `<工具数据>`）、`AgentLoop._trim_middle`（头尾裁剪）、`gateway.similar_lines`（aider 移植）。说明在 docs/18 末节。
-- 解析工具消息的地方要先 `untrusted.unwrap()`（offline.py、stuck.py、测试已改）。
+- 解析工具消息的地方要先 `untrusted.unwrap()`（stuck.py、测试已改）。
 
 ### 第 14 项：信号类模块 + 板上菜单（2026-10-29，UTC+8）
 - 新模块 algo/spectrum、sigfilt、dds、capfreq，framework/menu，drivers/keypad4x4；测试 tests/host/test_signal.c。来自 firework 的 MIT 代码放在 firmware 树里（逐文件 Source 头），不进 third_party/vendored（那里留给需要隔离的 GPL）。

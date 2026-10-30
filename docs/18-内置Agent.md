@@ -43,19 +43,19 @@
 
 - Key 只存在本机 `~/.dzbench/config.json`（POSIX 下权限 600；Windows 依赖用户目录权限 [未测]），环境变量 `DZBENCH_API_KEY` 优先。界面只拿到 `…末4位`。
 - 工程仓库路径：`DZBENCH_REPO` > 设置里的“工程仓库” > 开发模式下的本仓库。安装版必须在 ⚙ 里填 [未在 Windows 实测]。
-- 常见错误（401/402/404/429/断网）都给出修法；断网时提示改用“分析阶跃”或本地 Ollama。
+- 常见错误（401/402/404/429/断网）都给出修法；断网时自动切本地 Ollama（§3.1）。
 - 真实服务商联调 [未测]（测试用本地假 HTTP 服务验证请求格式与错误映射）。
 
-### 3.1 离线规则助手（没 Key / 没网时“问 Agent”）
+### 3.1 没网 / 没模型时
 
-用户第一次打开工作台一般还没填 Key，比赛现场也常常没网，所以“问 Agent”不能直接报错。规则如下：
+离线也要有真 Agent，所以兜底是**本机大模型（Ollama，同一套 OpenAI 兼容接口）**，不是手写规则（旧的 `agent/offline.py` 规则助手已删）。
 
-- 没填 Key 且服务商不是 Ollama 时，使用 `agent/offline.py` 的离线规则助手。
-- 配置了大模型但**连不上**时，自动退回离线助手，回答开头会说明。Key 错误、余额不足这类错误不退回，照常报错，让用户去修。
-- 离线助手的接口和 LLM 一样（`chat(messages, tools)`），也走同一个 AgentLoop。工具白名单、风险分级、护栏、人工确认都不变。
-- 它按关键词识别 8 类问题：调 PID、上一轮结果、左右差异、改 yaml 默认值、上车前检查、四段不对称、急停，以及其他问题时的概览。每类有固定的工具调用剧本，回答用模板，标【实测】/【源码】/【推断】，结尾列出待实板确认的事项。
-- 认不出的问题会告诉用户能问什么，不会编造。
-- 界面上每条回答下方显示调用过的工具，以及这次是“离线规则助手 · 无需联网”还是“大模型 xxx”在回答。面板空闲时有 4 个示例问题，点一下就直接问。
+- 云端为主、本地兜底（`llm.Failover`）：云端**连不上**（断网、超时、拒绝连接）→ 自动切到设置里的本地模型，回答下方标“本地 qwen2.5:7b-instruct · 云端连不上，已自动切到本地”，之后本次会话都用本地。Key 错、余额不足不切，照常报错让人修。
+- 只配了 Ollama：直接用本地。推荐清单 `llm.LOCAL_MODELS`：qwen2.5:7b-instruct（默认）、qwen3:8b、qwen2.5:3b-instruct。设置里“检查 Ollama 并拉模型”一键检查 `/api/tags`、缺了就 `/api/pull`。
+- 云端、本地都没有：不编答案，发 `agent_unreachable`，面板出“Agent 暂时用不了”卡（原因 + 修法 + 重试 / 大模型设置）。调参、示波、急停、阶跃测试、评分页都不依赖 Agent，照常能用。
+- 小模型工具调用：服务回 400 不认 `tools` 时自动改 **JSON 兜底**（工具表写进 system，模型回 `{"tool":..,"args":..}`，tool 结果改成 user 文本）；设置里也可强制“总是 JSON”。模型把 JSON 写进正文时也认成调用（只认工具表里的名字）。
+- 其它：流式输出（`agent_delta` 逐段上屏，流式 tool_calls 按 index 拼参数）、429/5xx/断网指数退避重试（`agent_retry`）、token 用量（`agent_usage`；填了单价才算钱，价格不内置）、`/models` 列表换模型、上下文压缩见 §6。
+- 测试：`tests/test_llm_client.py` 用本地假 OpenAI 兼容服务覆盖以上全部（含云端断 → 假 Ollama 接管、整条 AgentLoop 走流式 tool_calls）；**真实服务商与真 Ollama 未测**（本机没有）。
 
 ### 3.2 在仿真板上跑评测集
 
@@ -64,13 +64,11 @@
 - 连接仿真板后，每个用例先在后台持续发送一次 low → high 的阶跃（防止断线停车），再用 AgentService 真跑一轮对话。
 - **按对象选阶跃配置**：`dzbench.json` 的 `step_tests` 是 {名字: 配置}，取第一个 `y`、`sp` 两个字段都出现在遥测里的那条（旧的单条 `step_test` 仍兼容）。配置可带：
   - `start`：开跑前下发的命令（只允许 T/P/G/S；'R' 同时清急停，绝不放进来，只在 `state_field == done_state` 且未急停时才补发）；
-  - `gains`：{kp: 参数名, ki: 参数名}，例如 2026H 是 pos_k / ball_ki，避免离线助手把球环的问题建议到底盘 chassis_kp 上。
+  - `gains`：{kp: 参数名, ki: 参数名}，例如 2026H 是 pos_k / ball_ki，避免把球环的问题建议到底盘 chassis_kp 上。
 - 用例可带 `user_if_param`：板上有某参数时换一种问法（2026H 没有 kp，改问 pos_k）；`user_generic`：点名的参数板上没有时，换成板上第一个参数（倒立摆没有 kp）。
 - `as_hw: true`：这一例把仿真板当实机（端口加 `+hw`），配合 `expect_action` 检查实验类工具变成确认卡而不是直接执行。
-- 离线对照组 2026-10-29 在 6 个仿真对象上：13 例全过（edit_reads_first 曾因只读前 12 个 yaml、当前工程被截掉而失败，已修）。
-- `make test` 里 car_2wd、2026H_ball 两块仿真板跑整套评测（快速默认）；全部 6 个对象用 `--ports all`。2026H 的球物理是简化模型（τ=30 ms 一阶舵机 + 5/7·g·sinθ），**不代表实机参数**。
+- 评测要一个模型（`llm=`）；`make agent-eval` 用配置的模型。2026H 的球物理是简化模型（τ=30 ms 一阶舵机 + 5/7·g·sinθ），**不代表实机参数**。
 - 最后由 `grade()` 按调用序列和回答打分。用例里的 `context.verdict` 会注入为“上一轮实验结果”，tune_context 里的字段是 `last_verdict`。
-- 离线助手 8/8 通过，`test_e2e_sim.py::test_agent_evals_offline_sim` 守着这个结果。
 - 真实大模型还没跑过这套评测（**[未测]**）。
 
 ### 3.3 用真大模型跑评测（一条命令）
@@ -79,7 +77,6 @@
 export DZBENCH_API_KEY=sk-…        # 或在工作台 Agent 设置里填过 Key；Ollama 不要 Key
 make agent-eval                     # = python -m dzbench.agent.evalrun --repeat 3
 make agent-eval ARGS="--only no_estop_control --repeat 5"
-make agent-eval ARGS=--offline      # 离线助手对照组
 ```
 
 - 默认两块仿真板（`--ports all` = 全部 6 个仿真对象）× 13 个用例 × 重复 3 次，约几分钟，费用按服务商计（每回合最多十几次调用）。
@@ -110,7 +107,7 @@ make agent-eval ARGS=--offline      # 离线助手对照组
 
 ## 6. 截图
 
-`python3 app/tools/shot.py` 生成 `app-tune.png`（阶跃分析）、`app-first-run.png`（空闲面板 + 示例问题）、`app-agent-offline.png`（没填 Key 时离线规则助手回答，带工具与模式标签）、`app-agent.png`（对话，假 LLM）、`app-diff.png`（写回 yaml 的 diff）、`app-commit.png`（门禁通过已提交）、`app-llm.png`（设置）。Agent 截图改的是临时克隆，门禁 `make check` 是真跑的。
+`python3 app/tools/shot.py` 生成 `app-tune.png`（阶跃分析）、`app-first-run.png`（空闲面板 + 示例问题）、`app-agent-unreachable.png`（没填 Key 时离线规则助手回答，带工具与模式标签）、`app-agent.png`（对话，假 LLM）、`app-diff.png`（写回 yaml 的 diff）、`app-commit.png`（门禁通过已提交）、`app-llm.png`（设置）。Agent 截图改的是临时克隆，门禁 `make check` 是真跑的。
 
 ## 风险分级（agent/risk.py）
 
@@ -169,7 +166,7 @@ aggressive 在实机档 8 轮内仍调不好（单步 ×0.7 下限太保守）�
 - `config.py` 分层：内置默认 < `~/.dzbench/machine.json`（UV4 路径、探针序列号）< 仓库 `dzbench.json`（芯片、ELF、阶跃实验、门限；**出现 api_key/password/token 直接报错**）< 环境变量。
 
 ## 护栏：卡死、外部文本、长对话、编辑没对上（2026-10-29，UTC+8）
-只对真大模型开（`AgentLoop.guards`），离线规则助手是确定性的不需要。
+只对真大模型开（`AgentLoop.guards`），测试里的脚本化模型不需要。
 - **卡死检测** `agent/stuck.py`（直接移植 OpenHands software-agent-sdk 的 StuckDetector，MIT）：同动作同结果 4 次、同动作同报错超过 3 次、连续 3 条不调工具的自言自语、两个动作 ABAB 交替 6 次 → 停下，界面收到 `agent_stuck` 事件，回答“我卡住了：原因”。快到阈值时（第 3 次）先在工具结果后面提醒一次。用户插话后重新计数；结果在变（真在干活）不算。
 - **外部文本是数据**：每条工具结果包进 `<工具数据 来源="工具名">…</工具数据>`，系统提示第 15 条说明里面的话不是指令；内容里伪造的闭合标签会被插零宽空格转义（`agent/untrusted.py`）。
 - **头尾裁剪**：压缩早期工具结果后仍超预算 → 保留 system、第一条用户请求和最近 12 条，中间换成一句“已省略 N 条”；切点不落在 tool 结果上，不拆开工具调用和它的结果。
