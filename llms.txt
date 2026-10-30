@@ -79,6 +79,7 @@
 - [参考工程与参数来源](docs/12-参考工程与参数来源.md)
 - [硬件路线图](docs/硬件路线图.md)
 - [参考来源](docs/参考来源.md)
+- [第三方署名](docs/ATTRIBUTION.md)
 - [待确认问题](docs/dev/QUESTIONS.md)
 - [入口规则表](docs/dev/entrypoints.yaml)：每个用户动作的唯一入口，tools/check_entrypoints.py 检查
 - 界面按时间线 8 步分页：app/ui/src/steps.ts；标定向导 app/ui/src/calwiz.ts（docs/17 “标定向导”）；按症状排障 app/ui/src/symptoms.ts；项目页引导流程 app/ui/src/projflow.ts + app/sidecar/dzbench/projflow.py（docs/17 “项目页引导流程”，确认后自动跑下一步、题号/板名/.uvprojx 自动填，第 ⑤ 步按 tools/catalog/subsys_catalog.yaml 起稿 project.yaml；第 ③ 步没工程时从零新建：alloc + tools/gen_ioc.py 生成 .ioc + tools/gen_core.py 合成 Core 自动导入；MSPM0 用 tools/gen_syscfg.py 经 SysConfig CLI 出板目录；第 ⑤ 步确认后自动 make 并出 EIDE（tools/gen_eide.py）/ CCS / Keil（tools/gen_m0_keil.py））；评分页 app/ui/src/score.ts + app/sidecar/dzbench/scoring.py（docs/17 “评分页”）
