@@ -70,6 +70,7 @@ def build(b: dict, name: str) -> tuple[str, str]:
     kv: dict[str, object] = {}
     pins: list[str] = []
     ips: set[str] = {"NVIC", "RCC", "SYS"}
+    model: dict = {"fam": fam, "part": part, "tims": {}, "enc": [], "ctrl": None, "uarts": [], "i2c": [], "gpio": list(R.get("gpio") or []), "adc": list(R.get("adc") or [])}
     nvic: dict[str, str] = {"SysTick_IRQn": NV.format(p=0, h="false").replace("true\\:true", "true\\:false", 0)}
 
     def pin(p, signal, label=None, mode=None):
@@ -95,11 +96,12 @@ def build(b: dict, name: str) -> tuple[str, str]:
         for ch in sorted(d["ch"]):
             k = f"Channel-PWM\\ Generation{ch}\\ CH{ch}"; kv[f"{t}.{k}"] = f"TIM_CHANNEL_{ch}"; prm.append(f"Channel-PWM Generation{ch} CH{ch}")
         kv[f"{t}.Prescaler"] = psc; kv[f"{t}.Period"] = arr; kv[f"{t}.IPParameters"] = ",".join(prm + ["Prescaler", "Period"])
+        model["tims"][t] = {"ch": sorted(d["ch"]), "psc": psc, "arr": arr, "pins": [p["pin"] for p in R["pwm"] if p["timer"] == t]}
     for e in R.get("encoder") or []:
         t = e["timer"]; ips.add(t)
         for ab, ch, p in (("A", 1, e["pin_a"]), ("B", 2, e["pin_b"])):
             pin(p, f"S_{t}_CH{ch}", f"ENC_{e['name']}_{ab}"); kv[f"SH.S_{t}_CH{ch}.0"] = f"{t}_CH{ch},Encoder_Interface"; kv[f"SH.S_{t}_CH{ch}.ConfNb"] = 1
-        kv[f"{t}.EncoderMode"] = "TIM_ENCODERMODE_TI12"; kv[f"{t}.Period"] = 65535; kv[f"{t}.IPParameters"] = "EncoderMode,Period"
+        model["enc"].append({"t": t, "pins": [e["pin_a"], e["pin_b"]]}); kv[f"{t}.EncoderMode"] = "TIM_ENCODERMODE_TI12"; kv[f"{t}.Period"] = 65535; kv[f"{t}.IPParameters"] = "EncoderMode,Period"
     used_t = {t for t in kv and [k.split(".")[0] for k in kv] if t.startswith("TIM")} | set(tims)
     ctrl = next((t for t in ("TIM6", "TIM7") if t in F.TIMERS and t not in used_t), None) \
         or next((t for t in reversed(list(F.TIMERS)) if t not in used_t), None)
@@ -109,6 +111,7 @@ def build(b: dict, name: str) -> tuple[str, str]:
         kv[f"VP_{ctrl}_VS_ClockSourceINT.Mode"] = "Internal" if ctrl not in ("TIM6", "TIM7") else "Enable_Timer"
         kv[f"VP_{ctrl}_VS_ClockSourceINT.Signal"] = f"{ctrl}_VS_ClockSourceINT"
         nvic[F.TIMERS[ctrl][4] + "n"] = NV.format(p=1, h="true")
+        model["ctrl"] = {"t": ctrl, "psc": clk // 1_000_000 - 1, "arr": 999, "irq": F.TIMERS[ctrl][4] + "n"}
     dma_req, dma_used = [], set()
 
     def dma_inst(tab, inst):
@@ -123,6 +126,7 @@ def build(b: dict, name: str) -> tuple[str, str]:
         kv[f"{i}.BaudRate"] = u.get("baud", 115200); kv[f"{i}.VirtualMode"] = "VM_ASYNC"; kv[f"{i}.IPParameters"] = "BaudRate,VirtualMode"
         irq = F.UARTS[i][4]
         nvic[irq + "n"] = NV.format(p=5, h="true")
+        mu = {"i": i, "tx": u["tx"], "rx": u["rx"], "baud": u.get("baud", 115200), "irq": irq + "n", "dma": []}; model["uarts"].append(mu)
         if u.get("dma", True) is not False:
             for d, tab, mode in (("RX", F.UART_DMA_RX, "DMA_CIRCULAR"), ("TX", F.UART_DMA_TX, "DMA_NORMAL")):
                 inst, c = dma_inst(tab, i)
@@ -136,11 +140,13 @@ def build(b: dict, name: str) -> tuple[str, str]:
                         kv[f"{pre}.Channel"] = f"DMA_CHANNEL_{c[2]}"; kv[f"{pre}.FIFOMode"] = "DMA_FIFOMODE_DISABLE"
                     kv[f"{pre}.RequestParameters"] = "Instance,Direction,PeriphInc,MemInc,PeriphDataAlignment,MemDataAlignment,Mode,Priority" + (",Channel,FIFOMode" if fam == "stm32f4" else "")
                     nvic[f"{inst}_IRQn"] = NV.format(p=5, h="false")
+                    mu["dma"].append({"dir": d, "inst": inst, "ch": c[2], "mode": mode})
     for q in R.get("i2c") or []:
         i = q["instance"]; ips.add(i)
         pin(q["scl"], f"{i}_SCL", f"I2C_{q['name']}_SCL", "I2C"); pin(q["sda"], f"{i}_SDA", f"I2C_{q['name']}_SDA", "I2C")
         kv[f"{i}.ClockSpeed"] = q.get("speed_hz", 100000); kv[f"{i}.I2C_Mode"] = "I2C_Fast" if q.get("speed_hz", 0) > 100000 else "I2C_Standard"
         kv[f"{i}.IPParameters"] = "ClockSpeed,I2C_Mode"
+        model["i2c"].append({"i": i, "scl": q["scl"], "sda": q["sda"], "speed": q.get("speed_hz", 100000)})
     for a in R.get("adc") or []:
         inst = a.get("instance", "ADC1"); ips.add(inst); ch = a.get("channel")
         pin(a["pin"], f"ADCx_IN{ch}" if fam == "stm32f4" else f"{inst}_IN{ch}", f"ADC_{a['name']}")
@@ -171,7 +177,7 @@ def build(b: dict, name: str) -> tuple[str, str]:
     allkv = {**head, **nvic_lines, **rcc, **pm, **kv}
     body = "\n".join(f"{k}={v}" for k, v in sorted(allkv.items(), key=lambda x: x[0]))
     return ("#MicroXplorer Configuration settings - do not modify\n"
-            f"# 由 tools/gen_ioc.py 从 board.yaml 草稿生成（{b.get('name', '')}）。用 CubeMX 打开 → 核对 → GENERATE CODE（工具链 MDK-ARM）。\n" + body + "\n"), (ctrl or "")
+            f"# 由 tools/gen_ioc.py 从 board.yaml 草稿生成（{b.get('name', '')}）。用 CubeMX 打开 → 核对 → GENERATE CODE（工具链 MDK-ARM）。\n" + body + "\n"), (ctrl or ""), model
 
 
 def main(argv=None) -> int:
@@ -180,7 +186,7 @@ def main(argv=None) -> int:
     a = ap.parse_args(argv)
     b = yaml.safe_load(pathlib.Path(a.board).read_text(encoding="utf-8"))
     out = pathlib.Path(a.o); name = a.name or out.stem
-    text, ctrl = build(b, name)
+    text, ctrl, _ = build(b, name)
     out.parent.mkdir(parents=True, exist_ok=True); out.write_text(text, encoding="utf-8")
     print(f"✓ 写入 {out}（{b['mcu']['part']}，节拍定时器 CTRL={ctrl or '无空闲定时器'}）")
     print(f"下一步（人做一次）：CubeMX 打开 {out.name} → GENERATE CODE；然后项目页第 ③ 步“导入已有工程”选 {out.parent}")
