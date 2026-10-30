@@ -36,7 +36,7 @@ export function onCleared(show: (text: string, btn: typeof RETUNE, onClick: () =
 
 // WS 上的 type:"estop" 消息：状态只看 state（requested|latched|cleared）。
 // 急停操作的回包也带 state:"requested" 与 sent（发送确认）；没有 state 的只可能是“没送达”（未连接 / 回放中）→ 告警，不改状态。
-export type EstopMsg = { type: "estop"; state?: string; cause?: string; message_zh?: string; sent?: boolean; message?: string };
+export type EstopMsg = { type: "estop"; state?: string; cause?: string; message_zh?: string; ok?: boolean; sent?: boolean; message?: string }   // requested 用 ok + message_zh；sent/message 仅剩“未连接 / 回放中”的失败回包;
 export type EstopUi = { setPhase(p: EstopPhase): void; showCleared(): void; toast(text: string, kind: "info" | "crit", ms: number): void };
 let cause: { cause: string; message_zh: string } | null = null;
 export const latchedCause = () => cause;
@@ -47,7 +47,7 @@ export function handleEstopMsg(m: EstopMsg, ui: EstopUi): void {
     const p = onEstopEvent(m.state);
     if (p) ui.setPhase(p);
     if (m.state === "cleared") ui.showCleared();
-    if (m.state === "requested" && m.sent === false) ui.toast(m.message_zh || m.message || "急停没有送达，请直接断电或拔电池。", "crit", 15000);
+    if (m.state === "requested" && (m.ok === false || m.sent === false)) ui.toast(m.message_zh || m.message || "急停没有送达，请直接断电或拔电池。", "crit", 15000);
     return;
   }
   if (m.sent === false) { ui.toast(m.message_zh || m.message || "急停没有送达任何板子", "crit", 15000); ui.setPhase("idle"); }

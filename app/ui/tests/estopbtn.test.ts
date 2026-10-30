@@ -59,5 +59,11 @@ console.log(`estopbtn ok click→send ${dt.toFixed(3)} ms`);
   if ({ blocker_code: CLEARED_NOTICE }.blocker_code === "estop_cleared") once.fire();
   if (cards !== 1) throw "解除卡出现 " + cards + " 次";
   once.reset(); once.fire(); if (cards !== 2) throw "再次锁存后应能重新提示";
+  // 新约定：requested 只带 ok + message_zh
+  { const toasts: string[] = []; const u = { ...ui, toast: (t: string) => toasts.push(t) };
+    handleEstopMsg({ type: "estop", state: "requested", ok: true, message_zh: "急停已发送" } as any, u as any);
+    if (toasts.length) throw "ok:true 不弹告警";
+    handleEstopMsg({ type: "estop", state: "requested", ok: false, message_zh: "急停没有送达，请直接断电" } as any, u as any);
+    if (toasts.join() !== "急停没有送达，请直接断电") throw "ok:false 要按 message_zh 告警 " + toasts; }
   console.log("estop handler ok");
 }
