@@ -26,3 +26,10 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 ## 参考来源
 - MAVLink 参数协议（mavlink.io/en/services/parameter.html）：SET 后回传实际值、上位机以回传为准。
 - PX4 参数元数据（min/max/unit 与代码同源生成）的思路。
+
+## 0.8.0
+
+- 心跳尾部追加 `u32 cause, u32 t_ms, f32 value`（len 16 → 28，旧上位机按长度读，不受影响）：板子**为什么**急停。
+  `dzctl_estop_note(cause, t, v)` 只记第一个原因（之后的连锁急停不覆盖），`dzctl_estop_clear()` 在人发 `R` 时清。
+  原因：1 手动 2 心跳超时（value=ms）3 堵转 4 欠压（V）5 过流（A）6 限位/超量程 7 自检失败（项数）8 异常复位安全态（复位原因）9 传感器故障。
+  接入：apps/include/link_app.h（所有 link_app 板子）、car_2wd、examples/2026H_ball/io。中文说明在侧车 `ESTOP_CAUSES`。

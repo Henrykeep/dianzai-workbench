@@ -5,6 +5,7 @@
 #include "host_sim.h"
 #include "app.h"
 #include "dzframe.h"
+#include "dzctl.h"
 
 void host_sim_app_setup(void);
 static int fails;
@@ -114,6 +115,7 @@ int main(void)
     host_sim_motor_set_load(0, 50.0f);
     run(2000, true, 0.3f, 0.0f, t);
     CHECK(t[0] == 0.0f && (hb_status & (1u << 9)) && (hb_status & (1u << 10)));
+    CHECK(dzctl_estop_cause() == DZCTL_ES_STALL);
     printf("  堵转: sp_a=%.3f status=0x%X\n", t[0], (unsigned)hb_status);
     host_sim_motor_set_load(0, 0.3f);
     run(1000, true, 0.3f, 0.0f, t);
@@ -121,6 +123,7 @@ int main(void)
     send_reset();
     run(1500, true, 0.3f, 0.0f, t);
     CHECK(t[0] > 1.0f && fabsf(t[1] - t[0]) < 0.2f && !(hb_status & ((1u << 9) | (1u << 10))));
+    CHECK(dzctl_estop_cause() == DZCTL_ES_NONE);   /* R 清掉原因 */
     printf("  R 解除: sp_a=%.3f spd_a=%.3f\n", t[0], t[1]);
     /* 起步不误判：从静止猛给 0.6 m/s，PID 会短暂顶满 */
     run(1500, false, 0, 0, t);
@@ -159,6 +162,7 @@ int main(void)
     host_sim_adc_set(RES_ADC_VBAT, vbat_raw(6000.0f));
     run(3000, true, 0.3f, 0.0f, t);
     CHECK(t[0] == 0.0f);
+    CHECK(dzctl_estop_cause() == DZCTL_ES_UNDERVOLT);
     printf("  电池 6.0 V: sp_a=%.3f spd_a=%.3f（急停）\n", t[0], t[1]);
     host_sim_adc_set(RES_ADC_VBAT, vbat_raw(8200.0f));
     run(1500, true, 0.3f, 0.0f, t);
@@ -173,6 +177,7 @@ int main(void)
     CHECK(app_init() == DZ_OK);
     run(1500, true, 0.3f, 0.0f, t);
     CHECK(t[0] == 0.0f && (hb_status & 0xFFu) == 4u && (hb_status & (1u << 8)));
+    CHECK(dzctl_estop_cause() == DZCTL_ES_SAFE_BOOT);
     printf("  看门狗复位后: sp_a=%.3f status=0x%X（安全态）\n", t[0], (unsigned)hb_status);
     send_reset();
     run(1500, true, 0.3f, 0.0f, t);

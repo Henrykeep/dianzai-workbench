@@ -70,7 +70,7 @@ dz_err_t app_init(void)
     {
         pal_reset_cause_t rc = pal_reset_cause();
         dzctl_set_reset_cause((uint32_t)rc);
-        if (io_safety_init((uint32_t)rc, pal_millis())) coord_event(&COORD, COORD_EV_ESTOP);   /* 看门狗/锁死复位：等人按 R */
+        if (io_safety_init((uint32_t)rc, pal_millis())) { dzctl_estop_note(DZCTL_ES_SAFE_BOOT, pal_millis(), (float)(uint32_t)rc); coord_event(&COORD, COORD_EV_ESTOP); }   /* 看门狗/锁死复位：等人按 R */
     }
     return DZ_OK;
 }
@@ -84,7 +84,7 @@ static void read_inputs(uint32_t now)
     if (encoder_update(&EA) == DZ_OK && encoder_update(&EB) == DZ_OK) {
         S.io_in.wheel_a_mps = encoder_speed_rps(&EA) * p->wheel_circ_m;
         S.io_in.wheel_b_mps = encoder_speed_rps(&EB) * p->wheel_circ_m;
-    } else coord_event(&COORD, COORD_EV_FAULT);
+    } else { dzctl_estop_note(DZCTL_ES_SENSOR, now, 0.0f); coord_event(&COORD, COORD_EV_FAULT); }
     if (pal_uart_read(RES_UART_VISION, buf, sizeof buf, &got) == DZ_OK) {
         dzframe_t f; cp_vision_cpu_ball_t b;
         for (i = 0; i < got; i++)
@@ -127,7 +127,7 @@ static void write_outputs(uint32_t now)
 {
     if (coord_state(&COORD) == COORD_RUNNING &&
         io_safety_step(S.chassis_out.cmd_a, S.chassis_out.cmd_b, encoder_speed_rps(&EA), encoder_speed_rps(&EB), now))
-        coord_event(&COORD, COORD_EV_ESTOP);                 /* 堵转：已记黑匣子，走急停路径刹车 */
+        { dzctl_estop_note(DZCTL_ES_STALL, now, fmaxf(fabsf(S.chassis_out.cmd_a), fabsf(S.chassis_out.cmd_b))); coord_event(&COORD, COORD_EV_ESTOP); }   /* 堵转：已记黑匣子，走急停路径刹车 */
     if (coord_state(&COORD) == COORD_RUNNING) {
         motor_dc_set(&MA, S.chassis_out.cmd_a);
         motor_dc_set(&MB, S.chassis_out.cmd_b);

@@ -178,6 +178,7 @@ dz_err_t app_init(void)
     static const subsys_t *const list[] = { &g_drive_plan };
     dz_err_t e;
     pal_reset_cause_t rc = pal_reset_cause();
+    dzctl_estop_clear();        /* 上电：RAM 里的旧原因不算（仿真里 app_init 会重跑） */
     uint16_t pl = nvm_boot();   /* 先读参数：下面的堵转配置要用 */
     stall_cfg_t sc = { .load_on = g_link_params.stall_duty, .speed_on = STALL_SPEED_RPS,
                        .hold_ms = g_link_params.stall_ms, .start_ignore_ms = 200u, .retry_ms = 0u };   /* 只人工解除 */
@@ -192,7 +193,10 @@ dz_err_t app_init(void)
     }
     if ((e = safety_init(&s_safe, &sc, 2u, &s_bb)) != DZ_OK) return e;
     dzctl_set_reset_cause((uint32_t)rc);
-    if (safety_boot(&s_safe, (uint32_t)rc, PAL_RESET_IS_FAULT(rc), pal_millis())) s_estop = true;   /* 卡死过：等人看 */
+    if (safety_boot(&s_safe, (uint32_t)rc, PAL_RESET_IS_FAULT(rc), pal_millis())) {   /* 卡死过：等人看 */
+        s_estop = true;
+        dzctl_estop_note(DZCTL_ES_SAFE_BOOT, pal_millis(), (float)(uint32_t)rc);
+    }   /* 卡死过：等人看 */
     bb_log(&s_bb, pal_millis(), BB_EV_PARAM_LOAD, pl, 0.0f, 0.0f);
     apply_params();
     if ((e = wheel_init(&s_w[0], RES_PWM_MOTOR_A, RES_GPIO_MOTOR_A_IN1, RES_GPIO_MOTOR_A_IN2, RES_ENCODER_MOTOR_A)) != DZ_OK) return e;
@@ -228,6 +232,7 @@ static void handle_rx(uint32_t now)
         dzctl_wd_feed(&s_wd, &f, now);
         if (dzctl_is_estop(&f)) {
             s_estop = true;
+            dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f);
             s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f;
         } else if (link_relay_frame(&f, s_estop, &s_relay_seq, &ack)) {
             send(&ack);
@@ -238,6 +243,7 @@ static void handle_rx(uint32_t now)
             uint32_t st = pal_irq_save();
             s_estop = false;
             safety_clear(&s_safe, now);
+            dzctl_estop_clear();
             pal_irq_restore(st);
         } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'W') {
             s_save_req = true;                                   /* 主循环里写（不在收帧循环里卡住） */
@@ -264,8 +270,8 @@ void app_loop(void)
     uint32_t now = pal_millis();
     pal_wdg_kick();
     handle_rx(now);
-    if (dzctl_wd_expired(&s_wd, now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
-    if (car_aux_poll(now)) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }   /* 只置不清 */
+    if (dzctl_wd_expired(&s_wd, now)) { dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - s_wd.last_ms)); s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
+    if (car_aux_poll(now)) { dzctl_estop_note(DZCTL_ES_UNDERVOLT, now, car_aux_vbat()); s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }   /* 只置不清 */
     link_relay_guard(s_estop);   /* 急停（心跳超时/电池/安全锁存）中结束继电 */
 #if HAVE_ISENSE
     {   /* 电流采样：引脚 mV（含分压）−零点 → ÷ mV/A；读失败当 0（不误判堵转），计 ctrl_err */
@@ -279,7 +285,10 @@ void app_loop(void)
         }
     }
 #endif
-    if (safety_latched(&s_safe) && !s_estop) { s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
+    if (safety_latched(&s_safe) && !s_estop) {
+        dzctl_estop_note((safety_flags(&s_safe) & SAFETY_F_STALL) ? DZCTL_ES_STALL : DZCTL_ES_SAFE_BOOT, now,
+                         (safety_flags(&s_safe) & SAFETY_F_STALL) ? g_link_params.stall_duty : (float)(uint32_t)pal_reset_cause());
+        s_estop = true; s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f; }
     {   /* 进急停（电机已刹）那一刻把黑匣子冻进 flash：下次上电还能看到为什么停的；失败不影响别的 */
         static bool was;
         if (s_estop && !was && s_have_kv) (void)bb_freeze(&s_bb);

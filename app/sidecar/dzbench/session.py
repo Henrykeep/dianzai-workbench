@@ -70,6 +70,7 @@ class Session:
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
+        self.estop_cause: dict | None = None     # dzctl 0.8.0 心跳里的急停原因（estop_cause_dict），没急停 = None
         self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
         self.samples: collections.deque = collections.deque()
@@ -119,6 +120,7 @@ class Session:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
             self._t_tr = self.t_connect
             self.hb_status = None
+            self.estop_cause = None
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
@@ -333,6 +335,14 @@ class Session:
                             m = hb_status_event(w)
                             if m:
                                 self._pending_marks.append(m)
+                    if len(payload) >= 28:
+                        es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
+                        if es != self.estop_cause:
+                            self.estop_cause = es
+                            if es:
+                                self.emit({"type": "estop_cause", **es})
+                                if es["cause_id"] != 1:          # 手动急停侧车自己已记了一条（带按键来源）
+                                    self._pending_marks.append(("estop", "板子急停：" + es["message_zh"]))
                     if h != self.schema_hash:
                         self._bind_schema(h)
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
@@ -712,6 +722,7 @@ class Session:
                           replay_speed=self.tr.speed, replay_paused=self.tr.paused)
             marks, self._pending_marks = list(self._pending_marks), []
             st.update(hb_status_dict(self.hb_status))
+            st["estop_cause"] = self.estop_cause
             if self.tr is not None:
                 log_t, plot_t = self._times_locked(now)
                 hist = self.health.history()
@@ -761,6 +772,30 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
 HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停"}
+
+
+# dzctl 0.8.0 dzctl_estop_cause_t → (cause 键, 中文说明模板)。{v} = 触发值，{t} = 板上时刻 s。
+ESTOP_CAUSES = {
+    1: ("manual", "手动急停：上位机发出急停指令（急停按钮 / Esc / 空格）"),
+    2: ("hb_timeout", "心跳超时：上位机 {v:.0f} ms 未发送心跳（阈值 1000 ms），板端看门狗已切断输出"),
+    3: ("stall", "电机堵转：输出 {v:.2f} 时转速持续接近 0，已刹车保护"),
+    4: ("undervolt", "电池欠压：电压 {v:.2f} V 低于临界值，已停机（电压回升也不会自动恢复）"),
+    5: ("overcurrent", "过流：电流 {v:.2f} A 超过上限，已切断输出"),
+    6: ("limit", "限位 / 超量程：{v:.3g} 超出允许范围，已停机"),
+    7: ("selftest", "上电自检失败：{v:.0f} 项未通过，输出保持关闭"),
+    8: ("safe_boot", "异常复位后进入安全态：复位原因 {r}，输出保持关闭"),
+    9: ("sensor", "传感器读取失败（资源 {v:.0f}），已故障停机"),
+}
+
+
+def estop_cause_dict(cause: int, t_ms: int, value: float) -> dict | None:
+    """心跳尾部 u32 cause, u32 t_ms, f32 value → {cause, cause_id, message_zh, value, t}；cause 0 → None。"""
+    if not cause:
+        return None
+    key, tpl = ESTOP_CAUSES.get(cause, (f"unknown_{cause}", "未知急停原因 #{c}"))
+    msg = tpl.format(v=value, c=cause, r=RESET_NAMES.get(int(value), f"#{int(value)}"))
+    return {"cause": key, "cause_id": cause, "message_zh": msg + "；确认安全后点“解除急停 R”",
+            "value": round(float(value), 4), "t": round(t_ms / 1000.0, 3)}
 
 
 def hb_status_dict(w: int | None) -> dict:

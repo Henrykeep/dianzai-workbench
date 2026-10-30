@@ -130,3 +130,15 @@ def test_estop_without_board_does_not_latch_or_alert():
     assert from_broadcast(r) is None
     kind, text = from_broadcast({"type": "estop", "sent": True, "src": "急停按钮"})
     assert kind == "estop" and "急停按钮" in text and "解除急停 R" in text
+
+
+def test_estop_cause_fields():
+    """dzctl 0.8.0 心跳尾部 cause/t_ms/value → 前端用的结构化字段。"""
+    from dzbench.session import estop_cause_dict
+    assert estop_cause_dict(0, 0, 0.0) is None
+    d = estop_cause_dict(2, 12345, 1180.0)
+    assert d["cause"] == "hb_timeout" and d["cause_id"] == 2 and d["t"] == 12.345 and d["value"] == 1180.0
+    assert d["message_zh"].startswith("心跳超时：上位机 1180 ms 未发送心跳")
+    assert "6.10 V" in estop_cause_dict(4, 0, 6.1)["message_zh"]
+    assert "看门狗" in estop_cause_dict(8, 0, 4.0)["message_zh"]
+    assert estop_cause_dict(42, 0, 0.0)["cause"] == "unknown_42"

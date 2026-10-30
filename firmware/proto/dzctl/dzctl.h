@@ -9,6 +9,7 @@
  *   上位机 -> 板  DATA id=DZCTL_ID_CMD   len=1   单字节命令（应用自定义，如 'G' 开始 'S' 停止 'R' 复位）
  *   板 -> 上位机  HEARTBEAT id=0 payload: u32 schema_hash [, u32 board_uid]  —— 上位机据此匹配 link_schema.json；
  *                 0.5.0 起第 4 个 u32 status：低 8 位 = 复位原因（pal_reset_cause_t 数值），高位 = DZCTL_HB_* 标志
+ *                 0.8.0 起再追加 u32 急停原因（dzctl_estop_cause_t）、u32 触发时刻 t_ms、f32 触发值（len 28；未急停时原因 0）
  *                 board_uid（0.3.0 起）= 芯片唯一 ID 折成 32 位，两块同型号板同时插着时上位机靠它认板；0 = 未知
  * 参数表由 tools/gen_link.py 从 yaml 生成，应用不手写。
  */
@@ -20,7 +21,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.7.0"
+#define DZCTL_VERSION "0.8.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
@@ -52,6 +53,24 @@ dzctl_status_t dzctl_set(const dzctl_table_t *t, uint8_t i, float v, float *appl
 
 /** 处理一帧 PARAM_SET；是则填好 ack 并返回 true（调用方负责发送），不是 PARAM_SET 返回 false。 */
 bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack);
+
+/** 0.8.0 急停原因（心跳里带给上位机；中文说明在侧车 dzbench/session.py ESTOP_CAUSES）。 */
+typedef enum {
+    DZCTL_ES_NONE = 0,
+    DZCTL_ES_MANUAL = 1,       /**< 上位机急停帧（按钮/Esc/空格）；value 无 */
+    DZCTL_ES_HB_TIMEOUT = 2,   /**< 上位机心跳超时；value = 距上一帧的 ms */
+    DZCTL_ES_STALL = 3,        /**< 堵转；value = 判定量（占空比或电流 A） */
+    DZCTL_ES_UNDERVOLT = 4,    /**< 欠压；value = 电池电压 V */
+    DZCTL_ES_OVERCURRENT = 5,  /**< 过流；value = 电流 A */
+    DZCTL_ES_LIMIT = 6,        /**< 限位/超量程；value = 越界的量 */
+    DZCTL_ES_SELFTEST = 7,     /**< 上电自检失败；value = 失败项数 */
+    DZCTL_ES_SAFE_BOOT = 8,    /**< 看门狗/锁死复位后进安全态；value = 复位原因 */
+    DZCTL_ES_SENSOR = 9,       /**< 传感器读失败（编码器/IMU 等）→ 故障停机；value = 资源号 */
+} dzctl_estop_cause_t;
+/** 记下急停原因：已有原因时不覆盖（第一个原因才是“为什么停”），直到 dzctl_estop_clear（人发 R）。 */
+void dzctl_estop_note(dzctl_estop_cause_t cause, uint32_t t_ms, float value);
+void dzctl_estop_clear(void);
+dzctl_estop_cause_t dzctl_estop_cause(void);
 
 /** 是否急停帧。 */
 bool dzctl_is_estop(const dzframe_t *f);

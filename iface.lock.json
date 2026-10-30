@@ -1496,6 +1496,10 @@
    "dzctl.h: float dzctl_get(const dzctl_table_t *t, uint8_t i);",
    "dzctl.h: dzctl_status_t dzctl_set(const dzctl_table_t *t, uint8_t i, float v, float *applied);",
    "dzctl.h: bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack);",
+   "dzctl.h: typedef enum { DZCTL_ES_NONE = 0, DZCTL_ES_MANUAL = 1, DZCTL_ES_HB_TIMEOUT = 2, DZCTL_ES_STALL = 3, DZCTL_ES_UNDERVOLT = 4, DZCTL_ES_OVERCURRENT = 5, DZCTL_ES_LIMIT = 6, DZCTL_ES_SELFTEST = 7, DZCTL_ES_SAFE_BOOT = 8, DZCTL_ES_SENSOR = 9, } dzctl_estop_cause_t;",
+   "dzctl.h: void dzctl_estop_note(dzctl_estop_cause_t cause, uint32_t t_ms, float value);",
+   "dzctl.h: void dzctl_estop_clear(void);",
+   "dzctl.h: dzctl_estop_cause_t dzctl_estop_cause(void);",
    "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
    "dzctl.h: uint32_t dzctl_board_uid(void);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
@@ -1519,8 +1523,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "5b87e3298ff93be8",
-  "version": "0.7.0"
+  "hash": "7f2b688ed93bc850",
+  "version": "0.8.0"
  },
  "firmware/proto/dzframe": {
   "decls": [
