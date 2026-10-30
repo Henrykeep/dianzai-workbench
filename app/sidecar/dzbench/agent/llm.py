@@ -2,30 +2,44 @@
 
 国内外主流服务都提供 OpenAI 兼容端点，所以一个客户端覆盖全部；换服务 = 换 base_url + model。
 密钥只存本机 ~/.dzbench/config.json（权限 0600），环境变量 DZBENCH_API_KEY 优先；永远不写进仓库/日志/界面回显。
+
+可靠性：流式输出（逐字推给界面）、429/5xx/断网指数退避重试、token 用量上报（填了单价才算钱，不编价格）、
+不支持原生 tool_calls 的模型走 JSON 兜底（工具表写进提示词，模型回一段 JSON）、云端连不上自动切本地 Ollama。
 """
 from __future__ import annotations
 
 import json
 import os
 import pathlib
+import re
+import time
 import urllib.error
 import urllib.request
+from typing import Callable
 
 PROVIDERS = {
     "deepseek": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat", "name": "DeepSeek"},
     "qwen": {"base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1", "model": "qwen-plus", "name": "通义千问（百炼）"},
     "moonshot": {"base_url": "https://api.moonshot.cn/v1", "model": "moonshot-v1-8k", "name": "Kimi（月之暗面）"},
     "zhipu": {"base_url": "https://open.bigmodel.cn/api/paas/v4", "model": "glm-4-flash", "name": "智谱 GLM"},
+    "siliconflow": {"base_url": "https://api.siliconflow.cn/v1", "model": "Qwen/Qwen2.5-7B-Instruct", "name": "硅基流动"},
     "openai": {"base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini", "name": "OpenAI"},
-    "ollama": {"base_url": "http://127.0.0.1:11434/v1", "model": "qwen2.5:7b", "name": "Ollama（本地，离线）"},
+    "ollama": {"base_url": "http://127.0.0.1:11434/v1", "model": "qwen2.5:7b-instruct", "name": "Ollama（本地，离线）"},
     "custom": {"base_url": "", "model": "", "name": "自定义 OpenAI 兼容"},
 }
+# 本地推荐：小尺寸里工具调用靠谱的（Ollama 模型名）。只是推荐清单，不代表跑分。
+LOCAL_MODELS = [
+    {"model": "qwen2.5:7b-instruct", "size": "≈4.7 GB", "note": "推荐：7B 里工具调用最稳，8 GB 显存/16 GB 内存可跑"},
+    {"model": "qwen3:8b", "size": "≈5.2 GB", "note": "更新一代，工具调用好；稍慢"},
+    {"model": "qwen2.5:3b-instruct", "size": "≈1.9 GB", "note": "轻薄本也能跑；复杂任务会走 JSON 兜底"},
+]
+KEYS = ("provider", "base_url", "model", "api_key", "repo", "local_model", "local_url", "failover", "tool_mode", "price_in", "price_out")
 
 
 class LLMError(Exception):
-    def __init__(self, message: str, fix: str = ""):
+    def __init__(self, message: str, fix: str = "", down: bool = False):
         super().__init__(message)
-        self.message, self.fix = message, fix
+        self.message, self.fix, self.down = message, fix, down     # down=连不上（可切本地）
 
 
 def config_path() -> pathlib.Path:
@@ -40,6 +54,9 @@ def load_config() -> dict:
     base = PROVIDERS.get(cfg["provider"], PROVIDERS["custom"])
     cfg.setdefault("base_url", base["base_url"])
     cfg.setdefault("model", base["model"])
+    cfg.setdefault("local_model", PROVIDERS["ollama"]["model"])
+    cfg.setdefault("failover", True)
+    cfg.setdefault("tool_mode", "auto")
     if os.environ.get("DZBENCH_API_KEY"):
         cfg["api_key"] = os.environ["DZBENCH_API_KEY"]
     return cfg
@@ -50,12 +67,12 @@ def save_config(update: dict) -> dict:
     if "provider" in update and update["provider"] != cfg.get("provider"):
         base = PROVIDERS.get(update["provider"], PROVIDERS["custom"])
         cfg.update(base_url=base["base_url"], model=base["model"])
-    for k in ("provider", "base_url", "model", "api_key", "repo"):
+    for k in KEYS:
         if k in update and (k != "api_key" or update[k]):     # 空 key 不覆盖已存的
             cfg[k] = update[k]
     p = config_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({k: v for k, v in cfg.items() if k in ("provider", "base_url", "model", "api_key", "repo")}, ensure_ascii=False, indent=1), encoding="utf-8")
+    p.write_text(json.dumps({k: v for k, v in cfg.items() if k in KEYS}, ensure_ascii=False, indent=1), encoding="utf-8")
     try:
         os.chmod(p, 0o600)
     except OSError:
@@ -66,21 +83,56 @@ def save_config(update: dict) -> dict:
 def public_config(cfg: dict | None = None) -> dict:
     cfg = cfg or load_config()
     k = cfg.get("api_key", "")
-    return {"provider": cfg["provider"], "base_url": cfg["base_url"], "model": cfg["model"],
-            "repo": cfg.get("repo", ""), "has_key": bool(k), "key_hint": ("…" + k[-4:]) if len(k) > 8 else "", "providers": PROVIDERS,
+    return {**{x: cfg.get(x) for x in KEYS if x != "api_key"}, "repo": cfg.get("repo", ""),
+            "has_key": bool(k), "key_hint": ("…" + k[-4:]) if len(k) > 8 else "", "providers": PROVIDERS, "local_models": LOCAL_MODELS,
             "configured": config_path().exists() and bool(k or cfg["provider"] == "ollama")}
+
+
+def local_config(cfg: dict) -> dict:
+    """云端连不上时切的本地模型（Ollama，同一套 OpenAI 兼容接口）。"""
+    return {**cfg, "provider": "ollama", "base_url": cfg.get("local_url") or PROVIDERS["ollama"]["base_url"], "model": cfg.get("local_model") or PROVIDERS["ollama"]["model"],
+            "api_key": "", "price_in": None, "price_out": None}
+
+
+def _req(url: str, body: dict | None = None, key: str = "", timeout: float = 15):
+    h = {"Content-Type": "application/json"} | ({"Authorization": f"Bearer {key}"} if key else {})
+    return urllib.request.urlopen(urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=h), timeout=timeout)
+
+
+def list_models(form: dict) -> list[str]:
+    """GET /models：设置里的“换模型”下拉。失败返回空表（有的服务不开放这个接口）。"""
+    cfg = load_config() | {k: v for k, v in form.items() if v}
+    try:
+        with _req(cfg["base_url"].rstrip("/") + "/models", key=cfg.get("api_key", ""), timeout=8) as r:
+            return sorted(m["id"] for m in json.loads(r.read()).get("data", []))
+    except (OSError, ValueError, KeyError, urllib.error.URLError):
+        return []
+
+
+def ollama(action: str, model: str = "", host: str = "") -> dict:
+    """一键“检查 Ollama 并拉模型”：check → 在不在跑、装了哪些模型；pull → 让 Ollama 下载（阻塞到下完）。"""
+    host = host or re.sub(r"/v1/?$", "", load_config().get("local_url") or PROVIDERS["ollama"]["base_url"])
+    try:
+        if action == "pull":
+            with _req(host + "/api/pull", {"model": model, "stream": False}, timeout=3600) as r:
+                st = json.loads(r.read()).get("status", "")
+            return {"ok": st == "success", "status": st}
+        with _req(host + "/api/tags", timeout=4) as r:
+            have = [m["name"] for m in json.loads(r.read()).get("models", [])]
+        return {"ok": True, "running": True, "models": have}
+    except (OSError, ValueError, urllib.error.URLError) as e:
+        return {"ok": False, "running": False, "message": f"连不上 Ollama（{host}）：{e}", "fix": "装 Ollama（ollama.com）并启动；Windows 装完会在托盘常驻"}
 
 
 def test_connection(form: dict, timeout: float = 15) -> dict:
     """用表单里（还没保存）的地址/模型/Key 发一句最小的对话，回报通不通、多久、模型回了什么。不写配置。"""
-    import time
     cfg = load_config()
     for k in ("provider", "base_url", "model", "api_key"):
         if form.get(k):
             cfg[k] = form[k]
     t0 = time.monotonic()
     try:
-        m = OpenAICompat(cfg, timeout=timeout).chat([{"role": "user", "content": "只回复两个字：收到"}])
+        m = OpenAICompat(cfg, timeout=timeout, retries=0, stream=False).chat([{"role": "user", "content": "只回复两个字：收到"}])
     except LLMError as e:
         return {"ok": False, "message": e.message, "fix": e.fix}
     except (KeyError, IndexError, ValueError, TypeError) as e:
@@ -88,27 +140,101 @@ def test_connection(form: dict, timeout: float = 15) -> dict:
     return {"ok": True, "model": cfg["model"], "ms": round((time.monotonic() - t0) * 1000), "reply": str(m.get("content") or "")[:80]}
 
 
+# ------------------------------------------------------------------ JSON 兜底（模型不支持原生 tool_calls）
+JSON_RULE = ("\n\n## 调用工具的格式\n你没有原生工具调用。要用工具时，整条回复只写一个 JSON 对象："
+             '{"tool": "工具名", "args": {参数}}，不要别的字。工具结果会以“[工具结果 名字]”发回给你。'
+             "不需要工具时直接用中文回答。可用工具：\n")
+
+
+def to_json_mode(messages: list[dict], tools: list[dict] | None) -> list[dict]:
+    """把含 tool_calls / tool 角色的对话改写成纯文本对话，工具表追加进 system。"""
+    out = []
+    for m in messages:
+        if m["role"] == "system" and tools:
+            spec = "\n".join(f"- {t['name']}：{t['description'][:160]} 参数 {json.dumps(t['input_schema'].get('properties', {}), ensure_ascii=False)[:300]}" for t in tools)
+            out.append({"role": "system", "content": m["content"] + JSON_RULE + spec})
+        elif m["role"] == "tool":
+            out.append({"role": "user", "content": f"[工具结果 {m.get('tool_call_id', '')}]\n{m['content']}"})
+        elif m["role"] == "assistant" and m.get("tool_calls"):
+            c = m["tool_calls"][0]["function"]
+            out.append({"role": "assistant", "content": json.dumps({"tool": c["name"], "args": json.loads(c.get("arguments") or "{}")}, ensure_ascii=False)})
+        else:
+            out.append({"role": m["role"], "content": m.get("content") or ""})
+    return out
+
+
+def parse_json_call(content: str, names: set[str]) -> list[dict]:
+    """从文本里认出工具调用：{"tool":..,"args":..} 或 {"name":..,"arguments":..}，可裹在 ```json 里。认不出返回 []。"""
+    m = re.search(r"\{.*\}", content or "", re.S)
+    if not m:
+        return []
+    try:
+        d = json.loads(m.group(0))
+    except ValueError:
+        return []
+    name = d.get("tool") or d.get("name") if isinstance(d, dict) else None
+    if name not in names:
+        return []
+    args = d.get("args", d.get("arguments", d.get("parameters", {})))
+    args = json.loads(args) if isinstance(args, str) else args
+    return [{"id": f"j_{name}", "type": "function", "function": {"name": name, "arguments": json.dumps(args or {}, ensure_ascii=False)}}]
+
+
+# ------------------------------------------------------------------ 客户端
 class OpenAICompat:
-    def __init__(self, cfg: dict | None = None, timeout: float = 60):
+    RETRY_CODES = (429, 500, 502, 503, 504)
+
+    def __init__(self, cfg: dict | None = None, timeout: float = 60, on_event: Callable[[dict], None] | None = None,
+                 retries: int = 2, stream: bool = True, backoff: float = 0.8):
         self.cfg = cfg or load_config()
-        self.timeout = timeout
+        self.timeout, self.retries, self.stream, self.backoff = timeout, retries, stream, backoff
+        self.emit = on_event or (lambda e: None)
+        self.json_mode = self.cfg.get("tool_mode") == "json"
+        self.name = self.cfg.get("model", "")
+        self.usage = {"prompt": 0, "completion": 0}
 
     def chat(self, messages: list[dict], tools: list[dict] | None = None) -> dict:
-        """返回 assistant message（可能含 tool_calls）。"""
+        """返回 assistant message（可能含 tool_calls，JSON 兜底时也统一成 tool_calls）。"""
         c = self.cfg
         if not c.get("base_url"):
-            raise LLMError("没有配置模型服务地址", "在 Agent 设置里选一个服务商")
+            raise LLMError("没有配置模型服务地址", "在大模型设置里选一个服务商")
         if not c.get("api_key") and c.get("provider") != "ollama":
-            raise LLMError("没有 API Key", "在 Agent 设置里填 Key（只存在本机），或改用 Ollama 本地模型；离线时“分析阶跃”不需要 Key")
-        body = {"model": c["model"], "messages": messages, "temperature": 0.2}
-        if tools:
+            raise LLMError("没有 API Key", "在大模型设置里填 Key（只存在本机），或改用本地 Ollama")
+        for attempt in range(self.retries + 1):
+            try:
+                m = self._once(messages, tools)
+                break
+            except LLMError as e:
+                native_refused = not self.json_mode and tools and "400" in e.message and "tool" in e.message.lower()
+                if native_refused:                          # 服务/模型不认 tools 参数 → 以后都走 JSON 兜底
+                    self.json_mode = True
+                    self.emit({"type": "agent_toolmode", "mode": "json", "model": self.name})
+                    continue
+                if attempt == self.retries or not getattr(e, "retry", False):
+                    raise
+                wait = self.backoff * (2 ** attempt)
+                self.emit({"type": "agent_retry", "attempt": attempt + 1, "wait_s": wait, "why": e.message[:120]})
+                time.sleep(wait)
+        if tools and not m.get("tool_calls") and (calls := parse_json_call(m.get("content") or "", {t["name"] for t in tools})):
+            m = {"role": "assistant", "content": "", "tool_calls": calls}      # 小模型常把调用写进正文：也认
+        return m
+
+    def _once(self, messages: list[dict], tools: list[dict] | None) -> dict:
+        c = self.cfg
+        msgs = to_json_mode(messages, tools) if self.json_mode else messages
+        body = {"model": c["model"], "messages": msgs, "temperature": 0.2}
+        if tools and not self.json_mode:
             body["tools"] = [{"type": "function", "function": {"name": t["name"], "description": t["description"],
                                                                "parameters": t["input_schema"]}} for t in tools]
-        req = urllib.request.Request(c["base_url"].rstrip("/") + "/chat/completions", data=json.dumps(body).encode(),
-                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {c.get('api_key', 'ollama')}"})
+        if self.stream:
+            body |= {"stream": True, "stream_options": {"include_usage": True}}
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
-                return json.loads(r.read())["choices"][0]["message"]
+            with _req(c["base_url"].rstrip("/") + "/chat/completions", body, c.get("api_key") or "ollama", self.timeout) as r:
+                if "text/event-stream" in (r.headers.get("Content-Type") or ""):
+                    m, usage = self._read_stream(r)
+                else:
+                    d = json.loads(r.read())
+                    m, usage = d["choices"][0]["message"], d.get("usage")
         except urllib.error.HTTPError as e:
             txt = e.read().decode(errors="replace")[:300]
             try:     # 多数服务回 {"error":{"message":…}}：只给人看那句话
@@ -117,6 +243,86 @@ class OpenAICompat:
             except (ValueError, AttributeError):
                 pass
             fix = {401: "Key 不对或过期", 402: "余额不足", 404: "模型名或地址不对", 429: "请求太频繁/额度用完，稍后再试"}.get(e.code, "")
-            raise LLMError(f"模型服务返回 {e.code}：{txt}", fix) from e
+            err = LLMError(f"模型服务返回 {e.code}：{txt}", fix)
+            err.retry = e.code in self.RETRY_CODES
+            raise err from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:
-            raise LLMError(f"连不上模型服务：{e}", "比赛现场可能没网：用“分析阶跃”（离线规则）或本地 Ollama") from e
+            err = LLMError(f"连不上模型服务：{getattr(e, 'reason', e)}", "比赛现场可能没网：调参/示波/阶跃测试不受影响；要 Agent 就开本地 Ollama", down=True)
+            err.retry = True
+            raise err from e
+        self._account(usage)
+        return m
+
+    def _read_stream(self, r) -> tuple[dict, dict | None]:
+        """SSE：content 逐段推 agent_delta；tool_calls 按 index 拼参数。"""
+        text, calls, usage = [], {}, None
+        for raw in r:
+            line = raw.decode("utf-8", "replace").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            d = json.loads(data)
+            usage = d.get("usage") or usage
+            for ch in d.get("choices") or []:
+                delta = ch.get("delta") or {}
+                if delta.get("content"):
+                    text.append(delta["content"])
+                    self.emit({"type": "agent_delta", "text": delta["content"]})
+                for tc in delta.get("tool_calls") or []:
+                    slot = calls.setdefault(tc.get("index", 0), {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                    slot["id"] = tc.get("id") or slot["id"]
+                    f = tc.get("function") or {}
+                    slot["function"]["name"] += f.get("name") or ""
+                    slot["function"]["arguments"] += f.get("arguments") or ""
+        m = {"role": "assistant", "content": "".join(text)}
+        if calls:
+            m["tool_calls"] = [calls[i] for i in sorted(calls)]
+        return m, usage
+
+    def _account(self, usage: dict | None) -> None:
+        """累计 token；配置里填了每百万 token 单价（元）才算钱——价格各家常变，不内置。"""
+        if not usage:
+            return
+        self.usage["prompt"] += int(usage.get("prompt_tokens") or 0)
+        self.usage["completion"] += int(usage.get("completion_tokens") or 0)
+        pi, po = self.cfg.get("price_in"), self.cfg.get("price_out")
+        cost = (self.usage["prompt"] * float(pi) + self.usage["completion"] * float(po)) / 1e6 if pi not in (None, "") and po not in (None, "") else None
+        self.emit({"type": "agent_usage", "model": self.name, **self.usage, "cost": cost})
+
+
+class Failover:
+    """云端为主、本地 Ollama 兜底：主模型连不上（不是 Key/余额这类错）→ 切本地并告诉界面；之后本次会话都用本地。"""
+
+    def __init__(self, primary: OpenAICompat, local: OpenAICompat | None, emit: Callable[[dict], None]):
+        self.primary, self.local, self.emit, self.active = primary, local, emit, primary
+
+    @property
+    def name(self) -> str:
+        return self.active.name
+
+    def chat(self, messages: list[dict], tools: list[dict] | None = None) -> dict:
+        try:
+            return self.active.chat(messages, tools)
+        except LLMError as e:
+            if not e.down or self.local is None or self.active is self.local:
+                raise
+            self.active = self.local
+            self.emit({"type": "agent_mode", "mode": "local", "name": self.local.name, "fallback": e.message})
+            try:
+                return self.local.chat(messages, tools)
+            except LLMError as e2:
+                raise LLMError(f"云端连不上，本地 {self.local.name} 也连不上：{e2.message}",
+                               "开 Ollama 并拉好模型（设置里“检查 Ollama”）", down=True) from e2
+
+
+def build(cfg: dict | None = None, emit: Callable[[dict], None] = lambda e: None):
+    """按配置组装：有云端 Key → 云端（开了 failover 再挂本地兜底）；只配了 Ollama → 本地；都没有 → None。"""
+    cfg = cfg or load_config()
+    if cfg.get("provider") == "ollama":
+        return OpenAICompat(cfg, on_event=emit)
+    if not cfg.get("api_key"):
+        return None
+    local = OpenAICompat(local_config(cfg), on_event=emit, retries=0) if cfg.get("failover", True) else None
+    return Failover(OpenAICompat(cfg, on_event=emit, retries=1), local, emit)

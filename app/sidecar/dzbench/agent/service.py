@@ -23,7 +23,6 @@ from .guard import GuardError, TuneGuard, key_samples
 from .gateway import Gateway, GatewayError
 from .journal import BoardMemory, Journal, board_key
 from .loop import AgentLoop
-from .offline import OfflineAssistant
 from ..tuning.identify import steady_state
 from . import codemap, knowledge
 from .experiment import StagedSearch, asymmetry, four_segment_metrics, four_segment_plan
@@ -920,28 +919,29 @@ class AgentService:
 
     # -------------------------------------------------------------- LLM
     def llm(self):
-        """注入的 LLM > 配置的大模型 > 离线规则助手（没填 Key 且不是 Ollama）。"""
+        """注入的 LLM（测试里的脚本化模型）> 配置的大模型；没配 Key（且不是 Ollama）→ None。"""
         if self._llm:
             return self._llm
-        c = llm_mod.load_config()
-        if not c.get("api_key") and c.get("provider") != "ollama":
-            return OfflineAssistant()
-        return llm_mod.OpenAICompat(c)
+        return llm_mod.build(emit=self.emit)
 
     def ask(self, text: str) -> str:
-        """回答前发 agent_mode（界面标出这次是哪个“脑子”在答）。连不上模型服务时自动退回离线规则助手。"""
-        self.loop.llm = self.llm()
-        mode = "offline" if isinstance(self.loop.llm, OfflineAssistant) else "llm"
-        self.loop.guards = isinstance(self.loop.llm, llm_mod.OpenAICompat)
-        self.emit({"type": "agent_mode", "mode": mode, "name": getattr(self.loop.llm, "name", "") or llm_mod.load_config().get("model", "")})
+        """回答前发 agent_mode。没配模型 / 连不上 → 发 agent_unreachable（界面给“重试 / 设置”），
+        不再有规则助手兜底：调参、示波、急停、阶跃测试、评分页都不依赖 Agent，照常能用。"""
+        llm = self.llm()
+        if llm is None:
+            return self._unreachable("还没接大模型", "点“大模型设置”选服务商、填 Key；本地 Ollama 不需要 Key", text)
+        self.loop.llm = llm
+        self.loop.guards = isinstance(llm, (llm_mod.OpenAICompat, llm_mod.Failover))
+        local = getattr(llm, "active", None) is getattr(llm, "local", 0) or getattr(llm, "cfg", {}).get("provider") == "ollama"
+        self.emit({"type": "agent_mode", "mode": "local" if local else "llm", "name": getattr(llm, "name", "")})
         try:
             return self.loop.ask(text)
         except llm_mod.LLMError as e:
-            if mode == "offline" or not e.message.startswith("连不上"):
-                raise LinkError("llm", e.message, e.fix) from e
-            self.loop.llm = OfflineAssistant()
-            self.emit({"type": "agent_mode", "mode": "offline", "name": OfflineAssistant.name, "fallback": e.message})
-            return f"（连不上模型服务，改由{OfflineAssistant.name}回答）\n" + self.loop.ask(text)
+            return self._unreachable(e.message, e.fix, text)
+
+    def _unreachable(self, message: str, fix: str, text: str) -> str:
+        self.emit({"type": "agent_unreachable", "message": message, "fix": fix, "text": text})
+        return f"（Agent 暂时用不了：{message}。{fix}。调参、示波、急停、阶跃测试和评分页不受影响。）"
 
 
 __all__ = ["AgentService", "GatewayError", "guess_pairs"]

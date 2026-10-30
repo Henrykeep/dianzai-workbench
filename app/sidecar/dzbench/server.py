@@ -332,6 +332,10 @@ class Server:
             return await run(None, lambda: self.svc.watch_start(m["vars"], int(m.get("period_ms", 20))))
         if op == "watch_stop":
             return self.svc.watch_stop()
+        if op == "agent_models":
+            return agent_llm.list_models(m.get("form") or {})
+        if op == "agent_ollama":
+            return agent_llm.ollama(m.get("action", "check"), m.get("model", ""))
         if op == "agent_config_test":
             return agent_llm.test_connection(m.get("form") or {})
         if op == "agent_config":

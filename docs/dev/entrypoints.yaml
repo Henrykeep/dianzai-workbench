@@ -69,7 +69,7 @@ actions:
   - {id: log_import,   label: 导入记录,         at: toolbox:记录, ui: import,    ops: [log_import, replay]}
   - {id: framedef,     label: 非工作台帧格式,   at: toolbox:帧格式, ui: framedef, ops: [framedef_set, framedef_status]}
   - {id: coproc,       label: 协处理器部署,     at: toolbox:协处理器, ui: fw-coproc, ops: [coproc_get, coproc_set, coproc_push, coproc_start, coproc_stop, coproc_status, coproc_log]}
-  - {id: llm_cfg,      label: 大模型设置,       at: toolbox:设置, ui: ag-cfg,    ops: [agent_config, agent_config_test]}
+  - {id: llm_cfg,      label: 大模型设置,       at: toolbox:设置, ui: ag-cfg,    ops: [agent_config, agent_config_test, agent_models, agent_ollama]}
 
 # 同一个 op 被多个动作用、且不算重复入口的（每个写清楚为什么）
 shared_ops:
