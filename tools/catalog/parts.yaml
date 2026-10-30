@@ -196,7 +196,7 @@ parts:
     status: 仿真
     res: [{ type: spi, names: [IMU_ACC, IMU_GYRO] }]
   - id: imu_uart
-    name: 串口姿态模块（JY901 / HWT101 类，模块内解算）
+    name: 串口姿态模块（WIT：JY61P / JY901 / HWT101，模块内解算）
     kind: sensor
     provides: [sense.accel, sense.attitude]
     bus: uart
@@ -205,8 +205,8 @@ parts:
     cons: [多占一个串口, 协议因型号而异]
     risks: []
     substitutes: [mpu6050]
-    repo: [examples/2026H_ball/io/io_imu.c]
-    status: 编译
+    repo: [firmware/drivers/wit_imu, examples/2026H_ball/io/io_imu.c]
+    status: 仿真
     res: [{ type: uart, names: [IMU], baud: 115200, irq: 4 }]
   - id: hcsr04
     name: HC-SR04 超声波

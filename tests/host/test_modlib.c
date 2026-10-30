@@ -1,4 +1,4 @@
-/* 模块库（v0.5.0）：servo、buzzer、battery、ssd1306 传输、hcsr04、line_sensor、stepper、st77xx、bt_serial、motor_2pwm。
+/* 模块库（v0.5.0）：servo、buzzer、battery、ssd1306 传输、hcsr04、line_sensor、stepper、st77xx、bt_serial、motor_2pwm、wit_imu。
  * 每个驱动都用 host-sim 的“假芯片”跑：PWM/GPIO/ADC/UART/I2C/SPI 都是 host_sim 提供的。 */
 #include <string.h>
 #include "tt.h"
@@ -13,6 +13,7 @@
 #include "stepper.h"
 #include "st77xx.h"
 #include "bt_serial.h"
+#include "wit_imu.h"
 #include "motor_2pwm.h"
 
 static void fresh(void) { host_sim_reset(); pal_init(); }
@@ -511,9 +512,63 @@ TEST(motor_2pwm_drv8833)
     motor_2pwm_t z = {0}; CHECK(motor_2pwm_set(&z, 0.1f) == DZ_ESTATE);
 }
 
+/* ---- WIT 串口 IMU：借 BT 这路仿真串口 ---- */
+static uint16_t wit_frame(uint8_t *f, uint8_t type, int16_t a, int16_t b, int16_t c)
+{
+    int16_t v[4] = { a, b, c, 0 };
+    f[0] = 0x55; f[1] = type;
+    for (int i = 0; i < 4; i++) { f[2 + 2 * i] = (uint8_t)(v[i] & 0xFF); f[3 + 2 * i] = (uint8_t)((uint16_t)v[i] >> 8); }
+    f[10] = 0; for (int i = 0; i < 10; i++) f[10] = (uint8_t)(f[10] + f[i]);
+    return 11;
+}
+
+TEST(wit_imu_fake)
+{
+    fresh();
+    CHECK(wit_imu_selftest() == DZ_OK);
+    wit_t w; wit_cfg_t c = { RES_UART_BT, WIT_JY61P, 100, 50 };
+    CHECK(wit_init(&w, &c) == DZ_OK);
+    uint8_t s[64]; uint16_t n = 0;
+    s[n++] = 0x12; s[n++] = 0x55;                        /* 噪声 + 假帧头 */
+    n += wit_frame(s + n, 0x51, 2048, -2048, 16384);    /* 1g, -1g, 8g */
+    n += wit_frame(s + n, 0x52, 16384, 0, -1638);       /* 1000 dps */
+    n += wit_frame(s + n, 0x53, 8192, -8192, 16384);    /* 45, -45, 90 deg */
+    host_sim_uart_inject_rx(RES_UART_BT, s, 20);         /* 半帧 */
+    CHECK(wit_poll(&w, 10) == 1);
+    host_sim_uart_inject_rx(RES_UART_BT, s + 20, (uint16_t)(n - 20));
+    CHECK(wit_poll(&w, 10) == 2);
+    const wit_data_t *d = wit_data(&w);
+    CHECK(fabsf(d->acc_g[0] - 1.0f) < 1e-3f && fabsf(d->acc_g[2] - 8.0f) < 1e-3f);
+    CHECK(fabsf(d->gyro_dps[0] - 1000.0f) < 1e-2f);
+    CHECK(fabsf(d->roll - 45.0f) < 1e-3f && fabsf(d->pitch + 45.0f) < 1e-3f && fabsf(d->yaw - 90.0f) < 1e-3f);
+    CHECK(wit_fresh(&w, 60) && !wit_fresh(&w, 61));
+    /* 校验错：丢一帧，后面的照常 */
+    uint32_t b0 = w.bad_sum; CHECK(b0 == 1);   /* 开头的假帧头吃掉一次校验错 */
+    uint8_t bad[22]; wit_frame(bad, 0x53, 1, 2, 3); bad[10] ^= 1; wit_frame(bad + 11, 0x53, 0, 0, -16384);
+    CHECK(wit_feed(&w, bad, 22, 100) == 1 && w.bad_sum == b0 + 1 && fabsf(d->yaw + 90.0f) < 1e-3f);
+    /* 清零序列：JY 系 */
+    CHECK(wit_zero_yaw_start(&w, 200) == DZ_OK && wit_zero_yaw_start(&w, 200) == DZ_EBUSY);
+    uint8_t tx[32]; uint16_t k;
+    (void)wit_poll(&w, 200); k = host_sim_uart_take_tx(RES_UART_BT, tx, sizeof tx);
+    CHECK(k == 5 && tx[2] == 0x69 && tx[4] == 0xB5);
+    (void)wit_poll(&w, 250); CHECK(host_sim_uart_take_tx(RES_UART_BT, tx, sizeof tx) == 0);   /* 间隔未到 */
+    (void)wit_poll(&w, 300); k = host_sim_uart_take_tx(RES_UART_BT, tx, sizeof tx);
+    CHECK(k == 5 && tx[2] == 0x01 && tx[3] == 0x04);
+    (void)wit_poll(&w, 400); k = host_sim_uart_take_tx(RES_UART_BT, tx, sizeof tx);
+    CHECK(k == 5 && tx[2] == 0x00 && !wit_zero_busy(&w));
+    /* HWT101 清零命令不同 */
+    c.model = WIT_HWT101; CHECK(wit_init(&w, &c) == DZ_OK);
+    CHECK(wit_zero_yaw_start(&w, 0) == DZ_OK);
+    (void)wit_poll(&w, 0); (void)wit_poll(&w, 100); (void)host_sim_uart_take_tx(RES_UART_BT, tx, 5);
+    k = host_sim_uart_take_tx(RES_UART_BT, tx, sizeof tx);
+    CHECK(k == 5 && tx[2] == 0x76);
+    c.model = (wit_model_t)7; CHECK(wit_init(&w, &c) == DZ_EINVAL);
+}
+
 void suite_modlib(void)
 {
     RUN(servo_pwm); RUN(buzzer_patterns); RUN(battery_lowvolt);
     RUN(ssd1306_pal_transports); RUN(hcsr04_fake); RUN(gpio_irq_and_hcsr04_irq); RUN(line_sensor_fake); RUN(stepper_ramp);
-    RUN(st77xx_fake); RUN(bt_serial_fake); RUN(motor_2pwm_drv8833);
+    RUN(st77xx_fake); RUN(bt_serial_fake); RUN(motor_2pwm_drv8833); RUN(wit_imu_fake);
 }
+

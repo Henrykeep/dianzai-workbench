@@ -1034,6 +1034,39 @@
   "hash": "78f031dc6f3d7563",
   "version": "1.0.0"
  },
+ "firmware/drivers/wit_imu": {
+  "decls": [
+   "wit_imu.h: typedef enum { WIT_JY61P = 0, WIT_JY901 = 1, WIT_HWT101 = 2 } wit_model_t;",
+   "wit_imu.h: typedef struct { pal_id_t uart;",
+   "wit_imu.h: wit_model_t model;",
+   "wit_imu.h: uint16_t gap_ms;",
+   "wit_imu.h: uint16_t stale_ms;",
+   "wit_imu.h: } wit_cfg_t;",
+   "wit_imu.h: typedef struct { float acc_g[3], gyro_dps[3], roll, pitch, yaw;",
+   "wit_imu.h: int16_t mag[3];",
+   "wit_imu.h: uint32_t t_angle_ms;",
+   "wit_imu.h: bool has_angle;",
+   "wit_imu.h: } wit_data_t;",
+   "wit_imu.h: typedef struct { wit_cfg_t cfg;",
+   "wit_imu.h: wit_data_t d;",
+   "wit_imu.h: uint8_t buf[11], n;",
+   "wit_imu.h: uint32_t frames, bad_sum;",
+   "wit_imu.h: uint8_t zstep;",
+   "wit_imu.h: uint32_t znext;",
+   "wit_imu.h: bool ready;",
+   "wit_imu.h: } wit_t;",
+   "wit_imu.h: dz_err_t wit_init(wit_t *w, const wit_cfg_t *cfg);",
+   "wit_imu.h: uint16_t wit_poll(wit_t *w, uint32_t now_ms);",
+   "wit_imu.h: uint16_t wit_feed(wit_t *w, const uint8_t *p, uint16_t n, uint32_t now_ms);",
+   "wit_imu.h: const wit_data_t *wit_data(const wit_t *w);",
+   "wit_imu.h: bool wit_fresh(const wit_t *w, uint32_t now_ms);",
+   "wit_imu.h: dz_err_t wit_zero_yaw_start(wit_t *w, uint32_t now_ms);",
+   "wit_imu.h: bool wit_zero_busy(const wit_t *w);",
+   "wit_imu.h: dz_err_t wit_imu_selftest(void);"
+  ],
+  "hash": "880b55d196547a9e",
+  "version": "1.0.0"
+ },
  "firmware/framework/blackbox": {
   "decls": [
    "blackbox.h: #define BB_EV_RESET 1u",
