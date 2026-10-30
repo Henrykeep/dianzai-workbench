@@ -197,6 +197,15 @@ test:
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
 
 # 推送前：干净克隆 + 空 HOME + 无器件包里跑 CI 同款步骤（tools/preflight.sh）
+# 许可扫描（make check 调用）：vendored/third_party 每目录 LICENSE、Python 依赖 pip-licenses、前端 npm 依赖。
+# 统一输出：✗ [licenses/<类>] 什么 · 原因：… · 处理：…；GPL/LGPL/AGPL、无许可、认不出即失败；CC-BY 登记 docs/ATTRIBUTION.md 即可。
+licenses:
+	$(PY) tools/check_vendored.py
+	$(PY) tools/test_check_vendored.py
+	$(PY) tools/check_py_licenses.py --selftest
+	$(PY) tools/check_py_licenses.py
+	bash tools/check_npm_licenses.sh
+
 preflight:
 	tools/preflight.sh
 
@@ -247,10 +256,7 @@ check:
 	$(PY) tools/audit_port.py --selftest
 	$(PY) tools/check_ai_docs.py --selftest
 	$(PY) tools/check_ai_docs.py --check
-	$(PY) tools/check_vendored.py
-	$(PY) tools/test_check_vendored.py
-	$(PY) tools/check_py_licenses.py --selftest
-	$(PY) tools/check_py_licenses.py
+	$(MAKE) --no-print-directory licenses
 	$(PY) tools/check_version.py
 	$(MAKE) ioc-check
 	$(PY) tools/check_gen_consistency.py --selftest

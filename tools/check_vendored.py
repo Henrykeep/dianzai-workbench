@@ -90,7 +90,7 @@ def check_sdk(base: pathlib.Path) -> list[str]:
 def main() -> int:
     errs = check(ROOT / "third_party" / "vendored") + check_sdk(ROOT / "third_party")
     for e in errs:
-        print("✗", e)
+        print(f"✗ [licenses/vendored] {e} · 处理：删掉该目录或换宽松许可/净室实现（规则见 third_party/vendored/README.md）")
     print("check_vendored:", "失败" if errs else "通过")
     return 1 if errs else 0
 

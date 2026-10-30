@@ -30,7 +30,7 @@ def run(pkgs, fail_on) -> int:
 
 def main() -> int:
     if subprocess.run([sys.executable, "-m", "piplicenses", "--version"], capture_output=True).returncode:
-        print("✗ 没装 pip-licenses：pip install -r app/sidecar/requirements.txt")
+        print("✗ [licenses/pip] 检查没跑成 · 原因：没装 pip-licenses · 处理：pip install -r app/sidecar/requirements.txt")
         return 1
     if "--selftest" in sys.argv:
         ok = run(["pytest"], "MIT") != 0 and run(["pytest"], FAIL_ON) == 0
@@ -39,6 +39,7 @@ def main() -> int:
     pk = packages()
     rc = run(pk, FAIL_ON)
     if rc:
+        print("✗ [licenses/pip] 有依赖是 GPL/LGPL/AGPL 或许可不明 · 原因：会把传染义务带进侧车发行包 · 处理：见下表，换成 MIT/BSD/Apache 的同类包")
         subprocess.run([sys.executable, "-m", "piplicenses", "--partial-match", "--packages", *pk])
     print(f"check_py_licenses（{len(pk)} 个包，拒 GPL/LGPL/AGPL/UNKNOWN）:", "失败" if rc else "通过")
     return 1 if rc else 0
