@@ -8,30 +8,32 @@
 :root{
   --f-sans:"Bricolage Grotesque","Noto Sans SC Dz","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
   --f-mono:"Geist Mono","Noto Sans SC Dz",Consolas,monospace;
-  --t-xs:12px; --t-sm:12px; --t-md:14px; --t-lg:20px; --t-xl:40px;
-  --sp1:4px; --sp2:8px; --sp3:16px; --sp4:16px; --sp5:24px;
-  --r-xs:4px; --r-sm:6px; --r:8px; --r-lg:12px;
-  --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:56px; --h-sb:28px; --w-rail:0px; --w-left:280px; --w-side:320px; --w-lab:136px;
+  --t-xs:11px; --t-sm:12px; --t-md:13px; --t-lg:18px; --t-xl:40px; --t-h:22px;
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
+  --r-xs:4px; --r-sm:6px; --r:8px; --r-lg:14px;
+  --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:60px; --h-sb:28px; --w-rail:0px; --w-left:280px; --w-side:320px; --w-lab:136px;
   /* 动效：四档时长、只动 transform / opacity */
   --d-1:160ms; --d-2:280ms; --d-3:480ms; --d-4:720ms; --dur:160ms; --ease:cubic-bezier(.22,1,.36,1);
 }
+/* v8 暗色：冷石墨中性（hue 255，低彩度）+ 唯一暖强调（琥珀 = 意图）。四层表面靠亮度 + 顶部高光 + 柔影分层。 */
 :root,[data-theme="dark"]{
   color-scheme:dark;
-  --bg:oklch(.115 .004 60);
-  --s0:oklch(.135 .004 60); --s1:oklch(.115 .004 60); --s2:oklch(.155 .005 60); --s3:oklch(.195 .006 60); --s-hover:oklch(.215 .006 60);
-  --ink:oklch(.95 .012 80); --text:oklch(.68 .01 75); --muted:oklch(.52 .008 70); --dim:oklch(.42 .008 70); --faint:oklch(.3 .006 70);
-  --line:oklch(1 0 0 / .06); --hair:oklch(1 0 0 / .045); --line2:oklch(1 0 0 / .1);
-  --grid:oklch(1 0 0 / .04); --grid-2:oklch(1 0 0 / .08);
-  --sh-pop:0 0 0 1px var(--line2),0 16px 40px -16px oklch(0 0 0 / .8);
-  --acc:oklch(.78 .12 62); --acc-t:oklch(.8 .11 66); --acc-ink:oklch(.17 .03 62); --acc-bg:oklch(.78 .12 62 / .1); --focus:0 0 0 2px oklch(.78 .12 62 / .45);
+  --bg:oklch(.145 .008 255);
+  --s0:oklch(.17 .009 255); --s1:oklch(.145 .008 255); --s2:oklch(.185 .01 255); --s3:oklch(.235 .012 255); --s-hover:oklch(.265 .013 255);
+  --ink:oklch(.97 .004 255); --text:oklch(.8 .01 255); --muted:oklch(.63 .012 255); --dim:oklch(.5 .012 255); --faint:oklch(.36 .01 255);
+  --line:oklch(1 0 0 / .07); --hair:oklch(1 0 0 / .05); --line2:oklch(1 0 0 / .12);
+  --grid:oklch(1 0 0 / .045); --grid-2:oklch(1 0 0 / .09);
+  --hi:inset 0 1px 0 oklch(1 0 0 / .05); --hi-acc:inset 0 1px 0 oklch(1 0 0 / .25); --acc-line:oklch(.8 .135 68 / .3);
+  --sh-card:0 0 0 1px oklch(1 0 0 / .055),0 1px 0 oklch(1 0 0 / .04) inset,0 12px 32px -18px oklch(0 0 0 / .7);
+  --sh-pop:0 0 0 1px var(--line2),0 24px 48px -20px oklch(0 0 0 / .85);
+  --acc:oklch(.8 .135 68); --acc-t:oklch(.83 .12 72); --acc-ink:oklch(.2 .04 62); --acc-bg:oklch(.8 .135 68 / .12); --focus:0 0 0 2px oklch(.8 .135 68 / .5);
   --go:var(--acc); --go-ink:var(--acc-ink);
-  --ok:oklch(.76 .07 155); --warn:oklch(.8 .09 85); --crit:oklch(.72 .1 30); --info:oklch(.78 .05 225); --off:var(--faint);
-  --ok-bg:oklch(.76 .07 155 / .1); --warn-bg:oklch(.8 .09 85 / .1); --crit-bg:oklch(.72 .1 30 / .12);
-  --estop:oklch(.6 .19 27); --estop-ink:#fff; --estop-bg:oklch(.6 .19 27 / .14);
-  --band:oklch(.86 .06 210 / .05);
-  /* 通道：降饱和冷色在前（实测），暖色靠后；黄铜留给设定值 */
-  --ch1:oklch(.86 .06 210); --ch2:oklch(.78 .06 160); --ch3:oklch(.78 .05 250); --ch4:oklch(.8 .015 80);
-  --ch5:oklch(.8 .06 185); --ch6:oklch(.74 .05 130); --ch7:oklch(.72 .03 40); --ch8:oklch(.66 .02 230);
+  --ok:oklch(.8 .11 160); --warn:oklch(.84 .11 88); --crit:oklch(.72 .14 25); --info:oklch(.8 .08 230); --off:var(--faint);
+  --ok-bg:oklch(.8 .11 160 / .12); --warn-bg:oklch(.84 .11 88 / .12); --crit-bg:oklch(.72 .14 25 / .14);
+  --estop:oklch(.62 .2 27); --estop-ink:oklch(1 0 0); --estop-bg:oklch(.62 .2 27 / .16);
+  --band:oklch(.85 .08 220 / .06);
+  --ch1:oklch(.85 .1 215); --ch2:oklch(.82 .1 160); --ch3:oklch(.78 .09 265); --ch4:oklch(.85 .02 255);
+  --ch5:oklch(.82 .09 190); --ch6:oklch(.8 .09 130); --ch7:oklch(.76 .07 40); --ch8:oklch(.7 .03 240);
   --setpoint:var(--acc);
 }
 [data-theme="light"]{

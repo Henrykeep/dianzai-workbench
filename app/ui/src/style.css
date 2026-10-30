@@ -482,3 +482,60 @@ table.sg th{font-weight:400;color:var(--muted);text-align:right} table.sg td{tex
 .ledger td.mp{color:inherit}
 .steps button{padding:0 var(--sp2)}
 .conn select{max-width:200px}
+
+/* ── v8 视觉层（docs/dev/ui-ia.md → ui-layout-rules.md §v8）：自有方向，不对图 ──
+ * 冷石墨四层表面；卡片 = 柔影 + 1px 发丝边 + 顶部高光；琥珀只表示“意图/主动作/当前步”；
+ * 步骤条 = 编号进度器（已完成 ✓ 绿、当前琥珀实心、下一步描边）；动效只动 transform/opacity/背景。 */
+body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
+.dock,.scope,.side,.page,.work>.hero{box-shadow:var(--sh-card)}
+.card{background:var(--s3);box-shadow:var(--hi),0 0 0 1px var(--hair)}
+.btn{border-radius:var(--r);transition:background var(--dur) var(--ease),color var(--dur) var(--ease),transform var(--d-1) var(--ease),box-shadow var(--dur) var(--ease)}
+.btn:not(.ghost):not(.pri):not(.go){box-shadow:var(--hi),0 0 0 1px var(--hair)}
+.btn.pri,.btn.go{box-shadow:var(--hi-acc),0 6px 18px -8px var(--acc)}
+.btn.pri:hover,.btn.go:hover{transform:translateY(-1px)}
+.in,select{box-shadow:inset 0 0 0 1px var(--hair)}
+.in:hover{box-shadow:inset 0 0 0 1px var(--line2)}
+
+/* 步骤条：编号进度器 */
+.steps{counter-reset:st;gap:0;padding:3px;border-radius:999px;background:var(--s0);box-shadow:inset 0 0 0 1px var(--hair)}
+.steps button{counter-increment:st;height:30px;padding:0 var(--sp3) 0 var(--sp2);display:flex;align-items:center;gap:6px;border-radius:999px;color:var(--muted);font-size:var(--t-md);font-weight:500;transition:background var(--d-2) var(--ease),color var(--d-2) var(--ease)}
+.steps button::before{content:counter(st);width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font:600 var(--t-xs)/1 var(--f-mono);background:var(--s3);color:var(--muted);transition:inherit}
+.steps button.done{color:var(--text)} .steps button.done::before{content:"✓";background:var(--ok-bg);color:var(--ok)}
+.steps button.on{background:var(--acc);color:var(--acc-ink);font-weight:600;box-shadow:0 4px 14px -6px var(--acc)}
+.steps button.on::before{background:var(--acc-ink);color:var(--acc)}
+.steps button.next:not(.on){color:var(--ink)} .steps button.next:not(.on)::before{box-shadow:inset 0 0 0 1px var(--acc);background:none;color:var(--acc-t)}
+.steps button.next::after{display:none}
+.steps button:hover:not(.on){background:var(--s-hover);color:var(--ink)}
+
+/* 页标题层级：页名 22 / 说明 13 muted / 区块名 13 ink 600 */
+.page{padding:var(--sp6) var(--sp5);gap:var(--sp4)}
+.page>h3{font:600 var(--t-h)/1.3 var(--f-sans);letter-spacing:-.01em}
+.page>.hint{margin-top:calc(var(--sp1) * -2);max-width:72ch}
+.pf-card,.cal-step,.page .card{border:0;border-radius:var(--r-lg);padding:var(--sp4) var(--sp5);background:var(--s3);box-shadow:var(--hi),0 0 0 1px var(--hair);transition:box-shadow var(--d-2) var(--ease)}
+.pf-card:hover{box-shadow:var(--hi),0 0 0 1px var(--line2)}
+.pf-card h4{font:600 var(--t-md)/20px var(--f-sans);color:var(--ink);margin-bottom:var(--sp2)}
+.pf-card .row{margin-top:var(--sp2)}
+.pf-card .row:has(.pf-run){justify-content:flex-start}
+.pf-run{order:-1}
+.pf-drop{border-radius:var(--r);background:var(--s2);box-shadow:inset 0 0 0 1px var(--line2);transition:background var(--d-2) var(--ease)}
+.pf-drop:hover{background:var(--s-hover)}
+
+/* 图卡（hero）：读数 → 图，台账紧贴其下 */
+.rd .v{font-weight:250}
+.rd .dt b.bad-t{color:var(--crit)}
+.tl{mask-image:linear-gradient(90deg,transparent,black 24px,black calc(100% - 24px),transparent)}
+.ledger tr.cur td{color:var(--ink)}
+.ledger tr{transition:background var(--d-1) var(--ease)} .ledger tr:hover td{background:var(--s-hover)}
+.sugg{box-shadow:inset 0 0 0 1px var(--acc-line),0 12px 32px -18px var(--acc)}
+.top{gap:var(--sp4)}
+/* v8 迭代 1：顶栏 1440 宽不挤掉急停；说明文字左对齐 */
+.top{gap:var(--sp3)}
+.steps{margin:0 var(--sp2);flex:none}
+.steps button{padding:0 10px 0 4px;gap:5px}
+.conn select{max-width:160px}
+.page>.hint,.page>p{text-align:left}
+.top .estop{flex:none;margin-left:auto}
+/* v8 迭代 2：台账按内容收高（≤ 200px），图得到余下空间；向导页说明一律左对齐 */
+.app[data-step="调参"]{grid-template-rows:var(--h-top) auto minmax(0,1fr) fit-content(200px) var(--h-sb)}
+.page p.hint,.page .act+p{text-align:left!important;margin-left:auto;margin-right:auto}
+.page[data-page="封箱"] .act{padding:var(--sp4) var(--sp5);border-radius:var(--r-lg);background:var(--s3);box-shadow:var(--hi),0 0 0 1px var(--hair)}

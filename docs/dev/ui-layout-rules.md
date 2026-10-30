@@ -49,3 +49,9 @@
 1. app/ui/src 下除 tokens.css 外的样式不许写颜色字面量，只用变量。
 2. 每个区域顶层可见按钮数有上限（顶栏 6、调参操作条 3、主图工具条 2、左栏每个标签页 2、撤销/下发 2、建议栏 2），超了就收进「更多」或工具箱。时间线步骤栏不计。
 入口唯一性仍由 tools/check_entrypoints.py 守（docs/dev/entrypoints.yaml）。
+
+## v8 更新（自有设计方向）
+- 版式由 [ui-ia.md](ui-ia.md) 的信息架构派生，不再对照 v6 图。
+- 新增 token：`--sh-card`、`--hi`、`--hi-acc`、`--acc-line`、`--t-h`、`--sp6`；暗色中性改为冷石墨。
+- 步骤条为编号进度器（`.done/.on/.next`，steps.ts 打标）。
+- `tools/check_ui_layout.py` 规则不变：颜色只走变量、每区顶层按钮有上限。

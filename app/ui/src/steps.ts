@@ -45,6 +45,7 @@ export function initSteps(connected: () => boolean): (s: Step) => void {
     bar.querySelectorAll<HTMLElement>("[data-step]").forEach(b => {
       b.classList.toggle("on", b.dataset.step === s);
       b.classList.toggle("next", b.dataset.step === nextOf(s));
+      b.classList.toggle("done", STEPS.indexOf(b.dataset.step as Step) < STEPS.indexOf(s));
     });
     document.querySelectorAll<HTMLElement>(".work > [data-page]").forEach(p => (p.hidden = p.dataset.page !== s));
     document.querySelector<HTMLElement>(".work > .scope")!.hidden = !L.scope;
