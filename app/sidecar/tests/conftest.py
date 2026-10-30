@@ -65,3 +65,26 @@ def _hermetic_pack(tmp_path_factory, monkeypatch, _hermetic_env):
     if not p.exists():
         p.write_bytes(b"PK\x05\x06" + b"\0" * 18)
     monkeypatch.setenv("DZBENCH_PACK", str(p))
+
+
+# ---------------------------------------------------------------- 结尾汇总：失败用例 + 建议
+# 按错误文本里的特征给通用建议（不看是哪个用例）；匹配不到就只列出来。
+_HINTS = (
+    (("third_party", "STM32Cube", "CMSIS", "mspm0-sdk", "HAL"), "缺器件包/SDK：make fetch（或把已有 third_party 软链进 worktree）"),
+    (("syscfg", "SysConfig"), "缺 TI SysConfig：装 CCS/SysConfig，或设 SYSCFG_CLI 指向 sysconfig_cli"),
+    (("No module named",), "缺 Python 依赖：pip install -r app/sidecar/requirements.txt"),
+    (("make: ***", "cc:", "gcc"), "仿真板编不过：make BOARD=host-sim APP=<应用> 单独复现"),
+    (("TimeoutError", "timed out", "wait("), "仿真时序超时：机器忙时偶发，单独重跑该用例确认"),
+    (("--check", "不一致", "差异"), "生成物与源不一致：按报错提示重跑对应生成命令并提交"),
+)
+
+
+def pytest_terminal_summary(terminalreporter):
+    failed = terminalreporter.stats.get("failed", []) + terminalreporter.stats.get("error", [])
+    if not failed:
+        return
+    terminalreporter.section(f"失败汇总（{len(failed)} 个）与建议")
+    for r in failed:
+        text = str(r.longrepr or "")
+        hint = next((h for keys, h in _HINTS if any(k in text for k in keys)), "看上面的回溯")
+        terminalreporter.write_line(f"✗ {r.nodeid}\n    → {hint}")

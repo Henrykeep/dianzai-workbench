@@ -108,7 +108,7 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval preflight
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -181,6 +181,10 @@ vars: $(GEN)/board_gen.mk
 gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
+# 端到端基准：历年控制类题在仿真板上跑全流程并评分（用例 tools/bench/cases.json），结果在 build/bench/
+bench:
+	$(PY) tools/bench/bench.py $(ARGS)
+
 agent-eval:
 	cd app/sidecar && $(PY) -m dzbench.agent.evalrun --repeat 3 $(ARGS)
 
@@ -228,6 +232,7 @@ check:
 	$(PY) tools/test_params_diff.py
 	$(PY) tools/test_scheme.py
 	$(PY) tools/test_alloc.py
+	$(PY) tools/bench/test_bench.py
 	$(PY) mechanical/calc/test_mech.py
 	$(PY) mechanical/parts/test_parts.py
 	for r in examples/*/requirements.yaml; do $(PY) tools/req.py check $$r >/dev/null || { $(PY) tools/req.py check $$r; exit 1; }; done
