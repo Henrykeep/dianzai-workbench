@@ -222,6 +222,8 @@ SYSCONFIG_WEAK void SYSCFG_DL_SYSCTL_init(void)
     DL_SYSCTL_disableSYSPLL();
     DL_SYSCTL_setULPCLKDivider(DL_SYSCTL_ULPCLK_DIV_1);
     DL_SYSCTL_setMCLKDivider(DL_SYSCTL_MCLK_DIVIDER_DISABLE);
+    DL_SYSCTL_setMFPCLKSource(DL_SYSCTL_MFPCLK_SOURCE_SYSOSC);
+    DL_SYSCTL_enableMFPCLK();
 
 }
 
@@ -485,8 +487,6 @@ SYSCONFIG_WEAK void SYSCFG_DL_ADC12_0_init(void)
     DL_ADC12_enableConversions(ADC12_0_INST);
 }
 
-
-/* DAC12 Initialization（手工补的，与 ../ccs/tianmengxing.syscfg 的 DAC12 模块对应；未经 SysConfig 重新生成） */
 static const DL_DAC12_Config gDAC12Config = {
     .outputEnable              = DL_DAC12_OUTPUT_ENABLED,
     .resolution                = DL_DAC12_RESOLUTION_12BIT,
@@ -503,6 +503,6 @@ static const DL_DAC12_Config gDAC12Config = {
 SYSCONFIG_WEAK void SYSCFG_DL_DAC12_init(void)
 {
     DL_DAC12_init(DAC0, (DL_DAC12_Config *) &gDAC12Config);
-    DL_DAC12_output12(DAC0, 0);
     DL_DAC12_enable(DAC0);
 }
+

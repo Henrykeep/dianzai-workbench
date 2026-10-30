@@ -90,9 +90,18 @@ def script(r: dict, asg: dict, pwm_names: list) -> str:
         per = t.get("instance") if not T(t.get("instance")) else asg.get(f"timer.{n}")
         if per:
             L.append(f'{v}.peripheral.$assign = "{per}";')
-    L += ['const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");', "SYSCTL.forceDefaultClkConfig = true;",
-          'const ProjectConfig = scripting.addModule("/ti/project_config/ProjectConfig");', "ProjectConfig.genLinker = false;"]
+    if r.get("dac"):                                          # DAC12 是单例模块，OUT0 = PA15（boardlib.check_dac 已拒绝别的实例 / 通道）
+        L += ['const DAC12 = scripting.addModule("/ti/driverlib/DAC12");',
+              "DAC12.dacOutputPinEn = true;", 'DAC12.dacAmplifier = "ON";', "DAC12.dacOutput12 = 0;"]
+    L += ['const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");', "SYSCTL.forceDefaultClkConfig = true;"]
+    L += sysctl_extra(r)
+    L += ['const ProjectConfig = scripting.addModule("/ti/project_config/ProjectConfig");', "ProjectConfig.genLinker = false;"]
     return "\n".join(L) + "\n"
+
+
+def sysctl_extra(r: dict) -> list:
+    """SYSCTL 里随外设自动打开的时钟：DAC12 必须有 MFPCLK（否则 SysConfig 报 "MFPCLK must be enabled when DAC12 peripheral is added"）。"""
+    return ["SYSCTL.MFPCLKEn = true;   /* DAC12 需要 MFPCLK */"] if r.get("dac") else []
 
 
 def _pwm_groups(r):
