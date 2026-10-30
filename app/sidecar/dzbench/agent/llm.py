@@ -81,7 +81,10 @@ def load_config() -> dict:
     elif os.environ.get("DZBENCH_BASE_URL"):
         _deprecate("DZBENCH_BASE_URL", "DZ_LLM_BASE_URL")
         cfg.update(provider="custom", base_url=os.environ["DZBENCH_BASE_URL"])
-    if os.environ.get("DZBENCH_MODEL"):
+    if os.environ.get("DZ_LLM_MODEL"):              # 模型名：环境变量 > config.json > 服务商默认
+        cfg["model"] = os.environ["DZ_LLM_MODEL"]
+    elif os.environ.get("DZBENCH_MODEL"):
+        _deprecate("DZBENCH_MODEL", "DZ_LLM_MODEL")
         cfg["model"] = os.environ["DZBENCH_MODEL"]
     return cfg
 
@@ -137,7 +140,7 @@ def public_config(cfg: dict | None = None) -> dict:
     k = cfg.get("api_key", "")
     return {**{x: cfg.get(x) for x in KEYS if x != "api_key"}, "repo": cfg.get("repo", ""),
             "has_key": bool(k), "key_hint": ("…" + k[-4:]) if len(k) > 8 else "", "providers": PROVIDERS, "local_models": LOCAL_MODELS,
-            "configured": config_path().exists() and bool(k or cfg["provider"] == "ollama")}
+            "configured": bool(k or cfg["provider"] == "ollama")}     # 环境变量里有 Key 就算配好，不要求 config.json（r6 #21）
 
 
 def local_config(cfg: dict) -> dict:
@@ -314,6 +317,11 @@ class OpenAICompat:
             except (ValueError, AttributeError):
                 pass
             err = http_error(e.code, str(txt), c.get("api_key") or "")
+            if e.code in (404, 503) and c.get("provider") == "custom":     # 自定义中转站：404/503 多半是这家没有这个模型名（r6 #21）
+                err.message += f"。模型名 {c.get('model')} 可能在这个服务上不存在"
+                err.fix = ("在大模型设置里改模型名，或设环境变量 DZ_LLM_MODEL=<该服务支持的模型名>（优先级：环境变量 > 设置 > 默认）；"
+                           "服务商控制台/模型列表里可查可用模型")
+                err.model_hint = True
             err.retry, err.code = e.code in self.RETRY_CODES, e.code
             ra = (e.headers.get("Retry-After") or "") if e.headers else ""
             err.retry_after = float(ra) if ra.replace(".", "", 1).isdigit() else None
