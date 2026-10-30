@@ -119,6 +119,10 @@ def subsys_plan(repo: pathlib.Path, req: dict, scheme: dict) -> dict:
 IOC_FAMILIES = ("stm32f1", "stm32f4")   # tools/gen_ioc.py 能写 .ioc 的系列
 
 
+def syscfg_cli() -> pathlib.Path:
+    return pathlib.Path(os.environ.get("SYSCFG_CLI") or pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh")
+
+
 def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work: pathlib.Path) -> tuple[bool, str]:
     """试跑一次 alloc：有“待人工”行（芯片资源不够 / 没知识表）就算装不下，理由取那几行的资源名。"""
     work.mkdir(parents=True, exist_ok=True)
@@ -129,6 +133,8 @@ def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work:
     p = subprocess.run([str(a) for a in args], cwd=repo, capture_output=True, text=True, timeout=60)
     out = p.stdout + p.stderr
     miss = re.findall(r"^!\s*(\S+?)：.*没分到", out, re.M)
+    if "没有复用知识表" in out:                          # 如 MSPM0：alloc 不分，交给 SysConfig 求解器（装不下时生成那步报）
+        return True, ""
     if not miss and p.returncode:
         return False, "alloc 失败：" + out.strip()[-200:]
     return (not miss), ("装不下：" + "、".join(miss[:6]) + ("…" if len(miss) > 6 else "") + f"（共 {len(miss)} 项没分到）") if miss else ""
@@ -150,8 +156,8 @@ def scratch_options(repo: pathlib.Path, scheme: dict, work: pathlib.Path | None 
         if x["kind"] != "mcu" or "mcu" not in x:
             continue
         fam, part = x["mcu"]["family"], x["mcu"]["part"].upper()
-        ok = fam in IOC_FAMILIES
-        why = "" if ok else ("MSPM0 从零要在 SysConfig 里配（本机还不能生成 .syscfg），配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
+        ok = fam in IOC_FAMILIES or (fam == "mspm0" and syscfg_cli().exists())
+        why = "" if ok else ("MSPM0 从零要 TI SysConfig CLI（免费，装到 ~/ti/sysconfig_1.28.0 或设 SYSCFG_CLI），没有就在 SysConfig 里配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
         tpls = [n for n, bp in boards if bp.rstrip("X")[:11] == part.rstrip("X")[:11]]
         for t in [None, *tpls]:
             out.append({"mcu": x["id"], "family": fam, "tpl": t, "ok": ok, "why": why, "status": x["status"],
@@ -299,8 +305,15 @@ class Flow:
             if (tgt / "app.yaml").exists():
                 args += ["--app", tgt / "app.yaml"]
             r1 = self._run(args)
-            if r1["rc"]:
+            if r1["rc"] and not (o["family"] == "mspm0" and (st / "alloc" / "board.yaml").exists()):   # MSPM0 的 TODO 校验错由 SysConfig 那步解决
                 return r1 | {"files": self._files(st / "alloc") if (st / "alloc").exists() else {}, "options": opts, "target": ""}
+            if o["family"] == "mspm0":                  # MSPM0：SysConfig 求解器分配引脚，直接出板目录（.syscfg + ti_msp_dl_config）
+                bd = st / "board" / name
+                r2 = self._run(["tools/gen_syscfg.py", st / "alloc" / "board.yaml", bd, "--name", name])
+                r3 = self._run(["tools/syscfg_import.py", bd / "ccs" / f"{name}.syscfg", "--check", bd / "board.yaml"]) if not r2["rc"] else {"cmd": "", "rc": 0, "out": ""}
+                files = {"alloc.md": (st / "alloc" / "alloc.md").read_text(encoding="utf-8")} | ({k: v for k, v in self._files(bd).items() if k in ("board.yaml", f"ccs/{name}.syscfg")} if bd.exists() else {})
+                return {"cmd": "\n".join(r["cmd"] for r in (r1, r2, r3) if r["cmd"]), "rc": r2["rc"] or r3["rc"], "out": r1["out"] + r2["out"] + r3["out"], "files": files,
+                        "options": opts, "name": name, "kind": "syscfg", "target": str(self.repo / "boards" / name), "overwrite": (self.repo / "boards" / name).exists()}
             proj = st / "cubemx" / name
             r2 = self._run(["tools/gen_ioc.py", st / "alloc" / "board.yaml", "-o", proj / f"{name}.ioc", "--name", name])
             if r2["rc"]:
@@ -390,6 +403,19 @@ class Flow:
             return out
         raise FlowError("bad_step", f"没有这一步：{step}")
 
+    def build_ide(self, board: str, app: str) -> dict:
+        """生成后顺手：arm-none-eabi-gcc 交叉编译验证 + 各 IDE 工程（EIDE 全部；MSPM0 另出 CCS projectspec 与 Keil）。"""
+        p = subprocess.run(["make", f"BOARD={board}", f"APP={app}"], cwd=self.repo, capture_output=True, text=True, timeout=900)
+        b = {"cmd": f"make BOARD={board} APP={app}", "rc": p.returncode, "out": (p.stdout + p.stderr)[-6000:]}
+        ide = []
+        if not p.returncode:
+            gens = [["tools/gen_eide.py", "--board", board, "--app", app]]
+            if (self.repo / "boards" / board / "syscfg" / "ti_msp_dl_config.c").exists():
+                gens += [["tools/gen_ccs_projectspec.py", "--board", board, "--app", app], ["tools/gen_m0_keil.py", "--board", board, "--app", app]]
+            for g in gens:
+                r = self._run(g); ide.append({"cmd": r["cmd"], "rc": r["rc"], "out": r["out"][-800:]})
+        return {"build": b, "ide": ide}
+
     # ---------------------------------------------------------------- 确认（才真正写）
     def accept(self, step: str, m: dict) -> dict:
         code = _safe(m.get("code") or "题目")
@@ -425,6 +451,15 @@ class Flow:
             for f in ("options.md", "scheme.md"):
                 if (st / f).exists():
                     put(tgt / "scheme" / f, (st / f).read_text(encoding="utf-8"))
+        elif step == "scratch" and (st / "board" / _safe(m["name"])).is_dir():   # MSPM0：板目录直接进 boards/
+            name = _safe(m["name"]); dst = self.repo / "boards" / name
+            if dst.exists() and not m.get("overwrite"):
+                raise FlowError("exists", f"boards/{name}/ 已存在", "换个板名，或勾“覆盖”")
+            if dst.exists():
+                shutil.rmtree(dst)
+            shutil.copytree(st / "board" / name, dst); written.append(str(dst))
+            for rel, text in self._files(st / "alloc").items():
+                put(tgt / "alloc" / rel, text)
         elif step == "scratch":
             name = _safe(m["name"]); dest = pathlib.Path(m.get("cubemx_dir") or (pathlib.Path.home() / "dz-cubemx" / name)).expanduser()
             ioc = dest / f"{name}.ioc"
@@ -462,6 +497,8 @@ class Flow:
                         (tgt / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(f, tgt / rel); written.append(str(tgt / rel))
             for rel, text in self._files(st / "gen").items() if (st / "gen").exists() else []:
                 put(self.repo / "build" / code / "gen" / rel, text)
+            if m.get("board") and m.get("app"):
+                return {"written": written} | self.build_ide(_safe(m["board"]), _safe(m["app"]))
         else:
             raise FlowError("bad_step", f"没有这一步：{step}")
         return {"written": written}

@@ -124,6 +124,17 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
     const runS = async () => {
       const o = r0.options[+sel.value]; const r = await call<any>("flow_preview", { step: "scratch", ...base(), mcu: o.mcu, tpl: o.tpl, name: v("pf-board") || undefined }); out("import", r);
       const S = R.querySelector<HTMLElement>("#pf-scr-res")!;
+      if (r.kind === "syscfg") {   // MSPM0：SysConfig 求解器分好引脚，板目录直接进 boards/，不用等外部工具
+        S.innerHTML = `<p class="hint">引脚 / 外设由 TI SysConfig 求解器分配，已生成 ${esc(r.name)}.syscfg + ti_msp_dl_config.[ch] 和 board.yaml（syscfg_import 回核）。确认后写到 ${esc(r.target)}。</p>`
+          + (r.overwrite ? `<label class="hint"><input type="checkbox" id="pf-scr-ow"> 已存在：覆盖</label>` : "") + filesView(r.files, ["board.yaml", `ccs/${r.name}.syscfg`, "alloc.md"]);
+        if (r.rc) return;
+        const b = document.createElement("button"); b.className = "btn pri"; b.type = "button"; b.textContent = `确认从零新建（写 boards/${r.name}/）`; S.append(b);
+        b.onclick = async () => { b.disabled = true;
+          const w = await call<any>("flow_accept", { step: "scratch", ...base(), name: r.name, overwrite: (document.getElementById("pf-scr-ow") as HTMLInputElement | null)?.checked }).catch(() => null); if (!w) { b.disabled = false; return; }
+          inp("pf-board").value = r.name; if (!v("pf-app")) inp("pf-app").value = "port_selftest"; written("import", w);
+        };
+        return;
+      }
       S.innerHTML = `<p class="hint">引脚 / 定时器 / DMA 已按芯片知识表自动分配（alloc.md），并生成 CubeMX 工程 ${esc(r.name)}.ioc（工具链 MDK-ARM）。确认后写到 ${esc(r.ioc)}。</p>` + filesView(r.files, ["alloc.md", `${r.name}.ioc`]);
       if (r.rc) return;
       const b = document.createElement("button"); b.className = "btn pri"; b.type = "button"; b.textContent = `确认从零新建（写 ${r.name}.ioc）`; S.append(b);
@@ -172,7 +183,15 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
       };
       k.append(b1); G.append(k);
     };
-    confirmBtn("gen", d ? "确认写入 project.yaml 草稿并生成" : "确认生成", async () => { written("gen", await call("flow_accept", { step: "gen", ...base(), ...gb })); keil(); });
+    confirmBtn("gen", d ? "确认写入 project.yaml 草稿并生成" : "确认生成", async () => {
+      const w = await call<any>("flow_accept", { step: "gen", ...base(), ...gb }); written("gen", w); keil();
+      if (w.build) {   // 生成后自动交叉编译 + 出 IDE 工程（EIDE；MSPM0 另有 CCS / Keil）
+        const p = document.createElement("div");
+        p.innerHTML = `<p class="hint">${w.build.rc ? "✗ 编译失败" : "✓ 编译通过"}：<span class="mono">${esc(w.build.cmd)}</span></p>` + (w.build.rc ? `<pre class="mono">${esc(w.build.out.slice(-1500))}</pre>` : "")
+          + w.ide.map((i: any) => `<p class="hint">${i.rc ? "✗" : "✓"} ${esc(i.out.trim().split("\n").pop() || i.cmd)}</p>`).join("");
+        G.append(p); if (!w.build.rc) done("gen", "编译通过");
+      }
+    });
   });
 
   function btn(k: string, fn: () => Promise<void>) {

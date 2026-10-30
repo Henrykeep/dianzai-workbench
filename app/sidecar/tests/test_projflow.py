@@ -96,11 +96,14 @@ def test_scratch_allocs_and_writes_ioc(tmp_path):
         shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
     m = {"code": "S1", "dest": str(dest)}
     opts = f.preview("scratch", m)["options"]
-    assert opts[0]["ok"] and any(not o["ok"] and o["family"] == "mspm0" for o in opts)
+    from dzbench.projflow import syscfg_cli
+    has_sc = syscfg_cli().exists()
+    assert opts[0]["ok"] and any(o["ok"] == has_sc and o["family"] == "mspm0" for o in opts)
     f1 = next(o for o in opts if o["mcu"] == "stm32f103c8t6" and not o["tpl"])      # 装不下的排在装得下的后面，并写明理由
     assert f1["fit"] is False and "装不下" in f1["why"] and opts.index(f1) > opts.index(next(o for o in opts if o.get("fit")))
-    with pytest.raises(FlowError):
-        f.preview("scratch", m | {"mcu": "mspm0g3507"})
+    if not has_sc:
+        with pytest.raises(FlowError):
+            f.preview("scratch", m | {"mcu": "mspm0g3507"})
     assert f.preview("scratch", m | {"mcu": "stm32f103c8t6"})["rc"] != 0     # H 题串口超出 F103C8：报“没分到”，不写半截 .ioc
     for mcu in ("stm32f407vet6",):
         cd = tmp_path / "cm" / mcu
@@ -110,3 +113,16 @@ def test_scratch_allocs_and_writes_ioc(tmp_path):
         assert (cd / f"{r['name']}.ioc").exists() and (dest / "alloc" / "alloc.md").exists() and w["written"]
         assert f.preview("scratch_ready", m | {"cubemx_dir": str(cd)})["ready"] is True    # 合成 Core 已写，直接可导入编译
         assert "合成" in (cd / "Core/Src/main.c").read_text(encoding="utf-8")
+
+
+def test_scratch_mspm0_syscfg(tmp_path):
+    """MSPM0 从零：SysConfig 求解器分引脚 → 板目录（.syscfg + ti_msp_dl_config + board.yaml），syscfg_import 回核无错。没装 CLI 跳过。"""
+    import shutil
+    from dzbench.projflow import syscfg_cli
+    if not syscfg_cli().exists():
+        pytest.skip("本机没有 SysConfig CLI")
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    for n in ("requirements.yaml", "scheme.yaml"):
+        shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
+    r = f.preview("scratch", {"code": "S2", "dest": str(dest), "mcu": "mspm0g3507", "name": "zz-m0-test"})
+    assert r["rc"] == 0 and r["kind"] == "syscfg" and "TODO" not in r["files"]["board.yaml"].split("resources:")[1]
