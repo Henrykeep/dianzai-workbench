@@ -37,6 +37,7 @@
 - [两车链路 peerlink](firmware/proto/peerlink/README.md)
 - [跟车间距 follow](firmware/algo/follow/README.md)
 - [波形测量 wavemeas](firmware/algo/wavemeas/README.md)（幅值/频率/占空比/波形类型/相位；上位机 dzbench/wavemeas.py）
+- [PAL 接口](firmware/pal/README.md)（1.6.0：ADC 块采样 pal_adc_block_read、DAC pal_dac_write；真板 DAC 未实现）
 - [知识：极性](docs/agent-knowledge/polarity.md)
 - [知识：阶跃辨识](docs/agent-knowledge/step-identify.md)
 - [知识：K230 视觉](docs/agent-knowledge/vision-k230.md)

@@ -423,3 +423,23 @@ dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n)
     memcpy(p, s_nvm + off, n);
     return DZ_OK;
 }
+
+/* ---------- ADC 块采样（软件定时，PAL 1.6.0）+ DAC ---------- */
+#include "pal_adc_block.inc"
+extern const pal_dac_info_t g_host_dac_info[];   /* board_gen.c，按 board.yaml bits/vref_mv */
+static uint16_t s_dac[BOARD_DAC_COUNT + 1];
+dz_err_t pal_dac_write(pal_id_t id, uint16_t code)
+{
+    if (id >= BOARD_DAC_COUNT) return DZ_ENODEV;
+    if (code >= (1u << g_host_dac_info[id].bits)) return DZ_EINVAL;
+    s_dac[id] = code;
+    return DZ_OK;
+}
+dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info)
+{
+    if (id >= BOARD_DAC_COUNT) return DZ_ENODEV;
+    if (!info) return DZ_EINVAL;
+    *info = g_host_dac_info[id];
+    return DZ_OK;
+}
+uint16_t host_sim_dac_get(pal_id_t id) { return id < BOARD_DAC_COUNT ? s_dac[id] : 0u; }

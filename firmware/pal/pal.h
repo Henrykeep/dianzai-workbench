@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.5.0"
+#define PAL_VERSION "1.6.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -208,6 +208,34 @@ typedef struct {
 /** 单次阻塞采样（典型几微秒）。不得在高频中断里循环调用。 */
 dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw);
 dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info);
+
+/** pal_adc_block_read 允许的最高采样率（软件定时，PAL 1.6.0 新增）。 */
+#define PAL_ADC_BLOCK_MAX_HZ 20000u
+/**
+ * 按固定采样率阻塞采一块（给 algo/wavemeas、algo/spectrum 用）：第 i 个样本在起点后 i × (1e6 / rate_hz) µs 采。
+ * rate_hz 须整除 1 000 000（周期为整数微秒，不悄悄取近似）且 ≤ PAL_ADC_BLOCK_MAX_HZ；n ≥ 1。
+ * 软件定时（pal_micros + pal_adc_read），四个端口同一份实现（firmware/pal/pal_adc_block.inc）；
+ * 某个样本迟到超过一个周期（被中断占用/单次转换太慢）返回 DZ_ETIMEOUT，buf 内容不可用。
+ * 不是 DMA：采样期间 CPU 被占住，不得在中断里调用。要更高采样率需要端口的定时器触发 + DMA（未做）。
+ */
+dz_err_t pal_adc_block_read(pal_id_t id, uint16_t *buf, uint16_t n, uint32_t rate_hz);
+
+/* ------------------------------------------------------------------------- */
+/* DAC（PAL 1.6.0 新增）                                                     */
+/* ------------------------------------------------------------------------- */
+
+typedef struct {
+    uint8_t  bits;       /**< 例如 12 */
+    uint32_t vref_mv;    /**< 满量程码对应的输出电压（mV） */
+} pal_dac_info_t;
+
+/**
+ * 写一个输出码（0..2^bits−1，超出返回 DZ_EINVAL）。
+ * 目前只有 host-sim 端口实现；stm32f4-hal / stm32-cubemx / mspm0-driverlib 返回 DZ_ENOTSUP，
+ * board.yaml 在这些端口写 dac 资源会被 tools/validate_board.py 拒绝。
+ */
+dz_err_t pal_dac_write(pal_id_t id, uint16_t code);
+dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info);
 
 
 /* ------------------------------------------------------------------------- */

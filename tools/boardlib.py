@@ -14,7 +14,7 @@ import jsonschema
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCHEMA_PATH = ROOT / "schema" / "board.schema.json"
-RES_TYPES = ["gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi"]
+RES_TYPES = ["gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi", "dac"]
 
 
 @dataclass
@@ -96,6 +96,12 @@ def generic_check(board: dict, rep: Report) -> None:
     if board.get("port") == "stm32f4-hal" and board.get("name") not in F4HAL_FROZEN:
         rep.err("[移植层] stm32f4-hal 已冻结，新 STM32 板一律走 stm32-cubemx（docs/05-CubeMX工作流.md、docs/06-新增板卡.md）")
     res = board.get("resources", {}) or {}
+    if res.get("dac") and board.get("port") != "host-sim":
+        rep.err(f"[DAC] 端口 {board.get('port')} 还没实现 pal_dac_write（返回 DZ_ENOTSUP）：dac 资源目前只在 host-sim 生效，先删掉或自己补端口实现")
+    for r in res.get("dac", []) or []:
+        b = r.get("bits", 12)
+        if not isinstance(b, int) or not 1 <= b <= 16:
+            rep.err(f"[DAC] dac.{r.get('name')}: bits 须为 1..16 的整数")
     # 1) 同类资源重名
     for t in RES_TYPES:
         names = [r.get("name") for r in res.get(t, []) or []]
@@ -120,6 +126,8 @@ def generic_check(board: dict, rep: Report) -> None:
         use(r.get("rx"), f"uart.{r.get('name')}.RX")
     for r in res.get("adc", []) or []:
         use(r.get("pin"), f"adc.{r.get('name')}")
+    for r in res.get("dac", []) or []:
+        use(r.get("pin"), f"dac.{r.get('name')}")
     i2c_inst: dict[str, str] = {}
     for r in res.get("i2c", []) or []:                 # 一条 = 一条总线；同一总线上的多个传感器靠 7 位地址区分
         if r.get("instance") in i2c_inst:

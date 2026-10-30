@@ -222,6 +222,8 @@ def gen_host(board: dict, src: str, sha: str) -> tuple[str, dict]:
     adc = ", ".join(f"{_adc_info(r)}"
                     for r in res.get("adc") or []) or "{ 12u, 3300u, 1u, 1u }"
     c += f"const pal_adc_info_t g_host_adc_info[] = {{ {adc} }};\n"
+    dac = ", ".join(f"{{ {int(r.get('bits', 12))}u, {int(r.get('vref_mv', 3300))}u }}" for r in res.get("dac") or []) or "{ 12u, 3300u }"
+    c += f"const pal_dac_info_t g_host_dac_info[] = {{ {dac} }};\n"
     return c, {"BOARD_PORT": board["port"], "BOARD_FAMILY": "host", "BOARD_DEFS": ""}
 
 

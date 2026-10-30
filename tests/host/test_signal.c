@@ -318,11 +318,40 @@ TEST(wavemeas_phase)
     CHECK(isnan(wm_phase_deg(U, U, 512, fs, 15000.0f)));
 }
 
+static void feed_sine(void *ctx)
+{
+    (void)ctx;
+    double t = host_sim_now_us() * 1e-6;
+    host_sim_adc_set(RES_ADC_LINE_A0, (uint16_t)lround(2048 + 1000 * sin(2 * M_PI * 50.0 * t)));
+}
+
+TEST(pal_adc_block_and_dac)
+{
+    host_sim_reset();
+    CHECK(host_sim_add_periodic(HOST_SIM_STEP_US, feed_sine, NULL) >= 0);
+    feed_sine(NULL);
+    wm_result_t r;
+    CHECK(pal_adc_block_read(RES_ADC_LINE_A0, U, 1000, 1000u) == DZ_OK);     /* 1 kHz 采 1 s */
+    CHECK(wm_measure(U, 1000, 1000.0f, 0.0f, NULL, &r) == DZ_OK);
+    CHECK_NEAR(r.freq_hz, 50.0, 0.2); CHECK_NEAR(r.pp_v, 2000, 5);
+    CHECK(pal_adc_block_read(RES_ADC_LINE_A0, U, 10, 3000u) == DZ_EINVAL);    /* 周期 333.3 µs 不是整数 */
+    CHECK(pal_adc_block_read(RES_ADC_LINE_A0, U, 10, PAL_ADC_BLOCK_MAX_HZ * 2u) == DZ_EINVAL);
+    CHECK(pal_adc_block_read(RES_ADC_LINE_A0, NULL, 10, 1000u) == DZ_EINVAL);
+    CHECK(pal_adc_block_read(BOARD_ADC_COUNT, U, 10, 1000u) == DZ_ENODEV);
+    CHECK(pal_adc_block_read(RES_ADC_LINE_A0, U, 10, 20000u) == DZ_ETIMEOUT); /* 仿真步长 100 µs 跟不上 50 µs 周期 → 报迟到，不给假数据 */
+    pal_dac_info_t di;
+    CHECK(pal_dac_info(RES_DAC_WAVE, &di) == DZ_OK && di.bits == 12 && di.vref_mv == 3300);
+    CHECK(pal_dac_write(RES_DAC_WAVE, 4095) == DZ_OK && host_sim_dac_get(RES_DAC_WAVE) == 4095);
+    CHECK(pal_dac_write(RES_DAC_WAVE, 4096) == DZ_EINVAL && host_sim_dac_get(RES_DAC_WAVE) == 4095);
+    CHECK(pal_dac_write(BOARD_DAC_COUNT, 1) == DZ_ENODEV);
+    host_sim_reset();
+}
+
 void suite_signal(void)
 {
     printf("[signal]\n");
     RUN(spectrum_tone_and_interp); RUN(spectrum_components_sorted); RUN(spectrum_phase_and_thd); RUN(spectrum_rejects);
     RUN(sigfilt_median_and_kalman); RUN(dds_freq_and_spectrum); RUN(capfreq_wrap_duty_timeout);
-    RUN(wavemeas_levels_freq_type); RUN(wavemeas_phase);
+    RUN(wavemeas_levels_freq_type); RUN(wavemeas_phase); RUN(pal_adc_block_and_dac);
     RUN(menu_nav_scroll_edit); RUN(keypad_scan_debounce);
 }

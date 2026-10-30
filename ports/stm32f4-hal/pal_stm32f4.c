@@ -880,3 +880,8 @@ dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit) { (void)size; (void)
 dz_err_t pal_nvm_erase(uint32_t off, uint32_t n) { (void)off; (void)n; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
 dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
+
+/* ---------- ADC 块采样（软件定时，PAL 1.6.0）+ DAC（本端口未实现） ---------- */
+#include "pal_adc_block.inc"
+dz_err_t pal_dac_write(pal_id_t id, uint16_t code) { (void)id; (void)code; return DZ_ENOTSUP; }
+dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info) { (void)id; (void)info; return DZ_ENOTSUP; }

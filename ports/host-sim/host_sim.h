@@ -54,6 +54,7 @@ void     host_sim_gpio_read_hook(host_sim_gpio_read_cb_t cb, void *ctx);
 uint16_t host_sim_pwm_duty(pal_id_t id);
 void     host_sim_enc_add(pal_id_t id, int32_t counts);
 void     host_sim_adc_set(pal_id_t id, uint16_t raw);
+uint16_t host_sim_dac_get(pal_id_t id);   /**< 最近一次 pal_dac_write 的码（2.5.0） */
 uint16_t host_sim_uart_take_tx(pal_id_t id, uint8_t *buf, uint16_t max);
 void     host_sim_uart_inject_rx(pal_id_t id, const uint8_t *buf, uint16_t len);
 void     host_sim_uart_set_busy(pal_id_t id, bool busy);

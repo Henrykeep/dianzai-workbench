@@ -413,6 +413,41 @@
           "default": 1000000
         }
       }
+    },
+    "dac": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/common"
+        }
+      ],
+      "type": "object",
+      "unevaluatedProperties": false,
+      "required": [
+        "name",
+        "instance",
+        "channel",
+        "pin"
+      ],
+      "properties": {
+        "instance": {
+          "type": "string"
+        },
+        "channel": {
+          "$ref": "#/$defs/todo_or_int"
+        },
+        "pin": {
+          "$ref": "#/$defs/pin"
+        },
+        "bits": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 16
+        },
+        "vref_mv": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
     }
   },
   "properties": {
@@ -663,6 +698,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/spi"
+          }
+        },
+        "dac": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dac"
           }
         }
       }

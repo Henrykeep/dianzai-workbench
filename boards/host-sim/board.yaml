@@ -72,6 +72,8 @@ resources:
     - { name: LINE_A3, instance: SIMADC0, channel: 4, pin: SIM57 }
     - { name: ISENSE_A, instance: SIMADC0, channel: 5, pin: SIM80, note: car_2wd 可选电流采样（仿真） }
     - { name: ISENSE_B, instance: SIMADC0, channel: 6, pin: SIM81 }
+  dac:
+    - { name: WAVE, instance: SIMDAC0, channel: 0, pin: SIM90, bits: 12, vref_mv: 3300, note: 波形输出/回环测试（仿真） }
   i2c:
     - { name: IMU, instance: SIMI2C0, scl: SIM21, sda: SIM22, speed_hz: 400000, note: 仿真 MPU6050 挂这里（tests 里 host_sim_i2c_attach） }
     - { name: OLED, instance: SIMI2C1, scl: SIM63, sda: SIM64, speed_hz: 400000, note: SSD1306 I2C（0x3C） }

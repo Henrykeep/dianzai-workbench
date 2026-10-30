@@ -97,3 +97,4 @@
 5. K230 视觉脚本库 → `third_party/vendored/k230_edc_skill/`、`k230_mspm0g_contest/`（上游原样 + `DZ_FRAME` 补丁）+ `boards/k230-vision/board.yaml` + `tools/test_k230_vision.py`；说明见 docs/08“K230 视觉脚本库”。[编译]；没在 K230 上跑过；EDC-Skill 无许可证，公开前要作者许可；钢球 kmodel 不在仓库。
 6. 视觉知识包 → `docs/agent-knowledge/vision-{k230,color,tuning}.md`（触发词按需加载，knowledge.py 不用改）+ app/sidecar/tests/test_knowledge_vision.py。[仿真]；没做真实对话里的效果评测。
 7. 波形测量 → `firmware/algo/wavemeas`（移植 firework 时域特征 + 分类，自写过零测频/占空比/DFT 相位）+ `dzbench/wavemeas.py` + op `wave_measure`（频谱视图参数行、相位参考下拉）。[仿真]；未上板；原版分类对非 50% 占空比方波不判 SQUARE（照原版）。阈值触发、任意波形输出没做。
+8. ADC/DAC PAL → PAL 1.6.0：`pal_adc_block_read`（软件定时，四端口共用 `firmware/pal/pal_adc_block.inc`）、`pal_dac_write/info` + board.yaml `dac:`（只 host-sim 实现，真板端口 DZ_ENOTSUP，validate_board 拒绝真板写 dac）。端口版本 host-sim 2.5.0 / cubemx 1.8.0 / f4-hal 1.4.0 / mspm0 0.8.0。[仿真]；没做定时器触发 + DMA、真板 DAC。
