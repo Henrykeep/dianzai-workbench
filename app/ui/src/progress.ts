@@ -11,20 +11,36 @@ export const JOURNEY = [
   { id: "tune", title: "调参", pages: ["调参"] }, { id: "score", title: "评分", pages: ["评分"] }, { id: "seal", title: "封箱", pages: ["封箱"] },
 ] as const;
 export type StepId = typeof JOURNEY[number]["id"];
-export interface Blocker { code: BlockerCode; message: string; fix_action: string }
+export interface Blocker { code: BlockerCode; message: string; fix_action: string | null; blocks?: string[] }
 export interface Progress {
   steps: { id: StepId; title: string; state: State; reason?: string; detail?: string }[];
   current: StepId;
   next: { title: string; action: string; hint: string } | null;
   blockers: Blocker[];
+  mode?: string | null;
 }
 // fix_action / next.action 都是 entrypoints.yaml 的动作 id；这里只记“去哪一步、点哪个已有元素”，不新增入口
-export const ACTIONS: Record<string, { step?: Step; ui: string }> = {
-  connect: { ui: "connect" }, estop_clear: { ui: "cmd-r" }, doctor: { ui: "doctor" },
+export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; ready?: boolean }> = {
+  connect: { ui: "connect", label: "连接" }, estop_clear: { ui: "cmd-r", label: "解除急停" }, doctor: { ui: "doctor", label: "运行自检" },
+  blackbox: { ui: "pre-bbtn", label: "读黑匣子" }, llm_cfg: { ui: "ag-cfg", label: "大模型设置" },
   project_flow: { step: "项目", ui: "pflow" }, project_ask: { step: "项目", ui: "pj-ask-go" }, flash: { step: "烧录", ui: "fw-flash" },
-  tune_relay: { step: "调参", ui: "ag-relay" }, params: { step: "调参", ui: "p-send" },
-  params_flash: { step: "封箱", ui: "pre-save" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
+  build: { step: "烧录", ui: "fw-build", label: "编译" }, cal_polarity: { step: "标定", ui: "calwiz", label: "极性自检" },
+  tune_relay: { step: "调参", ui: "ag-relay", label: "自整定" }, params: { step: "调参", ui: "p-send", label: "下发参数" },
+  params_flash: { step: "封箱", ui: "pre-save", label: "写入 Flash" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
+  fetch_deps: { ui: "doctor", label: "安装依赖" },   // missing_deps：自检对话框里按提示安装
+  run_selftest: { ui: "", label: "运行自检", ready: false },   // 入口表标「未就绪」：等固件
 };
+// fix_action → 按钮：可执行 / 未就绪（置灰「等待固件支持」）/ 未登记（置灰写明原因）。不出现点了没反应的按钮
+export type Fix = { kind: "run" | "wait" | "none"; label: string; note?: string };
+export function resolveFix(id: string | null | undefined, has: (ui: string) => boolean = ui => !!document.getElementById(ui)): Fix | null {
+  if (!id) return null;
+  const t = ACTIONS[id];
+  if (!t) return { kind: "none", label: "暂不可用", note: `工作台还没有这个操作的入口（${id}）` };
+  const label = t.label ?? ACTION_LABEL[id] ?? "处理";
+  if (t.ready === false) return { kind: "wait", label, note: "等待固件支持" };
+  if (!t.step && !has(t.ui)) return { kind: "none", label, note: "当前界面没有这个入口" };
+  return { kind: "run", label };
+}
 // 每步“主动作”：下一步提示里的那个按钮跳到哪
 const MAIN: Record<Step, string> = { 项目: "project_ask", 烧录: "flash", 模块: "connect", 联调: "connect", 标定: "connect", 调参: "params", 评分: "score", 封箱: "precontest" };
 
@@ -86,11 +102,13 @@ export function pageHead(p: Progress): { text: string; label: string; action?: s
   if (p.next && p.next.title === cur.title) return { text, label: ACTION_LABEL[p.next.action] ?? "开始", action: p.next.action };
   const nx = p.next && p.steps.find(s => s.title === p.next!.title);
   if (nx) return { text, label: `前往${nx.title}`, goto: nx.id };
+  // 接口的 next 也可能是“先解决阻塞”（title 不是步骤名，如「运行自检…」）：按钮直接给这个动作
+  if (p.next?.action) { const f = resolveFix(p.next.action, () => true); if (f?.kind === "run") return { text, label: f.label, action: p.next.action }; }
   return { text, label: "已完成" };
 }
 const LABEL: Record<State, string> = { todo: "未开始", doing: "进行中", done: "已完成", blocked: "已阻塞" };
 export function runAction(a: string, go: (s: Step) => void) {
-  const t = ACTIONS[a]; if (!t) return; if (t.step) go(t.step); setTimeout(() => document.getElementById(t.ui)?.click(), 0);
+  const t = ACTIONS[a]; if (!t || t.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => document.getElementById(t.ui)?.click(), 0);
 }
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
 export function render(p: Progress, go: (s: Step) => void) {
@@ -102,6 +120,17 @@ export function render(p: Progress, go: (s: Step) => void) {
     b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
     b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
   });
+  // 每个 blocker 标到它 blocks 列出的那几步导航下：卡住原因 + fix_action 按钮（接口数据才有 blocks；推断数据不标）
+  document.querySelectorAll("#steps .nav-blk").forEach(e => e.remove());
+  for (const s of p.steps) {
+    const bs = p.blockers.filter(b => b.blocks?.includes(s.id)); if (!bs.length) continue;
+    const nav = document.querySelector<HTMLElement>(`#steps [data-pid="${s.id}"]:not(.sub)`); if (!nav) continue;
+    nav.dataset.blocked = "1";
+    const box = document.createElement("div"); box.className = "nav-blk";
+    for (const b of bs) box.append(blockerRow(b, go));
+    nav.after(box);
+  }
+  document.querySelectorAll<HTMLElement>("#steps [data-blocked]").forEach(n => { if (!(n.nextElementSibling as HTMLElement | null)?.classList.contains("nav-blk")) delete n.dataset.blocked; });
   const ph = document.getElementById("pg-head");
   if (ph) {
     const hd = pageHead(p);
@@ -115,8 +144,27 @@ export function render(p: Progress, go: (s: Step) => void) {
   h.replaceChildren();
   if (p.next) { const n = document.createElement("span"); n.className = "nx"; n.textContent = `下一步：${p.next.title} — ${p.next.hint}`; h.append(n); }
   for (const b of p.blockers) {
-    const a = document.createElement("a"); a.className = "blk"; a.href = "#"; a.dataset.code = b.code;
-    a.textContent = `${b.message} · 处理`; a.onclick = e => { e.preventDefault(); run(b.fix_action); };
-    h.append(a);
+    const f = resolveFix(b.fix_action);
+    if (f?.kind === "run") {
+      const a = document.createElement("a"); a.className = "blk"; a.href = "#"; a.dataset.code = b.code;
+      a.textContent = `${b.message} · ${f.label}`; a.onclick = e => { e.preventDefault(); run(b.fix_action!); };
+      h.append(a);
+    } else {   // 未就绪 / 未登记 / 无 fix_action：只写原因，不给可点的链接
+      const n = document.createElement("span"); n.className = "blk off"; n.dataset.code = b.code;
+      n.textContent = b.message + (f?.note ? ` · ${f.note}` : ""); h.append(n);
+    }
   }
+}
+
+export function blockerRow(b: Blocker, go: (s: Step) => void): HTMLElement {
+  const r = document.createElement("div"); r.className = "nb"; r.dataset.code = b.code;
+  const t = document.createElement("span"); t.textContent = b.message; r.append(t);
+  const f = resolveFix(b.fix_action);
+  if (f) {
+    const btn = document.createElement("button"); btn.type = "button"; btn.className = "btn sm"; btn.textContent = f.label;
+    if (f.kind === "run") btn.onclick = () => runAction(b.fix_action!, go);
+    else { btn.disabled = true; btn.title = f.note ?? ""; const n = document.createElement("span"); n.className = "nb-note"; n.textContent = f.note ?? ""; r.append(btn, n); return r; }
+    r.append(btn);
+  }
+  return r;
 }

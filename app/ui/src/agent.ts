@@ -1,7 +1,8 @@
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
 import { Msg } from "./ws";
-import { Watch, timeoutCard, errorCard, Card } from "./agentwatch";
+import { runAction } from "./progress";
+import { TurnGate, Watch, timeoutCard, errorCard, Card } from "./agentwatch";
 import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
@@ -350,7 +351,7 @@ export function initAgent(call: Call) {
     if (q) { $<HTMLInputElement>("ag-in").value = q; $<HTMLFormElement>("ag-form").requestSubmit(); }
   });
   // 等待看门狗：发出即计时；任何 agent_* 事件都算“有响应”；60 s 无事件 → 超时卡
-  const watch = new Watch(); let lastText = "", thinkEl: HTMLElement | null = null;
+  const watch = new Watch(); const gate = new TurnGate(); let lastText = "", thinkEl: HTMLElement | null = null;
   setInterval(() => {
     if (!watch.on) return;
     const t = watch.tick(performance.now());
@@ -359,9 +360,10 @@ export function initAgent(call: Call) {
   }, 1000);
   function showCard(k: Card) {
     const c = add(`<div class="down"><span class="dot"></span><div><b>${esc(k.title)}</b><p>原因：${esc(k.why)}</p><p class="fix">处理：${esc(k.fix)}</p>
-      <details class="raw"><summary>查看详情</summary><pre class="mono">${esc(k.detail)}</pre></details></div></div>
-      <div class="act">${k.settings ? `<button class="btn" data-r="cfg">大模型设置</button>` : ""}${k.retry ? `<button class="btn pri" data-r="retry">重试</button>` : ""}</div>`, "card down-card ag-err");
+      <details class="ag-detail"><summary>查看详情</summary><pre class="mono">${esc(k.detail)}</pre></details></div></div>
+      <div class="act">${k.other ? `<button class="btn" data-r="fix" ${k.other.kind === "run" ? "" : "disabled"} title="${esc(k.other.note ?? "")}">${esc(k.other.label)}</button>${k.other.note ? `<span class="nb-note">${esc(k.other.note)}</span>` : ""}` : ""}${k.settings ? `<button class="btn" data-r="cfg">大模型设置</button>` : ""}${k.retry ? `<button class="btn pri" data-r="retry">重试</button>` : ""}</div>`, "card down-card ag-err");
     c.querySelector<HTMLElement>("[data-r=cfg]")?.addEventListener("click", () => openCfg());
+    if (k.other?.kind === "run") c.querySelector<HTMLElement>("[data-r=fix]")?.addEventListener("click", () => runAction(k.otherId!, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s }))));
     c.querySelector<HTMLElement>("[data-r=retry]")?.addEventListener("click", () => {
       c.remove(); watch.stop(); $<HTMLInputElement>("ag-in").value = lastText; $<HTMLButtonElement>("ag-send").disabled = false; $<HTMLFormElement>("ag-form").requestSubmit();
     });
@@ -373,7 +375,7 @@ export function initAgent(call: Call) {
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
     const me = add(esc(text), "msg me");
     const t0 = performance.now(); turnUsage = null; timeEl = null;
-    lastText = text; watch.start(performance.now());
+    lastText = text; gate.begin(); watch.start(performance.now());
     const w = add(`<span class="lbl">思考中… 0 s</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
     thinkEl = w.firstElementChild as HTMLElement;
     tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
@@ -573,11 +575,11 @@ export function initAgent(call: Call) {
   return {
     onMsg(m: Msg) {
       if (typeof m.type === "string" && m.type.startsWith("agent_")) watch.touch(performance.now());
-      if (m.type === "agent_error") { watch.stop(); live?.remove(); showCard(errorCard(m as any)); }
+      if (m.type === "agent_error") { gate.error(); watch.stop(); live?.remove(); showCard(errorCard(m as any)); }
       if (m.type === "agent_delta") onDelta(m.text);
       if (m.type === "agent_tool") streamed = "";
       if (["agent_mode", "agent_usage", "agent_retry", "agent_toolmode"].includes(m.type)) modeLine(m);
-      if (m.type === "agent_unreachable") renderDown(m);
+      if (m.type === "agent_unreachable" && gate.allowUnreachable()) renderDown(m);   // 同一轮已出 agent_error 卡：忽略随后的 agent_unreachable
       if (m.type === "agent_plan") renderPlan(m);
       if (m.type === "agent_tune_pending") renderTune(m);
       if (m.type === "agent_journal") renderJournal(m.items);
