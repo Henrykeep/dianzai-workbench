@@ -113,7 +113,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
       written("import", w);
     });
   };
-  // ③ 分叉：没有现成工程 → 从零新建（alloc 自动分配 → 生成 .ioc → 人在 CubeMX 点一次 GENERATE → 自动接着导入）
+  // ③ 分叉：没有现成工程 → 从零新建（alloc 自动分配 → 生成 .ioc → 装了 CubeMX 就无头 GENERATE，没装才要人点一次 → 自动接着导入）
   let poll = 0;
   const fork = async () => {
     const r0 = await call<any>("flow_preview", { step: "scratch", ...base() }).catch(() => null); if (!r0) { inp("pf-proj").focus(); return; }
@@ -141,7 +141,9 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
       b.onclick = async () => { b.disabled = true;
         const w = await call<any>("flow_accept", { step: "scratch", ...base(), name: r.name, cubemx_dir: r.target }).catch(() => null); if (!w) { b.disabled = false; return; }
         inp("pf-board").value = r.name; inp("pf-proj").value = lastProj = r.target;
-        S.innerHTML = `<p class="hint">已按 .ioc 写了一份<b>合成 Core</b>（非 CubeMX 输出，能直接编译，正在自动导入）。<b>上板前建议做一次：</b>用 STM32CubeMX 打开 <span class="mono">${esc(r.ioc)}</span> 点 GENERATE CODE 覆盖它，再回来重跑导入。</p>`;
+        S.innerHTML = w.cubemx?.ok
+          ? `<p class="hint">已用本机 STM32CubeMX 无头生成代码（<span class="mono">${esc(w.cubemx.exe)}</span>），正在自动导入。</p>`
+          : `<p class="hint">已按 .ioc 写了一份<b>合成 Core</b>（非 CubeMX 输出，能直接编译，正在自动导入）。${w.cubemx?.why ? esc(w.cubemx.why) + "。" : ""}<b>上板前建议做一次：</b>用 STM32CubeMX 打开 <span class="mono">${esc(r.ioc)}</span> 点 GENERATE CODE 覆盖它，再回来重跑导入。</p>`;
         toast(`已写入：${w.written.join("、")}`, "ok");
         clearInterval(poll); poll = window.setInterval(async () => {
           const q = await call<any>("flow_preview", { step: "scratch_ready", ...base(), cubemx_dir: r.target }).catch(() => null);

@@ -475,6 +475,12 @@ class Flow:
                 raise FlowError("exists", f"{ioc} 已存在", "换个板名，或勾“覆盖”")
             put(ioc, (st / "cubemx" / name / f"{name}.ioc").read_text(encoding="utf-8"))
             core = st / "cubemx" / name / "Core"
+            gen = None
+            if m.get("cubemx_auto", True) and not (dest / "Core" / "Src" / "main.c").exists():   # 装了 CubeMX：直接无头 GENERATE，免你手点
+                from . import cubemx
+                gen = cubemx.generate(ioc, m.get("toolchain", "keil"))
+                if gen["ok"]:
+                    written.append(str(dest / "Core"))
             if m.get("synth_core", True) and core.is_dir() and not (dest / "Core" / "Src" / "main.c").exists():   # 已有 CubeMX 生成的 Core 不碰
                 for f in sorted(core.rglob("*")):
                     if f.is_file():
@@ -482,6 +488,8 @@ class Flow:
             for rel, text in self._files(st / "alloc").items():
                 put(tgt / "alloc" / rel, text)
             self._set_mcu(tgt, st, put)
+            if gen is not None:
+                return {"written": written, "cubemx": gen}
         elif step == "import":
             name = _safe(m["name"]); src = st / "root" / "boards" / name
             if not (src / "board.yaml").exists():
