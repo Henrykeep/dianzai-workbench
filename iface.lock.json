@@ -147,6 +147,42 @@
   "hash": "a42602cee3ace2d5",
   "version": "1.0.0"
  },
+ "firmware/algo/foc": {
+  "decls": [
+   "foc.h: void foc_clarke(float ia, float ib, float *alpha, float *beta);",
+   "foc.h: void foc_park(float alpha, float beta, float th_e, float *d, float *q);",
+   "foc.h: void foc_ipark(float d, float q, float th_e, float *alpha, float *beta);",
+   "foc.h: void foc_svpwm(float alpha, float beta, float vbus, float duty[3]);",
+   "foc.h: float foc_norm_angle(float a);",
+   "foc.h: typedef enum { FOC_IDLE, FOC_ALIGN, FOC_READY, FOC_FAULT } foc_state_t;",
+   "foc.h: typedef struct { uint8_t pole_pairs;",
+   "foc.h: float vbus;",
+   "foc.h: float v_limit;",
+   "foc.h: float v_align;",
+   "foc.h: float t_align_s;",
+   "foc.h: float kp, ki, kd;",
+   "foc.h: } foc_cfg_t;",
+   "foc.h: typedef struct { foc_cfg_t cfg;",
+   "foc.h: foc_state_t state;",
+   "foc.h: int8_t dir;",
+   "foc.h: float zero_e;",
+   "foc.h: float pp_est;",
+   "foc.h: uint8_t phase;",
+   "foc.h: float t, a0, a1;",
+   "foc.h: float ol_angle, integ, uq;",
+   "foc.h: } foc_t;",
+   "foc.h: dz_err_t foc_init(foc_t *f, const foc_cfg_t *cfg);",
+   "foc.h: float foc_elec_angle(const foc_t *f, float mech);",
+   "foc.h: void foc_set_voltage(const foc_t *f, float uq, float ud, float th_e, float duty[3]);",
+   "foc.h: dz_err_t foc_align_step(foc_t *f, float mech, float dt, float duty[3]);",
+   "foc.h: dz_err_t foc_set_calibration(foc_t *f, float zero_e, int8_t dir);",
+   "foc.h: void foc_openloop_step(foc_t *f, float vel_mech, float uq, float dt, float duty[3]);",
+   "foc.h: dz_err_t foc_angle_step(foc_t *f, float target, float mech, float vel, float dt, float duty[3]);",
+   "foc.h: dz_err_t foc_selftest(void);"
+  ],
+  "hash": "f4784091f1539e55",
+  "version": "1.0.0"
+ },
  "firmware/algo/follow": {
   "decls": [
    "follow.h: typedef enum { FOLLOW_OK = 0, FOLLOW_TOO_CLOSE = 1, FOLLOW_LINK_LOST = 2 } follow_state_t;",
