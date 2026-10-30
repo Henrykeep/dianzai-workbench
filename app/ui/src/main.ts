@@ -1,7 +1,7 @@
 import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
-import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X } from "lucide";
+import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
 import { LAYOUTS, Layout, Plot, chColor, num } from "./plot";
@@ -18,6 +18,9 @@ import { initHbStrip } from "./hbstrip";
 import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
+import { conn } from "./conn";
+import { initPjAsk } from "./pjask";
+import { estopText } from "./estop";
 import { fetchProgress, render as renderProgress } from "./progress";
 import type { Step } from "./steps";
 import { initSteps } from "./steps";
@@ -55,9 +58,12 @@ function renderAlerts() {
   document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   if (!l.length) { el.innerHTML = ""; return; }
   const last = l[l.length - 1];
-  const head = latched ? `<b class="al-h">已急停</b>` : `<b class="al-h">链路异常</b>`;
-  const how = latched ? `<span class="al-fix">处理：排除原因后点击右上角「解除」</span>` : "";
-  el.innerHTML = `<span class="al-n">${l.length}</span>${head}<span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}<i>${last.log_t != null ? "dzlog " + last.log_t.toFixed(1) + " s" : ""}</i></span>${how}` +
+  const isE = (e: any) => e.kind === "estop" || e.kind === "watchdog";
+  // 急停：只显示侧车给的说明（estop.ts 兜底），不显示 dzlog 时间戳
+  el.innerHTML = latched
+    ? `<span class="al-n">${l.length}</span><span class="al-t" title="点击跳到这一刻"><b class="al-h">${esc(estopText(l.filter(isE).pop() as any))}</b></span>`
+    : `<span class="al-n">${l.length}</span><b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
+  el.innerHTML +=
     (l.length > 1 ? `<span class="al-more">${l.slice(0, -1).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
     `<span class="sp"></span><button class="btn sm" id="al-ack">知道了</button>`;
   el.querySelector<HTMLElement>(".al-t")!.onclick = () => jumpAt(last);
@@ -506,7 +512,9 @@ function renderProposal(m: Msg) {
 // ---------------------------------------------------------------- 状态
 function renderStatus(st: Msg) {
   const was = S.status.connected;
+  if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
   S.status = st;
+  conn.set({ board: !!st.connected, alive: !!st.alive });
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");
@@ -531,7 +539,14 @@ function renderStatus(st: Msg) {
   $("connect").classList.toggle("pri", !st.connected);
   $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = $<HTMLSelectElement>("lines").disabled = !!st.connected;
   $("empty").hidden = !!st.connected && !!S.schema;
-  $("empty").innerHTML = `<div>${st.connected ? (st.hint ? esc(st.hint) : "等待板子心跳…") : "选端口，点 <b>连接</b>。<br>没有硬件？选 <b>仿真板</b> 先熟悉界面。"}</div>`;
+  // 曲线区空状态即引导：说明这一页做什么 + 一个主按钮（点的是已有入口，不新增功能入口）
+  $("empty").innerHTML = st.connected
+    ? `<div class="es"><b>等待目标板心跳</b><p>${st.hint ? esc(st.hint) : "曲线将在收到第一帧数据后显示。"}</p></div>`
+    : `<div class="es"><b>未连接</b><p>曲线区显示目标板实时数据。连接目标板，或选择「仿真板」在无硬件时开始。</p><button class="btn pri" data-go="sim">开始仿真</button></div>`;
+  $("empty").querySelector<HTMLElement>("[data-go=sim]")?.addEventListener("click", () => {
+    const sel = $<HTMLSelectElement>("port"), o = [...sel.options].find(x => x.value.startsWith("sim:"));
+    if (o) sel.value = o.value; $("connect").click();
+  });
   if (!was && st.connected) { call("health").then(h => hb.set(h)).catch(() => {}); call("timeline").then(r => { tl.set(r.events); AL.ack(r.acked); r.events.forEach((x: any) => AL.offer(x)); renderAlerts(); }).catch(() => {}); }   // 刷新页面/新窗口：补回已有的格子
   if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); tl.clear(); AL.reset(); renderAlerts(); }
 }
@@ -595,9 +610,8 @@ link.on(m => {
   }
 });
 link.onState = async open => {
-  $("st-ws").textContent = open ? "侧车 已连接" : "侧车 未连接";
-  $("banner").hidden = open;
-  $("banner").innerHTML = "侧车（dzbench）没有响应：程序会自动把它重启，界面自动重连。板子 1 秒收不到心跳会自己急停。开发模式请先运行 <code>python -m dzbench</code>";
+  conn.set({ sidecar: open });
+  if (!open && S.status.connected) renderStatus({ ...S.status });   // 状态栏同步成未连接
   if (!open) return;
   const h = await link.rpc("hello");
   S.ports = h.ports; renderPorts(false);
@@ -662,15 +676,20 @@ $("doctor").onclick = async () => {
   $<HTMLDialogElement>("doc").show();
 };
 
-createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X } });
+createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } });
 // 对话框原来写在右栏 <aside> 里：分页后右栏在 项目/烧录/标定/封箱 页隐藏，自检、赛前检查等对话框跟着看不见 → 统一挪到 body 下
 document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();
+conn.on(c => {
+  $("st-ws").textContent = c.sidecar ? "侧车 已连接" : "侧车 未连接";
+  $("banner").hidden = c.sidecar;
+  $("banner").innerHTML = "侧车无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
+});
 const goStep = initSteps(() => !!S.status.connected);
 // 项目进度：接口优先、否则前端推断；每秒或切步时刷新
 const refreshProgress = async () => renderProgress(await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
   current: (document.querySelector<HTMLElement>(".app")!.dataset.step || "项目") as Step,
-  connected: !!S.status.connected,
+  connected: conn.get().board,
   estop: AL.list.some(e => e.kind === "estop" || e.kind === "watchdog"),
   gainsZero: noInitialGains(S.schema?.params ?? [], S.applied),
   paramsDirty: pending().length > 0,
@@ -678,6 +697,7 @@ const refreshProgress = async () => renderProgress(await fetchProgress(op => lin
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
 }), goStep);
 window.addEventListener("dz-step", () => void refreshProgress());
+initPjAsk(call, goStep);
 setInterval(() => void refreshProgress(), 1500);
 initSymptoms(s => goStep(s as Parameters<typeof goStep>[0]));
 initProjFlow(call, (t, k) => toast(t, k ?? "info", 6000));

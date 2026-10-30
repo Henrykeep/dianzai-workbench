@@ -448,8 +448,9 @@ export function initAgent(call: Call) {
   // 首启不弹窗（会挡住项目/调参等不依赖 Agent 的功能）：在 Agent 栏放一张空状态卡，用户想用时再点设置
   call("agent_config").then(c => {
     if (!c || c.configured) return;
+    document.querySelectorAll(".setup-card").forEach(e => e.remove());   // 只保留一张
     const card = add(`<div class="ag-setup"><b>Agent 未配置</b><p>原因：尚未配置大模型服务。处理：点击「配置模型」。未配置时，新建项目、烧录、示波、调参、评分与急停均可正常使用。</p></div>
-      <div class="act"><button class="btn pri" data-r="cfg">配置模型</button></div>`, "card setup-card");
+      <div class="act"><button class="btn" data-r="cfg">配置模型</button></div>`, "card setup-card");
     card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
   }).catch(() => {});
 

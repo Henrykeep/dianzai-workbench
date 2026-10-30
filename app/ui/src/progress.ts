@@ -4,10 +4,17 @@ import { STEPS, Step, STEP_HINT } from "./steps";
 
 export type State = "todo" | "doing" | "done" | "blocked";
 export type BlockerCode = "no_board" | "missing_deps" | "gains_zero" | "estop" | "selftest_fail" | "params_not_saved";
+// 7 步旅程：id 与后端 progress.get 的 steps[].id 一致；page = 进入时打开的内部页
+export const JOURNEY = [
+  { id: "req", title: "读题定方案", pages: ["项目"] }, { id: "project", title: "建工程", pages: ["烧录"] },
+  { id: "sim", title: "仿真", pages: ["联调"] }, { id: "bringup", title: "上板联调", pages: ["模块", "标定"] },
+  { id: "tune", title: "调参", pages: ["调参"] }, { id: "score", title: "评分", pages: ["评分"] }, { id: "seal", title: "封箱", pages: ["封箱"] },
+] as const;
+export type StepId = typeof JOURNEY[number]["id"];
 export interface Blocker { code: BlockerCode; message: string; fix_action: string }
 export interface Progress {
-  steps: { id: Step; title: string; state: State; reason?: string; detail?: string }[];
-  current: Step;
+  steps: { id: StepId; title: string; state: State; reason?: string; detail?: string }[];
+  current: StepId;
   next: { title: string; action: string; hint: string } | null;
   blockers: Blocker[];
 }
@@ -30,20 +37,23 @@ export function infer(c: Ctx): Progress {
   if (c.selftestFail) blockers.push({ code: "selftest_fail", message: "自检未通过", fix_action: "doctor" });
   if (c.connected && c.gainsZero) blockers.push({ code: "gains_zero", message: "增益为 0：控制器无输出", fix_action: "tune_relay" });
   if (c.paramsDirty) blockers.push({ code: "params_not_saved", message: "参数未下发", fix_action: "params" });
-  const needBoard = (s: Step) => STEPS.indexOf(s) >= 1;
-  const lastSeen = Math.max(...[...c.visited].map(s => STEPS.indexOf(s)), 0);
-  const steps = STEPS.map((id, i) => {
-    let state: State = c.visited.has(id) ? (i < lastSeen || (id === "烧录" && c.connected) ? "done" : "doing") : "todo";
+  const pid = (pg: Step) => JOURNEY.find(j => (j.pages as readonly string[]).includes(pg))!.id;
+  const seen = new Set([...c.visited].map(pid));
+  const curId = pid(c.current), curI = JOURNEY.findIndex(j => j.id === curId);
+  const lastSeen = Math.max(...JOURNEY.map((j, i) => (seen.has(j.id) ? i : 0)));
+  const steps = JOURNEY.map((j, i) => {
+    let state: State = seen.has(j.id) ? (i < lastSeen ? "done" : "doing") : "todo";
     let reason: string | undefined;
-    if (id === c.current && state === "todo") state = "doing";
-    if (needBoard(id) && state !== "done" && id === c.current && !c.connected) { state = "blocked"; reason = "未连接"; }
-    if (id === "评分" && c.paramsDirty) { state = state === "done" ? state : "blocked"; reason = "参数未下发"; }
-    return { id, title: id, state, reason, detail: STEP_HINT[id] };
+    if (j.id === curId && state === "todo") state = "doing";
+    if (i >= 2 && j.id !== "sim" && j.id === curId && !c.connected) { state = "blocked"; reason = "未连接"; }
+    if (j.id === "score" && c.paramsDirty && state !== "done") { state = "blocked"; reason = "参数未下发"; }
+    return { id: j.id, title: j.title, state, reason, detail: STEP_HINT[j.pages[0] as Step] };
   });
-  const cur = steps.find(s => s.id === c.current)!;
+  const cur = steps[curI];
   const nx = cur.state !== "done" ? cur : steps.find(s => s.state !== "done");
-  const next = nx ? { title: nx.id, action: MAIN[nx.id], hint: STEP_HINT[nx.id] } : null;
-  return { steps, current: c.current, next, blockers };
+  const nj = nx && JOURNEY.find(j => j.id === nx.id)!;
+  const next = nx && nj ? { title: nx.title, action: MAIN[nj.pages[0] as Step], hint: STEP_HINT[nj.pages[0] as Step] } : null;
+  return { steps, current: curId, next, blockers };
 }
 
 let noApiUntil = 0;
@@ -60,11 +70,12 @@ const LABEL: Record<State, string> = { todo: "未开始", doing: "进行中", do
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
 export function render(p: Progress, go: (s: Step) => void) {
   document.querySelectorAll<HTMLElement>("#steps [data-step]").forEach(b => {
-    const s = p.steps.find(x => x.id === b.dataset.step); if (!s) return;
+    const s = p.steps.find(x => x.id === b.dataset.pid); if (!s) return;
+    if (b.classList.contains("sub")) return;   // 子项（标定）跟随父步，不单独标状态
     b.dataset.state = s.state;
     b.classList.toggle("done", s.state === "done");
-    b.classList.toggle("next", p.next?.title === s.id && s.id !== p.current);
-    b.title = `${s.id} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
+    b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
+    b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
   });
   const h = document.getElementById("step-hint"); if (!h) return;
   const run = (a: string) => { const t = ACTIONS[a]; if (!t) return; if (t.step) go(t.step); setTimeout(() => document.getElementById(t.ui)?.click(), 0); };

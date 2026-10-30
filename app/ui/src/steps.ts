@@ -1,7 +1,8 @@
 // 时间线步骤栏（LOGIC_AUDIT §3.1）：项目 → 烧录 → 模块 → 联调 → 标定 → 调参 → 评分 → 封箱。
 // 每步一页；顶栏常驻 急停 / 连接 / 排障 / 工具箱。入口登记在 docs/dev/entrypoints.yaml。
 // 导航形态参考 MICU templates/auto-embedded/workflow.md（每页声明当前阶段）与 PID_Helper App.tsx（单面板流程）。
-export const STEPS = ["项目", "烧录", "模块", "联调", "标定", "调参", "评分", "封箱"] as const;
+// 内部页面键（data-step / data-page）。用户看到的是 7 步旅程（progress.ts JOURNEY），顺序与此一致。
+export const STEPS = ["项目", "烧录", "联调", "模块", "标定", "调参", "评分", "封箱"] as const;
 export type Step = typeof STEPS[number];
 export const STEP_HINT: Record<Step, string> = {
   项目: "读题 → 选型 → 导入工程 → 资源分配 → 生成（每步确认才写）",

@@ -779,3 +779,15 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .nav .step-hint{display:flex;flex-direction:column;gap:var(--sp1);-webkit-line-clamp:unset}
 .nav .step-hint .nx{color:var(--text)}
 .nav .step-hint .blk{color:var(--warn);text-decoration:none;font-size:var(--t-xs)} .nav .step-hint .blk:hover{text-decoration:underline}
+/* 第三轮验收 */
+#p-send{box-shadow:none} #p-send:not(:disabled){background:var(--s3);color:var(--ink)}
+.life{flex-wrap:wrap;row-gap:var(--sp1);white-space:normal;overflow:visible}
+#empty .es{display:flex;flex-direction:column;align-items:center;gap:var(--sp2);max-width:28em;text-align:center}
+#empty .es b{font-size:var(--t-lg);color:var(--ink)} #empty .es p{margin:0;color:var(--muted);font-size:var(--t-md);line-height:1.5}
+.pj-ask{display:flex;flex-direction:column;gap:var(--sp2);padding:var(--sp4) 0 var(--sp5);margin-bottom:var(--sp4);border-bottom:1px solid var(--hair)}
+.pj-ask-l{font-size:var(--t-lg);font-weight:600;color:var(--ink)}
+.pj-ask-row{display:flex;gap:var(--sp2)} .pj-ask-row .in{flex:1;height:40px;font-size:var(--t-md)}
+.pj-ask .hint:empty{display:none}
+.nav .steps button.sub{height:28px;padding-left:calc(var(--sp2) + 28px);font-size:var(--t-sm)}
+.nav .steps button.sub svg.lucide{display:none}
+.nav-folded .nav .steps button.sub{display:none}

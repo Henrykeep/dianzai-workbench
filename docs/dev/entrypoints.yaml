@@ -4,7 +4,7 @@
 # 依据：/workspace/walk/LOGIC_AUDIT.md §3.1（时间线导航）、§3.3（入口唯一 + op 无孤儿）。
 # at 写法：step:<步> | toolbox:<类> | always:<常驻件>。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
 
-# 步骤导航位置：左侧 aside.nav #steps（v9 起，原顶栏时间线）
+# 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（读题定方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
 always:    [急停, 连接, 排障]
@@ -21,6 +21,8 @@ actions:
   - {id: doctor,       label: 自检,             at: always:排障, ui: doctor,     ops: [doctor]}
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
   # ── 项目 ──
+  - {id: project_ask,  label: 一句话新建工程,   at: step:项目,   ui: pj-ask-go,  ops: []}   # 只读 agent_config 判断是否已配置，配置入口仍是 llm_cfg
+  - {id: project_sample, label: 打开示例项目,   at: step:项目,   ui: pj-sample,  ops: []}
   - {id: project_flow, label: 读题到生成引导,   at: step:项目,   ui: pflow,      ops: [flow_preview, flow_accept]}
   # ── 烧录 ──
   - {id: build,        label: 编译,             at: step:烧录,   ui: fw-build,   ops: [build]}
