@@ -770,7 +770,7 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .dlg-x:hover{background:var(--s-hover);color:var(--ink)} .dlg.llm{position:fixed}
 /* 窄窗口自动收起侧栏，保证调参工具条不挤 */
 @media (max-width:1500px){:root:not(.nav-open) .app{margin-left:var(--w-nav-folded)} :root:not(.nav-open) .nav{width:var(--w-nav-folded)}
- :root:not(.nav-open) .nav .nl,:root:not(.nav-open) .nav .nd,:root:not(.nav-open) .nav-sec,:root:not(.nav-open) .nav .step-hint,:root:not(.nav-open) .nav .brand>span{display:none}
+ :root:not(.nav-open) .nav .nl,:root:not(.nav-open) .nav .nd,:root:not(.nav-open) .nav-sec,:root:not(.nav-open) .nav .step-hint,:root:not(.nav-open) #steps .nav-blk,:root:not(.nav-open) .nav .brand>span{display:none}
  :root:not(.nav-open) .nav .steps button,:root:not(.nav-open) .nav-fold{justify-content:center;padding:0}}
 .nav .steps button[data-state=blocked] .nd::before{content:"!";color:var(--warn);font-weight:700}
 .nav .steps button[data-state=todo]:not(.on) .nl{color:var(--dim)}
@@ -820,3 +820,13 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .lk-banner{order:-3;padding:var(--sp2) var(--sp4);font-size:var(--t-sm);border-bottom:1px solid var(--line);background:var(--bg2);color:var(--ink)}
 .lk-banner.warn{background:var(--warn-bg);color:var(--warn)}
 #port.attn{box-shadow:0 0 0 2px var(--warn)}
+.card.down-card details.ag-detail{margin-top:var(--sp2);font-size:var(--t-xs);color:var(--muted)}
+.card.down-card details.ag-detail summary{cursor:pointer}
+.card.down-card details.ag-detail pre{max-height:160px;overflow:auto;white-space:pre-wrap;margin:var(--sp1) 0 0}
+/* 导航上的卡住原因（progress.get blockers[].blocks）；折叠导航时只留步骤上的标记 */
+#steps [data-blocked]{box-shadow:inset 2px 0 0 var(--warn)}
+#steps .nav-blk{margin:0 0 var(--sp1) var(--sp6);display:flex;flex-direction:column;gap:var(--sp1);font-size:var(--t-xs);color:var(--warn)}
+#steps .nav-blk .nb{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp1) var(--sp2)}
+.nb-note{font-size:var(--t-xs);color:var(--muted)}
+.step-hint .blk.off{color:var(--muted);cursor:default}
+.nav-folded #steps .nav-blk{display:none}

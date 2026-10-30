@@ -606,6 +606,7 @@ link.on(m => {
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
+    case "progress.changed": renderProgress(m as any, goStepRef); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
     case "link.state": onLinkState(m as any); showLink(m as any); break;
     case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
@@ -707,7 +708,9 @@ function showLink(m: any) {
   const md = modeLabel(m); $("ro-mode").hidden = !md; $("ro-mode").textContent = md;
   renderAlerts();
 }
-const goStep = initSteps(() => !!S.status.connected);
+let goStepRef: (s: any) => void = () => {};
+window.addEventListener("dz-goto", e => goStepRef((e as CustomEvent).detail));   // 其它模块（Agent 错误卡）请求切页
+const goStep = initSteps(() => !!S.status.connected); goStepRef = goStep;
 // 项目进度：接口优先、否则前端推断；每秒或切步时刷新
 const refreshProgress = async () => renderProgress(await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
   current: (document.querySelector<HTMLElement>(".app")!.dataset.step || "项目") as Step,
