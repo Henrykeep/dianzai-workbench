@@ -20,7 +20,20 @@ for p in range(18765, 19765, 2):
     if ok: print(p); break
 ')
 [ -n "$P" ] || { echo "找不到空闲端口" >&2; exit 1; }
-echo "UI 预览：http://127.0.0.1:$((P + 1))/?ws=ws://127.0.0.1:$P"
-echo "（端口选“仿真板 · car_2wd”试用；Ctrl-C 结束）"
+URL="http://127.0.0.1:$((P + 1))/?ws=ws://127.0.0.1:$P"
 cd "$ROOT"
-exec env PYTHONPATH="$ROOT/app/sidecar" $PY -m dzbench --port "$P" --ui "$ROOT/app/ui/dist"
+PYTHONPATH="$ROOT/app/sidecar" $PY -m dzbench --port "$P" --ui "$ROOT/app/ui/dist" &
+PID=$!
+trap 'kill $PID 2>/dev/null' INT TERM EXIT
+# 等侧车静态服务起来再打印，保证地址是最后一块输出
+for _ in $(seq 1 50); do
+  $PY -c "import socket,sys; s=socket.socket(); sys.exit(s.connect_ex(('127.0.0.1', $((P + 1)))))" 2>/dev/null && break
+  kill -0 $PID 2>/dev/null || { echo "侧车启动失败" >&2; exit 1; }
+  sleep 0.2
+done
+sleep 0.3
+printf '\n========================================================\n'
+printf '  UI 预览（浏览器打开）：\n  %s\n' "$URL"
+printf '  端口选“仿真板 · car_2wd”试用；Ctrl-C 结束\n'
+printf '========================================================\n\n'
+wait $PID
