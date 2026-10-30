@@ -115,10 +115,14 @@ addEventListener("keydown", e => {
 // ---------------------------------------------------------------- 端口
 function renderPorts(keep = true) {
   const sel = $<HTMLSelectElement>("port"), cur = sel.value;
+  // 排序：可能是板子的 USB 串口 → 仿真板 → 其余（板载 ttyS0/COM1 放最后）
+  const rank = (p: { kind: string; likely?: boolean }) => p.likely ? 0 : p.kind === "sim" ? 1 : 2;
+  S.ports = [...S.ports].sort((a, b) => rank(a) - rank(b));
   sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}">${esc(p.kind === "sim" ? p.desc : `${p.port} · ${p.desc}`)}</option>`).join("")
     || `<option value="">没有找到串口 — 插上 USB 转串口</option>`;
   // 零配置：USB 串口优先；没有就选仿真板（板载 ttyS0/COM1 几乎不会是你的板子，不默认选）
-  const pick = (keep && S.ports.some(p => p.port === cur) && cur) || S.ports.find(p => p.likely)?.port || S.ports.find(p => p.kind === "sim")?.port || S.ports[0]?.port || "";
+  const last = localStorage.getItem("dz-port") ?? "";   // 记住上次连接的端口
+  const pick = (keep && S.ports.some(p => p.port === cur) && cur) || S.ports.find(p => p.likely)?.port || (S.ports.some(p => p.port === last) && last) || S.ports.find(p => p.kind === "sim")?.port || S.ports[0]?.port || "";
   sel.value = pick;
 }
 async function refreshPorts() {
@@ -141,6 +145,7 @@ async function toggleConnect() {
     const low = $<HTMLSelectElement>("lines").value === "low";
     await call("serial_lines", low ? { dtr: false, rts: false } : { dtr: null, rts: null });
     const r = await call("connect", { port, baud: $<HTMLSelectElement>("baud").value });
+    localStorage.setItem("dz-port", port);
     if (r?.baud) $<HTMLSelectElement>("baud").value = String(r.baud);
     plot.clear();
   } catch { /* toast 已显示 */ } finally { btn.disabled = false; }
