@@ -9,3 +9,9 @@ export function pendingOf(ps: Param[], edit: Record<string, string>, applied: Re
 export function rangeLabel(p: Param, pending: boolean, applied: number | undefined) {
   return pending ? `板上 ${fmtP(applied, p)}` : `${fmtP(p.min, p)}…${fmtP(p.max, p)}${p.unit ? " " + p.unit : ""}`;
 }
+// 无初值：schema 里有增益参数（名字形如 kp / ki / kd / xxx_kp），且板上生效值全是 0 → 该先做“无初值一键起步”
+const GAIN = /(^|_)k[pid](_|$|\d)/i;
+export function noInitialGains(ps: Param[], applied: Record<string, number>) {
+  const g = ps.filter(p => GAIN.test(p.name));
+  return g.length > 0 && g.every(p => applied[p.name] != null && Math.abs(+applied[p.name]) < 1e-12);
+}

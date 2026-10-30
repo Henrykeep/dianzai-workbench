@@ -6,7 +6,7 @@ import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
 import { LAYOUTS, Layout, Plot, chColor, num } from "./plot";
 import { matchNames } from "./names";
-import { Param, clampLocal, pendingOf, rangeLabel } from "./params";
+import { Param, clampLocal, pendingOf, rangeLabel, noInitialGains } from "./params";
 import { AGENT_IDLE, agentIdle, initAgent } from "./agent";
 import { initRaw } from "./raw";
 import { initFFT } from "./fft";
@@ -320,7 +320,18 @@ function renderProtect() {
     S.edit[n] = String(v); await sendPending([n], true); toast(`${n} 已撤销为 ${fmt(v, p)}`, "ok", 3000);
   });
 }
+// 增益全 0 时“无初值一键起步”与“阶跃实验”互换位置：起步成为操作条主按钮，阶跃收进“更多实验”
+// （同一组元素搬位置，入口仍各只有一个，操作条顶层按钮数不变）
+function syncRelaySlot() {
+  const relay = document.getElementById("ag-relay"), step = document.getElementById("ag-step"), pop = document.querySelector("#tune-more .pop");
+  if (!relay || !step || !pop) return;
+  const zero = noInitialGains(S.schema?.params ?? [], S.applied);
+  if (zero === (relay.parentElement !== pop)) return;
+  if (zero) { step.replaceWith(relay); pop.prepend(step); relay.className = "btn go"; step.className = "mi"; }
+  else { relay.replaceWith(step); pop.prepend(relay); step.className = "btn go"; relay.className = "mi"; }
+}
 function syncParams() {
+  syncRelaySlot();
   (S.schema?.params ?? []).forEach(p => {
     const inp = document.getElementById(`pi-${p.name}`) as HTMLInputElement | null;
     // 没在改的格子一律跟随板上值（含其他客户端 / Agent 改的），聚焦也跟随
