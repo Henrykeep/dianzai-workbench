@@ -119,7 +119,22 @@ def subsys_plan(repo: pathlib.Path, req: dict, scheme: dict) -> dict:
 IOC_FAMILIES = ("stm32f1", "stm32f4")   # tools/gen_ioc.py 能写 .ioc 的系列
 
 
-def scratch_options(repo: pathlib.Path, scheme: dict) -> list[dict]:
+def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work: pathlib.Path) -> tuple[bool, str]:
+    """试跑一次 alloc：有“待人工”行（芯片资源不够 / 没知识表）就算装不下，理由取那几行的资源名。"""
+    work.mkdir(parents=True, exist_ok=True)
+    (work / "scheme.yaml").write_text(yaml.safe_dump(dict(scheme, mcu=mcu), allow_unicode=True, sort_keys=False), encoding="utf-8")
+    args = [sys.executable, "tools/alloc.py", work / "scheme.yaml", "-o", work / "out"]
+    if tpl:
+        args += ["--fixed", repo / "boards" / tpl / "board.yaml"]
+    p = subprocess.run([str(a) for a in args], cwd=repo, capture_output=True, text=True, timeout=60)
+    out = p.stdout + p.stderr
+    miss = re.findall(r"^!\s*(\S+?)：.*没分到", out, re.M)
+    if not miss and p.returncode:
+        return False, "alloc 失败：" + out.strip()[-200:]
+    return (not miss), ("装不下：" + "、".join(miss[:6]) + ("…" if len(miss) > 6 else "") + f"（共 {len(miss)} 项没分到）") if miss else ""
+
+
+def scratch_options(repo: pathlib.Path, scheme: dict, work: pathlib.Path | None = None) -> list[dict]:
     """从零新建：芯片 × 板卡模板的候选（scheme 的 mcu 排第一；能生成 .ioc 的系列在前；同芯片的现有板卡可当接线模板）。"""
     sc = _scheme_mod(repo); parts = sc.load_catalog()
     boards = []
@@ -141,8 +156,13 @@ def scratch_options(repo: pathlib.Path, scheme: dict) -> list[dict]:
         for t in [None, *tpls]:
             out.append({"mcu": x["id"], "family": fam, "tpl": t, "ok": ok, "why": why, "status": x["status"],
                         "label": f"{x['name']}" + (f" · 沿用 boards/{t} 的接线" if t else " · 空白板（只按芯片分配）")})
+    if work is not None:                                 # 装不下的往后排，并给出 alloc 报的理由
+        for i, o in enumerate(out):
+            o["fit"], w = alloc_fit(repo, scheme, o["mcu"], o["tpl"], work / f"o{i}") if o["ok"] else (False, "")
+            if w:
+                o["why"] = w
     pick = (scheme.get("mcu") or "").lower()
-    out.sort(key=lambda o: (not o["ok"], o["mcu"] != pick, o["tpl"] is not None, sc.RANK.get(o["status"], 9), o["mcu"], o["tpl"] or ""))
+    out.sort(key=lambda o: (not o["ok"], not o.get("fit", True), o["mcu"] != pick, o["tpl"] is not None, sc.RANK.get(o["status"], 9), o["mcu"], o["tpl"] or ""))
     return out
 
 
@@ -262,7 +282,7 @@ class Flow:
             if not sch_p.exists():
                 raise FlowError("no_scheme", f"{sch_p} 还没有：先确认第 2 步")
             sch = yaml.safe_load(sch_p.read_text(encoding="utf-8")) or {}
-            opts = scratch_options(self.repo, sch)
+            opts = scratch_options(self.repo, sch, self.stage(code, "scratch_fit"))
             if not m.get("mcu"):
                 return {"cmd": "", "rc": 0, "out": "", "files": {}, "options": opts, "target": ""}
             o = next((x for x in opts if x["mcu"] == m["mcu"] and x["tpl"] == (m.get("tpl") or None)), None)
@@ -287,6 +307,8 @@ class Flow:
                 return {"cmd": r1["cmd"] + "\n" + r2["cmd"], "rc": r2["rc"], "out": r1["out"] + r2["out"], "options": opts, "name": name, "target": "",
                         "files": {"alloc.md": (st / "alloc" / "alloc.md").read_text(encoding="utf-8")}}
             ctrl = (re.search(r"CTRL=(TIM\d+)", r2["out"]) or [None, ""])[1]
+            rc_ = self._run(["tools/gen_core.py", st / "alloc" / "board.yaml", proj, "--name", name])   # 没有 CubeMX 也能先编译：合成 Core
+            r2 = {"cmd": r2["cmd"] + "\n" + rc_["cmd"], "rc": r2["rc"] or rc_["rc"], "out": r2["out"] + rc_["out"]}
             r3 = self._run(["tools/ioc_import.py", proj / f"{name}.ioc", "-o", st / "check_board.yaml", "--base", st / "alloc" / "board.yaml",
                             *(["--timer", f"CTRL={ctrl}"] if ctrl else [])])
             dest = pathlib.Path(m.get("cubemx_dir") or (pathlib.Path.home() / "dz-cubemx" / name)).expanduser()
@@ -409,6 +431,11 @@ class Flow:
             if ioc.exists() and not m.get("overwrite"):
                 raise FlowError("exists", f"{ioc} 已存在", "换个板名，或勾“覆盖”")
             put(ioc, (st / "cubemx" / name / f"{name}.ioc").read_text(encoding="utf-8"))
+            core = st / "cubemx" / name / "Core"
+            if m.get("synth_core", True) and core.is_dir() and not (dest / "Core" / "Src" / "main.c").exists():   # 已有 CubeMX 生成的 Core 不碰
+                for f in sorted(core.rglob("*")):
+                    if f.is_file():
+                        put(dest / f.relative_to(st / "cubemx" / name), f.read_text(encoding="utf-8"))
             for rel, text in self._files(st / "alloc").items():
                 put(tgt / "alloc" / rel, text)
         elif step == "import":

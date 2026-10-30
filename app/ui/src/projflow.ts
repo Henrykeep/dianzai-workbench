@@ -117,9 +117,9 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   let poll = 0;
   const fork = async () => {
     const r0 = await call<any>("flow_preview", { step: "scratch", ...base() }).catch(() => null); if (!r0) { inp("pf-proj").focus(); return; }
-    const R = res("import"), ok = r0.options.filter((o: any) => o.ok);
+    const R = res("import"), ok = [...r0.options.filter((o: any) => o.ok && o.fit !== false), ...r0.options.filter((o: any) => o.ok)];
     R.innerHTML = `<p class="hint">没填现成工程目录。二选一：有 CubeMX/Keil 工程就在上面填目录（导入已有工程）；没有就在这里从零新建——按方案的主控排序，第一项是默认。</p>
-      <select class="in" id="pf-scr">${r0.options.map((o: any, i: number) => `<option value="${i}"${o.ok ? "" : " disabled"}>${esc(o.label)}${o.ok ? "" : "（" + esc(o.why) + "）"}</option>`).join("")}</select><div id="pf-scr-res"></div>`;
+      <select class="in" id="pf-scr">${r0.options.map((o: any, i: number) => `<option value="${i}"${o.ok ? "" : " disabled"}>${esc(o.label)}${o.ok && o.fit !== false ? "" : "（" + esc(o.why) + "）"}</option>`).join("")}</select><div id="pf-scr-res"></div>`;
     const sel = R.querySelector<HTMLSelectElement>("#pf-scr")!; if (ok.length) sel.value = String(r0.options.indexOf(ok[0]));
     const runS = async () => {
       const o = r0.options[+sel.value]; const r = await call<any>("flow_preview", { step: "scratch", ...base(), mcu: o.mcu, tpl: o.tpl, name: v("pf-board") || undefined }); out("import", r);
@@ -130,7 +130,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
       b.onclick = async () => { b.disabled = true;
         const w = await call<any>("flow_accept", { step: "scratch", ...base(), name: r.name, cubemx_dir: r.target }).catch(() => null); if (!w) { b.disabled = false; return; }
         inp("pf-board").value = r.name; inp("pf-proj").value = lastProj = r.target;
-        S.innerHTML = `<p class="hint"><b>要你做一次：</b>用 STM32CubeMX 打开 <span class="mono">${esc(r.ioc)}</span>，核对后点 GENERATE CODE（本机跑不了 CubeMX 代码生成）。生成完这里会自动接着导入，不用再点。</p>`;
+        S.innerHTML = `<p class="hint">已按 .ioc 写了一份<b>合成 Core</b>（非 CubeMX 输出，能直接编译，正在自动导入）。<b>上板前建议做一次：</b>用 STM32CubeMX 打开 <span class="mono">${esc(r.ioc)}</span> 点 GENERATE CODE 覆盖它，再回来重跑导入。</p>`;
         toast(`已写入：${w.written.join("、")}`, "ok");
         clearInterval(poll); poll = window.setInterval(async () => {
           const q = await call<any>("flow_preview", { step: "scratch_ready", ...base(), cubemx_dir: r.target }).catch(() => null);

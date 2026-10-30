@@ -97,6 +97,8 @@ def test_scratch_allocs_and_writes_ioc(tmp_path):
     m = {"code": "S1", "dest": str(dest)}
     opts = f.preview("scratch", m)["options"]
     assert opts[0]["ok"] and any(not o["ok"] and o["family"] == "mspm0" for o in opts)
+    f1 = next(o for o in opts if o["mcu"] == "stm32f103c8t6" and not o["tpl"])      # 装不下的排在装得下的后面，并写明理由
+    assert f1["fit"] is False and "装不下" in f1["why"] and opts.index(f1) > opts.index(next(o for o in opts if o.get("fit")))
     with pytest.raises(FlowError):
         f.preview("scratch", m | {"mcu": "mspm0g3507"})
     assert f.preview("scratch", m | {"mcu": "stm32f103c8t6"})["rc"] != 0     # H 题串口超出 F103C8：报“没分到”，不写半截 .ioc
@@ -106,4 +108,5 @@ def test_scratch_allocs_and_writes_ioc(tmp_path):
         assert r["rc"] == 0 and "✗" not in r["out"] and "Mcu.UserName=STM32F" in r["files"][f"{r['name']}.ioc"]
         w = f.accept("scratch", m | {"name": r["name"], "cubemx_dir": str(cd)})
         assert (cd / f"{r['name']}.ioc").exists() and (dest / "alloc" / "alloc.md").exists() and w["written"]
-        assert f.preview("scratch_ready", m | {"cubemx_dir": str(cd)})["ready"] is False
+        assert f.preview("scratch_ready", m | {"cubemx_dir": str(cd)})["ready"] is True    # 合成 Core 已写，直接可导入编译
+        assert "合成" in (cd / "Core/Src/main.c").read_text(encoding="utf-8")
