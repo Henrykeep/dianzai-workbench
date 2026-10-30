@@ -17,8 +17,14 @@ jobs:
         with: { python-version: "3.12" }
       - run: pip install -r app/sidecar/requirements.txt
       - run: bash tools/fetch_third_party.sh f4 f1 freertos mspm0   # 从零新建测试要 HAL 模板
+      - run: bash tools/fetch_sysconfig.sh            # test_scratch_mspm0_syscfg 要 SysConfig CLI（锁版本 + sha256）
+      - name: Arm GNU Toolchain 13.3.rel1（test_toolchain 的 ELF 符号/实时观察要 arm-none-eabi-gcc）
+        run: |
+          sudo mkdir -p /opt/arm && sudo chown "$USER" /opt/arm
+          tools/arm_toolchain.sh --install
+          echo /opt/arm/arm-gnu-toolchain-13.3.rel1-x86_64-arm-none-eabi/bin >> "$GITHUB_PATH"
       - run: make BOARD=host-sim APP=car_2wd && make BOARD=host-sim APP=2026H_ball
-      - run: python -m pytest -q app/sidecar/tests   # e2e 需要 host-sim（make + cc，ubuntu 自带）
+      - run: python -m pytest -rs -v app/sidecar/tests   # e2e 需要 host-sim（make + cc，ubuntu 自带）
   win-repo:                   # repo\ + mingw 交叉编的仿真板（Windows runner 上没有现成 make + gcc 组合）
     runs-on: ubuntu-latest
     steps:
@@ -45,6 +51,15 @@ jobs:
         with: { name: dz-repo, path: app/dz-repo }
       - run: npm ci                    # 先装前端依赖：许可扫描/UI 单测要 node_modules（setup-node 已按 lock 缓存）
         working-directory: app/ui
+      - name: Arm GNU Toolchain 13.3.rel1（Windows 版 zip，锁版本 + sha256；test_toolchain 要 arm-none-eabi-gcc）
+        shell: bash
+        run: |
+          f=arm-gnu-toolchain-13.3.rel1-mingw-w64-i686-arm-none-eabi
+          curl -fsSL -o "$RUNNER_TEMP/$f.zip" "https://developer.arm.com/-/media/Files/downloads/gnu/13.3.rel1/binrel/$f.zip"
+          echo "e46fda043c0ce83582bc8db4b3ef85f77f4beb7333344c2f4193c17e1167a095  $RUNNER_TEMP/$f.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/$f.zip" -d "$RUNNER_TEMP/arm"
+          g=$(find "$RUNNER_TEMP/arm" -name arm-none-eabi-gcc.exe | head -1); test -n "$g"
+          cygpath -w "$(dirname "$g")" >> "$GITHUB_PATH"
       - name: 单元测试（Windows 上自动跳过仿真 e2e）
         shell: bash
         env:
@@ -52,7 +67,13 @@ jobs:
         run: |
           bash tools/fetch_third_party.sh f4 f1 freertos mspm0
           pip install -r app/sidecar/requirements.txt pyinstaller
-          python -m pytest -q app/sidecar/tests
+          arm-none-eabi-gcc --version | head -1
+          python -m pytest -rs -v app/sidecar/tests
+      - name: keil_inject 自测（make check 里那份，含跨盘符；先观察，不挡打包）
+        shell: bash
+        continue-on-error: true
+        env: { PYTHONUTF8: "1", CUBE_HAL: "" }
+        run: python tools/test_keil_inject.py
       - name: 打包侧车
         shell: bash
         run: |

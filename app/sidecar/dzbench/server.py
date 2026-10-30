@@ -453,7 +453,7 @@ class Server:
         if op == "watch_stop":
             return self.svc.watch_stop()
         if op == "agent_models":
-            return agent_llm.list_models(m.get("form") or {})
+            return await run(None, lambda: agent_llm.discover_models(m.get("form") or {}))
         if op == "agent_ollama":
             return agent_llm.ollama(m.get("action", "check"), m.get("model", ""))
         if op == "agent_config_test":

@@ -79,7 +79,7 @@ def chain_step(root: pathlib.Path, code: str, s: dict, stage_home: pathlib.Path,
     if step == "req":
         st["facts"] = [f"拆出 {s.get('items')} 个评分项"] + [f"· {t}" for t in s.get("first") or []]
     elif step == "scheme":
-        st["facts"] = [f"主控 {s.get('mcu')}"]
+        st["facts"] = [f"主控 {s.get('mcu')}"] + ([f"⚠ {s['mcu_note']}"] if s.get("mcu_note") else [])
     elif step == "scratch":
         st["facts"] = [f"芯片 {s.get('label')}", f"板名 {s.get('board')}", "写 .ioc 后要你在 CubeMX 点一次 GENERATE CODE"]
         if s.get("others"):
