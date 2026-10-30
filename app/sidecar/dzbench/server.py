@@ -180,8 +180,11 @@ class Server:
         if op == "disconnect":
             return await run(None, s.disconnect)
         if op == "estop":                      # 不排队：专用单线程发（不占默认线程池，串口写阻塞也不卡事件循环）
-            r = await asyncio.get_running_loop().run_in_executor(self.estop_pool, s.estop, str(m.get("src") or "")[:20])
-            await self._broadcast(r)
+            r = await asyncio.get_running_loop().run_in_executor(self.estop_pool, lambda: s.estop(str(m.get("src") or "")[:20], hold=True))
+            try:
+                await self._broadcast(r)
+            finally:
+                s.release_estop_events()           # 锁存确认（若已到）排在 requested 之后
             return r
         if op == "cmd":
             was = s.tx_locked

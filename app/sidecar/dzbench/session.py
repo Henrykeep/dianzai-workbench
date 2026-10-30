@@ -93,6 +93,8 @@ class Session:
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
         self.selftest: dict | None = None        # dzctl 0.10.0 心跳尾部自检结果（selftest_dict），旧固件 / 应用没报 = None
         self.params_hash: int | None = None
+        self._estop_hold = False
+        self._estop_held: list[dict] = []
         self._selftest_key: tuple | None = None   # 心跳里 (mask, t_ms)：变了才算新的一次自检
         self.selftest_at: str | None = None       # 自检完成时间（ISO，本机时区）
         self.selftest_ph: int | None = None       # 自检时的参数 hash；与当前 params_hash 不同 → stale
@@ -513,7 +515,7 @@ class Session:
                                 es["source"] = src
                                 # 不再单独推 type:"estop_cause"：cause / message_zh 只随统一事件 estop state:"latched" 下发
                                 if self.estop_requested_at is not None:    # 人/Agent 发的急停：固件锁存确认
-                                    self.emit(self.estop_ev("latched", self.estop_source or src, cause=es["cause"], message_zh=es["message_zh"],
+                                    self._emit_latched(self.estop_ev("latched", self.estop_source or src, cause=es["cause"], message_zh=es["message_zh"],
                                                             latency_ms=round((time.monotonic() - self.estop_requested_at) * 1000)))
                                     self.estop_requested_at = None
                                 if self.tx_locked and self.estop_source == "firmware:estop_flag":  # 急停位先到、原因后到：换成具体原因
@@ -736,24 +738,42 @@ class Session:
         threading.Thread(target=_log, daemon=True).start()
         return ok
 
-    def estop(self, src: str = "") -> dict:
+    def _emit_latched(self, ev: dict) -> None:
+        """锁存确认可能比 requested 回包先到（即时心跳 ≤ 5 ms）：requested 还没广播时先压住，release 后按序补发。"""
+        with self.hblock:
+            if self._estop_hold:
+                self._estop_held.append(ev)
+                return
+        self.emit(ev)
+
+    def release_estop_events(self) -> None:
+        with self.hblock:
+            self._estop_hold, held, self._estop_held = False, self._estop_held, []
+        for ev in held:
+            self.emit(ev | {"seq": next(self._estop_seq)})   # seq 按实际下发顺序（在 requested 之后）
+
+    def estop(self, src: str = "", hold: bool = False) -> dict:
         """急停：连发 3 帧（丢一帧也能停）。没连接时如实告知，不假装成功，也不锁存（没有板子可停，锁住只会吓到刚打开软件的人）。
         src = 谁按的（急停按钮 / Esc 键 / 空格键），写进告警文字。"""
         by = f"（{src}）" if src else ""
         if self.tr is None:
             return {"type": "estop", "sent": False, "nolink": True, "src": src,
                     "message": f"没连板子：急停{by}没有送达任何板子；连着真板时请直接断电/拔电池"}
-        ok = self._send_estop(3)
-        self.estop_count += 1
-        with self.hblock:
+        replay = isinstance(self.tr, ReplayTransport)
+        with self.hblock:                  # 先记“已请求”再发：板子急停上升沿的即时心跳 ≤ 5 ms 就回来，晚记会错过锁存确认
             self.tx_locked = True
             self.estop_source = estop_source(src)
+            self.estop_requested_at = None if replay else time.monotonic()
+            self._estop_hold = hold            # 调用方（server）广播完 requested 再 release_estop_events()
+        ok = self._send_estop(3)
+        self.estop_count += 1
+        if not ok:
+            self.estop_requested_at = None
         if not isinstance(self.tr, ReplayTransport):
             latch.set(self.port, self.board_uid, self.estop_source, src)
         self.emit({"type": "tx_locked", "on": True, "source": self.estop_source})
         if isinstance(self.tr, ReplayTransport):
             return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
-        self.estop_requested_at = time.monotonic()
         return self.estop_ev("requested", self.estop_source, ok=ok,     # 键集合见 ESTOP_EVENT_KEYS（docs/dev/events.md）
                              message_zh=f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池")
 

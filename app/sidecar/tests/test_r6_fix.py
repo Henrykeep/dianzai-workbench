@@ -231,7 +231,7 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
         m = ui.mark()
         t0 = time.monotonic()
         ui.ws.send(json.dumps({"op": "estop", "rid": 77, "src": "急停按钮"}))
-        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
+        rq = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
         assert time.monotonic() - t0 <= 0.2
         assert s.tx_locked
         la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
@@ -239,7 +239,9 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
         # 本地服务这一段（带原因的心跳到达 → WS latched）必须与持锁无关；总时长另含固件心跳周期（固件侧在修，≤500 ms 一拍）
         side = t_l - hb_t["cause"]
         assert side <= 0.05, f"持锁时 心跳到达→latched {side * 1000:.0f} ms"
-        assert hb_t["cause"] - t0 <= 0.55 and t_l - t0 <= 0.6, f"持锁时 点击→latched {(t_l - t0) * 1000:.0f} ms"
+        # 固件急停上升沿即时心跳 + 侧车先记 requested 再发：实测持锁 3 s 下 p50 3.3 ms / p95 3.9 ms（24 次），收紧到 200 ms
+        assert t_l - t0 <= 0.2, f"持锁时 点击→latched {(t_l - t0) * 1000:.0f} ms"
+        assert la["seq"] > rq["seq"] and la.get("latency_ms") is not None   # 锁存确认排在 requested 之后
         assert held.is_set() and time.monotonic() - t0 < 2.5    # 整个过程 hog 线程一直持着锁
         assert la["cause"] == "manual" and s.fw_status()["estop_cause"]
     finally:
