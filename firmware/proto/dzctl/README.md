@@ -26,3 +26,25 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 ## 参考来源
 - MAVLink 参数协议（mavlink.io/en/services/parameter.html）：SET 后回传实际值、上位机以回传为准。
 - PX4 参数元数据（min/max/unit 与代码同源生成）的思路。
+
+## 0.8.0
+
+- 心跳尾部追加 `u32 cause, u32 t_ms, f32 value`（len 16 → 28，旧上位机按长度读，不受影响）：板子**为什么**急停。
+  `dzctl_estop_note(cause, t, v)` 只记第一个原因（之后的连锁急停不覆盖），`dzctl_estop_clear()` 在人发 `R` 时清。
+  原因：1 手动 2 心跳超时（value=ms）3 堵转 4 欠压（V）5 过流（A）6 限位/超量程 7 自检失败（项数）8 异常复位安全态（复位原因）9 传感器故障。
+  接入：apps/include/link_app.h（所有 link_app 板子）、car_2wd、examples/2026H_ball/io。中文说明在侧车 `ESTOP_CAUSES`。
+## 0.10.0
+
+- 运行模式：心跳 status bit14 `DZCTL_HB_STANDALONE`（1 脱机 / 0 联机），bit15 `DZCTL_HB_SA_RUNNING`（脱机已启动）。
+- 'M' 切模式：`{'M', mode, DZCTL_MODE_MAGIC=0xA5}`，板回 `{'M', rc}`（0 已切并写 flash，1 没停稳，2 无 flash，3 写失败，4 缺确认字节）。
+  模式只由人切换（界面确认卡 / 板上长按），固件从不自动切；模式单独存 flash，与参数无关。
+## 0.11.0
+
+- 心跳尾部再追加 `u32 selftest_mask, u32 selftest_t_ms, u32 params_hash`（len 28 → 40）：
+  自检失败项 bit (code−1)（1 子系统 2 参数 3 flash 4 传感器 5 电源），t_ms = 0 表示应用没报自检；
+  params_hash = RAM 参数 FNV-1a 32；status bit16 `DZCTL_HB_PARAMS_DIRTY` = RAM 与 flash 那份不一致。
+
+## 0.9.0
+
+- 脱机运行：心跳 status bit11 = 上电自检失败（同时以原因 7 急停锁存），bit12-13 = 上电参数来源（0 flash / 1 没存过→默认 / 2 损坏或结构变了→默认 / 3 无 flash）。
+  `'W'` 存参数后板回 `DATA 0x7E len=2 {'W', 结果}`（0 已写入 1 没停稳拒写 2 无 flash 3 写失败）。侧车 `save_params()`（WS op `save_params`）。示例：apps/car_2wd。

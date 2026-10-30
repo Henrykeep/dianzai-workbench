@@ -75,6 +75,9 @@ class Session:
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
+        self.selftest: dict | None = None        # dzctl 0.10.0 心跳尾部自检结果（selftest_dict），旧固件 / 应用没报 = None
+        self.params_hash: int | None = None
+        self.estop_cause: dict | None = None     # dzctl 0.8.0 心跳里的急停原因（estop_cause_dict），没急停 = None
         self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
         self.samples: collections.deque = collections.deque()
@@ -130,6 +133,8 @@ class Session:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
             self._t_tr = self.t_connect
             self.hb_status = None
+            self.estop_cause = None
+            self.selftest = None; self.params_hash = None
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
@@ -400,8 +405,25 @@ class Session:
                             m = hb_status_event(w)
                             if m:
                                 self._pending_marks.append(m)
+                    if len(payload) >= 28:
+                        es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
+                        if len(payload) >= 40:
+                            m_, t_, ph = struct.unpack_from("<III", payload, 28)
+                            self.selftest, self.params_hash = selftest_dict(m_, t_), ph
+                        if es:
+                            es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
+                        if es != self.estop_cause:
+                            self.estop_cause = es
+                            if es:
+                                self.emit({"type": "estop_cause", **es})
+                                if es["cause_id"] != 1:          # 手动急停侧车自己已记了一条（带按键来源）
+                                    self._pending_marks.append(("estop", "板子急停：" + es["message_zh"]))
                     if h != self.schema_hash:
                         self._bind_schema(h)
+            elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("M"):
+                self.mode_ack = payload[1]
+            elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
+                self.save_ack = payload[1]
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
                 self.relay_ack = payload[0]
             elif kind == DATA and id_ == ID_BB and len(payload) == 16:
@@ -557,8 +579,13 @@ class Session:
         tr.write(frame)
         return True
 
-    def estop(self) -> dict:
-        """急停：连发 3 帧（丢一帧也能停）。没连接时如实告知，不假装成功。"""
+    def estop(self, src: str = "") -> dict:
+        """急停：连发 3 帧（丢一帧也能停）。没连接时如实告知，不假装成功，也不锁存（没有板子可停，锁住只会吓到刚打开软件的人）。
+        src = 谁按的（急停按钮 / Esc 键 / 空格键），写进告警文字。"""
+        by = f"（{src}）" if src else ""
+        if self.tr is None:
+            return {"type": "estop", "sent": False, "nolink": True, "src": src,
+                    "message": f"没连板子：急停{by}没有送达任何板子；连着真板时请直接断电/拔电池"}
         ok = False
         for _ in range(3):
             try:
@@ -569,9 +596,9 @@ class Session:
         self.tx_locked = True
         self.emit({"type": "tx_locked", "on": True})
         if isinstance(self.tr, ReplayTransport):
-            return {"type": "estop", "sent": False, "message": "回放中：急停没有发给任何板子"}
-        return {"type": "estop", "sent": ok,
-                "message": "急停已发送（3 帧）" if ok else "未连接：急停没有送达！直接断电/拔电池"}
+            return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
+        return {"type": "estop", "sent": ok, "src": src,
+                "message": f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池"}
 
     def send_data(self, id_: int, payload: bytes) -> bool:
         """发任意 DATA 帧（应用自定义命令，如 car_2wd 的 id=1 轮速设定）。0x7E/0x7F 走专用接口。"""
@@ -589,6 +616,50 @@ class Session:
         time.sleep(wait_s)
         with self.lock:
             return list(self.bb_recs)
+
+    SAVE_STATUS = {0: "参数已写入 flash：下次上电自动加载", 1: "电机没停稳：为安全起见没写（停车或急停后再存）",
+                   2: "这块板子没有可用的 flash 存储区（board.yaml mcu.nvm_kb 为 0）", 3: "flash 写入失败（重试；反复失败说明存储区坏了）"}
+
+    def save_params(self, wait_s: float = 1.5) -> dict:
+        """dzctl 0.8.0：把板上当前参数一次写进 flash（'W'），等板子回执 {'W', 结果}。旧固件不回执 → ok=None。"""
+        self._check_tx()
+        self.save_ack = None
+        if not self._send(DATA, ID_CMD, b"W"):
+            raise LinkError("not_connected", "没连板子", "")
+        t_end = time.monotonic() + wait_s
+        while time.monotonic() < t_end and getattr(self, "save_ack", None) is None:
+            time.sleep(0.01)
+        a = getattr(self, "save_ack", None)
+        if a is None:
+            return {"ok": None, "result": None, "message_zh": "板子没回执（固件早于 dzctl 0.8.0？）：用黑匣子看“参数已存”记录"}
+        self.mark("param", self.SAVE_STATUS.get(a, f"保存结果 #{a}"))
+        return {"ok": a == 0, "result": a, "message_zh": self.SAVE_STATUS.get(a, f"保存结果 #{a}")}
+
+    MODE_STATUS = {0: "运行模式已切换并写入 flash（下次上电仍是这个模式）", 1: "电机没停稳：为安全起见没切（停车或急停后再切）",
+                   2: "这块板子没有可用的 flash 存储区：模式存不下，没切", 3: "flash 写入失败，没切", 4: "缺少确认字节或模式非法：没切"}
+    MODE_MAGIC = 0xA5
+
+    def set_run_mode(self, mode: str, confirmed: bool = False, wait_s: float = 1.5) -> dict:
+        """dzctl 0.10.0：切联机/脱机。只能由人发起——界面先弹确认卡，用户点确认后才带 confirmed=True 调用；
+        没确认就不发（板子那边也要确认字节，缺了拒切）。"""
+        if mode not in ("tethered", "standalone"):
+            raise ValueError(f"mode 只能是 tethered / standalone，收到 {mode!r}")
+        if not confirmed:
+            return {"ok": False, "result": None, "needs_confirm": True,
+                    "message_zh": "切换运行模式需要确认：" + ("脱机后板子不再要求上位机心跳，只靠板上保护" if mode == "standalone" else "联机后上位机断线会急停")}
+        self._check_tx()
+        self.mode_ack = None
+        if not self._send(DATA, ID_CMD, bytes([ord("M"), 1 if mode == "standalone" else 0, self.MODE_MAGIC])):
+            raise LinkError("not_connected", "没连板子", "")
+        t_end = time.monotonic() + wait_s
+        while time.monotonic() < t_end and getattr(self, "mode_ack", None) is None:
+            time.sleep(0.01)
+        a = getattr(self, "mode_ack", None)
+        if a is None:
+            return {"ok": None, "result": None, "message_zh": "板子没回执（固件早于 dzctl 0.10.0？）"}
+        msg = self.MODE_STATUS.get(a, f"切换结果 #{a}")
+        self.mark("param", ("运行模式 → " + ("脱机" if mode == "standalone" else "联机") + "：" if a == 0 else "运行模式没切：") + msg)
+        return {"ok": a == 0, "result": a, "message_zh": msg}
 
     RELAY_STATUS = {0: "ok", 1: "参数非法或板上没有这个 PID 回路", 2: "板子急停中"}
 
@@ -787,6 +858,11 @@ class Session:
                           replay_speed=self.tr.speed, replay_paused=self.tr.paused)
             marks, self._pending_marks = list(self._pending_marks), []
             st.update(hb_status_dict(self.hb_status))
+            st["estop_cause"] = self.estop_cause
+            st["run_mode"] = run_mode_dict(self.hb_status)
+            st["selftest"] = self.selftest
+            st["params_saved"] = None if self.params_hash is None or self.hb_status is None else not (self.hb_status & (1 << 16))
+            st["params_hash"] = None if self.params_hash is None else f"{self.params_hash:08x}"
             if self.tr is not None:
                 log_t, plot_t = self._times_locked(now)
                 hist = self.health.history()
@@ -835,14 +911,73 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
-HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存"}
+
+
+# dzctl 0.10.0 dzctl_selftest_item_t：心跳 selftest_mask 的 bit (code−1)
+SELFTEST_ITEMS = {1: ("subsys", "子系统自检没通过（某个子系统的 selftest 返回失败）"),
+                  2: ("params", "参数越界或非法（已按默认值运行前请检查参数表）"),
+                  3: ("nvm", "flash 存储区不可用：参数存不下，掉电后恢复默认"),
+                  4: ("sensor", "传感器无数据（编码器 / 视觉 / IMU）"),
+                  5: ("power", "电源电压不在允许范围")}
+
+
+def selftest_dict(mask: int, t_ms: int) -> dict | None:
+    """心跳 u32 selftest_mask, u32 t_ms → {pass, failed_items:[{code,key,message_zh}], t}；t_ms = 0（应用没报）→ None。"""
+    if not t_ms:
+        return None
+    items = []
+    for b in range(32):
+        if mask & (1 << b):
+            k, msg = SELFTEST_ITEMS.get(b + 1, (f"item_{b + 1}", f"自检项 #{b + 1} 没通过"))
+            items.append({"code": b + 1, "key": k, "message_zh": msg})
+    return {"pass": not items, "failed_items": items, "t": round(t_ms / 1000.0, 3)}
+
+
+def run_mode_dict(w: int | None) -> dict | None:
+    """dzctl 0.10.0 心跳 bit14/15 → {mode: "tethered"|"standalone", started, label_zh}；旧固件（没 status 字）→ None。"""
+    if w is None:
+        return None
+    sa = bool(w & (1 << 14))
+    started = sa and bool(w & (1 << 15))
+    return {"mode": "standalone" if sa else "tethered", "started": started,
+            "label_zh": ("脱机（运行中）" if started else "脱机（待启动：板上按键短按）") if sa else "联机（上位机给目标，心跳丢失急停）"}
+
+
+# dzctl 0.8.0 dzctl_estop_cause_t → (cause 键, 中文说明模板)。{v} = 触发值，{t} = 板上时刻 s。
+ESTOP_CAUSES = {
+    1: ("manual", "手动急停：上位机发出急停指令（急停按钮 / Esc / 空格）"),
+    2: ("hb_timeout", "心跳超时：上位机 {v:.0f} ms 未发送心跳（阈值 1000 ms），板端看门狗已切断输出"),
+    3: ("stall", "电机堵转：输出 {v:.2f} 时转速持续接近 0，已刹车保护"),
+    4: ("undervolt", "电池欠压：电压 {v:.2f} V 低于临界值，已停机（电压回升也不会自动恢复）"),
+    5: ("overcurrent", "过流：电流 {v:.2f} A 超过上限，已切断输出"),
+    6: ("limit", "限位 / 超量程：{v:.3g} 超出允许范围，已停机"),
+    7: ("selftest", "上电自检失败：{v:.0f} 项未通过，输出保持关闭"),
+    8: ("safe_boot", "异常复位后进入安全态：复位原因 {r}，输出保持关闭"),
+    9: ("sensor", "传感器读取失败（资源 {v:.0f}），已故障停机"),
+}
+
+
+def estop_cause_dict(cause: int, t_ms: int, value: float) -> dict | None:
+    """心跳尾部 u32 cause, u32 t_ms, f32 value → {cause, cause_id, message_zh, value, t}；cause 0 → None。"""
+    if not cause:
+        return None
+    key, tpl = ESTOP_CAUSES.get(cause, (f"unknown_{cause}", "未知急停原因 #{c}"))
+    msg = tpl.format(v=value, c=cause, r=RESET_NAMES.get(int(value), f"#{int(value)}"))
+    return {"cause": key, "cause_id": cause, "message_zh": msg + "；确认安全后点“解除急停 R”",
+            "value": round(float(value), 4), "t": round(t_ms / 1000.0, 3)}
 
 
 def hb_status_dict(w: int | None) -> dict:
     """心跳 status 字 → status() 里的 reset / hb_flags（旧固件没有这个字：都为 None）。"""
     if w is None:
-        return {"reset": None, "hb_flags": None}
-    return {"reset": RESET_NAMES.get(w & 0xFF, f"#{w & 0xFF}"), "hb_flags": [n for b, n in HB_FLAGS.items() if w & b]}
+        return {"reset": None, "hb_flags": None, "boot": None}
+    return {"reset": RESET_NAMES.get(w & 0xFF, f"#{w & 0xFF}"), "hb_flags": [n for b, n in HB_FLAGS.items() if w & b],
+            "boot": {"params": PARAM_SRC[(w >> 12) & 3], "selftest_ok": not (w & (1 << 11))}}
+
+
+# dzctl 0.8.0 心跳 bit12-13：上电参数从哪来（旧固件为 0 = 显示成 flash；看 boot 字段前先确认固件版本）
+PARAM_SRC = ("flash", "default_unsaved", "default_corrupt", "no_nvm")
 
 
 def hb_status_event(w: int) -> tuple[str, str] | None:

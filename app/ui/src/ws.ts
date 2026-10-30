@@ -52,5 +52,5 @@ export class Link {
   }
 
   /** 急停专用：不等回复、不排队，连上就立刻发 */
-  fire(op: string) { if (this.open) this.ws!.send(JSON.stringify({ op, rid: ++this.rid })); }
+  fire(op: string, args: Record<string, unknown> = {}) { if (this.open) this.ws!.send(JSON.stringify({ ...args, op, rid: ++this.rid })); }
 }

@@ -66,7 +66,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         for (uint16_t i = 0; i < got; i++) {
             if (!dzframe_feed(&L->rx, buf[i], &f)) continue;
             dzctl_wd_feed(&L->wd, &f, now);
-            if (dzctl_is_estop(&f)) { L->estop = true; pid_relay_stop(); }
+            if (dzctl_is_estop(&f)) { L->estop = true; dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
             else if (link_relay_frame(&f, L->estop, &L->seq, &ack)) link_app_send(&ack);
             else if (dzctl_is_bb_request(&f)) {
                 for (uint16_t k = 0; L->bb && k < bb_count(L->bb); k++) {
@@ -82,13 +82,16 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
             }
             else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) {
                 uint8_t c = f.payload[0], n = f.len >= 2u ? f.payload[1] : 0u;
-                if (c == 'R') L->estop = false;
+                if (c == 'R') { L->estop = false; dzctl_estop_clear(); }
                 else if (L->on_cmd) L->on_cmd(c, n);
                 link_app_sim_cmd(c, n);
             }
         }
     }
-    if (dzctl_wd_expired(&L->wd, now)) L->estop = true;   /* 上位机掉线：急停 */
+    if (dzctl_wd_expired(&L->wd, now)) {   /* 上位机掉线：急停 */
+        L->estop = true;
+        dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - L->wd.last_ms));
+    }
     link_relay_guard(L->estop);                           /* 急停中结束继电 */
     if (now - L->last_hb >= 500u) {
         L->last_hb = now;

@@ -212,11 +212,34 @@ def test_host_heartbeat_watchdog_latches_estop(home):
         s.send_data(1, struct.pack("<ff", 0.3, 0.0))
         time.sleep(0.3)
         assert sp() == 0.0, "看门狗触发后应锁存急停，命令被拒"
+        assert wait(lambda: s.status()["estop_cause"]), "心跳里应带急停原因"
+        es = s.status()["estop_cause"]
+        assert es["cause"] == "hb_timeout" and 1000 <= es["value"] < 1600 and es["message_zh"].startswith("心跳超时"), es
         s.host_hb = True
         s.cmd("R")
         time.sleep(0.1)
         s.send_data(1, struct.pack("<ff", 0.3, 0.0))
         assert wait(lambda: (sp() or 0) > 0.5), "R 解除后恢复"
+        assert wait(lambda: s.status()["estop_cause"] is None), "R 清掉原因"
+    finally:
+        s.disconnect()
+
+
+@pytest.mark.parametrize("app", ["car_2wd", "2026H_ball", "motor_pos"])
+def test_estop_cause_reported(home, app):
+    """dzctl 0.8.0：连上不应有急停原因；按急停 → 心跳带 cause=manual + 时刻；R → 清掉。"""
+    s = Session()
+    s.connect(f"sim:{app}")
+    try:
+        assert wait(lambda: s.schema and s.hb_status is not None)
+        time.sleep(0.6)
+        assert s.status()["estop_cause"] is None, "一连上就有急停原因 = 误报"
+        s.estop("测试")
+        assert wait(lambda: s.status()["estop_cause"]), s.status()
+        es = s.status()["estop_cause"]
+        assert es["cause"] == "manual" and es["cause_id"] == 1 and es["t"] > 0 and "手动急停" in es["message_zh"], es
+        s.cmd("R")
+        assert wait(lambda: s.status()["estop_cause"] is None)
     finally:
         s.disconnect()
 
