@@ -53,3 +53,14 @@ def test_step_cfg_prefers_current_sim_app():
     assert svc.step_cfg()["y"] == "line_mm"
     svc.s.port = "/dev/ttyUSB0"          # 实板：gains 都在板上的两项打平 → 先出现的（可用 step_test 显式指定）
     assert svc.step_cfg()["y"] == "spd_a"
+
+
+def test_replay_recorded_real_llm_transcripts(capsys):
+    """离线复评：tests/fixtures/agent_evals/ 里录的是真模型（经 OpenAI 兼容中转站）的对话；不要 Key，按当前规则重打分。"""
+    import pathlib
+    fx = sorted((pathlib.Path(__file__).parent / "fixtures" / "agent_evals").glob("*.json"))
+    assert fx
+    for f in fx:
+        assert evalrun.replay(str(f)) in (0, 1)
+        out = capsys.readouterr().out
+        assert "总分" in out and "sk-" not in f.read_text(encoding="utf-8")

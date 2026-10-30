@@ -57,8 +57,12 @@ def load_config() -> dict:
     cfg.setdefault("local_model", PROVIDERS["ollama"]["model"])
     cfg.setdefault("failover", True)
     cfg.setdefault("tool_mode", "auto")
-    if os.environ.get("DZBENCH_API_KEY"):
+    if os.environ.get("DZBENCH_API_KEY"):          # 评测/CI 用：只在本机环境变量里，不落盘
         cfg["api_key"] = os.environ["DZBENCH_API_KEY"]
+    if os.environ.get("DZBENCH_BASE_URL"):
+        cfg.update(provider="custom", base_url=os.environ["DZBENCH_BASE_URL"])
+    if os.environ.get("DZBENCH_MODEL"):
+        cfg["model"] = os.environ["DZBENCH_MODEL"]
     return cfg
 
 
@@ -95,7 +99,8 @@ def local_config(cfg: dict) -> dict:
 
 
 def _req(url: str, body: dict | None = None, key: str = "", timeout: float = 15):
-    h = {"Content-Type": "application/json"} | ({"Authorization": f"Bearer {key}"} if key else {})
+    # 带上自己的 User-Agent：不少中转站（Cloudflare 后面）直接 403 拦默认的 "Python-urllib"（error code 1010）
+    h = {"Content-Type": "application/json", "User-Agent": "dzbench-agent/1 (OpenAI-compatible client)", "Accept": "application/json, text/event-stream"} | ({"Authorization": f"Bearer {key}"} if key else {})
     return urllib.request.urlopen(urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=h), timeout=timeout)
 
 
@@ -163,21 +168,33 @@ def to_json_mode(messages: list[dict], tools: list[dict] | None) -> list[dict]:
     return out
 
 
+THINK = re.compile(r"<think>.*?(</think>|$)", re.S)
+
+
+def strip_think(text: str) -> str:
+    """推理模型（GLM/Qwen3/DeepSeek-R 系）常把思考过程用 <think>…</think> 写进正文：不给用户看，也别挡住 JSON 兜底。"""
+    return THINK.sub("", text or "").strip()
+
+
 def parse_json_call(content: str, names: set[str]) -> list[dict]:
-    """从文本里认出工具调用：{"tool":..,"args":..} 或 {"name":..,"arguments":..}，可裹在 ```json 里。认不出返回 []。"""
-    m = re.search(r"\{.*\}", content or "", re.S)
-    if not m:
-        return []
-    try:
-        d = json.loads(m.group(0))
-    except ValueError:
-        return []
-    name = d.get("tool") or d.get("name") if isinstance(d, dict) else None
-    if name not in names:
-        return []
-    args = d.get("args", d.get("arguments", d.get("parameters", {})))
-    args = json.loads(args) if isinstance(args, str) else args
-    return [{"id": f"j_{name}", "type": "function", "function": {"name": name, "arguments": json.dumps(args or {}, ensure_ascii=False)}}]
+    """从文本里认出工具调用：{"tool":..,"args":..} 或 {"name":..,"arguments":..}，可裹在 ```json 里、前后有别的字。
+    逐个 "{" 试着解析（以前用贪婪正则从第一个 { 抓到最后一个 }，正文里有别的花括号就整段失败）。认不出返回 []。"""
+    text, dec = strip_think(content), json.JSONDecoder()
+    for i in (k for k, ch in enumerate(text) if ch == "{"):
+        try:
+            d, _ = dec.raw_decode(text, i)
+        except ValueError:
+            continue
+        name = (d.get("tool") or d.get("name")) if isinstance(d, dict) else None
+        if name not in names:
+            continue
+        args = d.get("args", d.get("arguments", d.get("parameters", {})))
+        try:
+            args = json.loads(args) if isinstance(args, str) else args
+        except ValueError:
+            continue
+        return [{"id": f"j_{name}", "type": "function", "function": {"name": name, "arguments": json.dumps(args or {}, ensure_ascii=False)}}]
+    return []
 
 
 # ------------------------------------------------------------------ 客户端
@@ -200,23 +217,28 @@ class OpenAICompat:
             raise LLMError("没有配置模型服务地址", "在大模型设置里选一个服务商")
         if not c.get("api_key") and c.get("provider") != "ollama":
             raise LLMError("没有 API Key", "在大模型设置里填 Key（只存在本机），或改用本地 Ollama")
-        for attempt in range(self.retries + 1):
+        attempt = 0
+        while True:
             try:
                 m = self._once(messages, tools)
                 break
             except LLMError as e:
                 native_refused = not self.json_mode and tools and "400" in e.message and "tool" in e.message.lower()
-                if native_refused:                          # 服务/模型不认 tools 参数 → 以后都走 JSON 兜底
+                if native_refused:                          # 服务/模型不认 tools 参数 → 以后都走 JSON 兜底（不占重试次数）
                     self.json_mode = True
                     self.emit({"type": "agent_toolmode", "mode": "json", "model": self.name})
                     continue
-                if attempt == self.retries or not getattr(e, "retry", False):
+                if attempt >= self.retries or not getattr(e, "retry", False):
                     raise
-                wait = self.backoff * (2 ** attempt)
-                self.emit({"type": "agent_retry", "attempt": attempt + 1, "wait_s": wait, "why": e.message[:120]})
+                # 限流（429）按服务给的 Retry-After 等；没给就按“每分钟 N 次”这类窗口等够几秒，不再 0.8 s 就重撞
+                wait = getattr(e, "retry_after", None) or (8.0 * (attempt + 1) if getattr(e, "code", 0) == 429 else self.backoff * (2 ** attempt))
+                wait = min(float(wait), 30.0)
+                attempt += 1
+                self.emit({"type": "agent_retry", "attempt": attempt, "wait_s": wait, "why": e.message[:120]})
                 time.sleep(wait)
         if tools and not m.get("tool_calls") and (calls := parse_json_call(m.get("content") or "", {t["name"] for t in tools})):
             m = {"role": "assistant", "content": "", "tool_calls": calls}      # 小模型常把调用写进正文：也认
+        m["content"] = strip_think(m.get("content") or "")
         return m
 
     def _once(self, messages: list[dict], tools: list[dict] | None) -> dict:
@@ -236,15 +258,18 @@ class OpenAICompat:
                     d = json.loads(r.read())
                     m, usage = d["choices"][0]["message"], d.get("usage")
         except urllib.error.HTTPError as e:
-            txt = e.read().decode(errors="replace")[:300]
-            try:     # 多数服务回 {"error":{"message":…}}：只给人看那句话
+            txt = e.read().decode(errors="replace")
+            try:     # 多数服务回 {"error":{"message":…}}：只给人看那句话（先整段解析再截断，以前先截断导致长错误解析失败、原样糊给用户）
                 err = json.loads(txt).get("error")
                 txt = (err.get("message") if isinstance(err, dict) else err) or txt
             except (ValueError, AttributeError):
                 pass
+            txt = str(txt)[:200]
             fix = {401: "Key 不对或过期", 402: "余额不足", 404: "模型名或地址不对", 429: "请求太频繁/额度用完，稍后再试"}.get(e.code, "")
             err = LLMError(f"模型服务返回 {e.code}：{txt}", fix)
-            err.retry = e.code in self.RETRY_CODES
+            err.retry, err.code = e.code in self.RETRY_CODES, e.code
+            ra = (e.headers.get("Retry-After") or "") if e.headers else ""
+            err.retry_after = float(ra) if ra.replace(".", "", 1).isdigit() else None
             raise err from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             err = LLMError(f"连不上模型服务：{getattr(e, 'reason', e)}", "比赛现场可能没网：调参/示波/阶跃测试不受影响；要 Agent 就开本地 Ollama", down=True)
@@ -255,7 +280,7 @@ class OpenAICompat:
 
     def _read_stream(self, r) -> tuple[dict, dict | None]:
         """SSE：content 逐段推 agent_delta；tool_calls 按 index 拼参数。"""
-        text, calls, usage = [], {}, None
+        text, calls, usage, shown = [], {}, None, 0
         for raw in r:
             line = raw.decode("utf-8", "replace").strip()
             if not line.startswith("data:"):
@@ -269,7 +294,11 @@ class OpenAICompat:
                 delta = ch.get("delta") or {}
                 if delta.get("content"):
                     text.append(delta["content"])
-                    self.emit({"type": "agent_delta", "text": delta["content"]})
+                    raw_txt = "".join(text)
+                    vis = THINK.sub("", raw_txt).lstrip()      # 思考段不推给界面（没闭合的 <think> 也藏住）
+                    if len(vis) > shown and not "<think>".startswith(raw_txt.lstrip()):
+                        self.emit({"type": "agent_delta", "text": vis[shown:]})
+                        shown = len(vis)
                 for tc in delta.get("tool_calls") or []:
                     slot = calls.setdefault(tc.get("index", 0), {"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
                     slot["id"] = tc.get("id") or slot["id"]
@@ -325,4 +354,4 @@ def build(cfg: dict | None = None, emit: Callable[[dict], None] = lambda e: None
     if not cfg.get("api_key"):
         return None
     local = OpenAICompat(local_config(cfg), on_event=emit, retries=0) if cfg.get("failover", True) else None
-    return Failover(OpenAICompat(cfg, on_event=emit, retries=1), local, emit)
+    return Failover(OpenAICompat(cfg, on_event=emit, retries=3), local, emit)

@@ -117,6 +117,8 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
     import shutil
     from ..projflow import FlowError, scratch_options
     root = pathlib.Path(root); f = _flow(root)
+    if src and not pathlib.Path(src).is_absolute() and (root / src).exists():
+        src = str(root / src)            # 模型只知道仓库相对路径
     real = root / "examples" / code
     sb = f.home / code / "sandbox"
     if sb.exists():
