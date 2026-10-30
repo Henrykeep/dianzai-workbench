@@ -6,6 +6,8 @@ UI → 侧车：{"op": ..., "rid": 可选请求号, ...}；侧车回 {"type":"re
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import itertools
 import json
 import traceback
 import os
@@ -29,6 +31,7 @@ from .ports import list_ports
 from .sender import Sender
 from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
+from .notices import Notifier
 
 UI_HZ = 60
 MAX_POINTS = 200
@@ -47,6 +50,13 @@ class Server:
         self.progress = Progress(self.session, self.svc, lambda: _doctor.run(str(self.svc.gw.root)))
         self.svc.progress_src = self.progress
         self.recovered = lastsession.take_unclean()      # 上次侧车是不是崩了
+        # 缺口 #25：Agent（LLM 长调用）独占一个线程，按顺序排队；不占默认线程池，绝不在事件循环里跑。
+        # 上位机心跳是 Session 的独立线程（_host_heartbeat），不经过事件循环，也不等 Agent。
+        self.agent_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="dz-agent")
+        self.agent_queue: list[str] = []          # 等待中的 msg_id（不含正在跑的）
+        self.agent_running: str | None = None
+        self._msg_ids = itertools.count(1)
+        self.notifier = Notifier()
 
     # 线程安全的广播
     def emit(self, msg: dict) -> None:
@@ -84,6 +94,8 @@ class Server:
                 pc = self.progress.changed()            # 进度有变化才推（依赖自检结果缓存，见 progress.py）
                 if pc:
                     await self._broadcast(pc)
+                    for nt in self.notifier.update(pc):  # 新增阻塞项：以 Agent 身份主动提醒（模板，不调大模型）
+                        await self._broadcast(nt)
                 await self._broadcast(self.session.status() | {"clients": len(self.clients)})
 
     async def _op(self, m: dict):
@@ -315,8 +327,8 @@ class Server:
         if op == "tune_search":                    # 开环阶跃 → 辨识 → 仿真 PSO/分阶段 → top-k（不写板子）
             return await run(None, lambda: self.svc.sim_search(m["y"], m["u"], float(m.get("seconds", 5)), m.get("strategy", "pso"),
                                                                bool(m.get("wide")), int(m.get("top_k", 3))))
-        if op == "agent_ask":
-            return await run(None, self.svc.ask, m["text"])
+        if op == "agent_ask":                      # 正常走 handler 里的 _agent_submit（立即回执 + 排队）；这里只给内部直调
+            return await asyncio.get_running_loop().run_in_executor(self.agent_pool, self.svc.ask, m["text"])
         if op == "agent_undo":                     # 人点“撤销 Agent 上一步”：参数改回 / git revert
             return await run(None, self.svc.undo_last)
         if op == "agent_set_mode":                 # 工作模式：通用 / 诊断 / 调参 / 改代码 / 审查（只收窄工具）
@@ -365,8 +377,8 @@ class Server:
             return await run(None, self.svc.run_sweep_test)
         if op == "tune_relay":                     # 调参 → 更多实验 → 无初值一键起步；用户点 = 已确认；十几秒，放线程池
             return await run(None, self.svc.run_relay_tune)
-        if op == "tune_step_test":                 # 用户自己点 = 已是人工确认
-            return self.svc.run_step_test()
+        if op == "tune_step_test":                 # 用户自己点 = 已是人工确认；要几秒，放线程池（以前在事件循环里跑，会卡住广播）
+            return await run(None, self.svc.run_step_test)
         # 编译 / 烧录 / 回滚都走风险网关：界面按钮和 Agent 同一条路（烧录、回滚 = human，弹确认卡；以前这里直接调烧录器，绕过了确认）
         if op == "build":
             return await run(None, lambda: self.svc.gate("build", {}, self.svc.build))
@@ -396,6 +408,64 @@ class Server:
             return await run(None, self.svc.gw.rollback, m["commit"])
         raise LinkError("bad_op", f"未知操作 {op}")
 
+    def _queue_state(self) -> dict:
+        return {"type": "agent_queue", "running": self.agent_running, "queued": list(self.agent_queue)}
+
+    async def _agent_submit(self, ws, m: dict) -> None:
+        """每条用户消息立刻回 agent_ack {msg_id, state}：queued / running / blocked。
+        急停锁存时明确拒绝（不排队、不静默丢弃）：ack state=blocked + reply ok=false code=estop_locked，
+        消息原文在 ack.text 里交还给界面，解除急停后由用户重发。"""
+        rid = m.get("rid")
+        mid = str(m.get("msg_id") or f"m{next(self._msg_ids)}")
+        s = self.session
+        if s.tx_locked:
+            cause = (s.estop_cause or {}).get("message_zh") or ""
+            msg = "已急停，请先解除" + (f"：{cause}" if cause else "")
+            ack = {"type": "agent_ack", "msg_id": mid, "rid": rid, "state": "blocked", "reason": "estop",
+                   "source": s.estop_source, "message": msg, "fix_action": "estop_clear", "human_only": True,
+                   "text": m.get("text")}
+            await self._send(ws, ack)
+            await self._send(ws, {"type": "reply", "rid": rid, "op": "agent_ask", "ok": False, "msg_id": mid,
+                                  "error": {"type": "error", "code": "estop_locked", "message": msg,
+                                            "fix": "确认安全后在界面点“解除急停”，再重发这条消息", "fix_action": "estop_clear"}})
+            return
+        state = "queued" if (self.agent_running or self.agent_queue) else "running"
+        self.agent_queue.append(mid)
+        await self._send(ws, {"type": "agent_ack", "msg_id": mid, "rid": rid, "state": state,
+                              "position": len(self.agent_queue) - (0 if self.agent_running else 1)})
+        await self._broadcast(self._queue_state())
+        loop = asyncio.get_running_loop()
+
+        def job():
+            self.agent_queue.remove(mid)
+            self.agent_running = mid
+            self.emit({"type": "agent_ack", "msg_id": mid, "rid": rid, "state": "running", "position": 0})
+            self.emit(self._queue_state())
+            try:
+                return self.svc.ask(m["text"])
+            finally:
+                self.agent_running = None
+                self.emit(self._queue_state())
+
+        async def finish():
+            try:
+                data = await loop.run_in_executor(self.agent_pool, job)
+                rep = {"type": "reply", "rid": rid, "op": "agent_ask", "ok": True, "msg_id": mid, "data": data}
+            except Exception as e:  # noqa: BLE001
+                traceback.print_exc()
+                rep = {"type": "reply", "rid": rid, "op": "agent_ask", "ok": False, "msg_id": mid,
+                       "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",
+                                 "fix": "请把这条信息和日志文件发给维护者"}}
+            await self._send(ws, rep)
+        asyncio.ensure_future(finish())
+
+    @staticmethod
+    async def _send(ws, msg: dict) -> None:
+        try:
+            await ws.send(json.dumps(msg, ensure_ascii=False, default=str))
+        except Exception:  # noqa: BLE001  连接已关
+            pass
+
     async def handler(self, ws) -> None:
         self.clients.add(ws)
         try:
@@ -405,6 +475,9 @@ class Server:
                 except ValueError:
                     continue
                 rid = m.get("rid")
+                if m.get("op") == "agent_ask":       # 不 await：Agent 长调用期间同一连接上的急停/其他操作照常处理
+                    await self._agent_submit(ws, m)
+                    continue
                 try:
                     data = await self._op(m)
                     ev = events.from_reply(m.get("op"), data)

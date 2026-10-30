@@ -10,7 +10,7 @@ from dzbench.events import Timeline, crc_spike
 def test_classify_table():
     assert events.from_broadcast({"type": "param", "name": "kp", "value": 0.3, "status": "ok"}) == ("param", "kp = 0.3")
     assert events.from_broadcast({"type": "param", "name": "kp", "value": 2, "status": "clamped"})[1].endswith("（clamped）")
-    assert events.from_broadcast({"type": "estop", "sent": False}) == ("estop", "急停（未送达）")
+    assert events.from_broadcast({"type": "estop", "sent": False}) == ("estop", "急停（未送达）", "ui")
     assert events.from_broadcast({"type": "tune_round", "verdict": {"action": "keep"}, "metrics": {"overshoot_pct": 12.34}})[1] == "阶跃实验完成 · 超调 12.3% · keep"
     assert events.from_broadcast({"type": "change", "status": "applied", "id": 3, "title": "改 kp"}) == ("agent", "采纳改动 #3 改 kp")
     assert events.from_broadcast({"type": "change", "status": "pending", "id": 3}) is None

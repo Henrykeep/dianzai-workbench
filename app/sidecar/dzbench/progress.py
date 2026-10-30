@@ -80,7 +80,9 @@ def blockers(f: dict) -> list[dict]:
         out.append(_blocker("no_board", "未连接板子" + (f"：{why}。" if why else "。")))
         return out                       # 板子不在线时，板上状态（急停、自检、参数）均不可信，不再判
     if f.get("estop"):
-        out.append(_blocker("estop", "急停已锁存" + (f"：{f['estop_reason']}" if f.get("estop_reason") else "。")))
+        b = _blocker("estop", "急停已锁存" + (f"：{f['estop_reason']}" if f.get("estop_reason") else "。"))
+        b["source"] = f.get("estop_source") or "sidecar"
+        out.append(b)
     if f.get("selftest_fail"):
         out.append(_blocker("selftest_fail", f"板上自检未通过：{f['selftest_fail']}。"))
     gains = f.get("gains") or {}
@@ -144,7 +146,7 @@ def derive(f: dict) -> dict:
     else:
         nxt = {"title": "全部完成", "action": "", "hint": "各步骤均已完成，可导出封箱清单存档。"}
     return {"steps": steps, "current": current, "next": nxt,
-            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks")} for b in bl],
+            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks", "source") if k in b} for b in bl],
             "mode": f.get("mode"), "project": f.get("project")}
 
 
@@ -177,6 +179,8 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
     if estop:
         ev = [e for e in s.timeline.history() if e.get("kind") in ("estop", "watchdog")]
         reason = ev[-1]["text"] if ev else ("板子上报急停标志" if "急停" in flags else None)
+        if st.get("estop_cause"):
+            reason = st["estop_cause"].get("message_zh") or reason
     self_fail = None
     if "安全态" in flags and not estop:
         self_fail = f"板子处于安全态（复位原因：{st.get('reset') or '未知'}）"
@@ -202,6 +206,7 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
         "params_read": len(s.params),
         "deps_missing": [d["name"] for d in (deps or []) if d.get("level") == "fail"],
         "estop": estop, "estop_reason": reason,
+        "estop_source": getattr(s, "estop_source", None) or ((st.get("estop_cause") or {}).get("source")),
         "selftest_fail": self_fail,
         "gains": gains,
         "params_saved": _params_saved(s),
