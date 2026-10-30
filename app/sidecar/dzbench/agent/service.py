@@ -1026,10 +1026,52 @@ class AgentService:
         self.loop.guards = isinstance(llm, (llm_mod.OpenAICompat, llm_mod.Failover))
         local = getattr(llm, "active", None) is getattr(llm, "local", 0) or getattr(llm, "cfg", {}).get("provider") == "ollama"
         self.emit({"type": "agent_mode", "mode": "local" if local else "llm", "name": getattr(llm, "name", "")})
+        n0 = len(self.loop.messages)
         try:
             return self.loop.ask(text)
         except llm_mod.LLMError as e:
+            del self.loop.messages[n0:]                  # 本轮作废，下一句从干净的对话接着来
+            self._agent_error(e)
             return self._unreachable(e.message, e.fix, text)
+        except Exception as e:                           # noqa: BLE001 —— 任何意外都不能让界面干等
+            del self.loop.messages[n0:]
+            err = self._agent_error(e)
+            return f"（Agent 这一轮出错了：{err['message']}）"
+
+    # agent_error.fix_action 只能是 docs/dev/entrypoints.yaml 里的入口 id（或 None）；测试会核对
+    FIX_SETTINGS, FIX_RESEND = "llm_cfg", "agent_chat"
+
+    def _agent_error(self, e: BaseException) -> dict:
+        """fix_action = docs/dev/entrypoints.yaml 里的入口 id（llm_cfg 大模型设置 / agent_chat 重发）或 None。
+        把本轮异常变成 agent_error 事件：原因 + 怎么解决；密钥打码；调用栈只进 detail 和日志。"""
+        import sys
+        import traceback
+        key = (getattr(getattr(self.loop, "llm", None), "cfg", None) or {}).get("api_key") or ""
+        tb = llm_mod._redact("".join(traceback.format_exception(type(e), e, e.__traceback__)), key)
+        print(f"[dzbench] agent_error\n{tb}", file=sys.stderr)
+        if isinstance(e, llm_mod.LLMError):
+            st = getattr(e, "code", None)
+            if isinstance(st, int):
+                code = f"llm_{st}"
+            else:
+                code = "llm_timeout" if "超时" in e.message else ("llm_network" if e.down else "llm_error")
+            action = self.FIX_SETTINGS if st in (401, 402, 403, 404) or e.down or "Key" in e.message or "地址" in e.message else self.FIX_RESEND
+            retryable = bool(getattr(e, "retry", False) or e.down)
+            msg = f"{e.message}。{e.fix}" if e.fix else e.message
+            detail = ""
+        elif isinstance(e, (KeyError, TypeError)) and any(k in str(e) for k in ("input_schema", "description", "'name'", "parameters")):
+            code, action, retryable, detail = "tool_schema", None, False, tb
+            msg = f"有个 Agent 工具的定义格式不对（缺字段 {e}），这一轮没法调用模型。工作台需要修这个工具定义；先重发一次或换个说法，其它功能不受影响"
+        elif isinstance(e, TimeoutError):
+            code, action, retryable, detail = "timeout", self.FIX_RESEND, True, tb
+            msg = "Agent 这一轮超时了。点“重试”再发一次；一直超时就检查网络或换个更快的模型"
+        else:
+            code, action, retryable, detail = "internal", self.FIX_RESEND, True, tb
+            msg = f"Agent 内部出错（{type(e).__name__}）。点“重试”再发一次；反复出现请把“详情”发给开发者"
+        ev = {"type": "agent_error", "code": code, "message": llm_mod._redact(msg, key), "detail": detail,
+              "fix_action": action, "retryable": retryable}
+        self.emit(ev)
+        return ev
 
     def _unreachable(self, message: str, fix: str, text: str) -> str:
         self.emit({"type": "agent_unreachable", "message": message, "fix": fix, "text": text})
