@@ -197,6 +197,7 @@ selftest:
 
 test:
 	$(MAKE) -C tests/host
+	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
@@ -280,7 +281,7 @@ check:
 fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）
 	tools/fetch_third_party.sh
 	tools/fetch_sysconfig.sh
-	cd app/ui && npm ci --no-audit --no-fund
+	tools/fetch_ui_deps.sh   # node_modules 为软链接则报错退出（#33），否则 npm ci
 
 clean:
 	rm -rf build
