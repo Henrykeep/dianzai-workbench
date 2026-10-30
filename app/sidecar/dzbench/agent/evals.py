@@ -14,7 +14,7 @@ def load() -> list[dict]:
 
 
 STYLE_BAD = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]|！|!{2,}|哈哈|嘿嘿|呀|啦|哦~|哟|亲[，,]|宝子|～")
-CATEGORIES = {"state": "状态感知", "act": "动手执行", "data": "数据研判"}
+CATEGORIES = {"state": "状态感知", "act": "动手执行", "data": "数据研判", "read": "题目研判"}
 
 
 def style_issues(text: str) -> list[str]:
