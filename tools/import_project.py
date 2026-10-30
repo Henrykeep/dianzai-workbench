@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -236,6 +237,8 @@ def main() -> int:
     ap.add_argument("--name", help="板名（默认由目录名转成 a-z0-9-）")
     ap.add_argument("--app", help="顺便检查这个应用的 requires（如 car_2wd）")
     ap.add_argument("--root", type=pathlib.Path, default=ROOT, help="工作台根目录（测试用）")
+    ap.add_argument("--boards-dir", type=pathlib.Path, default=None,
+                    help="板卡目录放哪（默认 $DZ_BOARDS_DIR，再默认 <root>/boards；测试指到临时目录，不写进仓库）")
     ap.add_argument("--accept-repair", action="store_true", help="USER CODE 标记损坏时，接受打印出的修复")
     ap.add_argument("--force", action="store_true", help="板卡目录已存在时覆盖（别名表 aliases.yaml 若已存在会保留）")
     ap.add_argument("--report", type=pathlib.Path, help="把“还需要人做的事”写成 JSON")
@@ -250,7 +253,8 @@ def main() -> int:
     name = a.name or slug(src.name)
     if name == "my-board":
         name = slug(iocs[0].stem)
-    dest = a.root / "boards" / name
+    boards = a.boards_dir or (pathlib.Path(os.environ["DZ_BOARDS_DIR"]) if os.environ.get("DZ_BOARDS_DIR") else a.root / "boards")
+    dest = boards.resolve() / name
     keep_alias = None
     if dest.exists():
         if not a.force:

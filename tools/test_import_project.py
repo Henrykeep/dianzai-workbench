@@ -33,8 +33,12 @@ def tree_hash(d: pathlib.Path) -> str:
     return h.hexdigest()
 
 
+BOARDS = pathlib.Path(tempfile.mkdtemp(prefix="dz-import-boards-"))
+os.environ["DZ_BOARDS_DIR"] = str(BOARDS)  # subsys_kit 等按名找板时也看这里   # 导入的板放临时目录：中途被杀也不在仓库 boards/ 留 zz-test-*
+
+
 def imp(src, name, *args):
-    return subprocess.run([sys.executable, "tools/import_project.py", str(src), "--name", name, *args],
+    return subprocess.run([sys.executable, "tools/import_project.py", str(src), "--name", name, "--boards-dir", str(BOARDS), *args],
                           cwd=ROOT, capture_output=True, text=True)
 
 
@@ -44,7 +48,7 @@ for proj, exp in BASE.items():
         continue
     src = DATA / proj
     name = "zz-test-" + str(abs(hash(proj)) % 10000)
-    dest = ROOT / "boards" / name
+    dest = BOARDS / name
     before = tree_hash(src)
     try:
         if "--accept-repair" in exp["args"]:
@@ -87,7 +91,7 @@ for proj, exp in BASE.items():
                 for x in r["todo"]:
                     print("    TODO", x)
                 if has_arm:
-                    b = subprocess.run(["make", "-s", f"BOARD={name}", f"APP=io_try", f"APP_DIR={pd}", f"OUT={pd}/_build"],
+                    b = subprocess.run(["make", "-s", f"BOARDS_DIR={BOARDS}", f"BDIR={BOARDS}/_build/{name}/io_try", f"BOARD={name}", f"APP=io_try", f"APP_DIR={pd}", f"OUT={pd}/_build"],
                                        cwd=ROOT, capture_output=True, text=True)
                     if b.returncode and "找不到" in b.stdout + b.stderr:
                         print("  （缺器件包，跳过 io_try 编译）")
@@ -97,7 +101,7 @@ for proj, exp in BASE.items():
                             print(b.stdout[-1500:], b.stderr[-1500:])
         if has_arm:
             for app in exp["build"]:
-                b = subprocess.run(["make", "-s", f"BOARD={name}", f"APP={app}"], cwd=ROOT, capture_output=True, text=True)
+                b = subprocess.run(["make", "-s", f"BOARDS_DIR={BOARDS}", f"BDIR={BOARDS}/_build/{name}/{app}", f"BOARD={name}", f"APP={app}"], cwd=ROOT, capture_output=True, text=True)
                 skip = b.returncode and "找不到" in b.stdout + b.stderr   # 没有 HAL/FreeRTOS 等器件包：跳过，不算失败
                 if skip:
                     print(f"  （缺器件包（HAL/FreeRTOS），跳过 {app} 编译）"); break
@@ -108,7 +112,8 @@ for proj, exp in BASE.items():
             print("  （没有 arm-none-eabi-gcc，跳过编译）")
     finally:
         shutil.rmtree(dest, ignore_errors=True)
-        shutil.rmtree(ROOT / "build" / name, ignore_errors=True)
+
+shutil.rmtree(BOARDS, ignore_errors=True)
 
 print("test_import_project: " + ("失败 " + str(len(fails)) if fails else "通过"))
 sys.exit(1 if fails else 0)
