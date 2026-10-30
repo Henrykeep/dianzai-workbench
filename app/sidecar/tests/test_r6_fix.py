@@ -189,3 +189,121 @@ def test_estop_latency_under_200ms(home, busy):
         assert la["source"] == "ui" and la["cause"] == "manual"
     finally:
         ui.close(); st.stop()
+
+
+@pytest.mark.needs_sim
+def test_estop_not_blocked_by_long_held_session_lock(home):
+    """有人长持 session.lock（比如慢的日志/参数读写）时按急停：专用通道不等这把锁，≤200 ms 写出并推事件。"""
+    import json
+    import threading
+    st = ServerThread()
+    ui = UI(st.port)
+    s = st.srv.session
+    try:
+        ui.ok("connect", port="sim:car_2wd")
+        _wait_status(ui, lambda e: e.get("alive"))
+        time.sleep(0.6)
+        held = threading.Event()
+
+        def hog():
+            with s.lock:
+                held.set()
+                time.sleep(3)
+        threading.Thread(target=hog, daemon=True).start()
+        held.wait(2)
+        m = ui.mark()
+        t0 = time.monotonic()
+        ui.ws.send(json.dumps({"op": "estop", "rid": 77, "src": "急停按钮"}))
+        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
+        assert time.monotonic() - t0 <= 0.2
+        assert s.tx_locked
+    finally:
+        ui.close(); st.stop()
+
+
+def _hb(payload_w=None, cause=None):
+    import struct
+    p = struct.pack("<IIII", 0x12908C75, 0xABCD, 0, payload_w or 1)
+    if cause is not None:
+        p += struct.pack("<IIf", cause, 1000, 0.0)
+    return p
+
+
+@pytest.mark.parametrize("how", ["bit10", "estop_cause"])
+def test_firmware_estop_latches_sidecar(home, how):
+    from dzbench._dzlink import HEARTBEAT, encode
+    from dzbench.session import Session
+    from dzbench import latch
+    s = Session(emit=lambda m: None)
+    s.port = "/dev/ttyFAKE0"
+    s._bind_schema = lambda h: None
+    if how == "bit10":
+        s._on_bytes(encode(HEARTBEAT, 0, 1, _hb(1 | (1 << 10))))
+        assert s.estop_source == "firmware:estop_flag"
+    else:
+        s._on_bytes(encode(HEARTBEAT, 0, 1, _hb(1, cause=3)))
+        assert s.estop_source == "firmware:stall"
+    assert s.tx_locked
+    assert latch.get("/dev/ttyFAKE0", None) and latch.get(None, 0xABCD)
+
+
+def test_agent_tool_tables_have_no_estop_clear_path():
+    """Agent 两张工具表（agent_api / loop）里都没有任何解除急停（estop_clear / 'R' / 通用 cmd）的入口。"""
+    from dzbench.agent_api import TOOLS as A
+    from dzbench.agent.loop import TOOLS as L
+    names = [t["name"] for t in A] + [t.get("name") or t["function"]["name"] for t in L]
+    bad = [n for n in names if "estop" in n.lower() or "clear" in n.lower() or n in ("R", "cmd", "send_cmd", "send_data", "reset")]
+    assert not bad, bad
+    import json
+    blob = json.dumps(A, ensure_ascii=False) + json.dumps(L, ensure_ascii=False)
+    assert "estop_clear" not in blob
+    from dzbench.agent.service import AgentService
+    assert "R" not in AgentService.START_CMDS
+
+
+def test_step_start_refuses_when_board_reports_estop():
+    from types import SimpleNamespace
+    from dzbench.agent.service import AgentService
+    from dzbench.session import LinkError
+    sent = []
+    for s in (SimpleNamespace(tx_locked=False, estop_cause={"cause": "stall"}, hb_status=0, cmd=lambda *a: sent.append(a)),
+              SimpleNamespace(tx_locked=False, estop_cause=None, hb_status=1 << 10, cmd=lambda *a: sent.append(a))):
+        svc = AgentService.__new__(AgentService)
+        svc.s = s
+        with pytest.raises(LinkError):
+            svc.step_start({"start": [["G"]]})
+    assert sent == []
+
+
+@pytest.mark.needs_sim
+def test_estop_clear_sends_only_R_and_notifies(home):
+    """解除急停：只发 'R'，不重发运动/设定值、不恢复调参；推 estop cleared + 固定 agent_notice（fix_action=tune_relay）。"""
+    from dzbench._dzlink import DATA
+    st = ServerThread()
+    ui = UI(st.port)
+    s = st.srv.session
+    try:
+        ui.ok("connect", port="sim:car_2wd")
+        _wait_status(ui, lambda e: e.get("alive"))
+        time.sleep(0.6)
+        ui.ok("estop", src="急停按钮")
+        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 3, ui.mark())
+        sent = []
+        orig = s._send
+
+        def spy(kind, id_, payload=b""):
+            if kind == DATA:
+                sent.append((id_, bytes(payload)))
+            return orig(kind, id_, payload)
+        s._send = spy
+        m = ui.mark()
+        ui.ok("cmd", c="R")
+        ev = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "cleared", 2, m)
+        assert {"seq", "t", "source"} <= ev.keys()
+        nt = ui.wait(lambda e: e.get("type") == "agent_notice" and e.get("blocker_code") == "estop_cleared", 2, m)
+        assert nt["what"] == "已解除，电机保持静止，需重新开始调参" and nt["fix_action"] == "tune_relay"
+        time.sleep(1.5)                    # 再看 1.5 s：除 'R' 外没有任何 DATA 帧（主机心跳不是 DATA）
+        assert sent == [(0x7E, b"R")], sent
+        assert not s.tx_locked
+    finally:
+        ui.close(); st.stop()

@@ -60,7 +60,7 @@ BLOCKS = {"no_board": ["sim", "bringup", "tune", "score", "seal"],
           "params_not_saved": ["score", "seal", "mode:standalone"]}
 
 LINK_REASON = {"port_not_found": "未找到上次使用的串口", "port_ambiguous": "检测到多块同型号板子",
-               "transport_closed": "连接中断，正在重连", "resuming": "侧车重启后正在恢复连接",
+               "transport_closed": "连接中断，正在重连", "resuming": "本地服务重启后正在恢复连接",
                "no_frames": "已打开串口但未收到合法帧"}
 
 

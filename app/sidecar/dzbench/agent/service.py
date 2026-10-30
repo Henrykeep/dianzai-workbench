@@ -616,7 +616,7 @@ class AgentService:
                     failed.append(f"读不回 {k}：{e}")
                     continue
                 if v is not None and abs(rb - v) > 1e-6 * max(1.0, abs(v)):
-                    failed.append(f"{k} 板上是 {rb:g}，侧车记录是 {v:g}（板子复位过或被改过）")
+                    failed.append(f"{k} 板上是 {rb:g}，本地服务记录是 {v:g}（板子复位过或被改过）")
         return {"ok": not failed, "failed": failed, "checked": checked}
 
     def step_start(self, st: dict) -> None:
@@ -625,7 +625,7 @@ class AgentService:
         时才发 'R'；急停状态下直接拒绝做实验。"""
         if not st.get("start"):
             return
-        if self.s.tx_locked:
+        if self.s.tx_locked or self.s.estop_cause or (self.s.hb_status or 0) & (1 << 10):   # 板子已报急停（心跳还没让本地锁上）也拒绝
             raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停 R”")
         w = self.s.window(0.3)
         sf, done = st.get("state_field", "state"), st.get("done_state")

@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import itertools
 import collections
 import pathlib
 import re
@@ -48,6 +49,8 @@ class Session:
         self.emit = emit
         self.log_dir = log_dir or snapshots.base_dir() / "logs"
         self.lock = threading.RLock()
+        self.wlock = threading.Lock()
+        self._estop_seq = itertools.count(1)        # 只护“写串口”这一小段：帧不交错；急停不等 self.lock
         self.history_s = history_s
         self._open = open_transport          # 测试可注入
         self.host_hb = True                  # 测试用开关：False 模拟侧车卡死
@@ -348,7 +351,7 @@ class Session:
                     return {"resumed": False, "reason": "user_action"}
                 try:
                     r = self.connect(port, baud)
-                    self.emit({"type": "resumed", "port": port, "message": f"侧车重启后已自动连回 {port}（急停仍锁着，确认安全后按 R）"})
+                    self.emit({"type": "resumed", "port": port, "message": f"本地服务重启后已自动连回 {port}（急停仍锁着，确认安全后按 R）"})
                     return {"resumed": True, **r}
                 except LinkError:
                     with self.lock:
@@ -362,7 +365,7 @@ class Session:
                 try:
                     r = self.connect(moved, baud)
                     self.emit({"type": "port_moved", "old": port, "new": moved,
-                               "message": f"侧车重启后在 {moved} 找回了原来那块板（之前是 {port}），已经连上"})
+                               "message": f"本地服务重启后在 {moved} 找回了原来那块板（之前是 {port}），已经连上"})
                     return {"resumed": True, **r}
                 except LinkError:
                     with self.lock:
@@ -371,7 +374,7 @@ class Session:
                 return {"resumed": False, "reason": "user_action"}
             self.down_reason = "port_ambiguous" if why == "ambiguous" else "port_not_found"
             lastsession.restore(rec)
-            self.emit(LinkError(self.down_reason, f"侧车重启后没能自动连回上次的板子（{port} 不在了，也没在别的口找到它）",
+            self.emit(LinkError(self.down_reason, f"本地服务重启后没能自动连回上次的板子（{port} 不在了，也没在别的口找到它）",
                                 "检查 USB 线，插好后在端口列表里选一下再点“连接”").as_dict())
             return {"resumed": False, "reason": self.down_reason}
         finally:
@@ -416,10 +419,19 @@ class Session:
                     if len(payload) >= 16:
                         w = struct.unpack_from("<I", payload, 12)[0]
                         if w != self.hb_status:
+                            was = self.hb_status or 0
                             self.hb_status = w
                             m = hb_status_event(w)
                             if m:
                                 self._pending_marks.append(m)
+                            if w & (1 << 10) and not was & (1 << 10) and not self.tx_locked:
+                                # 板子心跳急停位（car_2wd 等置 bit10）：侧车同样锁存并持久化（其他应用只报 estop_cause，下面处理）
+                                self.tx_locked = True
+                                self.estop_source = "firmware:estop_flag"
+                                latch.set(self.port, self.board_uid, self.estop_source, "板子心跳报急停")
+                                self.emit({"type": "tx_locked", "on": True, "source": self.estop_source})
+                                self.emit(self.estop_ev("latched", self.estop_source, message_zh="板子心跳报急停"))
+                                self._pending_marks.append(("estop", "板子心跳报急停（急停位）", self.estop_source))
                     if len(payload) >= 28:
                         es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
                         if len(payload) >= 40:
@@ -434,15 +446,18 @@ class Session:
                                 es["source"] = src
                                 self.emit({"type": "estop_cause", **es})
                                 if self.estop_requested_at is not None:    # 人/Agent 发的急停：固件锁存确认
-                                    self.emit({"type": "estop", "state": "latched", "source": self.estop_source or src,
-                                               "cause": es["cause"], "message_zh": es["message_zh"],
-                                               "latency_ms": round((time.monotonic() - self.estop_requested_at) * 1000)})
+                                    self.emit(self.estop_ev("latched", self.estop_source or src, cause=es["cause"], message_zh=es["message_zh"],
+                                                            latency_ms=round((time.monotonic() - self.estop_requested_at) * 1000)))
                                     self.estop_requested_at = None
+                                if self.tx_locked and self.estop_source == "firmware:estop_flag":  # 急停位先到、原因后到：换成具体原因
+                                    self.estop_source = src
+                                    latch.set(self.port, self.board_uid, src, "板子报急停原因")
                                 if not self.tx_locked:           # 板子自己急停（看门狗/堵转/欠压…）：侧车也锁存并持久化
                                     self.tx_locked = True
                                     self.estop_source = src
                                     latch.set(self.port, self.board_uid, src, es["message_zh"])
                                     self.emit({"type": "tx_locked", "on": True, "source": src})
+                                    self.emit(self.estop_ev("latched", src, cause=es["cause"], message_zh=es["message_zh"]))
                                 if es["cause_id"] != 1:          # 手动急停侧车自己已记了一条（带按键来源）
                                     self._pending_marks.append(("estop", "板子急停：" + es["message_zh"], src))
                     if h != self.schema_hash:
@@ -595,16 +610,51 @@ class Session:
     def _send(self, kind: int, id_: int, payload: bytes = b"") -> bool:
         with self.lock:
             tr = self.tr
-            self.seq = (self.seq + 1) & 0xFF
-            frame = encode(kind, id_, self.seq, payload)
+            with self.wlock:
+                self.seq = (self.seq + 1) & 0xFF
+                frame = encode(kind, id_, self.seq, payload)
             if self.log:
                 self.log.write(TX, frame)
             if self.raw_on and tr:
                 self._push_raw(time.monotonic(), TX, frame)
         if not tr:
             return False
-        tr.write(frame)
+        with self.wlock:
+            tr.write(frame)
         return True
+
+    def estop_ev(self, state: str, source: str | None, **kw) -> dict:
+        """统一急停事件（与 link.state 同风格）：{type:"estop", seq, state: requested|latched|cleared, source, cause?, message_zh?, t}。"""
+        return {"type": "estop", "seq": next(self._estop_seq), "state": state, "source": source or "ui",
+                "t": round(time.time() * 1000)} | {k: v for k, v in kw.items() if v is not None}
+
+    def _send_estop(self, n: int = 3) -> bool:
+        """急停专用通道：不拿 self.lock（别的线程长持它时急停也不排队），只拿短的写锁保证不与半帧交错；
+        3 帧一次写出。写超时（串口 write_timeout 0.1 s）→ 当断线处理并如实返回 False。日志在锁空闲时补记。"""
+        tr = self.tr
+        if tr is None:
+            return False
+        with self.wlock:
+            frames = b""
+            for _ in range(n):
+                self.seq = (self.seq + 1) & 0xFF
+                frames += encode(DATA, ID_ESTOP, self.seq, b"")
+            try:
+                tr.write(frames)
+                ok = True
+            except Exception as e:  # noqa: BLE001  写超时 / 口没了
+                ok = False
+                err = f"急停写串口失败：{type(e).__name__}: {e}"
+        if not ok:
+            threading.Thread(target=self._on_transport_error, args=(err,), daemon=True).start()
+        def _log():
+            with self.lock:
+                if self.log:
+                    self.log.write(TX, frames)
+                if self.raw_on:
+                    self._push_raw(time.monotonic(), TX, frames)
+        threading.Thread(target=_log, daemon=True).start()
+        return ok
 
     def estop(self, src: str = "") -> dict:
         """急停：连发 3 帧（丢一帧也能停）。没连接时如实告知，不假装成功，也不锁存（没有板子可停，锁住只会吓到刚打开软件的人）。
@@ -613,12 +663,7 @@ class Session:
         if self.tr is None:
             return {"type": "estop", "sent": False, "nolink": True, "src": src,
                     "message": f"没连板子：急停{by}没有送达任何板子；连着真板时请直接断电/拔电池"}
-        ok = False
-        for _ in range(3):
-            try:
-                ok = self._send(DATA, ID_ESTOP) or ok
-            except Exception:  # noqa: BLE001
-                pass
+        ok = self._send_estop(3)
         self.estop_count += 1
         self.tx_locked = True
         self.estop_source = estop_source(src)
@@ -628,7 +673,7 @@ class Session:
         if isinstance(self.tr, ReplayTransport):
             return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
         self.estop_requested_at = time.monotonic()
-        return {"type": "estop", "state": "requested", "sent": ok, "src": src, "source": self.estop_source,
+        return self.estop_ev("requested", self.estop_source) | {"sent": ok, "src": src,
                 "message": f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池"}
 
     def send_data(self, id_: int, payload: bytes) -> bool:
@@ -717,11 +762,12 @@ class Session:
                 self.tx_locked = False
                 self.estop_source = None
                 self.emit({"type": "tx_locked", "on": False})
+                self.emit(self.estop_ev("cleared", "ui", message_zh="已由人工解除急停"))
         return ok
 
     def _check_tx(self) -> None:
         if self.tx_locked:
-            raise LinkError("tx_locked", "急停后侧车的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停 R”")
+            raise LinkError("tx_locked", "急停后本地服务的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停 R”")
 
     def send_raw(self, data: bytes) -> bool:
         """原样发字节（给非工作台固件的设备，如 AT 指令）。急停后拒绝。"""
@@ -861,8 +907,15 @@ class Session:
         """往事件时间线记一条（带两种时间）并广播。estop / watchdog 一律带 source（不允许“来源未知”）。"""
         if kind in ("estop", "watchdog") and not source:
             source = self.estop_source or ("heartbeat_lost" if kind == "watchdog" else "sidecar")
-        with self.lock:
-            log_t, plot_t = self._times_locked(time.monotonic())
+        # 事件循环里也会调 mark：别的线程长持 self.lock 时不等，时间戳留空也要先把事件推出去
+        now = time.monotonic()
+        if self.lock.acquire(blocking=False):
+            try:
+                log_t, plot_t = self._times_locked(now)
+            finally:
+                self.lock.release()
+        else:
+            log_t, plot_t = None, None
         e = self.timeline.add(kind, text, log_t, plot_t, source)
         self.emit(e)
         return e

@@ -9,7 +9,7 @@ HUMAN_ONLY = {"estop_clear", "set_run_mode"}
 
 # code → (发生了什么, 建议)
 TEMPLATES = {
-    "estop": ("急停已锁存，侧车已停止一切主动发送，自动调参与实验已中止。",
+    "estop": ("急停已锁存，本地服务已停止一切主动发送，自动调参与实验已中止。",
               "请先排除急停原因并确认现场安全，再由操作人员在界面点击“解除急停”。Agent 不会自动解除急停。"),
     "no_board": ("板子已断开或尚未连接，板上状态暂不可信。",
                  "请检查 USB 线与供电后重新连接；重连只恢复通信与遥测，不会重发任何运动指令。"),
@@ -58,3 +58,12 @@ class Notifier:
                         "text": f"【{source_zh(src)}】{what}{('（' + detail + '）') if detail else ''}建议：{sugg}"})
         self.active = now
         return out
+
+
+def cleared_notice() -> dict:
+    """人工解除急停后的固定提醒（模板，不调大模型）。"""
+    what = "已解除，电机保持静止，需重新开始调参"
+    return {"type": "agent_notice", "blocker_code": "estop_cleared", "what": what, "detail": "",
+            "source": "ui", "source_zh": source_zh("ui"),
+            "suggestion": "确认安全后从“调参”重新开始（解除急停不会自动恢复之前的调参任务）",
+            "fix_action": "tune_relay", "human_only": False, "text": what}

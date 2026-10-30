@@ -17,8 +17,8 @@ def from_broadcast(m: dict) -> tuple[str, str] | None:
     if t == "param":
         return "param", f"{m.get('name')} = {m.get('value')}" + ("" if m.get("status") in (None, "ok") else f"（{m.get('status')}）")
     if t == "estop":
-        if m.get("state") == "latched":
-            return None                     # 固件锁存确认：requested 那条已进时间线
+        if m.get("state") in ("latched", "cleared"):
+            return None                     # 固件锁存确认 / 解除：requested 那条已进时间线，解除另有 tx_locked 事件
         if m.get("nolink"):
             return None                     # 没连板子：只弹提示，不进告警条（不是板子上发生的事）
         by = f"：{m['src']}" if m.get("src") else ""

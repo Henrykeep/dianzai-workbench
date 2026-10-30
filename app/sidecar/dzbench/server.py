@@ -31,7 +31,7 @@ from .ports import list_ports
 from .sender import Sender
 from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
-from .notices import Notifier
+from .notices import Notifier, cleared_notice
 
 UI_HZ = 60
 MAX_POINTS = 200
@@ -53,6 +53,8 @@ class Server:
         # 缺口 #25：Agent（LLM 长调用）独占一个线程，按顺序排队；不占默认线程池，绝不在事件循环里跑。
         # 上位机心跳是 Session 的独立线程（_host_heartbeat），不经过事件循环，也不等 Agent。
         self.agent_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="dz-agent")
+        self.tick_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="dz-tick")
+        self.estop_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="dz-estop")
         self.agent_queue: list[str] = []          # 等待中的 msg_id（不含正在跑的）
         self.agent_running: str | None = None
         self._msg_ids = itertools.count(1)
@@ -72,31 +74,38 @@ class Server:
         data = json.dumps(msg, ensure_ascii=False)
         await asyncio.gather(*(c.send(data) for c in list(self.clients)), return_exceptions=True)
 
+    def _tick_collect(self, n: int) -> list[dict]:
+        """在 dz-tick 线程里读会话（这些读要拿 session.lock）：别的线程长持锁时只卡这条线程，不卡事件循环/急停。"""
+        out = []
+        new = self.session.take_new()
+        if new:
+            t = [s[0] for s in new]
+            ys = {k: [float(s[1][k]) for s in new] for k in new[0][1] if k != "t_ms"}
+            t, ys = minmax(t, ys, MAX_POINTS)
+            out.append({"type": "telem", "t": t, "y": ys})
+        if self.session.raw_on:
+            raw = self.session.take_raw()
+            if raw:
+                out.append({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
+        ls = self.session.link_state()
+        if ls:
+            out.append(ls)
+        if n % (UI_HZ // 4) == 0:
+            pc = self.progress.changed()            # 进度有变化才推（依赖自检结果缓存，见 progress.py）
+            if pc:
+                out.append(pc)
+                out.extend(self.notifier.update(pc))  # 新增阻塞项：以 Agent 身份主动提醒（模板，不调大模型）
+            out.append(self.session.status() | {"clients": len(self.clients)})
+        return out
+
     async def _ticker(self) -> None:
         n = 0
+        loop = asyncio.get_running_loop()
         while True:
             await asyncio.sleep(1 / UI_HZ)
-            new = self.session.take_new()
-            if new:
-                t = [s[0] for s in new]
-                ys = {k: [float(s[1][k]) for s in new] for k in new[0][1] if k != "t_ms"}
-                t, ys = minmax(t, ys, MAX_POINTS)
-                await self._broadcast({"type": "telem", "t": t, "y": ys})
-            if self.session.raw_on:
-                raw = self.session.take_raw()
-                if raw:
-                    await self._broadcast({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
-            ls = self.session.link_state()
-            if ls:
-                await self._broadcast(ls)
             n += 1
-            if n % (UI_HZ // 4) == 0:
-                pc = self.progress.changed()            # 进度有变化才推（依赖自检结果缓存，见 progress.py）
-                if pc:
-                    await self._broadcast(pc)
-                    for nt in self.notifier.update(pc):  # 新增阻塞项：以 Agent 身份主动提醒（模板，不调大模型）
-                        await self._broadcast(nt)
-                await self._broadcast(self.session.status() | {"clients": len(self.clients)})
+            for msg in await loop.run_in_executor(self.tick_pool, self._tick_collect, n):
+                await self._broadcast(msg)
 
     async def _op(self, m: dict):
         s, op = self.session, m.get("op")
@@ -132,12 +141,16 @@ class Server:
             return await run(None, s.connect, m["port"], None if baud in (None, "auto", 0) else int(baud))
         if op == "disconnect":
             return await run(None, s.disconnect)
-        if op == "estop":                      # 不排队，直接在事件循环里发
-            r = s.estop(str(m.get("src") or "")[:20])
+        if op == "estop":                      # 不排队：专用单线程发（不占默认线程池，串口写阻塞也不卡事件循环）
+            r = await asyncio.get_running_loop().run_in_executor(self.estop_pool, s.estop, str(m.get("src") or "")[:20])
             await self._broadcast(r)
             return r
         if op == "cmd":
-            return s.cmd(m["c"], m.get("n"))
+            was = s.tx_locked
+            r = s.cmd(m["c"], m.get("n"))
+            if r and m["c"] == "R" and was:      # 解除急停：只发 'R'，不重发运动/设定值，不恢复调参（已取消的保持取消）
+                await self._broadcast(cleared_notice())
+            return r
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
