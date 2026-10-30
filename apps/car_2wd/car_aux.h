@@ -18,5 +18,7 @@ dz_err_t car_aux_init(void);
 /** 主循环调用。返回 true = 请求急停（电池过放）。 */
 bool car_aux_poll(uint32_t now_ms);
 /** 前进速度指令过滤：前方有障碍时返回 0。 */
+/** 最近一次电池电压 V（没有 VBAT 通道 → 0）：欠压急停时报给上位机。 */
+float car_aux_vbat(void);
 float car_aux_limit_v(float v_mps);
 #endif

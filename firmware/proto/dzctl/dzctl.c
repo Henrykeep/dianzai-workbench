@@ -69,6 +69,11 @@ bool dzctl_handle(const dzctl_table_t *t, const dzframe_t *in, dzframe_t *ack)
 
 bool dzctl_is_estop(const dzframe_t *f) { return f && f->kind == DZF_DATA && f->id == DZCTL_ID_ESTOP; }
 
+static volatile dzctl_estop_cause_t s_es_cause;
+static volatile uint32_t s_es_t;
+static volatile float s_es_v;
+static volatile uint32_t s_st_mask, s_st_t, s_par_h;
+
 void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
 {
     memset(out, 0, sizeof *out);
@@ -77,6 +82,22 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     (void)dzframe_put_u32(out, dzctl_board_uid());
     (void)dzframe_put_u32(out, dzctl_fw_rev());                 /* 0.4.0：第 3 个 u32，旧上位机不读 */
     (void)dzframe_put_u32(out, dzctl_status_word());            /* 0.5.0：第 4 个 u32 */
+    (void)dzframe_put_u32(out, (uint32_t)s_es_cause);           /* 0.8.0：急停原因、时刻、触发值 */
+    (void)dzframe_put_u32(out, s_es_t);
+    (void)dzframe_put_f32(out, s_es_v);
+    (void)dzframe_put_u32(out, s_st_mask);                      /* 0.11.0：自检失败项、自检时刻、RAM 参数指纹（len 40） */
+    (void)dzframe_put_u32(out, s_st_t);
+    (void)dzframe_put_u32(out, s_par_h);
+}
+
+void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms) { s_st_mask = fail_mask; s_st_t = t_ms ? t_ms : 1u; }
+void dzctl_set_params_hash(uint32_t h) { s_par_h = h; }
+uint32_t dzctl_hash32(const void *data, uint32_t len)
+{
+    const uint8_t *p = (const uint8_t *)data;
+    uint32_t h = 2166136261u;
+    for (uint32_t i = 0; p && i < len; i++) { h ^= p[i]; h *= 16777619u; }
+    return h;
 }
 
 bool dzctl_is_bb_request(const dzframe_t *f) { return f && f->kind == DZF_DATA && f->id == DZCTL_ID_BB && f->len == 0u; }
@@ -108,6 +129,13 @@ void dzctl_bb_frame(uint32_t t_ms, uint16_t code, uint16_t arg, float a, float b
 }
 
 static volatile uint32_t s_status;
+void dzctl_estop_note(dzctl_estop_cause_t cause, uint32_t t_ms, float value)
+{
+    if (s_es_cause != DZCTL_ES_NONE || cause == DZCTL_ES_NONE) return;
+    s_es_t = t_ms; s_es_v = value; s_es_cause = cause;
+}
+void dzctl_estop_clear(void) { s_es_cause = DZCTL_ES_NONE; s_es_t = 0u; s_es_v = 0.0f; }
+dzctl_estop_cause_t dzctl_estop_cause(void) { return s_es_cause; }
 void dzctl_set_reset_cause(uint32_t cause) { s_status = (s_status & ~0xFFu) | (cause & 0xFFu); }
 void dzctl_set_flags(uint32_t mask, bool on) { mask &= ~0xFFu; s_status = on ? (s_status | mask) : (s_status & ~mask); }
 uint32_t dzctl_status_word(void) { return s_status; }
@@ -149,7 +177,7 @@ int dzctl_selftest(void)
     fail += dzctl_set(&t, 3, 1.0f, &v) != DZCTL_BAD_ID;
     memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 0;
     dzctl_heartbeat(&t, 1u, &ack);
-    fail += ack.kind != DZF_HEARTBEAT || ack.len != 16u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
+    fail += ack.kind != DZF_HEARTBEAT || ack.len != 40u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
     fail += !dzctl_handle(&t, &in, &ack) || ack.kind != DZF_PARAM_ACK || dzframe_get_u8(&ack, 0) != DZCTL_OK
             || dzframe_get_f32(&ack, 1) != 1.0f;
     {   /* 黑匣子帧 */
@@ -176,6 +204,9 @@ int dzctl_selftest(void)
         dzctl_set_flags(DZCTL_HB_STALL, false);
         fail += dzctl_status_word() != 4u;
         s_status = keep;
+        dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, 10u, 1200.0f); dzctl_estop_note(DZCTL_ES_MANUAL, 20u, 0.0f);
+        fail += dzctl_estop_cause() != DZCTL_ES_HB_TIMEOUT || s_es_t != 10u || s_es_v != 1200.0f;
+        dzctl_estop_clear(); fail += dzctl_estop_cause() != DZCTL_ES_NONE;
     }
     {   /* 看门狗：未布防不触发；心跳布防后超时触发一次并撤防 */
         dzctl_wd_t w; dzframe_t hb, d2;

@@ -98,6 +98,8 @@ shared_ops:
 script_ops:
   send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
+  save_params: 把当前参数写进板子 flash（W 指令，回 {ok,result,message_zh}）；界面“保存到板子”按钮待前端接
+  set_run_mode: 切联机/脱机（M 指令 + 确认字节）；必须先过界面确认卡（confirmed=true 才发），界面按钮待前端接
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）

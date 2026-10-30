@@ -51,6 +51,15 @@ bool car_aux_poll(uint32_t now_ms)
     return estop;
 }
 
+float car_aux_vbat(void)
+{
+#ifdef RES_ADC_VBAT
+    return battery_mv(&s_bat) / 1000.0f;
+#else
+    return 0.0f;
+#endif
+}
+
 float car_aux_limit_v(float v)
 {
 #ifdef CAR_AUX_US

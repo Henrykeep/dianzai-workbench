@@ -17,7 +17,10 @@ def from_broadcast(m: dict) -> tuple[str, str] | None:
     if t == "param":
         return "param", f"{m.get('name')} = {m.get('value')}" + ("" if m.get("status") in (None, "ok") else f"（{m.get('status')}）")
     if t == "estop":
-        return "estop", "急停" + ("" if m.get("sent") else "（未送达）")
+        if m.get("nolink"):
+            return None                     # 没连板子：只弹提示，不进告警条（不是板子上发生的事）
+        by = f"：{m['src']}" if m.get("src") else ""
+        return "estop", ("急停" + by + "，板子已锁存 → 确认安全后点“解除急停 R”") if m.get("sent") else ("急停" + by + "（未送达）")
     if t == "reconnected":
         return "connect", f"自动重连 {m.get('port', '')}"
     if t == "tune_round":

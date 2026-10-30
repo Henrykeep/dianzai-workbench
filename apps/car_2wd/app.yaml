@@ -1,7 +1,7 @@
 # 验收用例“只改引脚”：同一份代码在 F103C8T6 / F407(天空星) / MSPM0G3507 / 电脑仿真上编译，
 # 换板 = 换 BOARD=xxx，只有各板 board.yaml 不同。LED 是可选资源（有就闪，没有不影响）。
 name: car_2wd
-version: 1.3.0
+version: 1.4.0
 description: 两轮差速小车底盘：TB6612 双电机 + 双编码器速度闭环 + dzframe 串口遥测/指令
 requires:
   gpio: [MOTOR_A_IN1, MOTOR_A_IN2, MOTOR_B_IN1, MOTOR_B_IN2]
@@ -38,4 +38,6 @@ link:
     - { name: stall_amp,      type: float,  default: 2.0,  min: 0.1, max: 20,   unit: A, desc: 堵转电流门限（stall_src=1 时用；按电机手册堵转电流的 60~80%）, protect: 堵转 }
     - { name: isense_mv_per_a, type: float, default: 500,  min: 1,   max: 10000, unit: mV/A, desc: 电流采样灵敏度（采样电阻 × 运放增益） }
     - { name: isense_zero_mv, type: float,  default: 0,    min: 0,   max: 5000, unit: mV, desc: 零电流时 ADC 引脚电压（双向运放常为 VCC/2） }
+    - { name: sa_v_mps,       type: float,  default: 0.2,  min: 0,   max: 1,    unit: m/s, desc: 脱机模式启动后的巡航线速度（无上位机时的板上目标） }
+    - { name: sa_autostart,   type: uint8,  default: 0,    min: 0,   max: 1,    desc: 脱机模式上电自检通过后自动启动（0 = 等板上按键短按） }
     - { name: stall_ms,       type: uint32, default: 500,  min: 50,  max: 5000, unit: ms, desc: 堵转持续多久锁急停, protect: 堵转 }

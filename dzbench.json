@@ -89,6 +89,7 @@
         "kd": "kd"
       },
       "relay": {
+        "rule": "pd_int",
         "loop": 0,
         "amp": 0.3,
         "hyst": 0.5,

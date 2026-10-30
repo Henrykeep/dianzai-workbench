@@ -132,11 +132,15 @@ class Server:
         if op == "disconnect":
             return await run(None, s.disconnect)
         if op == "estop":                      # 不排队，直接在事件循环里发
-            r = s.estop()
+            r = s.estop(str(m.get("src") or "")[:20])
             await self._broadcast(r)
             return r
         if op == "cmd":
             return s.cmd(m["c"], m.get("n"))
+        if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
+            return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
+        if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
+            return await run(None, s.save_params)
         if op == "blackbox":
             return await run(None, s.blackbox)
         if op == "send_data":
