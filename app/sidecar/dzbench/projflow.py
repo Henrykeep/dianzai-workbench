@@ -7,8 +7,10 @@
   import  tools/import_project.py <用户工程> --root <暂存根>              → 确认把 boards/<板>/ 拷进仓库
           （暂存根 = 仓库顶层逐项软链，boards/ 是真目录；USER CODE 修复 diff 要另点“接受修复”才带 --accept-repair 重跑）
   alloc   tools/alloc.py <题目目录>/scheme.yaml -o stage [--fixed 导入的 board.yaml] → 确认写 <题目目录>/alloc/
-  gen     tools/gen_project.py <题目目录>/project.yaml -o stage/gen；有 .uvprojx 时 keil_inject --dry-run
-          → 确认写 build/<题号>/gen/、keil_inject 真跑（它自己先备份 .uvprojx.bak）
+  gen     没有 project.yaml 就按能力标签从 tools/catalog/subsys_catalog.yaml 挑子系统、add_subsys.py 装进暂存草稿；
+          tools/gen_project.py -o stage/gen；有 .uvprojx 时 keil_inject --dry-run
+          → 确认写草稿（只补没有的文件）+ build/<题号>/gen/
+  keil    第二次确认（confirm_uvprojx 等于要改的路径）才真跑 keil_inject（它先备份 <x>.uvprojx.bak）
 """
 from __future__ import annotations
 
@@ -41,17 +43,97 @@ def board_name(src: pathlib.Path) -> str:
     """默认板名：工程文件夹名去掉“副本 / copy / (6)”这类复制噪声；剩不下字母数字就用 .ioc 文件名。"""
     for cand in (src.name, *(f.stem for f in sorted(src.glob("*.ioc")))):
         s = re.sub(r"副本|\bcopy\b|\(\d+\)|（\d+）", " ", cand, flags=re.I)
-        s = re.sub(r"[^A-Za-z0-9_]+", "-", s).strip("-_").lower()
+        s = re.sub(r"[^A-Za-z0-9]+", "-", s).strip("-").lower()   # 板名规则 ^[a-z0-9][a-z0-9-]{1,47}$（schema/board），下划线也换成 -
         s = re.sub(r"-{2,}", "-", s)
         if s:
             return s
     return "board"
 
 
+def board_slug(name: str) -> str:
+    """用户填的板名按板卡 schema 规整：小写、非字母数字换 -。"""
+    return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9]+", "-", name.lower())).strip("-")
+
+
 def find_uvprojx(src: pathlib.Path) -> str:
     """工程里的 Keil .uvprojx（CubeMX 一般在 MDK-ARM/ 下）；没有就空串。"""
     fs = sorted(src.glob("*.uvprojx")) + sorted(src.glob("*/*.uvprojx"))
     return str(fs[0]) if fs else ""
+
+
+def _scheme_mod(repo: pathlib.Path):
+    """调用（不改）tools/scheme.py 里的筛选 / 排序函数。"""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("dz_scheme", repo / "tools" / "scheme.py")
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+
+def scheme_choices(repo: pathlib.Path, req: dict, scheme: dict) -> dict:
+    """每个能力标签一组候选（scheme.py 的排序：仓库支持 上板 > 仿真 > 编译 > 无驱动；规则禁用的单列），给界面做单选。"""
+    sc = _scheme_mod(repo); parts = sc.load_catalog(); nd, forb = sc.needs_of(req), sc.forbidden(req)
+    picks = scheme.get("picks") or {}
+    out = []
+    for n in sorted(nd, key=lambda k: -sc.weight(nd[k])):
+        ok, banned = sc.candidates(parts, n, forb)
+        out.append({"need": n, "score": sc.weight(nd[n]), "items": [i["id"] for i in nd[n]], "pick": picks.get(n) or (ok[0]["id"] if ok else ""),
+                    "options": [{"id": x["id"], "name": x["name"], "status": x["status"], "pros": x.get("pros", [])[:2], "cons": x.get("cons", [])[:2]} for x in ok],
+                    "banned": [{"id": x["id"], "name": x["name"], "why": why} for x, why in banned]})
+    mcus = sorted((p for p in parts.values() if p["kind"] == "mcu"), key=lambda p: (sc.RANK[p["status"]], p["id"]))
+    return {"needs": out, "mcu": scheme.get("mcu") or "", "mcus": [{"id": x["id"], "name": x["name"], "status": x["status"]} for x in mcus]}
+
+
+def apply_picks(text: str, picks: dict, reasons: dict, mcu: str | None = None) -> str:
+    """把界面单选的结果写进 scheme.yaml（保留第一行注释头，其它键原样）。"""
+    head = "".join(l + "\n" for l in text.splitlines() if l.startswith("#"))
+    d = yaml.safe_load(text) or {}
+    d.setdefault("picks", {}); d.setdefault("reasons", {})
+    for k, v in (picks or {}).items():
+        if v:
+            d["picks"][k] = v
+        else:
+            d["picks"].pop(k, None)
+    for k, v in (reasons or {}).items():
+        if v:
+            d["reasons"][k] = v
+    if mcu:
+        d["mcu"] = mcu
+    return head + yaml.safe_dump(d, allow_unicode=True, sort_keys=False)
+
+
+def subsys_plan(repo: pathlib.Path, req: dict, scheme: dict) -> dict:
+    """按能力标签挑现成子系统（tools/catalog/subsys_catalog.yaml 的 serves 有交集就选），列出没人管的标签。"""
+    tags = set((_scheme_mod(repo).needs_of(req)).keys()) | set((scheme.get("picks") or {}).keys())
+    tags -= set(scheme.get("offboard") or [])
+    cat = (yaml.safe_load((repo / "tools" / "catalog" / "subsys_catalog.yaml").read_text(encoding="utf-8")) or {}).get("subsystems") or []
+    chosen, served = [], set()
+    for c in cat:
+        hit = sorted(tags & set(c["serves"]))
+        if hit and (repo / c["path"] / "subsys.yaml").exists():
+            chosen.append({"name": pathlib.Path(c["path"]).name, "path": c["path"], "tags": hit}); served |= set(hit)
+    # ui.* / link.* 由 io 层直接接（不需要控制子系统），其余没人管的列出来让人用 new_subsys 新建
+    missing = sorted(t for t in tags - served if not t.startswith(("ui.", "link.")))
+    return {"chosen": chosen, "missing": missing}
+
+
+MIN_PROJECT = """# {name}：由工作台项目页起稿（目录里没有能直接用的子系统，先留空）；子系统用 tools/new_subsys.py 新建后加进 subsystems。
+schema_version: 1
+name: {name}
+description: TODO 一句话
+boards:
+  main: {board}
+state:
+  coord:
+    owner: coord
+    fields:
+      - {{ name: test_id, type: uint8 }}
+subsystems: []
+params: []
+profiles:
+  - {{ name: base, desc: 默认档 }}
+tests:      # TODO(用户)：按题目改
+  - {{ id: 1, name: 示例, profile: base, time_limit_s: 30 }}
+"""
 
 
 _ALIAS = re.compile(r"^(\s*)([A-Za-z0-9_]+):(\s*)([A-Za-z0-9_]+)(\s*#\s*(.*))?$")
@@ -140,12 +222,15 @@ class Flow:
             st = self.stage(code, "scheme")
             r = self._run(["tools/scheme.py", req, "--init-scheme", st / "scheme.yaml"])
             r2 = self._run(["tools/scheme.py", req, "-o", st])
-            return {"cmd": r["cmd"] + "\n" + r2["cmd"], "rc": r["rc"] or r2["rc"], "out": r["out"] + r2["out"], "files": self._files(st), "target": str(tgt / "scheme.yaml")}
+            ch = None
+            if (st / "scheme.yaml").exists():
+                ch = scheme_choices(self.repo, yaml.safe_load(req.read_text(encoding="utf-8")) or {}, yaml.safe_load((st / "scheme.yaml").read_text(encoding="utf-8")) or {})
+            return {"cmd": r["cmd"] + "\n" + r2["cmd"], "rc": r["rc"] or r2["rc"], "out": r["out"] + r2["out"], "files": self._files(st), "target": str(tgt / "scheme.yaml"), "choices": ch}
         if step == "import":
             src = pathlib.Path(m.get("project") or "").expanduser()
             if not (src.is_dir() and list(src.glob("*.ioc"))):
                 raise FlowError("no_ioc", f"{src} 里没有 .ioc", "选 CubeMX 工程根目录（有 .ioc 和 Core/）")
-            name = _safe(m.get("name") or board_name(src))
+            name = _safe(board_slug(m["name"]) if m.get("name") else board_name(src))
             st = self.stage(code, "import")
             root = st / "root"; (root / "boards").mkdir(parents=True)
             for e in self.repo.iterdir():                      # 暂存根：仓库顶层逐项软链，boards/ 另建
@@ -183,17 +268,32 @@ class Flow:
             st = self.stage(code, "gen")
             pj = tgt / "project.yaml"
             out = {"cmd": "", "rc": 0, "out": "", "files": {}, "target": str(self.repo / "build" / code / "gen")}
-            if pj.exists():
-                r = self._run(["tools/gen_project.py", pj, "-o", st / "gen"])
-                out.update(cmd=r["cmd"], rc=r["rc"], out=r["out"], files=self._files(st / "gen"))
-            else:
-                out["out"] = (f"{pj} 还没有：project.yaml（子系统 / 共享状态）由 tools/new_subsys.py 起稿，见 docs/07。\n"
-                              "现在可以先做的：应用填 port_selftest、选上你的 .uvprojx，把板卡自检模块注入 Keil，上板确认引脚和串口通了再写子系统。\n")
-                out["rc"] = 1
+            if not pj.exists():
+                # 没有 project.yaml：按能力标签从子系统目录挑现成子系统，用 tools/add_subsys.py 装进暂存区的草稿题目
+                req = yaml.safe_load((tgt / "requirements.yaml").read_text(encoding="utf-8")) if (tgt / "requirements.yaml").exists() else {"items": []}
+                sch = yaml.safe_load((tgt / "scheme.yaml").read_text(encoding="utf-8")) if (tgt / "scheme.yaml").exists() else {}
+                plan = subsys_plan(self.repo, req or {"items": []}, sch or {})
+                dr = st / "draft" / code; dr.mkdir(parents=True)
+                board = _safe(m["board"]) if m.get("board") else "main"
+                logs, cmds = [], []
+                for c in plan["chosen"]:
+                    r = self._run(["tools/add_subsys.py", self.repo / c["path"], dr, "--board", board])
+                    cmds.append(r["cmd"]); logs.append(r["out"])
+                    if r["rc"]:
+                        raise FlowError("add_subsys", f"装 {c['name']} 失败：" + r["out"][-400:])
+                if not (dr / "project.yaml").exists():
+                    (dr / "project.yaml").write_text(MIN_PROJECT.format(name=code, board=board), encoding="utf-8")
+                pj = dr / "project.yaml"
+                out["draft"] = plan | {"files": self._files(dr), "target": str(tgt)}
+                note = ("起稿 project.yaml：" + ("、".join(f"{c['name']}（{'/'.join(c['tags'])}）" for c in plan["chosen"]) or "没有匹配的现成子系统，先留空")
+                        + ("；这些能力没有现成子系统，要用 tools/new_subsys.py 新建：" + "、".join(plan["missing"]) if plan["missing"] else "") + "\n")
+                out["cmd"] = "\n".join(cmds); out["out"] = note + "".join(logs)
+            r = self._run(["tools/gen_project.py", pj, "-o", st / "gen"])
+            out["cmd"] = (out["cmd"] + "\n" + r["cmd"]).strip(); out["rc"] = r["rc"]; out["out"] += r["out"]; out["files"] = self._files(st / "gen")
             if m.get("uvprojx"):
                 uv = pathlib.Path(m["uvprojx"]).expanduser()
                 r = self._run(["tools/keil_inject.py", uv, "--root", self.repo, *self._kargs(m), "--dry-run"])
-                out["cmd"] += "\n" + r["cmd"]; out["out"] += "\n" + r["out"]; out["keil"] = {"rc": r["rc"], "uvprojx": str(uv)}
+                out["cmd"] += "\n" + r["cmd"]; out["out"] += "\n" + r["out"]; out["keil"] = {"rc": r["rc"], "uvprojx": str(uv), "bak": str(uv) + ".bak"}
             return out
         raise FlowError("bad_step", f"没有这一步：{step}")
 
@@ -201,6 +301,16 @@ class Flow:
     def accept(self, step: str, m: dict) -> dict:
         code = _safe(m.get("code") or "题目")
         tgt = self.target(code, m.get("dest"))
+        if step == "keil":                              # 真改用户的 .uvprojx：要第二次明确确认（把要改的路径原样回传）
+            uv = pathlib.Path(m.get("uvprojx") or "").expanduser()
+            if not uv.is_file():
+                raise FlowError("no_uvprojx", f"{uv} 不存在")
+            if m.get("confirm_uvprojx") != str(uv):
+                raise FlowError("need_confirm", "真改 Keil 工程要再确认一次", f"确认要改 {uv}（备份到 {uv}.bak）")
+            r = self._run(["tools/keil_inject.py", uv, "--root", self.repo, *self._kargs(m)])
+            if r["rc"]:
+                raise FlowError("keil_inject", "Keil 注入失败：" + r["out"][-400:])
+            return {"written": [str(uv)], "bak": str(uv) + ".bak", "out": r["out"]}
         st = self.home / code / "stage" / step
         if not st.exists():
             raise FlowError("no_preview", "先点“运行”看结果，再确认")
@@ -215,7 +325,10 @@ class Flow:
             head = f"# 由工作台项目页起稿（tools/req.py init），{len(d.get('items') or [])} 项；逐条对照原文核对\n"
             put(tgt / "requirements.yaml", head + yaml.safe_dump(d, allow_unicode=True, sort_keys=False))
         elif step == "scheme":
-            put(tgt / "scheme.yaml", m.get("scheme_yaml") or (st / "scheme.yaml").read_text(encoding="utf-8"))
+            text = m.get("scheme_yaml") or (st / "scheme.yaml").read_text(encoding="utf-8")
+            if m.get("picks") or m.get("mcu"):
+                text = apply_picks(text, m.get("picks") or {}, m.get("reasons") or {}, m.get("mcu"))
+            put(tgt / "scheme.yaml", text)
             for f in ("options.md", "scheme.md"):
                 if (st / f).exists():
                     put(tgt / "scheme" / f, (st / f).read_text(encoding="utf-8"))
@@ -235,13 +348,14 @@ class Flow:
             for rel, text in self._files(st).items():
                 put(tgt / "alloc" / rel, text)
         elif step == "gen":
+            dr = st / "draft" / code
+            if dr.is_dir():                                 # 草稿题目：只补没有的文件，不覆盖题目目录里已有的
+                for f in sorted(dr.rglob("*")):
+                    rel = f.relative_to(dr)
+                    if f.is_file() and f.suffix != ".bak" and not (tgt / rel).exists():
+                        (tgt / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(f, tgt / rel); written.append(str(tgt / rel))
             for rel, text in self._files(st / "gen").items() if (st / "gen").exists() else []:
                 put(self.repo / "build" / code / "gen" / rel, text)
-            if m.get("uvprojx"):
-                r = self._run(["tools/keil_inject.py", pathlib.Path(m["uvprojx"]).expanduser(), "--root", self.repo, *self._kargs(m)])
-                if r["rc"]:
-                    raise FlowError("keil_inject", "Keil 注入失败：" + r["out"][-400:])
-                written.append(m["uvprojx"] + "（原文件已备份 .uvprojx.bak）")
         else:
             raise FlowError("bad_step", f"没有这一步：{step}")
         return {"written": written}

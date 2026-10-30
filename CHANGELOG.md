@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 项目页第 ⑤ 步不再是死路：没有 project.yaml 就按能力标签（needs ∪ picks）匹配 tools/catalog/subsys_catalog.yaml 的现成子系统、调 add_subsys.py 起稿，gen_project 预览后确认；没有现成子系统的能力列出来让人用 new_subsys 新建；“退出码 1”提示去掉。第 ② 步改成每个能力一个下拉框（scheme.py 的排序，默认第一名）。真改 Keil 要二次确认并显示 .bak 路径。修：默认板名带下划线（car_mode1021）过不了板卡 schema，第 ⑤ 步 make gen 失败，现在规整成 car-mode1021。走查（扣掉只为走查加的“题目目录”一步）：p1 7→9、p2 8→10，多出的两下是新的“确认 project.yaml 草稿”和要求的 Keil 二次确认；Keil 注入只在工程副本上做，未在 µVision 打开。
 - [仿真] 项目页少按键（拿用户两个真实工程 + 2026 题 PDF 无头走查后改的，通用规则、无题目专用代码）：确认后自动跑下一步预览；工程目录填完即运行（同目录失焦不重跑）；题号按 PDF 名猜；板名去掉“副本 / (6)”噪声（原来是 bldc---6），不行用 .ioc 名；.uvprojx 自动找；应用默认 port_selftest，没有 project.yaml 也能先注入 Keil。人工操作：p1（F407 Bldc + H题）12→8，p2（F103 Car_Mode1021 + D题，含接受修复）13→9；Keil 注入只在工程副本上确认过，未在 µVision 打开。
 - [仿真] 评分页写回 requirements.yaml：存完证据点“写回 requirements…”，侧车 score_writeback 先给 diff（只在该项 evidence 末尾加一行 { path 相对路径, layer, date, result pass/partial/fail, note 结论 + 最差一轮 }，按行插入，注释和排版不动；没有 evidence 键就补上），点“确认写回”才写，预览后文件被改过就拒绝。插完重新解析核对这一条确实进了这一项，认不出排版就让人手贴。顺带修：评分项的 accept / runs 写在评分项上（不在 metric 里）时评分页没认出规格。tests/test_scoring.py 用 2026H 真 requirements.yaml 测 B3（已有两行证据）/ B4（无 evidence），req.py check 不报新条目错误。[仿真] 无头 Chrome 走完 保存 → diff → 确认写回
 - [仿真] 评分页证据图：run_NN.png 改为只画这一轮截取的那段（时间从 0 起），每格标通道名和单位，设定值通道虚线画在被控量那格，标题写评分项和轮次（score.ts snapRun；原来是截示波区当时的窗口、没有通道名）。UI 单测 lanesOf。[仿真] 无头 Chrome 连 host-sim 存证据核对

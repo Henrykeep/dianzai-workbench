@@ -1,0 +1,7 @@
+# 现成子系统目录：项目页第 ⑤ 步按 requirements 的 needs 标签 + scheme.yaml 的 picks 自动挑子系统起稿 project.yaml。
+# 规则（通用）：子系统的 serves 和题目需要的能力标签有交集就选上；通过 tools/add_subsys.py 装进题目（不改子系统代码）。
+# 加子系统：写好 subsys.yaml（tools/subsys_kit.py manifest），再在这里登记它服务哪些能力标签（标签见 tools/catalog/parts.yaml 的 provides）。
+subsystems:
+  - { path: examples/2026H_ball/subsys/chassis, serves: [act.wheel_drive, sense.wheel_speed] }
+  - { path: examples/2026H_ball/subsys/vision,  serves: [sense.ball_pos, sense.object, compute.vision] }
+  - { path: examples/2026H_ball/subsys/ball,    serves: [act.beam_angle] }

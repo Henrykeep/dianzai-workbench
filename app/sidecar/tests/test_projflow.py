@@ -39,7 +39,7 @@ def test_req_scheme_alloc_preview_then_accept(tmp_path):
 def test_import_preview_does_not_touch_boards(tmp_path):
     before = _snap(REPO / "boards")
     r = Flow(REPO, home=tmp_path).preview("import", {"code": "T", "project": str(PROJ), "name": "pf_test_board"})
-    assert r["name"] == "pf_test_board" and _snap(REPO / "boards") == before
+    assert r["name"] == "pf-test-board" and _snap(REPO / "boards") == before
     assert subprocess.run(["git", "status", "--porcelain", "boards"], cwd=REPO, capture_output=True, text=True).stdout == ""
 
 
@@ -47,6 +47,42 @@ def test_board_name_strips_copy_noise_and_finds_uvprojx(tmp_path):
     d = tmp_path / "Bldc - 副本 (6) - 副本"; (d / "MDK-ARM").mkdir(parents=True)
     (d / "Bldc.ioc").write_text(""); (d / "MDK-ARM" / "Bldc.uvprojx").write_text("")
     assert board_name(d) == "bldc"
+    c = tmp_path / "Car_Mode1021"; c.mkdir(); (c / "USART.ioc").write_text("")
+    assert board_name(c) == "car-mode1021"
     assert find_uvprojx(d).endswith("MDK-ARM/Bldc.uvprojx")
     e = tmp_path / "副本"; e.mkdir(); (e / "F407_motor.ioc").write_text("")
-    assert board_name(e) == "f407_motor" and find_uvprojx(e) == ""
+    assert board_name(e) == "f407-motor" and find_uvprojx(e) == ""
+
+
+def test_scheme_choices_and_apply_picks():
+    from dzbench.projflow import scheme_choices, apply_picks
+    req = yaml.safe_load((REPO / "examples/2026H_ball/requirements.yaml").read_text(encoding="utf-8"))
+    ch = scheme_choices(REPO, req, {"picks": {}})
+    wd = next(n for n in ch["needs"] if n["need"] == "act.wheel_drive")
+    assert wd["options"] and wd["pick"] == wd["options"][0]["id"] and ch["mcus"]
+    t = apply_picks("# 头\nmcu: a\npicks:\n  x.y: p1\nreasons:\n  x.y: 待定\n", {"x.y": "p2", "z.w": "p3"}, {"x.y": "便宜"}, "b")
+    d = yaml.safe_load(t)
+    assert t.startswith("# 头") and d["mcu"] == "b" and d["picks"] == {"x.y": "p2", "z.w": "p3"} and d["reasons"]["x.y"] == "便宜"
+
+
+def test_gen_drafts_project_yaml_from_catalog(tmp_path):
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    import shutil
+    for n in ("requirements.yaml", "scheme.yaml"):
+        shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
+    r = f.preview("gen", {"code": "T1", "dest": str(dest)})
+    assert r["rc"] == 0, r["out"]
+    assert {c["name"] for c in r["draft"]["chosen"]} == {"chassis", "vision", "ball"}
+    assert "project.yaml" in r["draft"]["files"] and "project_gen.h" in r["files"]
+    assert not (dest / "project.yaml").exists()                 # 预览不写题目目录
+    w = f.accept("gen", {"code": "T1", "dest": str(dest)})
+    assert (dest / "project.yaml").exists() and (dest / "subsys/chassis/chassis.c").exists() and str(dest / "requirements.yaml") not in w["written"]
+    shutil.rmtree(REPO / "build" / "T1", ignore_errors=True)
+
+
+def test_keil_needs_second_confirm(tmp_path):
+    uv = tmp_path / "x.uvprojx"; uv.write_text("<Project/>")
+    f = Flow(REPO, tmp_path / "h")
+    with pytest.raises(FlowError) as e:
+        f.accept("keil", {"code": "T2", "uvprojx": str(uv), "board": "b", "app": "a"})
+    assert e.value.code == "need_confirm" and ".bak" in e.value.fix

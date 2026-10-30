@@ -75,9 +75,20 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   // ② 方案选型
   btn("scheme", async () => {
     const r = await call<any>("flow_preview", { step: "scheme", ...base() }); out("scheme", r);
-    res("scheme").innerHTML = filesView({ "options.md": r.files["options.md"] ?? "" }, ["options.md"]) + `<p class="hint">scheme.yaml（按排序第一名起稿、全标“待定”；在这里改 picks / reasons）：</p><textarea class="in mono pf-ta" rows="10">${esc(r.files["scheme.yaml"] ?? "")}</textarea>`;
+    const ch = r.choices; const R = res("scheme");
+    const opt = (o: any, pick: string) => `<option value="${esc(o.id)}"${o.id === pick ? " selected" : ""}>${esc(o.name)}（${esc(o.status)}）${o.pros?.length ? " · " + esc(o.pros.join("；")) : ""}</option>`;
+    R.innerHTML = (ch ? `<p class="hint">每个能力选一个器件：按仓库支持程度排序（上板 > 仿真 > 编译 > 无驱动），第一项是默认；理由可不填（写“待定”）。</p>
+      <table class="pf-tab"><tr><th>能力</th><th>牵涉</th><th>选用</th><th>理由</th></tr>${ch.needs.map((n: any) => `<tr data-need="${esc(n.need)}"><td class="mono">${esc(n.need)}</td><td>${n.score} 分（${esc(n.items.join("、") || "规则要求")}）</td><td>${n.options.length ? `<select class="in">${n.options.map((o: any) => opt(o, n.pick)).join("")}</select>` : `<span class="hint">库里没有候选：加进 tools/catalog/parts.yaml，或回第 1 步确认是否必须</span>`}${n.banned.length ? `<div class="hint">${n.banned.map((x: any) => `✗ ${esc(x.name)}：被 ${esc(x.why)} 禁用`).join("<br>")}</div>` : ""}</td><td><input class="in" placeholder="待定"></td></tr>`).join("")}
+      <tr data-need=""><td class="mono">主控</td><td></td><td><select class="in">${ch.mcus.map((o: any) => opt(o, ch.mcu)).join("")}</select></td><td><input class="in" placeholder="待定"></td></tr></table>` : "")
+      + filesView({ "options.md": r.files["options.md"] ?? "" }, ["options.md"]) + `<details><summary class="hint">直接改 scheme.yaml（一般不用）</summary><textarea class="in mono pf-ta" rows="10">${esc(r.files["scheme.yaml"] ?? "")}</textarea></details>`;
     if (r.rc) return;
-    confirmBtn("scheme", "确认写入 scheme.yaml", async () => written("scheme", await call("flow_accept", { step: "scheme", ...base(), scheme_yaml: res("scheme").querySelector<HTMLTextAreaElement>("textarea")!.value })));
+    confirmBtn("scheme", "确认写入 scheme.yaml", async () => {
+      const picks: Record<string, string> = {}, reasons: Record<string, string> = {}; let mcu: string | undefined, mcu_reason = "";
+      R.querySelectorAll<HTMLTableRowElement>("tr[data-need]").forEach(tr => { const sel = tr.querySelector("select"), why = tr.querySelector<HTMLInputElement>("input")!.value.trim(), n = tr.dataset.need!;
+        if (!n) { mcu = sel?.value; mcu_reason = why; return; } if (sel) picks[n] = sel.value; if (why) reasons[n] = why; });
+      let y = R.querySelector<HTMLTextAreaElement>("textarea")!.value; if (mcu_reason) y = y.replace(/^mcu_reason:.*$/m, `mcu_reason: ${JSON.stringify(mcu_reason)}`);
+      written("scheme", await call("flow_accept", { step: "scheme", ...base(), scheme_yaml: y, picks, reasons, mcu }));
+    });
   });
 
   // ③ 导入你的 CubeMX / Keil 工程
@@ -117,8 +128,24 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   btn("gen", async () => {
     const uv = v("pf-uv") || undefined, gb = { board: v("pf-board") || undefined, app: v("pf-app") || undefined, uvprojx: uv };
     const r = await call<any>("flow_preview", { step: "gen", ...base(), ...gb }); out("gen", r);
-    res("gen").innerHTML = filesView(r.files, ["project_gen.h"]) + (r.keil ? `<p class="hint">Keil：上面是 keil_inject --dry-run 的改动；确认后真改 ${esc(r.keil.uvprojx)}（先备份 .uvprojx.bak）。</p>` : "");
-    if (!r.rc || r.keil) confirmBtn("gen", "确认生成", async () => written("gen", await call("flow_accept", { step: "gen", ...base(), ...gb })));
+    const G = res("gen"), d = r.draft;
+    G.innerHTML = (d ? `<p class="hint">题目目录还没有 project.yaml，按能力标签起稿：${d.chosen.length ? d.chosen.map((c: any) => `<b>${esc(c.name)}</b>（${esc(c.tags.join("、"))}，来自 ${esc(c.path)}）`).join("、") : "没有匹配的现成子系统（先留空）"}。${d.missing.length ? `这些能力没有现成子系统，之后用 tools/new_subsys.py 新建：${esc(d.missing.join("、"))}。` : ""}确认后只补 ${esc(d.target)} 里没有的文件。</p>` + filesView(d.files, ["project.yaml", "io/io_auto.c"]) : "")
+      + filesView(r.files, ["project_gen.h"]);
+    if (r.rc) return;
+    const keil = () => {
+      if (!r.keil || r.keil.rc) return;
+      const k = document.createElement("div");
+      k.innerHTML = `<p class="hint">Keil：上面是 keil_inject --dry-run 的改动。真改会动你的工程文件 ${esc(r.keil.uvprojx)}，原文件先备份到 ${esc(r.keil.bak)}。</p>`;
+      const b1 = document.createElement("button"); b1.className = "btn"; b1.type = "button"; b1.textContent = "改 Keil 工程…";
+      b1.onclick = () => {
+        b1.disabled = true;
+        const b2 = document.createElement("button"); b2.className = "btn pri"; b2.type = "button"; b2.textContent = `确认修改 ${r.keil.uvprojx.split(/[\\/]/).pop()}（备份 .bak）`;
+        b2.onclick = async () => { b2.disabled = true; try { const w = await call<any>("flow_accept", { step: "keil", ...base(), ...gb, confirm_uvprojx: r.keil.uvprojx }); done("gen", "Keil 已改"); toast(`已改 ${w.written[0]}；原文件备份在 ${w.bak}`, "ok"); k.append(Object.assign(document.createElement("p"), { className: "hint", textContent: `原文件备份：${w.bak}` })); } catch { b2.disabled = false; } };
+        k.append(b2);
+      };
+      k.append(b1); G.append(k);
+    };
+    confirmBtn("gen", d ? "确认写入 project.yaml 草稿并生成" : "确认生成", async () => { written("gen", await call("flow_accept", { step: "gen", ...base(), ...gb })); keil(); });
   });
 
   function btn(k: string, fn: () => Promise<void>) {
