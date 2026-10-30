@@ -881,13 +881,21 @@ class Session:
         return self._send(DATA, ID_RELAY)
 
     def cmd(self, c: str, n: int | None = None) -> bool:
-        ok = self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
-        if ok and c == "R":                           # 人按了“解除急停 R”（界面；Agent 不能发 R）
-            with self.hblock:                         # 不在这里解锁、不提前宣告：等固件心跳 bit10 清零（_confirm_clear）
+        # 人按了“解除急停 R”（界面；Agent 不能发 R）。不提前解锁、不提前宣告：等固件心跳 bit10 清零（_confirm_clear）。
+        # clear_pending_at 必须在 _send 之前置位：固件对 bit10 下降沿会立刻回一帧心跳，晚置会漏掉那一帧、白等下一周期（~500 ms）。
+        no_hb = False
+        if c == "R":
+            with self.hblock:
                 if self.tx_locked:
                     self.clear_pending_at = time.monotonic()
-                    if not self.last_hb:              # 从没收到过工作台心跳（非工作台固件 / 文本设备）：没有 bit10 可等，R 发出即解除
-                        self._confirm_clear(0)
+                    no_hb = not self.last_hb          # 从没收到过工作台心跳（非工作台固件 / 文本设备）
+        ok = self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
+        if c == "R":
+            with self.hblock:
+                if not ok:
+                    self.clear_pending_at = None      # 没发出去就取消等待
+                elif no_hb:
+                    self._confirm_clear(0)            # 没有 bit10 可等，R 发出即解除
         return ok
 
     def _confirm_clear(self, w: int) -> None:

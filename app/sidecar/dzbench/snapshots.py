@@ -49,7 +49,7 @@ MODES = {"": "", "speed": "速度环", "position": "位置环"}
 
 def ramp_plan(cur: dict, target: dict, steps: int) -> list[dict]:
     """平滑切换预设：从 cur 线性插值到 target，分 steps 步，每步只含“本步要变的参数”；最后一步恰好等于 target。
-    缺当前值的参数（还没读回）直接在最后一步写目标值。思路：PID_Helper 的“草稿 / 生效值”分离，加上逐步过渡（自写）。"""
+    缺当前值的参数（还没读回）直接在最后一步写目标值。交互形态借鉴了 PID_Helper（GPL-3.0）的公开界面（草稿 / 生效值分离），未参考或复制其源码；逐步过渡为自写。"""
     steps = max(1, int(steps))
     out, prev = [], dict(cur)
     for k in range(1, steps + 1):
