@@ -94,7 +94,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
             if (!dzframe_feed(&L->rx, buf[i], &f)) continue;
             dzctl_wd_feed(&L->wd, &f, now);
             if (dzctl_is_estop(&f)) { L->estop = L->latched = true; dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
-            else if (link_relay_frame(&f, L->estop, &L->seq, &ack)) link_app_send(&ack);
+            else if (link_relay_frame(&f, L->latched, &L->seq, &ack)) { if (!L->latched) L->estop = false; link_app_send(&ack); }   /* 继电实验 = 显式新指令，解除后可开始 */
             else if (dzctl_is_bb_request(&f)) {
                 for (uint16_t k = 0; L->bb && k < bb_count(L->bb); k++) {
                     const bb_rec_t *r = bb_get(L->bb, k);
