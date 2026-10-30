@@ -727,3 +727,9 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .sc-sum .bar i{display:block;height:100%;background:var(--ok)}
 .sc-v.none{color:var(--warn);background:var(--warn-bg);box-shadow:none}
 .sc-mat li:has(.sc-v.none) .sc-id b{color:var(--ink)}
+/* 告警条：横跨整行，写明“已急停 · 原因 · 怎么解除” */
+.alerts{grid-column:1/-1;gap:var(--sp3);min-height:36px;margin:0 0 var(--sp2);padding:var(--sp1) var(--sp4);border:0;border-radius:var(--r);box-shadow:inset 0 0 0 1px var(--crit)}
+.alerts .al-h{font-weight:600;color:var(--crit)}
+.alerts .al-t{color:var(--text)}
+.alerts .al-fix{color:var(--muted);font-size:var(--t-sm)}
+#cmd-r.attn{color:var(--ink);box-shadow:inset 0 0 0 1px var(--crit)}

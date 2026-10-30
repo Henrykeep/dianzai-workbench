@@ -48,9 +48,14 @@ const AL = new Alerts();
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   el.hidden = !l.length;
+  // 急停/看门狗锁存：告警里写明“已急停 + 原因 + 怎么解除”，并点亮右上角唯一的「解除」按钮（不另开入口）
+  const latched = l.some(e => e.kind === "estop" || e.kind === "watchdog");
+  document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   if (!l.length) { el.innerHTML = ""; return; }
   const last = l[l.length - 1];
-  el.innerHTML = `<span class="al-n">${l.length}</span><span class="al-t" title="点击跳到这一刻">${esc(last.text)}<i>${last.log_t != null ? "dzlog " + last.log_t.toFixed(1) + " s" : ""}</i></span>` +
+  const head = latched ? `<b class="al-h">板子已急停</b>` : `<b class="al-h">链路异常</b>`;
+  const how = latched ? `<span class="al-fix">排除原因后点右上角「解除」恢复</span>` : "";
+  el.innerHTML = `<span class="al-n">${l.length}</span>${head}<span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}<i>${last.log_t != null ? "dzlog " + last.log_t.toFixed(1) + " s" : ""}</i></span>${how}` +
     (l.length > 1 ? `<span class="al-more">${l.slice(0, -1).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
     `<span class="sp"></span><button class="btn sm" id="al-ack">知道了</button>`;
   el.querySelector<HTMLElement>(".al-t")!.onclick = () => jumpAt(last);
