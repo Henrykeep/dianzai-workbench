@@ -303,7 +303,8 @@
     "flash",
     "raw_cmd"
    ],
-   "category": "act"
+   "category": "act",
+   "expect_action": "project_apply"
   }
  ]
 }
