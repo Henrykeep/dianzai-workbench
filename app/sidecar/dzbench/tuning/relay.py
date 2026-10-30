@@ -6,7 +6,8 @@ third_party/vendored/pid_autotune/pid_atune.py（见 SOURCE.md）。
 - 本文件只做：在 FOPDT 仿真对象上跑完整继电实验（relay_sim），以及把任意 step(u)->y 的对象接进来（relay_run）。
 - 实机：继电实验会让对象持续振荡，必须由调用方限幅、看门狗，并走提议确认；这里不碰硬件。
   只对稳定对象（电机速度环、温控）；钢珠、平衡车须在已闭合的外环下做，调用方先过 agent.experiment.require_open_loop。
-- 现状 [仿真]：还没接入口。真跑需要固件“输出覆盖”（控制器输出换成继电器），见 docs/25 P1。
+- 实板/仿真板：固件 pid 1.2.0 的继电覆盖（dzctl DATA 0x7C，板端限幅、超时自动恢复）出 u，侧车只记录 y 并用 relay_analyze 离线算 Ku/Pu；
+  入口 = 调参 → 更多实验 →“无初值一键起步”（op tune_relay → AgentService.run_relay_tune）。
 - 取代了原先自写的 agent/relay.py：同一 FOPDT、同噪声下对比（refs/USAGE_MATRIX.md #1），无噪声时 Ku/Pu 一致，
   噪声 0.01–0.03 时自写版 9 例里 5 例判“峰没稳定”失败，移植版全部收敛且在线自停；自写版的 Tyreus–Luyben 规则保留在 gains()。
 """
@@ -63,3 +64,22 @@ def relay_sim(K: float, T: float, L: float, *, dt: float = 0.005, step: float = 
         st["y"] += dt / T * (K * ud - st["y"])
         return st["y"]
     return relay_run(plant, dt=dt, step=step, noise_band=noise_band, pid=pid, lookback_s=max(20 * dt, (T + L) / 4))
+
+
+def relay_analyze(t: list[float], y: list[float], *, amp: float, noise_band: float, pid: bool = True) -> dict:
+    """板子已在做继电（u = bias ± amp）时，对记录下的 (t, y) 用同一个 PIDATune 找峰、判收敛、算 Ku/Pu（输出项不用）。"""
+    if len(t) < 10:
+        return {"ok": False, "why": "样本太少"}
+    dts = sorted(b - a for a, b in zip(t, t[1:]) if b > a)
+    dt = dts[len(dts) // 2] if dts else 0.01
+    span = t[-1] - t[0]
+    m = sum(y) / len(y)                                  # 找峰的回看窗口要短于半周期：先按过均值次数粗估周期
+    cross = [a for a, b0, b1 in zip(t[1:], y, y[1:]) if (b0 - m) * (b1 - m) < 0]
+    p_est = 2 * (cross[-1] - cross[0]) / (len(cross) - 1) if len(cross) > 2 else span / 4
+    at = PIDATune(output_step=amp, noise_band=noise_band, control_type=1 if pid else 0, sample_time=dt,
+                  lookback_s=max(3 * dt, p_est / 8))
+    for a, b in zip(t, y):
+        done, _ = at.runtime(a, b, 0.0)
+        if done:
+            return {"ok": True, "ku": at.ku, "pu": at.pu, "cycles": at.peak_count, "t": a - t[0]}
+    return {"ok": False, "why": f"{span:.1f} s 内峰值没稳定（{getattr(at, 'peak_count', 0)} 个周期）：加大 amp 或延长 timeout_s"}

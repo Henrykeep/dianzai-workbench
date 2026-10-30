@@ -23,7 +23,7 @@
 #include <stdint.h>
 #include "dz_err.h"
 
-#define PID_VERSION "1.1.0"
+#define PID_VERSION "1.2.0"
 
 typedef enum {
     PID_D_ON_MEASUREMENT = 0, /**< 微分先行（默认，推荐） */
@@ -127,6 +127,19 @@ float    pid_cascade_update(pid_cascade_t *c, float setpoint,
 float    pid_cascade_update_inner_only(pid_cascade_t *c, float inner_setpoint,
                                        float meas_inner);
 void     pid_cascade_reset(pid_cascade_t *c);
+
+/* ---------------- 继电覆盖（调参“无初值一键起步”，1.2.0） ----------------
+ * 上位机发 dzctl DATA 0x7C 后，第 loop 个 pid_init 过的位置式 PID 的输出被换成继电器：
+ *   u = bias ± amp（bias = 开始时该 PID 的输出，即工作点），误差 > hyst 取 +，< -hyst 取 −，中间保持（滞环防抖），
+ *   并仍按 cfg.out_min/out_max 限幅。超时 / pid_relay_stop() / 急停时 pid_reset 后自动恢复：下一拍以 bias 无扰切回 PID。
+ * 同时只允许一个回路在继电；amp 被限到 (out_max-out_min)/2，timeout 限到 PID_RELAY_MAX_S。 */
+#define PID_RELAY_MAX_LOOPS 8u
+#define PID_RELAY_MAX_S     60.0f
+/** 开始继电。loop = pid_init 的先后序号（从 0 起）。非法参数 / 没有该回路返回 DZ_EINVAL。 */
+dz_err_t pid_relay_start(uint8_t loop, float amp, float hyst, float timeout_s);
+void     pid_relay_stop(void);
+/** 正在继电的回路序号；没有返回 -1。 */
+int      pid_relay_active(void);
 
 /** 模块自检：运行内置用例，全部通过返回 DZ_OK，否则 DZ_EFAIL。 */
 dz_err_t pid_selftest(void);

@@ -19,3 +19,9 @@
 
 `pid_check_gap(&pid, 实际间隔秒)` 放在 `pid_update` 前：间隔 > 5×dt 或 > 0.5 s（断点恢复、任务被饿死）时清微分历史和微分滤波，积分保留。
 低通同理：`lpf1_check_gap(&f, 实际间隔, 上限)` 让下一个样本直通重起。思路来自 SimpleFOC（MIT），代码自写。car_2wd 控制中断里已接上。
+
+## 继电覆盖（1.2.0）
+调参页“无初值一键起步”用。上位机发 dzctl `DATA 0x7C`（u8 loop, f32 amp, f32 hyst, f32 timeout_s），
+第 loop 个 `pid_init` 过的位置式 PID 的输出换成 `bias ± amp`（bias = 开始时的输出；滞环 hyst；仍按 out_min/out_max 限幅，amp ≤ 半量程）。
+`timeout_s`（≤ 60 s）到了、`pid_relay_stop()`、`pid_reset()`（急停）任一发生都结束，并以 bias 无扰切回 PID。
+apps/include/link_app.h 已接好（急停中拒绝，上位机掉线时停止）；自己写收发的应用调用 `dzctl_relay_parse` + `pid_relay_start/stop` 即可。

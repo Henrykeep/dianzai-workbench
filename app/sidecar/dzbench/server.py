@@ -317,6 +317,8 @@ class Server:
             return self.svc.rule_round()
         if op == "tune_sweep_test":                # 同上：用户点 = 已确认；要几十秒，放线程池
             return await run(None, self.svc.run_sweep_test)
+        if op == "tune_relay":                     # 调参 → 更多实验 → 无初值一键起步；用户点 = 已确认；十几秒，放线程池
+            return await run(None, self.svc.run_relay_tune)
         if op == "tune_step_test":                 # 用户自己点 = 已是人工确认
             return self.svc.run_step_test()
         # 编译 / 烧录 / 回滚都走风险网关：界面按钮和 Agent 同一条路（烧录、回滚 = human，弹确认卡；以前这里直接调烧录器，绕过了确认）

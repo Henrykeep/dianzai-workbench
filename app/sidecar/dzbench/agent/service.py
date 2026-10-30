@@ -517,7 +517,7 @@ class AgentService:
 
     START_CMDS = ("T", "P", "G", "S")     # 'R' 不在里面：它同时是“解除急停”，Agent/自动实验永远不发
 
-    EXPERIMENTS = ("run_step_test", "run_sweep_test", "open_loop_test", "score_run")
+    EXPERIMENTS = ("run_step_test", "run_sweep_test", "run_relay_tune", "open_loop_test", "score_run")
     ARM_TTL_S = 120.0
     LINK_STALE_S = 1.0
 
@@ -632,6 +632,49 @@ class AgentService:
                           overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
         self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
         return {"verdict": verdict, "metrics": m.as_dict()}
+
+    RELAY_MAX_S = 30.0
+
+    def run_relay_tune(self) -> dict:
+        """无初值一键起步：设定值停在 step_test.high，固件把 PID 输出换成继电器 ±amp（dzctl 0.7.0，板端限幅 + 超时自动恢复），
+        记录 y → relay_analyze 得 Ku/Pu → Tyreus–Luyben 增益 → 提议卡（你采纳才写入）。配置 step_test.relay = {loop, amp, hyst, timeout_s}。"""
+        from ..tuning.relay import gains as relay_gains, relay_analyze
+        st = self.step_cfg()
+        if not st:
+            raise LinkError("no_step_test", "没配置（或没有匹配当前遥测的）阶跃实验", "继电起步复用 step_test 的通道和工作点")
+        rc = st.get("relay") or {}
+        amp = float(rc.get("amp", 0.3)); hyst = float(rc.get("hyst", 0.0)); loop = int(rc.get("loop", 0))
+        dur = min(float(rc.get("timeout_s", 12.0)), self.RELAY_MAX_S)
+        self.step_start(st)
+        sp = st["high"]
+        t0 = time.monotonic() + 0.8
+        while time.monotonic() < t0:                    # 先把设定值送到位，让对象停在工作点附近
+            self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *sp)); time.sleep(0.1)
+        w0 = self.s.window(0.05); tb = w0[-1][0] if w0 else 0.0
+        r = self.s.relay(loop, amp, hyst, dur)
+        if not r["ok"]:
+            return {"ok": False, "why": r["why"]}
+        try:
+            t_end = time.monotonic() + dur
+            while time.monotonic() < t_end:
+                if self.s.tx_locked:
+                    break
+                self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *sp)); time.sleep(0.1)
+        finally:
+            self.s.relay_stop()                         # 板子超时也会自己恢复；这里是双保险
+        w = [x for x in self.s.window(dur + 1.0) if x[0] > tb]
+        t = [a for a, _ in w]; ys = [float(v[st["y"]]) for _, v in w]
+        span = (max(ys) - min(ys)) if ys else 0.0
+        res = relay_analyze(t, ys, amp=amp, noise_band=max(hyst, 0.02 * span))
+        if not res["ok"]:
+            return res
+        g = relay_gains(res["ku"], res["pu"], str(rc.get("rule", "tl")))
+        names = st.get("gains") or {}
+        changes = {names[k]: round(g[k], 6) for k in ("kp", "ki", "kd") if names.get(k)}
+        props = self.propose_hint(changes, f"继电起步：Ku={res['ku']:.4g} Pu={res['pu']:.3g}s，{g['rule'].upper()} 规则", source="继电起步") if changes else []
+        out = {"ok": True, "ku": res["ku"], "pu": res["pu"], "cycles": res["cycles"], "gains": g, "proposals": props}
+        self.emit({"type": "relay_result", **{k: v for k, v in out.items() if k != "proposals"}})
+        return out
 
     SWEEP_MAX_S = 90.0
     SWEEP_SEND_S = 0.02                              # 主机发设定值的周期：频率上限按它的 1/10 算

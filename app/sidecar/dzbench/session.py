@@ -335,6 +335,8 @@ class Session:
                                 self._pending_marks.append(m)
                     if h != self.schema_hash:
                         self._bind_schema(h)
+            elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
+                self.relay_ack = payload[0]
             elif kind == DATA and id_ == ID_BB and len(payload) == 16:
                 t_ms, code, arg, a, b = struct.unpack("<IHHff", payload)
                 with self.lock:
@@ -518,6 +520,23 @@ class Session:
         time.sleep(wait_s)
         with self.lock:
             return list(self.bb_recs)
+
+    RELAY_STATUS = {0: "ok", 1: "参数非法或板上没有这个 PID 回路", 2: "板子急停中"}
+
+    def relay(self, loop: int, amp: float, hyst: float, timeout_s: float, wait_s: float = 0.5) -> dict:
+        """让板上第 loop 个 PID 的输出换成继电器 ±amp（滞环 hyst，timeout_s 后板子自己恢复），等板子回执。"""
+        self._check_tx()
+        self.relay_ack = None
+        if not self._send(DATA, ID_RELAY, struct.pack("<Bfff", loop, amp, hyst, timeout_s)):
+            raise LinkError("not_connected", "没连板子", "")
+        t_end = time.monotonic() + wait_s
+        while time.monotonic() < t_end and getattr(self, "relay_ack", None) is None:
+            time.sleep(0.01)
+        a = getattr(self, "relay_ack", None)
+        return {"ok": a == 0, "status": a, "why": "板子没回执（固件早于 dzctl 0.7.0？）" if a is None else self.RELAY_STATUS.get(a, str(a))}
+
+    def relay_stop(self) -> bool:
+        return self._send(DATA, ID_RELAY)
 
     def cmd(self, c: str, n: int | None = None) -> bool:
         ok = self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
@@ -710,6 +729,7 @@ class Session:
 
 
 ID_BB = 0x7D
+ID_RELAY = 0x7C   # dzctl 0.7.0 继电自整定（固件 pid_relay_*）
 BB_NAMES = {1: "上电", 2: "堵转", 3: "急停", 4: "人工解除", 5: "丢线", 6: "参数存 flash", 7: "上电读参数", 8: "上次运行记录"}
 
 

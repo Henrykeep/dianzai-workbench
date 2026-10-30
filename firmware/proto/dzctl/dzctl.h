@@ -20,9 +20,11 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.6.0"
+#define DZCTL_VERSION "0.7.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
+#define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
+                                    板回 DATA 0x7C len=1 u8 status（0 成功 1 参数非法/没有该回路 2 急停中）。实现见 pid_relay_*（algo/pid） */
 #define DZCTL_ID_BB    0x7Du   /**< 0.6.0 黑匣子：上位机 len=0 请求；板子每条记录回一帧 u32 t_ms, u16 code, u16 arg, f32 a, f32 b */
 
 typedef enum { DZCTL_F32, DZCTL_U32, DZCTL_I32, DZCTL_U16, DZCTL_I16, DZCTL_U8, DZCTL_BOOL } dzctl_type_t;
@@ -67,6 +69,10 @@ uint32_t dzctl_fw_rev(void);
 #define DZCTL_HB_ESTOP     (1u << 10)  /**< 急停锁存中（任何原因） */
 /** 是不是黑匣子导出请求。 */
 bool dzctl_is_bb_request(const dzframe_t *f);
+typedef struct { uint8_t loop; float amp, hyst, timeout_s; bool start; } dzctl_relay_t;
+/** 是继电命令则解析到 *r 返回 true（len 不是 0/13 也返回 true，r->start=false 且 r->amp=-1 表示格式错）。 */
+bool dzctl_relay_parse(const dzframe_t *f, dzctl_relay_t *r);
+void dzctl_relay_ack(uint8_t status, uint8_t seq, dzframe_t *out);
 /** 填一帧黑匣子记录（字段同 blackbox 的 bb_rec_t；proto 层不依赖 framework，所以按字段传）。 */
 void dzctl_bb_frame(uint32_t t_ms, uint16_t code, uint16_t arg, float a, float b, uint8_t seq, dzframe_t *out);
 void dzctl_set_reset_cause(uint32_t cause);

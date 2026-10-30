@@ -81,6 +81,24 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
 
 bool dzctl_is_bb_request(const dzframe_t *f) { return f && f->kind == DZF_DATA && f->id == DZCTL_ID_BB && f->len == 0u; }
 
+bool dzctl_relay_parse(const dzframe_t *f, dzctl_relay_t *r)
+{
+    if (!f || !r || f->kind != DZF_DATA || f->id != DZCTL_ID_RELAY) return false;
+    memset(r, 0, sizeof *r);
+    if (f->len == 13u) {
+        r->start = true; r->loop = dzframe_get_u8(f, 0);
+        r->amp = dzframe_get_f32(f, 1); r->hyst = dzframe_get_f32(f, 5); r->timeout_s = dzframe_get_f32(f, 9);
+    } else if (f->len != 0u) r->amp = -1.0f;
+    return true;
+}
+
+void dzctl_relay_ack(uint8_t status, uint8_t seq, dzframe_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->kind = DZF_DATA; out->id = DZCTL_ID_RELAY; out->seq = seq;
+    (void)dzframe_put_u8(out, status);
+}
+
 void dzctl_bb_frame(uint32_t t_ms, uint16_t code, uint16_t arg, float a, float b, uint8_t seq, dzframe_t *out)
 {
     memset(out, 0, sizeof *out);
@@ -141,6 +159,15 @@ int dzctl_selftest(void)
         dzctl_bb_frame(7u, 2u, 1u, 0.9f, 0.0f, 3u, &r);
         fail += r.len != 16u || dzframe_get_u32(&r, 0) != 7u || dzframe_get_u16(&r, 4) != 2u || dzframe_get_u16(&r, 6) != 1u
                 || dzframe_get_f32(&r, 8) != 0.9f || dzctl_is_bb_request(&r);
+    }
+    {   /* 继电命令解析 */
+        dzframe_t q; dzctl_relay_t r;
+        memset(&q, 0, sizeof q); q.kind = DZF_DATA; q.id = DZCTL_ID_RELAY;
+        fail += !dzctl_relay_parse(&q, &r) || r.start;
+        (void)(dzframe_put_u8(&q, 1u) && dzframe_put_f32(&q, 0.3f) && dzframe_put_f32(&q, 2.0f) && dzframe_put_f32(&q, 10.0f));
+        fail += !dzctl_relay_parse(&q, &r) || !r.start || r.loop != 1u || r.amp != 0.3f || r.hyst != 2.0f || r.timeout_s != 10.0f;
+        q.len = 5u; fail += !dzctl_relay_parse(&q, &r) || r.start || r.amp != -1.0f;
+        q.id = DZCTL_ID_BB; fail += dzctl_relay_parse(&q, &r);
     }
     {   /* status 字：复位原因只占低 8 位，标志不覆盖它 */
         uint32_t keep = s_status;

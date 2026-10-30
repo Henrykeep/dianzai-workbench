@@ -63,6 +63,57 @@ static float pid_rate_limit(const pid_cfg_t *c, float target, float prev)
 
 /* ======================= 位置式 ======================= */
 
+/* ---------------- 继电覆盖 ---------------- */
+/* 整板只有一个继电器（同一时刻一个回路在做实验），所以是单例；回路表按 pid_init 先后编号 */
+static struct { pid_ctrl_t *reg[PID_RELAY_MAX_LOOPS]; uint8_t nreg; pid_ctrl_t *target; float amp, hyst, bias, left_s; bool hi, started; volatile bool on, restore; } s_rl;
+
+static void pid_relay_register(pid_ctrl_t *pid)
+{
+    for (uint8_t i = 0; i < s_rl.nreg; i++) if (s_rl.reg[i] == pid) return;
+    if (s_rl.nreg < PID_RELAY_MAX_LOOPS) s_rl.reg[s_rl.nreg++] = pid;
+}
+
+dz_err_t pid_relay_start(uint8_t loop, float amp, float hyst, float timeout_s)
+{
+    if (s_rl.on || loop >= s_rl.nreg || !pid_finite(amp) || !pid_finite(hyst) || !pid_finite(timeout_s)
+        || amp <= 0.0f || hyst < 0.0f || timeout_s <= 0.0f) return DZ_EINVAL;
+    pid_ctrl_t *p = s_rl.reg[loop];
+    float half = 0.5f * (p->cfg.out_max - p->cfg.out_min);
+    s_rl.target = p; s_rl.amp = amp > half ? half : amp; s_rl.hyst = hyst;
+    s_rl.left_s = timeout_s > PID_RELAY_MAX_S ? PID_RELAY_MAX_S : timeout_s;
+    s_rl.started = false; s_rl.restore = false;
+    s_rl.on = true;                       /* 最后置位：控制中断看到 on 时其余字段已写好 */
+    return DZ_OK;
+}
+
+void pid_relay_stop(void) { if (s_rl.on) s_rl.restore = true; }
+
+int pid_relay_active(void)
+{
+    for (uint8_t i = 0; s_rl.on && i < s_rl.nreg; i++) if (s_rl.reg[i] == s_rl.target) return (int)i;
+    return -1;
+}
+
+/* pid_update 开头调用：返回 true 表示本拍输出由继电器给出（*u 已填） */
+static bool pid_relay_step(pid_ctrl_t *pid, float err, float *u)
+{
+    if (!s_rl.on || s_rl.target != pid) return false;
+    if (!s_rl.started) { s_rl.bias = pid->out; s_rl.hi = err >= 0.0f; s_rl.started = true; }
+    s_rl.left_s -= pid->cfg.dt_s;
+    if (s_rl.restore || s_rl.left_s <= 0.5f * pid->cfg.dt_s) {          /* 超时 / 停止：无扰切回 PID */
+        float b = s_rl.bias;
+        s_rl.on = false;
+        pid_reset_to(pid, b);
+        *u = b;
+        return true;
+    }
+    if (err > s_rl.hyst) s_rl.hi = true;
+    else if (err < -s_rl.hyst) s_rl.hi = false;
+    *u = pid_clamp(s_rl.bias + (s_rl.hi ? s_rl.amp : -s_rl.amp), pid->cfg.out_min, pid->cfg.out_max);
+    pid->out = *u; pid->prev_err = err; pid->first = true;
+    return true;
+}
+
 dz_err_t pid_init(pid_ctrl_t *pid, const pid_cfg_t *cfg)
 {
     if (pid == 0) return DZ_EINVAL;
@@ -71,12 +122,14 @@ dz_err_t pid_init(pid_ctrl_t *pid, const pid_cfg_t *cfg)
     pid->cfg = *cfg;
     pid->ready = true;
     pid_reset(pid);
+    pid_relay_register(pid);
     return DZ_OK;
 }
 
 void pid_reset(pid_ctrl_t *pid)
 {
     if (pid == 0) return;
+    if (s_rl.on && s_rl.target == pid) s_rl.on = false;   /* 急停/复位顺带结束继电 */
     pid->integ = 0.0f;
     pid->prev_meas = 0.0f;
     pid->prev_err = 0.0f;
@@ -106,6 +159,7 @@ float pid_update(pid_ctrl_t *pid, float sp, float meas)
     }
 
     float err = sp - meas;
+    { float ur; if (pid_relay_step(pid, err, &ur)) return ur; }
     float p = c->kp * err;
 
     pid->d_filt = pid_derivative(c, pid->first, err, meas, pid->prev_err,
@@ -348,5 +402,31 @@ dz_err_t pid_selftest(void)
     pid_cfg_t ci = pid_cfg_default(0.001f), co = pid_cfg_default(0.01f);
     if (pid_cascade_init(&cc, &co, &ci, 5) != DZ_EINVAL) return DZ_EFAIL;
     if (pid_cascade_init(&cc, &co, &ci, 10) != DZ_OK) return DZ_EFAIL;
+    {   /* 继电覆盖：±amp 滞环切换、限幅、超时后以 bias 无扰恢复、非法参数拒绝 */
+        pid_ctrl_t *keep[PID_RELAY_MAX_LOOPS]; uint8_t nkeep = s_rl.nreg;   /* 自检不占应用的回路序号 */
+        for (uint8_t i = 0; i < nkeep; i++) keep[i] = s_rl.reg[i];
+        s_rl.nreg = 0;
+        pid_ctrl_t r; pid_cfg_t rc = pid_cfg_default(0.01f);
+        rc.kp = 1.0f; rc.out_min = -0.5f; rc.out_max = 0.5f;
+        if (pid_init(&r, &rc) != DZ_OK) return DZ_EFAIL;
+        int lp = -1;
+        for (uint8_t i = 0; i < s_rl.nreg; i++) if (s_rl.reg[i] == &r) lp = (int)i;
+        if (lp < 0) return DZ_EFAIL;
+        r.out = 0.1f;
+        if (pid_relay_start((uint8_t)lp, 9.0f, 0.05f, 0.05f) != DZ_OK) return DZ_EFAIL;
+        if (pid_relay_start((uint8_t)lp, 0.1f, 0.0f, 1.0f) == DZ_OK) return DZ_EFAIL;     /* 已有回路在继电 */
+        if (pid_relay_active() != lp) return DZ_EFAIL;
+        if (pid_update(&r, 1.0f, 0.0f) != 0.5f) return DZ_EFAIL;                         /* 0.1+0.5 限到 0.5 */
+        if (pid_update(&r, 0.0f, 0.03f) != 0.5f) return DZ_EFAIL;                        /* 滞环内保持 */
+        if (!near(pid_update(&r, 0.0f, 0.2f), -0.4f, 1e-6f)) return DZ_EFAIL;                        /* 0.1-0.5 */
+        (void)pid_update(&r, 0.0f, 0.2f); (void)pid_update(&r, 0.0f, 0.2f);
+        if (pid_relay_active() != -1 || !near(pid_output(&r), 0.1f, 1e-6f)) return DZ_EFAIL;          /* 5 拍=0.05 s 超时，回到 bias */
+        if (pid_relay_start(200u, 0.1f, 0.0f, 1.0f) == DZ_OK || pid_relay_start((uint8_t)lp, -1.0f, 0.0f, 1.0f) == DZ_OK) return DZ_EFAIL;
+        if (pid_relay_start((uint8_t)lp, 0.1f, 0.0f, 1.0f) != DZ_OK) return DZ_EFAIL;
+        pid_reset(&r);
+        if (pid_relay_active() != -1) return DZ_EFAIL;
+        s_rl.nreg = nkeep;
+        for (uint8_t i = 0; i < nkeep; i++) s_rl.reg[i] = keep[i];
+    }
     return DZ_OK;
 }

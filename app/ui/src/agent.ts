@@ -226,6 +226,13 @@ export function initAgent(call: Call) {
     const b = e.currentTarget as HTMLButtonElement; b.disabled = true; b.textContent = "扫频中…";
     call("tune_sweep_test").catch(() => {}).finally(() => { b.disabled = false; b.textContent = "扫频"; });   // 结果走 sweep_result 事件
   };
+  $("ag-relay").onclick = (e) => {
+    const b = e.currentTarget as HTMLButtonElement; b.disabled = true; b.textContent = "继电起步中…";
+    call<any>("tune_relay").then(r => add(r?.ok
+      ? `<span class="lbl">继电起步：Ku=${n(r.ku, 3, "")} Pu=${n(r.pu, 3, " s")}（${r.cycles} 个周期）→ ${esc(r.gains.rule.toUpperCase())} 初值已发提议卡</span>`
+      : `<span class="lbl">继电起步没成功：${esc(r?.why ?? "")}</span>`, "msg bot"), () => {})
+      .finally(() => { b.disabled = false; b.textContent = "无初值一键起步"; });
+  };
   $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
   $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
   $("ag-best").onclick = async () => {

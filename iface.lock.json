@@ -291,6 +291,8 @@
   "decls": [
    "pid.h: #define PID_GAP_FACTOR 5.0f",
    "pid.h: #define PID_GAP_MAX_S 0.5f",
+   "pid.h: #define PID_RELAY_MAX_LOOPS 8u",
+   "pid.h: #define PID_RELAY_MAX_S 60.0f",
    "pid.h: typedef enum { PID_D_ON_MEASUREMENT = 0, PID_D_ON_ERROR = 1 } pid_d_mode_t;",
    "pid.h: typedef struct { float kp, ki, kd;",
    "pid.h: float dt_s;",
@@ -349,10 +351,13 @@
    "pid.h: float pid_cascade_update(pid_cascade_t *c, float setpoint, float meas_outer, float meas_inner);",
    "pid.h: float pid_cascade_update_inner_only(pid_cascade_t *c, float inner_setpoint, float meas_inner);",
    "pid.h: void pid_cascade_reset(pid_cascade_t *c);",
+   "pid.h: dz_err_t pid_relay_start(uint8_t loop, float amp, float hyst, float timeout_s);",
+   "pid.h: void pid_relay_stop(void);",
+   "pid.h: int pid_relay_active(void);",
    "pid.h: dz_err_t pid_selftest(void);"
   ],
-  "hash": "982222ec4c93dc31",
-  "version": "1.1.0"
+  "hash": "1f60bdf837d5e0f7",
+  "version": "1.2.0"
  },
  "firmware/algo/sigfilt": {
   "decls": [
@@ -1471,6 +1476,7 @@
   "decls": [
    "dzctl.h: #define DZCTL_ID_CMD 0x7Eu",
    "dzctl.h: #define DZCTL_ID_ESTOP 0x7Fu",
+   "dzctl.h: #define DZCTL_ID_RELAY 0x7Cu",
    "dzctl.h: #define DZCTL_ID_BB 0x7Du",
    "dzctl.h: #define DZCTL_HB_SAFE_BOOT (1u << 8)",
    "dzctl.h: #define DZCTL_HB_STALL (1u << 9)",
@@ -1494,6 +1500,12 @@
    "dzctl.h: uint32_t dzctl_board_uid(void);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
    "dzctl.h: bool dzctl_is_bb_request(const dzframe_t *f);",
+   "dzctl.h: typedef struct { uint8_t loop;",
+   "dzctl.h: float amp, hyst, timeout_s;",
+   "dzctl.h: bool start;",
+   "dzctl.h: } dzctl_relay_t;",
+   "dzctl.h: bool dzctl_relay_parse(const dzframe_t *f, dzctl_relay_t *r);",
+   "dzctl.h: void dzctl_relay_ack(uint8_t status, uint8_t seq, dzframe_t *out);",
    "dzctl.h: void dzctl_bb_frame(uint32_t t_ms, uint16_t code, uint16_t arg, float a, float b, uint8_t seq, dzframe_t *out);",
    "dzctl.h: void dzctl_set_reset_cause(uint32_t cause);",
    "dzctl.h: void dzctl_set_flags(uint32_t mask, bool on);",
@@ -1507,8 +1519,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "e19aa0087fcd3e2f",
-  "version": "0.6.0"
+  "hash": "5b87e3298ff93be8",
+  "version": "0.7.0"
  },
  "firmware/proto/dzframe": {
   "decls": [
