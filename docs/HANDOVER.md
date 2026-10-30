@@ -15,7 +15,7 @@
 外加：做好版本管理（语义化版本、CHANGELOG 四级标注、一个逻辑改动一个提交、推送前 `make check`、`make test` 和 `make preflight`）。
 
 ## 用户偏好
-- 不要停下：没让停就继续做，问题攒着第二天一起问（写进 dev/QUESTIONS.md / dev/MORNING.md）。
+- 不要停下：没让停就继续做，问题攒着第二天一起问（旧清单已归档到 dev/archive/，新问题另开文件）。
 - UI：要“好看、高级、有工作台的样子”。参照 Saleae Logic 2、Linear、Grafana 这类仪器软件：中性深灰，停靠面板用分隔线分开，数字等宽对齐，蓝色点缀要克制。**不要紫色**，不要网页仪表盘那种卡片风。学参考要学到精髓，不要半吊子；要自己拿主意（“你不要我说什么就是什么”“自己看”）。
 - 写代码用 Keil5 / CCS，也接受 VSCode 等。STM32 一律 HAL，不写寄存器。调试器用 ST-Link（队友用 DAP-Link）。
 - CI 一失败用户就会收到邮件，所以 CI 必须保持全绿（app-windows 以前失败过）。
