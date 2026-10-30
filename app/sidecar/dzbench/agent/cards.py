@@ -91,6 +91,11 @@ def chain_step(root: pathlib.Path, code: str, s: dict, stage_home: pathlib.Path,
             + ([f"缺子系统 {'、'.join(s['missing'])}（要新建）"] if s.get("missing") else [])
         if s.get("missing"):
             st["state"] = "warn"
+    elif step == "keil":
+        st["facts"] = ["把工作台模块注入 Keil 工程（dz/ 组、包含路径、宏；幂等）", f"改 {s.get('uvprojx')}，原文件备份为 .bak"]
+        st["changes"].append({"k": "file", "name": s.get("uvprojx"), "old": "原工程", "new": "注入 dz/ 组"})
+        st["detail"] = s.get("out_tail", "")
+        return st
     files = _stage_files(stage_home / code / "stage" / step)
     if step == "scratch":                                  # 从零新建的分配结果落在沙盒 alloc/ 里
         files = {f"alloc/{k}": v for k, v in _stage_files(stage_home / code / "sandbox" / "alloc").items()} | files

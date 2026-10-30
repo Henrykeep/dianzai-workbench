@@ -110,7 +110,7 @@ def score_items(svc, path: str | None = None) -> dict:
 
 # ---------------------------------------------------------------- 一句话跑完项目流程
 def project_chain(root, code: str, src: str | None = None, project: str | None = None, name: str | None = None,
-                  mcu: str | None = None, tpl: str | None = None) -> dict:
+                  mcu: str | None = None, tpl: str | None = None, uvprojx: str | None = None, app: str | None = None) -> dict:
     """把还没做的步依次预览完（全部落在暂存区 + 沙盒题目目录，不动仓库），返回一张“批量写入”清单给 project_apply。
     后一步要读前一步的结果：前一步在沙盒目录里 accept（Flow 的 dest 参数），所以真仓库一个字节都不变。
     gen 的 accept 会写仓库 build/，所以只预览不在沙盒确认；import 会写 boards/，同理。"""
@@ -194,6 +194,20 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
             if r["rc"]:
                 return {"code": code, "steps": steps, "batch": batch, "stopped_at": "gen"}
             batch.append(("gen", {}))
+        # ⑤ 之后：有 Keil 工程就把工作台模块注入 .uvprojx（同一张卡里一起确认；导入的工程自动找 MDK-ARM/*.uvprojx）
+        from ..projflow import find_uvprojx
+        uv = uvprojx or (find_uvprojx(pathlib.Path(project).expanduser()) if project else "")
+        if uv and board and (project or (root / "boards" / board).is_dir()):   # 从零新建要先在 CubeMX 生成+导入才有板，此时不注入
+            km = {"code": code, "board": board, "app": app or code, "uvprojx": str(pathlib.Path(uv).expanduser())}
+            if (root / "apps" / km["app"]).is_dir() or (root / "examples" / km["app"] / "project.yaml").exists():
+                r = f._run(["tools/keil_inject.py", km["uvprojx"], "--root", f.repo, *f._kargs(km), "--dry-run"])
+            else:                                   # 应用要等 ⑤ 写入后才有：预演留到写入时按顺序跑（失败就停在这步）
+                r = {"rc": 0, "out": "⑤ 写入后再注入（应用此刻还在暂存区）"}
+            steps.append({"step": "keil", "ok": not r["rc"], "uvprojx": km["uvprojx"], "out_tail": r["out"][-400:],
+                          **({} if not r["rc"] else {"why": "Keil 注入预演失败", "fix": r["out"][-200:]})})
+            if r["rc"]:
+                return {"code": code, "steps": steps, "batch": batch, "stopped_at": "keil"}
+            batch.append(("keil", km | {"confirm_uvprojx": km["uvprojx"]}))    # 用户点的那张总卡就是“第二次确认”
     except FlowError as e:
         return stop(steps[-1]["step"] if steps else "?", e.msg, e.fix)
     return {"code": code, "steps": steps, "batch": batch, "stopped_at": None}

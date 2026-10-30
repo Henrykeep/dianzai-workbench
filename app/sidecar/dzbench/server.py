@@ -162,6 +162,14 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix) from None
+        if op == "project_chain" or op == "project_apply":   # 项目页“一键走完 ①–⑤（+Keil 注入）”：先整链预览，再一次写入（同 Agent 那张总卡）
+            from .projflow import FlowError
+            try:
+                if op == "project_chain":
+                    return await run(None, lambda: self.svc.project_chain(m["code"], **{k: m[k] for k in ("src", "project", "name", "mcu", "tpl", "uvprojx", "app") if m.get(k)}))
+                return await run(None, self.svc.project_apply, m["code"])
+            except (FlowError, GatewayError) as e:
+                raise LinkError(e.code, e.msg, e.fix) from None
         if op == "score_items" or op == "score_save" or op == "score_writeback":       # 评分页：评分项来自 requirements.yaml；证据按 docs/verify 规范存（dzbench/scoring.py）
             from . import scoring
             try:
