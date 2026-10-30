@@ -12,6 +12,7 @@ import time
 from .. import config as cfg_mod
 from .. import elfsym, hardfault, keil
 from ..agent_api import AgentTools
+from . import steptools
 from ..flash import FlashError, Flasher, schema_hash_of
 from ..session import LinkError, Session
 from ..transport import ROOT
@@ -93,6 +94,10 @@ class AgentService:
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
+            "project_state": lambda code=None: steptools.project_state(self.gw.root, code),
+            "flow_preview": lambda step, code, **m: steptools.flow_preview(self.gw.root, step, code, **m),
+            "flow_accept": lambda step, code, **m: steptools.flow_accept(self.gw.root, step, code, **m),
+            "score_items": lambda path=None: steptools.score_items(self, path),
         }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
@@ -233,6 +238,9 @@ class AgentService:
                     preview = (self.flasher.flash if tool == "flash" else self.flasher.rollback)(dry_run=True)
                 except FlashError as e:
                     preview = {"error": e.message}
+            elif tool == "flow_accept":
+                preview = {"写入": steptools.LABEL.get(args.get("step"), args.get("step")), "项目": args.get("code"),
+                           "暂存区": str(pathlib.Path.home() / ".dzbench/flow" / str(args.get("code")) / "stage" / str(args.get("step")))}
             elif tool in self.EXPERIMENTS:
                 pa = self.prearm()
                 preview = {"prearm": pa} | ({"error": "；".join(pa["failed"])} if pa["failed"] else {})
@@ -246,6 +254,22 @@ class AgentService:
         if t == risk.LOG:
             risk.audit(tool, args, t, "ok")
         return r
+
+    def _flow_next(self, code: str) -> dict | None:
+        """项目步写入后，顺手把下一步预览跑好并出确认卡（省一次“再问 Agent / 点运行”）。
+        下一步缺人给的输入（题目、CubeMX 工程）或预览失败 → 只报告，不出卡。"""
+        st = steptools.project_state(self.gw.root, code)
+        nxt = st.get("next_step")
+        if not nxt or nxt in steptools.NEEDS:
+            return {"next_step": nxt, "needs": st.get("next_needs")} if nxt else None
+        try:
+            pv = steptools.flow_preview(self.gw.root, nxt, code)
+        except GatewayError as e:
+            return {"next_step": nxt, "error": e.message, "fix": e.fix}
+        if pv.get("rc"):
+            return {"next_step": nxt, "preview": pv}
+        card = self.gate("flow_accept", {"step": nxt, "code": code}, lambda: None)
+        return {"next_step": nxt, "preview": pv, "action_id": card.get("action_id")}
 
     def action_decide(self, aid: int, accept: bool) -> dict:
         a = self.actions.pop(aid, None)
@@ -264,7 +288,10 @@ class AgentService:
         if a["tool"] in ("flash", "flash_rollback"):
             args["dry_run"] = False                      # 人点了“确认烧录”才真烧
         try:
-            return {"id": aid, "status": "done", "result": self.loop.handlers[a["tool"]](**args)}
+            out = {"id": aid, "status": "done", "result": self.loop.handlers[a["tool"]](**args)}
+            if a["tool"] == "flow_accept":
+                out["next"] = self._flow_next(args["code"])
+            return out
         except (FlashError, GuardError, LinkError) as e:
             raise LinkError(getattr(e, "code", "action"), e.message, getattr(e, "fix", "")) from e
 
@@ -335,6 +362,9 @@ class AgentService:
         except GuardError as e:
             raise GatewayError(e.code, e.message) from e
         r = self.tools.propose_param_change(name, v, reason + ("（护栏：" + "；".join(notes) + "）" if notes else ""), "agent")
+        if self.sim and r.get("id") is not None:     # 仿真：采纳即自动验证阶跃（省一次点击）；实机仍由 run_step_test 出确认卡
+            self.verify_groups = getattr(self, "verify_groups", {}) | {r["id"]: {r["id"]}}
+            r = r | {"verify_step": "采纳后自动做一次验证阶跃"}
         return r | {"value": v, "guard": notes}
 
     def _gain_names(self) -> dict:
@@ -762,7 +792,7 @@ class AgentService:
         ids = groups.pop(pid, None)
         if ids is None:
             return False
-        if result.get("status") != "applied":
+        if result.get("status") not in ("applied", "ok", "clamped"):   # set_param 的 status 会盖掉 "applied"（以前整组验证从不触发）
             for i in ids:
                 groups.pop(i, None)
             return False

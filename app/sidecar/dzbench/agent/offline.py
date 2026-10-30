@@ -20,6 +20,7 @@ INTENTS = (   # 顺序即优先级
     ("loss", r"跟丢|丢了|丢帧|丢线|掉线|信号断|没信号|传感器断"),
     ("sweep", r"扫频|带宽|频率响应|频响|bode|波特"),
     ("exp", r"(跑|做|来)一?(次|轮)?\s*阶跃"),
+    ("project", r"项目|读题|赛题|导入工程|选方案|方案选型|资源分配|生成工程|评分项"),
     ("asym", r"不对称|上下不一样|正负不一样|四段"),
     ("result", r"结果|那轮|下一步|上一轮|这轮"),
     ("why", r"为什么|为啥|怎么回事|原因"),
@@ -94,6 +95,8 @@ class OfflineAssistant:
             if step == 2 and (e := self._edit(user, done)):
                 return [("propose_edit", e)]
             return None
+        if it == "project":
+            return self._project(user, done, step)
         if it in ("hw", "asym", "result"):
             if step == 0:
                 return [("tune_context", {})]
@@ -119,6 +122,40 @@ class OfflineAssistant:
                 return [("propose_param_change", p)]
             return None
         return [("read_telemetry", {"seconds": 2}), ("list_params", {})] if step == 0 else None
+
+    def _project(self, user: str, done: dict, step: int):
+        """项目推进剧本：看状态 → 下一步预览（只写暂存区）→ 预览通过就出“确认写入”卡。缺人给的输入就停下来问。"""
+        if step == 0:
+            return [("project_state", {})]
+        code = self._code(user, done)
+        if not code:
+            return None
+        if step == 1:
+            return [("project_state", {"code": code})]
+        st = (done.get("project_state") or [{}])[-1].get("result") or {}
+        nxt, args = st.get("next_step"), {"code": code}
+        if not nxt:
+            return None
+        if nxt == "req":
+            if not (m := re.search(r"(\S+\.(?:pdf|txt))", user, re.I)):
+                return None
+            args["src"] = m.group(1)
+        if nxt == "import":
+            if not (m := re.search(r"((?:[A-Za-z]:)?[\\/][^\s，。]+)", user)):
+                return None
+            args["project"] = m.group(1)
+        if step == 2:
+            return [("flow_preview", {"step": nxt, **args})]
+        pv = self.ok(done, "flow_preview")
+        if step == 3 and pv and not pv.get("rc"):
+            return [("flow_accept", {"step": nxt, "code": code} | ({"name": pv["name"]} if pv.get("name") else {}))]
+        return None
+
+    def _code(self, user: str, done: dict) -> str | None:
+        ps = ((done.get("project_state") or [{}])[0].get("result") or {}).get("projects") or []
+        hit = next((c for c in sorted(ps, key=len, reverse=True) if c in user), None)
+        m = re.search(r"(?:项目|题号|赛题)\s*([A-Za-z0-9][\w-]*)", user)      # 新题：仓库里还没有这个目录
+        return hit or (m.group(1) if m else None)
 
     def _pick(self, done: dict):
         """规则建议里的第一项，一轮只改一个参数；被证明变差的方向由护栏拒绝（错误会回到回答里）。"""
@@ -173,6 +210,8 @@ class OfflineAssistant:
             return head + "没能定位要改的那一行" + (f"（{e}）" if e else "") + "：要么格式认不出（请写成“把 app.yaml 里 kp 默认值改成 0.1”），" \
                           "要么当前板子跑的工程里没有这个参数" + \
                           (f"（板上参数：{'、'.join(p['name'] for p in (self.ok(done, 'list_params') or [])[:8])}）。" if self.ok(done, "list_params") else "。")
+        if it == "project":
+            return head + self._project_answer(user, done, e)
         if it == "loss":
             return head + "【实测】已看最近 2 s 遥测。传感器/视觉信号丢失时的数据不能拿来调参：先把信号找回来" \
                           "（目标回到视野、线回到传感器下、链路恢复），状态栏里的信号状态恢复正常后再做阶跃。这一轮不改参数。"
@@ -250,6 +289,28 @@ class OfflineAssistant:
         ps = self.ok(done, "list_params") or []
         st = f"【实测】板上 {len(ps)} 个参数，最近 {t.get('seconds', 0):.1f} s 有 {t.get('n', 0)} 个样本。" if t.get("n") else "还没连上板子（或没有数据）：先选串口 / 仿真板点“连接”。"
         return head + st + "\n我离线能做：看阶跃调 PID（“超调好大怎么办”）、解释左右差异（“为什么左轮慢”）、改 yaml 默认值、上车前检查。要更灵活的对话，在 ⚙ 里填一个大模型 Key。"
+
+    def _project_answer(self, user: str, done: dict, e: str) -> str:
+        code = self._code(user, done)
+        if not code:
+            ps = ((done.get("project_state") or [{}])[0].get("result") or {}).get("projects") or []
+            return "【实测】仓库里的项目：" + ("、".join(ps) or "（还没有）") + "。告诉我题号（例如“推进项目 " + (ps[0] if ps else "2026X") + "”），" \
+                   "新题就连题目 PDF 路径一起给我。"
+        st = (done.get("project_state") or [{}])[-1].get("result") or {}
+        s = f"【实测】{code}：" + "，".join(f"{k}{'✓' if v else '—'}" for k, v in (st.get("steps") or {}).items())
+        s += f"；评分项 {st.get('req_items', 0)} 条，已有证据 {st.get('items_with_evidence', 0)} 条。"
+        nxt = st.get("next_step")
+        if not nxt:
+            return s + "\n五步都走完了。下一步去烧录页编译烧录；评分页按评分项逐条留证据。"
+        pv, acc = self.ok(done, "flow_preview"), self.ok(done, "flow_accept")
+        if acc and acc.get("status") == "pending_human_click":
+            files = "、".join(list((pv or {}).get("files") or {})[:6])
+            return s + f"\n下一步 {nxt} 的预览已跑通（暂存区" + (f"：{files}" if files else "") + "），确认卡在右侧：点“执行”才写进仓库，写完我会自动把再下一步的预览备好。"
+        if pv:
+            return s + f"\n下一步 {nxt} 预览没通过（rc={pv.get('rc')}），输出末尾：\n" + (pv.get("out_tail") or "")[-400:]
+        if e:
+            return s + f"\n下一步 {nxt} 没跑成：{e}"
+        return s + f"\n下一步是 {nxt}，需要你给我 {st.get('next_needs') or '更多信息'}（直接把路径发我）。"
 
     @staticmethod
     def _lr(rows):
