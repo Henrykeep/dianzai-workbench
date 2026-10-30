@@ -71,6 +71,9 @@ class Server:
                 raw = self.session.take_raw()
                 if raw:
                     await self._broadcast({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
+            ls = self.session.link_state()
+            if ls:
+                await self._broadcast(ls)
             n += 1
             if n % (UI_HZ // 4) == 0:
                 await self._broadcast(self.session.status() | {"clients": len(self.clients)})
@@ -80,7 +83,7 @@ class Server:
         run = asyncio.get_running_loop().run_in_executor
         if op == "hello":
             return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients)},
-                    "recovered": self.recovered,
+                    "recovered": self.recovered, "link": s.link.last,
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
         if op == "list_ports":
@@ -391,6 +394,10 @@ class Server:
     async def serve(self, host: str, port: int, ui_dir: pathlib.Path | None = None) -> None:
         self.loop = asyncio.get_running_loop()
         ticker = asyncio.ensure_future(self._ticker())
+        if self.recovered and self.session.auto_reconnect:            # 上次崩了：自动连回那块板
+            rec = dict(self.recovered)
+            self.session.resuming = True                                # 第一条 link.state 就是 lost/resuming
+            asyncio.get_running_loop().run_in_executor(None, self.session.resume, rec)
         try:
             async with websockets.serve(self.handler, host, port, max_size=2**22):
                 print(f"dzbench sidecar ws://{host}:{port}", flush=True)

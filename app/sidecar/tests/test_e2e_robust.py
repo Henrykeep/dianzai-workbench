@@ -151,9 +151,8 @@ def test_sidecar_killed_and_restarted(board, home):
         ui = UI(port)                                             # 外壳把侧车重启后，界面自动重连
         h = ui.ok("hello")
         assert h["recovered"]["port"] == str(board.path) and "意外退出" in h["recovered"]["message"]
-        assert not h["status"]["connected"], "重启后不自动连板子"
-        ui.ok("connect", port=str(board.path), baud="auto")
-        ui.wait(lambda e: e["type"] == "schema")
+        assert h["recovered"]["port"] == str(board.path)
+        assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 6), "重启后自动连回原来的板子"
         time.sleep(0.5)
         assert board_sp(board) == 0.0
         ui.ok("cmd", c="R")
