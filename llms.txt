@@ -28,6 +28,7 @@
 ## 工作台
 - [桌面工作台](docs/17-桌面工作台.md)（第三方板子：自定义帧结构 app/sidecar/dzbench/framedef.py，VOFA JustFloat/FireWater 预设）
 - 仿真 PID 搜索：app/sidecar/dzbench/tuning/search.py（PSO/分阶段，PID_Helper 移植在 third_party/vendored/pid_helper/pid_helper_pso.py，PSO 仅限仿真）
+- 调试后端：pyOCD / OpenOCD / J-Link / probe-rs（app/sidecar/dzbench/probes.py，flash.tool；ST-Link、DAPLink 都支持）
 - [内置 Agent](docs/18-内置Agent.md)（含调参前问答：对象/执行器/安全限/超调上限，只收紧护栏）
 - [Agent 触发知识说明](docs/agent-knowledge/README.md)
 - [知识：堵转](docs/agent-knowledge/stall.md)

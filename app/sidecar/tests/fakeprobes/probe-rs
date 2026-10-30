@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+import os, sys
+a = sys.argv[1:]
+open(os.environ["FAKEPROBE_LOG"], "a").write("probe-rs " + " ".join(a) + "\n")
+if a[0] == "info": print("ARM Chip:\n  DPIDR: 0x0bc11477\n  Designer: ARM Ltd")
+elif a[0] == "read": n = int(a[-1]); print(" ".join(f"{i & 0xFF:02x}" for i in range(n)))

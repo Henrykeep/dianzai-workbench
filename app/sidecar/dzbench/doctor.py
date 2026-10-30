@@ -65,6 +65,12 @@ def run(repo: str | None = None, which=shutil.which, probes=None) -> list[dict]:
         p = find_pack(target)
         out.append(_item("pack", "MSPM0 器件包（DFP）", "ok" if p else "fail", str(p) if p else f"找不到 {M0_PACK}",
                          "" if p else "运行 tools/fetch_third_party.sh m0pack，或联网 pyocd pack install mspm0g3507，或设 DZBENCH_PACK=包路径"))
+    # 3b 调试后端（flash.tool：pyocd / openocd / jlink / probe-rs，见 dzbench/probes.py）
+    from .probes import tool_status
+    ts = tool_status(cfg.get("flash") or {})
+    if ts["tool"] != "pyocd":
+        out.append(_item("dbgtool", f"调试后端 {ts['tool']}", "ok" if ts["ok"] else "fail", ts.get("exe") or ts.get("why", ""),
+                         ts.get("fix", "")))
     # 4 探针
     if importlib.util.find_spec("pyocd") is not None or probes is not None:
         try:

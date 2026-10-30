@@ -135,7 +135,8 @@ class MockBackend:
 class Flasher:
     def __init__(self, session, cfg: dict, backend_factory=None):
         self.s, self.cfg = session, cfg
-        self.factory = backend_factory or (lambda: PyOCDBackend(cfg["flash"]["target"], cfg["flash"].get("probe")))
+        # flash.tool：pyocd（默认）/ openocd / jlink / probe-rs（dzbench/probes.py）；烧录、备份、变量实时读取共用
+        self.factory = backend_factory or (lambda: __import__("dzbench.probes", fromlist=["make_backend"]).make_backend(cfg["flash"]))
         self.last_build: dict | None = None
         self.backups: list[pathlib.Path] = []
         self.prev_schema_hash: int | None = None        # 烧之前板上跑的固件（回滚后按它校验）

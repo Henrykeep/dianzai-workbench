@@ -14,7 +14,7 @@ import pathlib
 from . import snapshots
 
 DEFAULTS: dict = {
-    "flash": {"tool": "pyocd", "target": None, "probe": None, "dry_run": True, "keep_previous": True,
+    "flash": {"tool": "pyocd", "target": None, "probe": None, "probe_kind": None, "dry_run": True, "keep_previous": True,
               "heartbeat_timeout_s": 3.0},
     "build": {"keil_uv4": None, "keil_project": None, "keil_target": None, "elf": None,
               "image": None, "link_schema": None},   # image：要烧的文件（缺省 = elf）；link_schema：烧后核对心跳哈希
@@ -27,7 +27,7 @@ DEFAULTS: dict = {
     "serial": {"dtr": None, "rts": None},   # None = 驱动默认；false = 打开串口时不拉 DTR/RTS（ESP32/自动下载电路防复位）
     "core": None,           # "cm0plus" / "cm3" / "cm4" / "cm7"；不填按 flash.target 猜
 }
-ENV = {"DZBENCH_PYOCD_TARGET": ("flash", "target"), "DZBENCH_PROBE": ("flash", "probe"), "DZBENCH_UV4": ("build", "keil_uv4")}
+ENV = {"DZBENCH_PYOCD_TARGET": ("flash", "target"), "DZBENCH_PROBE": ("flash", "probe"), "DZBENCH_FLASH_TOOL": ("flash", "tool"), "DZBENCH_PROBE_KIND": ("flash", "probe_kind"), "DZBENCH_UV4": ("build", "keil_uv4")}
 SECRET_KEYS = ("api_key", "password", "token", "secret")
 
 

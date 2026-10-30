@@ -1,0 +1,11 @@
+#!/usr/bin/env python3
+import os, sys
+open(os.environ["FAKEPROBE_LOG"], "a").write("jlink " + " ".join(sys.argv[1:]) + "\n")
+script = open(sys.argv[sys.argv.index("-CommandFile") + 1]).read()
+open(os.environ["FAKEPROBE_LOG"], "a").write(script)
+print("Found SW-DP with ID 0x0BC11477")
+for line in script.splitlines():
+    if line.startswith("mem8"):
+        a, n = [int(x.strip(), 16) for x in line[4:].split(",")]
+        for off in range(0, n, 16):
+            print(f"{a + off:08X} = " + " ".join(f"{(off + i) & 0xFF:02X}" for i in range(min(16, n - off))))

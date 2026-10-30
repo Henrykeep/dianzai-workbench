@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""假 openocd：记下命令行，按 -c "tcl_port N" 起 TCL RPC 服务（\x1a 分帧），回 read_memory/program/reset/dpreg。"""
+import os, socket, sys
+args = sys.argv[1:]
+open(os.environ["FAKEPROBE_LOG"], "a").write("openocd " + " ".join(args) + "\n")
+port = int(next(a.split()[1] for a in args if a.startswith("tcl_port")))
+mem = bytes(range(256)) * 16
+srv = socket.socket(); srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1); srv.bind(("127.0.0.1", port)); srv.listen(1)
+c, _ = srv.accept(); buf = b""
+while True:
+    d = c.recv(4096)
+    if not d: break
+    buf += d
+    while b"\x1a" in buf:
+        cmd, buf = buf.split(b"\x1a", 1); cmd = cmd.decode()
+        open(os.environ["FAKEPROBE_LOG"], "a").write("tcl " + cmd + "\n")
+        if cmd == "shutdown": c.close(); sys.exit(0)
+        if "dpreg 0" in cmd: r = "0x2ba01477"
+        elif cmd.startswith("read_memory"):
+            _, a, _, n = cmd.split(); a = int(a, 16) & 0xFFF
+            r = " ".join(f"0x{mem[(a + i) % len(mem)]:02x}" for i in range(int(n)))
+        elif cmd.startswith("program"): r = "** Programming Finished **\n** Verified OK **"
+        elif cmd == "flash list": r = "{name stm32f2x base 134217728 size 524288 bus_width 0 chip_width 0}"
+        else: r = ""
+        c.sendall(r.encode() + b"\x1a")
