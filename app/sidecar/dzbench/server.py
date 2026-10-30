@@ -113,6 +113,8 @@ class Server:
             return s.cmd(m["c"], m.get("n"))
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
+        if op == "run_selftest":                   # 重跑板上自检（'H'）→ 回失败项
+            return await run(None, s.run_selftest)
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
             return await run(None, s.save_params)
         if op == "blackbox":
