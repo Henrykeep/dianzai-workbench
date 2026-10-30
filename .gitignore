@@ -15,5 +15,6 @@ __pycache__/
 node_modules/
 app/ui/dist/
 app/src-tauri/target/
+app/src-tauri/gen/          # tauri build 生成的 schemas
 app/src-tauri/binaries/
 .pytest_cache/

@@ -119,6 +119,7 @@ def test_sim_tuning_round_two_clicks(tmp_path, home):
         s.disconnect()
 
 
+@pytest.mark.needs_third_party("stm32f4xx-hal-driver", "stm32f1xx-hal-driver", "cmsis-device-f4", "cmsis-device-f1")
 def test_project_chain_one_card(repo, tmp_path):
     """一句话跑完项目：Agent 预览读题→方案→(从零新建)→分配→生成，只写暂存区；一张总确认卡写入。共 2 下（问 + 确认）。"""
     llm = FakeLLM([
