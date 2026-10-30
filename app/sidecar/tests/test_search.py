@@ -69,3 +69,24 @@ def test_wide_mode_reaches_further():
     st = optimize(ev, SEED, strategy="staged", sim=True, iterations=12, wide=True)
     assert st["best"]["score"] < 0.8
 
+
+
+def test_verify_group_runs_step_only_when_all_accepted():
+    """上板验证：整组提议都采纳才触发验证阶跃；有一张拒绝 → 整组作废。"""
+    from dzbench.agent.service import AgentService
+
+    class T:
+        n = 0
+        def propose_param_change(self, k, v, reason, src):
+            T.n += 1
+            return {"id": T.n, "status": "pending_user_confirmation"}
+    svc = AgentService.__new__(AgentService)
+    svc.tools = T()
+    ids = [r["id"] for r in svc.propose_hint({"kp": 1, "ki": 2}, "x", verify_step=True)]
+    assert not svc.verify_after_decide(ids[0], {"status": "applied"})
+    assert svc.verify_after_decide(ids[1], {"status": "applied"})
+    ids = [r["id"] for r in svc.propose_hint({"kp": 1, "ki": 2}, "x", verify_step=True)]
+    assert not svc.verify_after_decide(ids[0], {"status": "rejected"})
+    assert not svc.verify_after_decide(ids[1], {"status": "applied"})
+    assert not svc.verify_after_decide(99, {"status": "applied"})        # 普通提议不触发
+    assert svc.propose_hint({"kp": 1}, "x") and not svc.verify_after_decide(T.n, {"status": "applied"})

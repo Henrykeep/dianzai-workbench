@@ -680,8 +680,29 @@ class AgentService:
             raise LinkError("search_failed", str(e), "确认是开环台阶数据、反馈和控制量通道选对")
         return r | {"names": gn}
 
-    def propose_hint(self, changes: dict, reason: str) -> list[dict]:
-        return [self.tools.propose_param_change(k, v, reason, "规则") for k, v in changes.items()]
+    def propose_hint(self, changes: dict, reason: str, verify_step: bool = False) -> list[dict]:
+        """verify_step=True（仿真搜索“上板验证”勾了自动阶跃）：这组提议卡全部被你采纳后，自动做一次阶跃实验，
+        TuneGuard 判定（继续/达标/回滚）走 tune_round 事件显示。有一张被拒 → 这组作废、不做实验。"""
+        out = [self.tools.propose_param_change(k, v, reason, "规则" if not verify_step else "仿真搜索") for k, v in changes.items()]
+        if verify_step and out:
+            if not hasattr(self, "verify_groups"):
+                self.verify_groups = {}
+            ids = {r["id"] for r in out}
+            for i in ids:
+                self.verify_groups[i] = ids
+        return out
+
+    def verify_after_decide(self, pid: int, result: dict) -> bool:
+        """提议卡决定后调用；返回 True = 这组都已采纳，该做验证阶跃了（由调用方在后台跑 run_step_test）。"""
+        groups = getattr(self, "verify_groups", {})
+        ids = groups.pop(pid, None)
+        if ids is None:
+            return False
+        if result.get("status") != "applied":
+            for i in ids:
+                groups.pop(i, None)
+            return False
+        return not any(i in groups for i in ids)
 
     # -------------------------------------------------------------- 写回 yaml
     def configure(self, update: dict) -> dict:

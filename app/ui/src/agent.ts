@@ -68,6 +68,7 @@ export function initAgent(call: Call) {
     const md = r.model;
     const d = add(`<div class="hd"><span class="dotk tune"></span><span class="t">仿真搜索</span><span class="lbl">${esc(r.strategy)}${r.wide ? " · 宽范围" : ""} · ${r.evals} 次仿真</span></div>
       <p class="sm">模型 K=${n(md.K, 3)} τ=${n(md.tau_s, 3, " s")} L=${n(md.dead_s, 3, " s")}；初值来自${md.seed_from === "board" ? "板上当前参数" : "辨识"}。得分 1.0 = 和初值一样，越小越好。候选只是仿真结果：逐个上板验证，每次都要你确认。</p>
+      <label class="sm"><input type="checkbox" class="vstep" checked> 全部采纳后自动做一次阶跃实验，显示护栏判定</label>
       <div class="hints"></div>`);
     const hs = d.querySelector(".hints")!;
     r.top.forEach((c: { gains: Record<string, number>; score: number }, i: number) => {
@@ -75,7 +76,7 @@ export function initAgent(call: Call) {
       Object.entries(c.gains).forEach(([k, v]) => { if (r.names[k]) changes[r.names[k]] = v; });
       const e = document.createElement("div"); e.className = "h info";
       e.innerHTML = `<span>#${i + 1} 得分 ${n(c.score, 3)}：${Object.entries(changes).map(([k, v]) => `${esc(k)}=${+v.toPrecision(4)}`).join(" ")}</span><button class="btn sm">上板验证</button>`;
-      e.querySelector("button")!.addEventListener("click", ev => { (ev.target as HTMLButtonElement).disabled = true; call("tune_propose", { changes, reason: `仿真搜索候选 #${i + 1}（${r.strategy}，得分 ${c.score}）` }); });
+      e.querySelector("button")!.addEventListener("click", ev => { (ev.target as HTMLButtonElement).disabled = true; call("tune_propose", { changes, reason: `仿真搜索候选 #${i + 1}（${r.strategy}，得分 ${c.score}）`, verify_step: d.querySelector<HTMLInputElement>(".vstep")!.checked }); });
       hs.append(e);
     });
   }

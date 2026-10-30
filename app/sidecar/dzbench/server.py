@@ -159,7 +159,16 @@ class Server:
         if op == "propose":
             return self.agent.propose_param_change(m["name"], m["value"], m.get("reason", ""), m.get("source", "user"))
         if op == "proposal_decide":
-            return await run(None, self.agent.decide, int(m["id"]), bool(m["accept"]))
+            r = await run(None, self.agent.decide, int(m["id"]), bool(m["accept"]))
+            if self.svc.verify_after_decide(int(m["id"]), r):   # 仿真搜索候选整组已采纳 → 自动验证阶跃（结果走 tune_round）
+                async def _verify():
+                    try:
+                        await run(None, self.svc.run_step_test)
+                    except Exception as e:  # noqa: BLE001  错误卡（中文原因），不影响已采纳的参数
+                        self.emit(LinkError("verify_step_failed", f"验证阶跃没做成：{e}", "检查 dzbench.json 的 step_test，或手动点“阶跃实验”").as_dict())
+                asyncio.ensure_future(_verify())
+                r = r | {"verify_step": True}
+            return r
         if op == "agent_tool":
             return await run(None, self.agent.call, m["tool"], m.get("args", {}))
         if op == "health":
@@ -234,7 +243,7 @@ class Server:
             return await run(None, lambda: self.svc.sim_search(m["y"], m["u"], float(m.get("seconds", 5)), m.get("strategy", "pso"),
                                                                bool(m.get("wide")), int(m.get("top_k", 3))))
         if op == "tune_propose":
-            return self.svc.propose_hint(m["changes"], m.get("reason", "阶跃分析规则建议"))
+            return self.svc.propose_hint(m["changes"], m.get("reason", "阶跃分析规则建议"), bool(m.get("verify_step")))
         if op == "agent_ask":
             return await run(None, self.svc.ask, m["text"])
         if op == "agent_undo":                     # 人点“撤销 Agent 上一步”：参数改回 / git revert
