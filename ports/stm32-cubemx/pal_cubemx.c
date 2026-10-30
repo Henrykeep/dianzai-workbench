@@ -778,7 +778,42 @@ dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n) { (void)off; (vo
 dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
 #endif
 
-/* ---------- ADC 块采样（软件定时，PAL 1.6.0）+ DAC（本端口未实现） ---------- */
+/* ---------- ADC 块采样（PAL 1.6.0） ---------- */
 #include "pal_adc_block.inc"
-dz_err_t pal_dac_write(pal_id_t id, uint16_t code) { (void)id; (void)code; return DZ_ENOTSUP; }
-dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info) { (void)id; (void)info; return DZ_ENOTSUP; }
+
+/* ---------- DAC（PAL 1.7.0）：HAL_DAC_SetValue，右对齐 12 位（8 位资源用 DAC_ALIGN_8B_R）。
+ * 外设、输出缓冲、引脚（F4/H7 的 PA4/PA5 模拟）全在 CubeMX；本层第一次写时 HAL_DAC_Start 该通道。
+ * 板上没有 DAC（F103C8 等）时 board.yaml 不能写 dac（validate_board 按型号拒绝），这里返回 DZ_ENOTSUP。【编译】未上板。 */
+#if BOARD_DAC_COUNT > 0
+#ifndef HAL_DAC_MODULE_ENABLED
+#error "board.yaml 有 dac 资源，但 CubeMX 工程没启用 DAC（hal_conf 缺 HAL_DAC_MODULE_ENABLED）"
+#endif
+static uint8_t s_dac_started[BOARD_DAC_COUNT];
+#endif
+dz_err_t pal_dac_write(pal_id_t id, uint16_t code)
+{
+#if BOARD_DAC_COUNT > 0
+    if (id >= BOARD_DAC_COUNT) return DZ_ENODEV;
+    const cm_dac_t *d = &g_cm_dac[id];
+    if (d->info.bits == 0u || d->info.bits > 12u || (uint32_t)code >= (1u << d->info.bits)) return DZ_EINVAL;
+    if (!s_dac_started[id]) {
+        if (HAL_DAC_Start(d->h, d->channel) != HAL_OK) return DZ_EIO;
+        s_dac_started[id] = 1u;
+    }
+    uint32_t align = d->info.bits == 8u ? DAC_ALIGN_8B_R : DAC_ALIGN_12B_R;
+    return HAL_DAC_SetValue(d->h, d->channel, align, code) == HAL_OK ? DZ_OK : DZ_EIO;
+#else
+    (void)id; (void)code; return DZ_ENOTSUP;     /* 本板没有 DAC 资源（或芯片没有 DAC 外设） */
+#endif
+}
+dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info)
+{
+#if BOARD_DAC_COUNT > 0
+    if (id >= BOARD_DAC_COUNT) return DZ_ENODEV;
+    if (!info) return DZ_EINVAL;
+    *info = g_cm_dac[id].info;
+    return DZ_OK;
+#else
+    (void)id; (void)info; return DZ_ENOTSUP;
+#endif
+}

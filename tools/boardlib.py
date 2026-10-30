@@ -92,16 +92,61 @@ def schema_check(board: dict, rep: Report) -> None:
 F4HAL_FROZEN = {"stm32f407-skystar", "dji-rm-c"}
 
 
+# 哪些芯片有 DAC 外设（按 mcu.part 前缀；数据手册“Features”一栏）。没登记的型号按“没有”处理并提示补表。
+DAC_PARTS = [
+    (r"STM32F10[0-3][A-Z][C-G]", "DAC"), (r"STM32F10[57]", "DAC"),                  # F1 大容量/互联型才有 DAC（C8/CB 没有）
+    (r"STM32F4(05|07|10|13|15|17|23|27|29|37|39|46|69|79)", "DAC"),                 # F401/F411/F412 没有 DAC
+    (r"STM32(H7|G4|L4|F7)", "DAC1"),
+    (r"MSPM0G[13]50[5-7]", "DAC0"),                                                   # MSPM0G310x/L 系列没有 DAC12
+]
+DAC_PORTS = {"host-sim", "stm32-cubemx", "mspm0-driverlib"}
+
+
+def dac_instance(part: str):
+    """返回芯片 DAC 外设名（DAC / DAC1 / DAC0），没有或没登记返回 None。"""
+    for pat, inst in DAC_PARTS:
+        if re.match(pat, part or ""):
+            return inst
+    return None
+
+
+def check_dac(board: dict, res: dict, rep: Report) -> None:
+    dacs = res.get("dac") or []
+    port = board.get("port")
+    if not dacs or port == "host-sim":
+        pass
+    elif port not in DAC_PORTS:
+        rep.err(f"[DAC] 端口 {port} 没实现 pal_dac_write（返回 DZ_ENOTSUP）：stm32f4-hal 已冻结，要 DAC 请走 stm32-cubemx")
+    else:
+        part = (board.get("mcu") or {}).get("part", "")
+        inst = dac_instance(part)
+        if inst is None:
+            rep.err(f"[DAC] {part} 没有 DAC 外设（或 boardlib.DAC_PARTS 没登记这个型号）：删掉 dac 资源；"
+                    f"F103C8/CB、F401/F411、MSPM0G310x 都没有 DAC，pal_dac_write 在这些板上返回 DZ_ENOTSUP")
+        else:
+            for r in dacs:
+                ri = r.get("instance")
+                if port == "mspm0-driverlib" and ri != "DAC0":
+                    rep.err(f"[DAC] dac.{r.get('name')}: MSPM0 的 DAC12 实例只有 DAC0（写的是 {ri}）")
+                elif port == "stm32-cubemx" and not re.fullmatch(r"DAC\d?", str(ri)):
+                    rep.err(f"[DAC] dac.{r.get('name')}: instance 应为 DAC / DAC1（写的是 {ri}）")
+                if port == "stm32-cubemx" and r.get("channel") not in (1, 2):
+                    rep.err(f"[DAC] dac.{r.get('name')}: STM32 DAC 通道是 1 或 2")
+                if port == "mspm0-driverlib" and r.get("channel") != 0:
+                    rep.err(f"[DAC] dac.{r.get('name')}: MSPM0 DAC12 只有通道 0（输出 PA15）")
+                if r.get("bits", 12) not in (8, 12):
+                    rep.err(f"[DAC] dac.{r.get('name')}: 真板 DAC 只支持 8 或 12 位")
+    for r in dacs:
+        b = r.get("bits", 12)
+        if not isinstance(b, int) or not 1 <= b <= 16:
+            rep.err(f"[DAC] dac.{r.get('name')}: bits 须为 1..16 的整数")
+
+
 def generic_check(board: dict, rep: Report) -> None:
     if board.get("port") == "stm32f4-hal" and board.get("name") not in F4HAL_FROZEN:
         rep.err("[移植层] stm32f4-hal 已冻结，新 STM32 板一律走 stm32-cubemx（docs/05-CubeMX工作流.md、docs/06-新增板卡.md）")
     res = board.get("resources", {}) or {}
-    if res.get("dac") and board.get("port") != "host-sim":
-        rep.err(f"[DAC] 端口 {board.get('port')} 还没实现 pal_dac_write（返回 DZ_ENOTSUP）：dac 资源目前只在 host-sim 生效，先删掉或自己补端口实现")
-    for r in res.get("dac", []) or []:
-        b = r.get("bits", 12)
-        if not isinstance(b, int) or not 1 <= b <= 16:
-            rep.err(f"[DAC] dac.{r.get('name')}: bits 须为 1..16 的整数")
+    check_dac(board, res, rep)
     # 1) 同类资源重名
     for t in RES_TYPES:
         names = [r.get("name") for r in res.get(t, []) or []]

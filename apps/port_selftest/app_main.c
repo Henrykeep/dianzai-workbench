@@ -5,7 +5,7 @@
  * 输出（LINK 串口，每 1 s 一份）：
  *   ST time  ok|FAIL  micros/millis 一致性、delay_us 误差
  *   ST timer ok|FAIL  CTRL 1 kHz 回调实际次数
- *   ST pwm/enc/adc    每个资源调用结果（PWM 依次扫 0/50/100% 占空比，用示波器看）
+ *   ST pwm/enc/adc/dac    每个资源调用结果（PWM 依次扫 0/50/100% 占空比，用示波器看）
  *   ST uart dropped=  LINK 接收丢字节数；收到的字节原样回显（串口助手发什么回什么）
  * 判定靠人看示波器/串口助手；本固件只保证“每个 PAL 接口都被调用过且返回值被打印”。
  */
@@ -92,6 +92,15 @@ void app_loop(void)
     for (pal_id_t i = 0; i < BOARD_ADC_COUNT; i++) {
         uint16_t r = 0; dz_err_t e = pal_adc_read(i, &r);
         snprintf(b, sizeof b, "ST adc%u raw=%u rc=%d\r\n", (unsigned)i, (unsigned)r, (int)e); say(b);
+    }
+#endif
+#if BOARD_DAC_COUNT > 0
+    for (pal_id_t i = 0; i < BOARD_DAC_COUNT; i++) {
+        pal_dac_info_t di = {0}; dz_err_t e = pal_dac_info(i, &di);
+        uint16_t mid = (uint16_t)(di.bits ? (1u << (di.bits - 1u)) : 0u);
+        if (e == DZ_OK) e = pal_dac_write(i, mid);
+        snprintf(b, sizeof b, "ST dac%u code=%u rc=%d (万用表应读约 %lu mV)\r\n", (unsigned)i, (unsigned)mid, (int)e,
+                 (unsigned long)(di.vref_mv / 2u)); say(b);
     }
 #endif
     uint32_t d = 0; (void)pal_uart_rx_dropped(RES_UART_LINK, &d);

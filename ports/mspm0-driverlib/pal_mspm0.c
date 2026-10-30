@@ -789,5 +789,31 @@ dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (
 
 /* ---------- ADC 块采样（软件定时，PAL 1.6.0）+ DAC（本端口未实现） ---------- */
 #include "pal_adc_block.inc"
-dz_err_t pal_dac_write(pal_id_t id, uint16_t code) { (void)id; (void)code; return DZ_ENOTSUP; }
-dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info) { (void)id; (void)info; return DZ_ENOTSUP; }
+
+/* ---------- DAC（PAL 1.7.0）：DAC12，SysConfig 配好 DAC12 模块（12 位、二进制格式、输出到 PA15、VDDA 参考）并 enable。
+ * 本层只写 DATA0：DL_DAC12_output12（8 位资源 DL_DAC12_output8）。思路参考 firework@ede35a2 bsp/dac/bsp_dac.c 的“原始码直写”。
+ * 芯片没有 DAC（MSPM0G310x、L 系列）时 board.yaml 不能写 dac（validate_board 按型号拒绝），这里返回 DZ_ENOTSUP。【编译】未上板。 */
+dz_err_t pal_dac_write(pal_id_t id, uint16_t code)
+{
+#if BOARD_DAC_COUNT > 0
+    if (id >= BOARD_DAC_COUNT) return DZ_ENODEV;
+    const m0_dac_t *d = &g_m0_dac[id];
+    if (d->info.bits == 0u || d->info.bits > 12u || (uint32_t)code >= (1u << d->info.bits)) return DZ_EINVAL;
+    if (d->info.bits == 8u) DL_DAC12_output8(d->inst, (uint8_t)code);
+    else DL_DAC12_output12(d->inst, code);
+    return DZ_OK;
+#else
+    (void)id; (void)code; return DZ_ENOTSUP;
+#endif
+}
+dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info)
+{
+#if BOARD_DAC_COUNT > 0
+    if (id >= BOARD_DAC_COUNT) return DZ_ENODEV;
+    if (!info) return DZ_EINVAL;
+    *info = g_m0_dac[id].info;
+    return DZ_OK;
+#else
+    (void)id; (void)info; return DZ_ENOTSUP;
+#endif
+}

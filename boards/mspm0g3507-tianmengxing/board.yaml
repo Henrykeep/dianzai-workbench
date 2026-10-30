@@ -117,6 +117,14 @@ resources:
     vref_mv: 3300
     scale_num: 11         # 假定 10k:1k 分压（2S 锂电 8.4 V → 0.76 V）；【未验证】天猛星板上没有这个分压，要自己焊
     scale_den: 1
+  dac:                    # SysConfig DAC12 模块（单例，OUT0 = PA15）
+  - name: WAVE
+    instance: DAC0
+    channel: 0
+    pin: PA15
+    bits: 12
+    vref_mv: 3300
+    note: DAC12 输出；【编译】未上板
   timer:
   - name: CTRL
     instance: TIMG7

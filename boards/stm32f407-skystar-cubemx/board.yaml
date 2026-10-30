@@ -109,6 +109,15 @@ resources:
     verified: false
     note: 建议接线：Jetson Nano（视觉/图传协处理器）的 UART；Jetson 为 3.3V 电平，共地即可，切勿接 5V TTL
     dma: true
+  dac:
+  - name: WAVE
+    instance: DAC
+    channel: 1
+    pin: PA4
+    bits: 12
+    vref_mv: 3300
+    verified: false
+    note: DAC_OUT1（CubeMX 标签 DAC_WAVE，输出缓冲开）；【编译】未上板
   timer:
   - name: CTRL
     instance: TIM6

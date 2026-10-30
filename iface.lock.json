@@ -1355,7 +1355,7 @@
    "pal.h: dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);"
   ],
   "hash": "02e94094264e42d4",
-  "version": "1.6.0"
+  "version": "1.7.0"
  },
  "firmware/proto/dzctl": {
   "decls": [
@@ -1608,6 +1608,10 @@
    "port_mspm0.h: uint32_t chansel;",
    "port_mspm0.h: pal_adc_info_t info;",
    "port_mspm0.h: } m0_adc_t;",
+   "port_mspm0.h: typedef struct { DAC12_Regs *inst;",
+   "port_mspm0.h: pal_dac_info_t info;",
+   "port_mspm0.h: } m0_dac_t;",
+   "port_mspm0.h: extern const m0_dac_t g_m0_dac[];",
    "port_mspm0.h: extern const m0_gpio_t g_m0_gpio[];",
    "port_mspm0.h: extern const m0_pwm_t g_m0_pwm[];",
    "port_mspm0.h: extern const m0_enc_t g_m0_enc[];",
@@ -1644,8 +1648,8 @@
    "wwdt_calc.h: *actual_ms = (uint32_t)best;",
    "wwdt_calc.h: return 1;"
   ],
-  "hash": "19636263ee0f1d5d",
-  "version": "0.8.0"
+  "hash": "22b25b6843646f6a",
+  "version": "0.9.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -1712,6 +1716,15 @@
    "port_cubemx.h: GPIO_TypeDef *cs_port;",
    "port_cubemx.h: uint16_t cs_pin;",
    "port_cubemx.h: } cm_spi_t;",
+   "port_cubemx.h: typedef struct { DAC_HandleTypeDef *h;",
+   "port_cubemx.h: uint32_t channel;",
+   "port_cubemx.h: pal_dac_info_t info;",
+   "port_cubemx.h: } cm_dac_t;",
+   "port_cubemx.h: typedef struct { void *h;",
+   "port_cubemx.h: uint32_t channel;",
+   "port_cubemx.h: pal_dac_info_t info;",
+   "port_cubemx.h: } cm_dac_t;",
+   "port_cubemx.h: extern const cm_dac_t g_cm_dac[];",
    "port_cubemx.h: extern const cm_gpio_t g_cm_gpio[];",
    "port_cubemx.h: extern const cm_pwm_t g_cm_pwm[];",
    "port_cubemx.h: extern const cm_enc_t g_cm_enc[];",
@@ -1726,8 +1739,8 @@
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "04a2087d8d43f192",
-  "version": "1.8.0"
+  "hash": "5e2f6639a1786661",
+  "version": "1.9.0"
  },
  "ports/stm32f4-hal": {
   "decls": [

@@ -34,6 +34,13 @@ typedef struct { SPI_HandleTypeDef *h; GPIO_TypeDef *cs_port; uint16_t cs_pin; }
 #else
 typedef struct { void *h; GPIO_TypeDef *cs_port; uint16_t cs_pin; } cm_spi_t;
 #endif
+/** DAC 通道（PAL 1.7.0）：CubeMX 的 hdac / hdac1 句柄 + DAC_CHANNEL_x + 换算信息 */
+#ifdef HAL_DAC_MODULE_ENABLED
+typedef struct { DAC_HandleTypeDef *h; uint32_t channel; pal_dac_info_t info; } cm_dac_t;
+#else
+typedef struct { void *h; uint32_t channel; pal_dac_info_t info; } cm_dac_t;
+#endif
+extern const cm_dac_t   g_cm_dac[];
 extern const cm_gpio_t  g_cm_gpio[];
 extern const cm_pwm_t   g_cm_pwm[];
 extern const cm_enc_t   g_cm_enc[];

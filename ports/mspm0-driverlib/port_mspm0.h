@@ -25,7 +25,11 @@ typedef struct { SPI_Regs *inst; GPIO_Regs *cs_port; uint32_t cs_pin; } m0_spi_t
 /** ADC 通道：SysConfig 实例 ADC12_<n> + 通道号（DL_ADC12_INPUT_CHAN_x）+ 换算信息 */
 typedef struct { ADC12_Regs *inst; uint32_t chansel; pal_adc_info_t info; } m0_adc_t;
 
+/** DAC 通道（PAL 1.7.0）：DAC12 外设（G350x/G150x 只有 DAC0，输出 PA15）+ 换算信息；参考电压/输出缓冲在 SysConfig */
+typedef struct { DAC12_Regs *inst; pal_dac_info_t info; } m0_dac_t;
+
 /* 由 board_gen.c 提供 */
+extern const m0_dac_t g_m0_dac[];
 extern const m0_gpio_t  g_m0_gpio[];
 extern const m0_pwm_t   g_m0_pwm[];
 extern const m0_enc_t   g_m0_enc[];

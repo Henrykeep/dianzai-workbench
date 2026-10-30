@@ -9,6 +9,7 @@ CubeMX 是唯一配置源：引脚/时钟/DMA/中断都在 .ioc 里改，board.y
     ENC_<名>_A / _B       -> resources.encoder（TIMx_CH1/CH2，Encoder_Interface）
     UART_<名>_TX / _RX    -> resources.uart
     ADC_<名>              -> resources.adc
+    DAC_<名>              -> resources.dac（PA4/PA5 的 COMP_DAC1_group / DAC_OUT1；PAL 1.7.0）
     节拍定时器没有引脚：用 --timer CTRL=TIM6 指定，或沿用 --base 板卡里同实例的名字。
 
 检查（错误 = 退出码 1）：
@@ -85,7 +86,7 @@ CORE_EXC = {"NonMaskableInt_IRQn", "HardFault_IRQn", "MemoryManagement_IRQn", "B
             "SVCall_IRQn", "DebugMonitor_IRQn", "PendSV_IRQn", "SysTick_IRQn"}
 # CubeMX 不写入 .ioc 的默认 HSE_VALUE（只收录查证过的系列；其它系列缺省时记 TODO）
 HSE_DEFAULT = {"stm32f1": 8_000_000, "stm32f4": 25_000_000}
-PREFIXES = ("GPIO_", "PWM_", "ENC_", "UART_", "ADC_")
+PREFIXES = ("GPIO_", "PWM_", "ENC_", "UART_", "ADC_", "DAC_")
 FREERTOS_MAX_SYSCALL_PRIO = 5   # CubeMX FreeRTOS 默认 configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY
 
 
@@ -154,7 +155,7 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
         rep.err("N1", f"NVIC 优先级分组为 {ioc.get('NVIC.PriorityGroup')}，必须为 NVIC_PRIORITYGROUP_4")
 
     pins = pins_of(ioc)
-    res = {t: [] for t in ("gpio", "pwm", "encoder", "uart", "timer", "adc")}
+    res = {t: [] for t in ("gpio", "pwm", "encoder", "uart", "timer", "adc", "dac")}
     enc: dict[str, dict] = {}       # timer -> {pins, labels}
     uart: dict[str, dict] = {}      # instance -> {tx, rx, labels}
     other: dict[str, list] = {}     # 暂不支持的外设实例 -> [(signal, pin)]
@@ -176,6 +177,7 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
         tm = re.fullmatch(r"S_(TIM\d+)_CH(\d)(?:_ETR)?", sig)
         um = re.fullmatch(r"((?:LP)?U(?:S)?ART\d+)_(TX|RX)", sig)
         am = re.fullmatch(r"ADC(?:x|\d)_IN(\d+)", sig)
+        dm = re.fullmatch(r"COMP_DAC(\d)_group|DAC\d?_OUT(\d)", sig)
 
         if sig.startswith("GPIO_") and sig in ("GPIO_Output", "GPIO_Input"):
             if pre and pre != "GPIO_":
@@ -236,6 +238,14 @@ def extract(ioc: dict, timers: dict[str, str], rep: Rep) -> tuple[dict, dict]:
             name = base or f"ADC_IN{am[1]}"
             if claim("adc", name, pin):
                 res["adc"].append({"name": name, "instance": inst[1] if inst else "ADC1", "channel": int(am[1]), "pin": pin})
+        elif dm:
+            ch = int(dm[1] or dm[2])
+            ips = {v for k, v in ioc.items() if re.fullmatch(r"Mcu\.IP\d+", k)}
+            name = base or f"DAC_OUT{ch}"
+            if pre and pre != "DAC_":
+                rep.err("L1", f"{pin} 标签 {lab} 但信号是 {sig}（DAC 输出脚请标 DAC_<名>）")
+            elif claim("dac", name, pin):
+                res["dac"].append({"name": name, "instance": "DAC" if "DAC" in ips else "DAC1", "channel": ch, "pin": pin})
         else:
             if pre:
                 rep.err("L1", f"{pin} 标签 {lab} 但信号是 {sig}（与前缀 {pre} 不符）")
@@ -485,7 +495,8 @@ def build_board(res: dict, meta: dict, base: dict | None, ioc_rel: str) -> dict:
 
 
 KEYS = {"gpio": ("pin",), "pwm": ("timer", "channel", "pin"), "encoder": ("timer", "pin_a", "pin_b"),
-        "uart": ("instance", "tx", "rx", "baud"), "timer": ("instance",), "adc": ("instance", "channel", "pin")}
+        "uart": ("instance", "tx", "rx", "baud"), "timer": ("instance",), "adc": ("instance", "channel", "pin"),
+        "dac": ("instance", "channel", "pin")}
 
 
 def diff(res: dict, board: dict) -> list[str]:

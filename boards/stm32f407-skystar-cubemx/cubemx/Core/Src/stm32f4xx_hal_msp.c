@@ -26,6 +26,17 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef *h)
   }
 }
 
+void HAL_DAC_MspInit(DAC_HandleTypeDef *h)
+{
+  if (h->Instance == DAC) {
+    GPIO_InitTypeDef g = {0};
+    __HAL_RCC_DAC_CLK_ENABLE();
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    g.Pin = GPIO_PIN_4; g.Mode = GPIO_MODE_ANALOG; g.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &g);
+  }
+}
+
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *h)
 {
   if (h->Instance == TIM1) __HAL_RCC_TIM1_CLK_ENABLE();

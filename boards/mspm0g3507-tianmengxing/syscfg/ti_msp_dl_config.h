@@ -280,6 +280,7 @@ void SYSCFG_DL_UART_LINK_init(void);
 void SYSCFG_DL_UART_IMU_init(void);
 void SYSCFG_DL_SPI_BUS1_init(void);
 void SYSCFG_DL_ADC12_0_init(void);
+void SYSCFG_DL_DAC12_init(void);
 
 
 bool SYSCFG_DL_saveConfiguration(void);

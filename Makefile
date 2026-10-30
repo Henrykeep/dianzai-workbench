@@ -210,6 +210,7 @@ check:
 	CUBE_HAL= $(PY) tools/test_keil_inject.py   # 故意不给 HAL：CI 上没有 third_party，本地也按同样条件测
 	$(PY) tools/test_module_ide.py
 	$(PY) tools/test_mspm0_board.py
+	$(PY) tools/test_dac_caps.py
 	$(PY) tools/test_new_subsys.py
 	$(PY) tools/test_report.py
 	$(PY) tools/test_req.py

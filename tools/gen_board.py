@@ -240,10 +240,12 @@ CPU_FLAGS = {
 
 def _cube_handle(inst: str) -> str:
     """CubeMX 句柄命名：TIM3 -> htim3，USART1/UART4/LPUART1 -> huart1/huart4/hlpuart1，ADC1 -> hadc1。"""
-    m = re.fullmatch(r"(TIM|USART|UART|LPUART|ADC|I2C|SPI)(\d+)", inst)
+    if inst == "DAC":                       # F4/F1 只有一个 DAC 外设，CubeMX 句柄叫 hdac（H7/G4 是 DAC1 -> hdac1）
+        return "hdac"
+    m = re.fullmatch(r"(TIM|USART|UART|LPUART|ADC|I2C|SPI|DAC)(\d+)", inst)
     if not m:
         raise SystemExit(f"✗ 无法推出 CubeMX 句柄名：{inst}")
-    pre = {"TIM": "htim", "USART": "huart", "UART": "huart", "LPUART": "hlpuart", "ADC": "hadc", "I2C": "hi2c", "SPI": "hspi"}[m[1]]
+    pre = {"TIM": "htim", "USART": "huart", "UART": "huart", "LPUART": "hlpuart", "ADC": "hadc", "I2C": "hi2c", "SPI": "hspi", "DAC": "hdac"}[m[1]]
     return f"{pre}{m[2]}"
 
 
@@ -275,7 +277,10 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
         if h not in [x for x, _ in handles]:
             handles.append((h, typ))
         return h
-    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi")}
+    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi", "dac")}
+    for r in res.get("dac", []) or []:
+        rows["dac"].append(f"    {{ &{need(r['instance'], 'DAC')}, DAC_CHANNEL_{int(r['channel'])}, "
+                           f"{{ {int(r.get('bits', 12))}u, {int(r.get('vref_mv', 3300))}u }} }}, /* {r['name']} {r['pin']} */")
     for r in res.get("i2c", []) or []:
         rows["i2c"].append(f"    {{ &{need(r['instance'], 'I2C')} }}, /* {r['name']} */")
     for r in res.get("spi", []) or []:
@@ -304,7 +309,7 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
     for key, typ, name in (("gpio", "cm_gpio_t", "g_cm_gpio"), ("pwm", "cm_pwm_t", "g_cm_pwm"),
                            ("encoder", "cm_enc_t", "g_cm_enc"), ("uart", "cm_uart_t", "g_cm_uart"),
                            ("timer", "cm_timer_t", "g_cm_timer"), ("adc", "cm_adc_t", "g_cm_adc"),
-                           ("i2c", "cm_i2c_t", "g_cm_i2c"), ("spi", "cm_spi_t", "g_cm_spi")):
+                           ("i2c", "cm_i2c_t", "g_cm_i2c"), ("spi", "cm_spi_t", "g_cm_spi"), ("dac", "cm_dac_t", "g_cm_dac")):
         c += _table(typ, name, rows[key])
     c.append("const char *const g_board_name = BOARD_NAME;\n")
     cs = board["config_source"]
@@ -356,7 +361,7 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     UART_<名>、TIMER_<名>、I2C_<名>、SPI_BUS<n>（SPIn 总线）+ GPIO_CS_SPIn_<名>（软件片选，引脚名 CS）、ADC12_<n>（ADCn 外设，单次软件触发）。宏名按 SysConfig 的派生规则（<Name>_INST、<Name>_INST_IRQHandler…）。"""
     res = usable(board)
     c = [HEADER.format(src=src, sha=sha[:12]), '#include "port_mspm0.h"', '#include "board_gen.h"', ""]
-    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "i2c", "spi", "adc")}
+    rows = {k: [] for k in ("gpio", "pwm", "encoder", "uart", "timer", "i2c", "spi", "adc", "dac")}
     isr = []
     for r in res["gpio"]:
         n = f"GPIO_{r['name']}"
@@ -398,6 +403,8 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
         inst = r["instance"]   # ADC0 / ADC1 -> SysConfig 实例 ADC12_0 / ADC12_1
         rows["adc"].append(f"    {{ ADC12_{inst[-1]}_INST, DL_ADC12_INPUT_CHAN_{int(r['channel'])},\n"
                            f"      {_adc_info(r)} }}, /* {r['name']} {inst} CH{r['channel']} {r.get('pin', '')} */")
+    for r in res.get("dac") or []:
+        rows.setdefault("dac", []).append(f"    {{ {r['instance']}, {{ {int(r.get('bits', 12))}u, {int(r.get('vref_mv', 3300))}u }} }}, /* {r['name']} {r['instance']} {r['pin']}（DAC12 配置在 .syscfg） */")
     if gpio_enc or any(r.get("dir") == "in" for r in res["gpio"]):
         # 输入脚可能被 pal_gpio_irq_attach 挂边沿中断（PAL 1.2.0），与 GPIO 编码器共用 GROUP1
         isr.append("void GROUP1_IRQHandler(void) { dz_m0_gpio_enc_isr(); dz_m0_gpio_irq_isr(); }   /* GPIOA/GPIOB 中断组 */")
@@ -405,7 +412,7 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
     for key, typ, name in (("gpio", "m0_gpio_t", "g_m0_gpio"), ("pwm", "m0_pwm_t", "g_m0_pwm"),
                            ("encoder", "m0_enc_t", "g_m0_enc"), ("uart", "m0_uart_t", "g_m0_uart"),
                            ("timer", "m0_timer_t", "g_m0_timer"), ("i2c", "m0_i2c_t", "g_m0_i2c"),
-                           ("spi", "m0_spi_t", "g_m0_spi"), ("adc", "m0_adc_t", "g_m0_adc")):
+                           ("spi", "m0_spi_t", "g_m0_spi"), ("adc", "m0_adc_t", "g_m0_adc"), ("dac", "m0_dac_t", "g_m0_dac")):
         c += _table(typ, name, rows[key])
     c += ["/* 中断入口：向量名来自 SysConfig 的 <实例>_INST_IRQHandler 宏 */"] + isr + [""]
     c.append("const char *const g_board_name = BOARD_NAME;\n")

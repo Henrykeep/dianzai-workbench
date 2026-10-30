@@ -20,6 +20,9 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 
 **验证状态**：【已实测】car_2wd、imu_module（MPU6050 走 I2C）交叉编译通过；`.syscfg` 由 SysConfig CLI 1.28 生成。I2C/SPI **【编译】未上板**：NACK、时钟拉伸、长度 > 8 的写都没在真芯片上测过。【未验证】全部上板行为；`boards/mspm0g3507-tianmengxing/syscfg/` 下的配置是合成样例。
 
+## DAC（0.9.0，PAL 1.7.0）
+- SysConfig 加 DAC12 模块（单例，G350x/G150x 只有 DAC0，输出 PA15）；board.yaml `dac:` 写 `instance: DAC0, channel: 0, pin: PA15, bits: 12`。`pal_dac_write` 直写 DATA0（`DL_DAC12_output12`）。validate_board 对 MSPM0G310x 等没有 DAC 的型号直接拒绝。【编译】未上板。
+
 ## ADC 与 GPIO 边沿中断（0.4.0，PAL 1.2.0）
 - ADC：每个用到的 ADC12 外设在 SysConfig 里建一个实例，名字 `ADC12_<n>`（ADC0 → `ADC12_0`），单次、软件触发、MEM0；
   board.yaml `adc:` 写 `instance: ADC0, channel: <通道号>, pin: <引脚>`。`pal_adc_read` 每次把 MEM0 切到该通道，轮询结果（超时 1 ms，计入 `m0_diag()->adc_timeout`）。

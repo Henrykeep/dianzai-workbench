@@ -120,6 +120,8 @@ def extract(inst: dict) -> tuple[dict, list[str]]:
         if bus not in buses:
             todo.append(f"GPIO_CS_{bus}_{dev}: 找不到 SPI 实例 {bus}"); continue
         res.setdefault("spi", []).append({"name": dev, **buses[bus], "cs": pin})
+    if "DAC12" in inst:                                         # DAC12 是单例模块（变量名 DAC12）：G350x 只有 DAC0，输出 PA15
+        res.setdefault("dac", []).append({"name": "DAC", "instance": "DAC0", "channel": 0, "pin": "PA15"})
     return res, todo
 
 
@@ -171,7 +173,7 @@ def main() -> int:
     if a.check:
         have = (yaml.safe_load(a.check.read_text(encoding="utf-8")).get("resources") or {})
         def same(t, r, h):
-            return all(h.get(k) == v for k, v in r.items() if not (t in ("pwm", "adc") and k == "name"))
+            return all(h.get(k) == v for k, v in r.items() if not (t in ("pwm", "adc", "dac") and k == "name"))
         bad = [f"{t}.{r['name']}" for t, rs in res.items() for r in rs
                if not any(same(t, r, h) for h in have.get(t) or [])]
         for b in bad:

@@ -29,3 +29,9 @@ CubeMX 是唯一配置源，本层只包装 CubeMX 生成的句柄（htimX/huart
 Keil：`tools/keil_inject.py <工程>.uvprojx --board <板> --app <应用>` 会同时加 `DZ_NVM_KB/DZ_FLASH_KB` 宏、把 Linker→Scatter File 设成 `boards/<板>/keil/dz_nvm.sct`（tools/gen_ide_nvm.py 按 nvm_kb 生成：F1 程序区截短，F4 扇区 0 只放向量、程序从保存区之后开始；保存区是 EMPTY 域，下载不擦）并关掉“Use Memory Layout from Target Dialog”。armclang 下运行时核对 `Image$$ER_DZ_NVM$$ZI$$Base`，没用这份 .sct 链接直接报错。[未测] Keil 里没编译过。
 
 board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：F1 = Flash 末尾（页 1 KB，≥256 KB 型号 2 KB），F4 = 扇区 1..3（0x08004000 起，nvm_kb 只能 32/48；仓库里的 F4 链接脚本把 `.text` 放到保存区之后）。用你自己 CubeMX 生成的链接脚本时要照着留出这块，否则运行时检查到重叠会一直返回 ENOTSUP（不会擦到代码）。擦除期间 CPU 停顿（F4 扇区约 0.3 s），应用只在停车/急停时写。[编译]
+
+## DAC（1.9.0，PAL 1.7.0）
+- CubeMX 里开 DAC（F4/F1 叫 DAC → 句柄 hdac；H7/G4 叫 DAC1 → hdac1），输出脚标签 `DAC_<名>`（PA4 = 通道 1，PA5 = 通道 2），ioc_import 生成 `dac:` 资源；hal_conf 要有 `HAL_DAC_MODULE_ENABLED`，没有会 #error 提示。
+- `pal_dac_write` 第一次调用时 `HAL_DAC_Start`，之后 `HAL_DAC_SetValue`（12 位/8 位右对齐）。
+- F103C8/CB、F401/F411/F412 没有 DAC：validate_board 拒绝写 `dac:`，`pal_dac_write` 返回 DZ_ENOTSUP。
+- 【编译】只在 F4（skystar-cubemx 样例）交叉编译过；H7/G4 句柄命名按 CubeMX 规则推出，未编译（仓库没有 H7 HAL）。

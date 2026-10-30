@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.6.0"
+#define PAL_VERSION "1.7.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -231,8 +231,9 @@ typedef struct {
 
 /**
  * 写一个输出码（0..2^bits−1，超出返回 DZ_EINVAL）。
- * 目前只有 host-sim 端口实现；stm32f4-hal / stm32-cubemx / mspm0-driverlib 返回 DZ_ENOTSUP，
- * board.yaml 在这些端口写 dac 资源会被 tools/validate_board.py 拒绝。
+ * 实现：host-sim、stm32-cubemx（HAL_DAC，PAL 1.7.0）、mspm0-driverlib（DAC12，PAL 1.7.0）；stm32f4-hal 返回 DZ_ENOTSUP。
+ * 板上没有 DAC 外设（如 STM32F103C8、MSPM0G310x）时 board.yaml 不能写 dac 资源（tools/validate_board.py 按型号拒绝），
+ * 这时 pal_dac_write 返回 DZ_ENOTSUP。
  */
 dz_err_t pal_dac_write(pal_id_t id, uint16_t code);
 dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info);

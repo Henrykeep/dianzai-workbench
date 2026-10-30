@@ -98,3 +98,4 @@
 6. 视觉知识包 → `docs/agent-knowledge/vision-{k230,color,tuning}.md`（触发词按需加载，knowledge.py 不用改）+ app/sidecar/tests/test_knowledge_vision.py。[仿真]；没做真实对话里的效果评测。
 7. 波形测量 → `firmware/algo/wavemeas`（移植 firework 时域特征 + 分类，自写过零测频/占空比/DFT 相位）+ `dzbench/wavemeas.py` + op `wave_measure`（频谱视图参数行、相位参考下拉）。[仿真]；未上板；原版分类对非 50% 占空比方波不判 SQUARE（照原版）。阈值触发、任意波形输出没做。
 8. ADC/DAC PAL → PAL 1.6.0：`pal_adc_block_read`（软件定时，四端口共用 `firmware/pal/pal_adc_block.inc`）、`pal_dac_write/info` + board.yaml `dac:`（只 host-sim 实现，真板端口 DZ_ENOTSUP，validate_board 拒绝真板写 dac）。端口版本 host-sim 2.5.0 / cubemx 1.8.0 / f4-hal 1.4.0 / mspm0 0.8.0。[仿真]；没做定时器触发 + DMA、真板 DAC。
+   - PAL 1.7.0：真板 DAC（cubemx HAL_DAC、mspm0 DAC12），validate_board 按芯片型号（boardlib.DAC_PARTS）放行/拒绝；样例板 skystar-cubemx PA4、天猛星 PA15。[编译]，CubeMX/SysConfig 文件是手改的。

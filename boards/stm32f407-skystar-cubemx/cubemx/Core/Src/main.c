@@ -13,6 +13,7 @@
 /* USER CODE END Includes */
 
 ADC_HandleTypeDef hadc1;
+DAC_HandleTypeDef hdac;
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
@@ -28,6 +29,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
+static void MX_DAC_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
@@ -43,6 +45,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_ADC1_Init();
+  MX_DAC_Init();
   MX_TIM1_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
@@ -187,6 +190,16 @@ static void uart_init(UART_HandleTypeDef *h, USART_TypeDef *inst, uint32_t baud)
 }
 static void MX_USART1_UART_Init(void) { uart_init(&huart1, USART1, 460800); }
 static void MX_USART2_UART_Init(void) { uart_init(&huart2, USART2, 115200); }
+
+static void MX_DAC_Init(void)
+{
+  DAC_ChannelConfTypeDef sConfig = {0};
+  hdac.Instance = DAC;
+  if (HAL_DAC_Init(&hdac) != HAL_OK) Error_Handler();
+  sConfig.DAC_Trigger = DAC_TRIGGER_NONE;
+  sConfig.DAC_OutputBuffer = DAC_OUTPUTBUFFER_ENABLE;
+  if (HAL_DAC_ConfigChannel(&hdac, &sConfig, DAC_CHANNEL_1) != HAL_OK) Error_Handler();
+}
 
 static void MX_DMA_Init(void)
 {

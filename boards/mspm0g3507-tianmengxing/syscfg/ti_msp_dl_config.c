@@ -62,6 +62,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_init(void)
     SYSCFG_DL_UART_IMU_init();
     SYSCFG_DL_SPI_BUS1_init();
     SYSCFG_DL_ADC12_0_init();
+    SYSCFG_DL_DAC12_init();
     /* Ensure backup structures have no valid state */
 
 	gENC_MOTOR_ABackup.backupRdy 	= false;
@@ -109,6 +110,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_UART_Main_reset(UART_IMU_INST);
     DL_SPI_reset(SPI_BUS1_INST);
     DL_ADC12_reset(ADC12_0_INST);
+    DL_DAC12_reset(DAC0);
 
     DL_GPIO_enablePower(GPIOA);
     DL_GPIO_enablePower(GPIOB);
@@ -120,6 +122,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
     DL_UART_Main_enablePower(UART_IMU_INST);
     DL_SPI_enablePower(SPI_BUS1_INST);
     DL_ADC12_enablePower(ADC12_0_INST);
+    DL_DAC12_enablePower(DAC0);
     delay_cycles(POWER_STARTUP_DELAY);
 }
 
@@ -482,3 +485,24 @@ SYSCONFIG_WEAK void SYSCFG_DL_ADC12_0_init(void)
     DL_ADC12_enableConversions(ADC12_0_INST);
 }
 
+
+/* DAC12 Initialization（手工补的，与 ../ccs/tianmengxing.syscfg 的 DAC12 模块对应；未经 SysConfig 重新生成） */
+static const DL_DAC12_Config gDAC12Config = {
+    .outputEnable              = DL_DAC12_OUTPUT_ENABLED,
+    .resolution                = DL_DAC12_RESOLUTION_12BIT,
+    .representation            = DL_DAC12_REPRESENTATION_BINARY,
+    .voltageReferenceSource    = DL_DAC12_VREF_SOURCE_VDDA_VSSA,
+    .amplifierSetting          = DL_DAC12_AMP_ON,
+    .fifoEnable                = DL_DAC12_FIFO_DISABLED,
+    .fifoTriggerSource         = DL_DAC12_FIFO_TRIGGER_SAMPLETIMER,
+    .dmaTriggerEnable          = DL_DAC12_DMA_TRIGGER_DISABLED,
+    .dmaTriggerThreshold       = DL_DAC12_FIFO_THRESHOLD_ONE_QTR_EMPTY,
+    .sampleTimeGeneratorEnable = DL_DAC12_SAMPLETIMER_DISABLE,
+    .sampleRate                = DL_DAC12_SAMPLES_PER_SECOND_500,
+};
+SYSCONFIG_WEAK void SYSCFG_DL_DAC12_init(void)
+{
+    DL_DAC12_init(DAC0, (DL_DAC12_Config *) &gDAC12Config);
+    DL_DAC12_output12(DAC0, 0);
+    DL_DAC12_enable(DAC0);
+}
