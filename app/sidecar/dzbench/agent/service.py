@@ -274,7 +274,8 @@ class AgentService:
             t = self.cfg["tune"]
             self.guard = TuneGuard(b, self.sim, limits={"vbat_min": t["vbat_min"], "temp_max": t["temp_max"]},
                                    max_rounds=t["max_rounds_sim"] if self.sim else min(int(t["max_rounds_hw"]), 10),
-                                   weights=t.get("weights", "balanced"))
+                                   weights=t.get("weights", "balanced"),
+                                   max_step_ratio=(float(t["max_step_ratio"]) if t.get("max_step_ratio") else None))
             self.staged = StagedSearch(order=tuple(self._gains()) or ("kp", "ki", "kd"))
         return self.guard
 
@@ -454,6 +455,7 @@ class AgentService:
             verdict["advice"] = "OBSERVE：实验结束时还没稳（%s），先加长 step_test.hold_s 再判断，不要据此改参数" % ss["text"]
         if segs is not None:
             verdict["segments"], verdict["asymmetry"] = segs, asymmetry(segs)
+        self._save_best_snapshot(g, verdict)
         if verdict["action"] == "rollback" and verdict.get("auto"):
             verdict["rolled_back"] = self.rollback_best(_auto=True)
         self.last_verdict = verdict
@@ -524,6 +526,22 @@ class AgentService:
         out = {k: (round(r[k], 4) if isinstance(r[k], float) else r[k]) for k in keep}
         out["note"] = "模型预测（FOPDT + PID），不是实测；用 run_sweep_test 实测对比"
         return out
+
+    BEST_SNAPSHOT = "自动-最好一轮"
+
+    def _save_best_snapshot(self, g: TuneGuard, verdict: dict) -> None:
+        """最好一轮变了就落盘成快照（侧车重启 / 护栏重置后仍能在快照页一键恢复）。失败只记 verdict，不影响实验。"""
+        b = g.best()
+        if not b or not self.s.schema or getattr(self, "_best_saved", None) == (id(g), b.n):
+            return
+        try:
+            from .. import snapshots
+            snapshots.save(self.s.schema.hash, self.BEST_SNAPSHOT, {**self.s.params, **b.gains},
+                           f"第 {b.n} 轮，得分 {b.score:.4g}（护栏自动记录）")
+            self._best_saved = (id(g), b.n)
+            verdict["best_snapshot"] = self.BEST_SNAPSHOT
+        except OSError as e:
+            verdict["best_snapshot_error"] = str(e)
 
     def rollback_best(self, _auto: bool = False) -> dict:
         g = self._guard()

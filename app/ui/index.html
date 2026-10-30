@@ -120,6 +120,7 @@
               <button class="mi" id="ag-undo" disabled title="撤销 Agent 最近一次已落地的改动：参数改回原值，或 git revert 那次文件提交。可连点逐步往回撤"><i data-lucide="undo-2"></i>撤销 Agent</button>
               <button class="mi" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交"><i data-lucide="file-pen"></i>写回 yaml</button>
               <button class="mi" id="ag-new" title="清空和 Agent 的对话上下文"><i data-lucide="message-square-plus"></i>新对话</button>
+              <button class="mi" id="ag-best" title="把参数一键恢复到本次调参护栏记录的最好一轮（先弹确认框）；侧车重启后可在快照页恢复“自动-最好一轮”"><i data-lucide="undo-2"></i>回到最好一轮</button>
               <button class="mi" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）"><i data-lucide="shield-off"></i>重置护栏</button>
               <hr><span class="mh" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">固件</span>
               <button class="mi" id="fw-build"><i data-lucide="hammer"></i>编译</button>

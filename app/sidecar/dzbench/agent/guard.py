@@ -85,13 +85,20 @@ class TuneGuard:
     proposed_this_round: str | None = None
     stopped: str = ""
     max_rounds: int | None = None     # 覆盖档位默认；实机上限 10（service 里 min(配置, 10)）
+    max_step_ratio: float | None = None   # 配置 tune.max_step_ratio：单步 ±ratio，只收紧（思路：llm-pid-tuner max_step）
     weights: str | dict | None = "balanced"   # 相对基线打分的权重模板（experiment.WEIGHTS）；None = 旧的绝对分
     baseline: dict | None = None      # 第一轮有效实测；之后每轮分数 = 相对它的归一化比值（1.0 = 和基线一样）
 
     @property
     def profile(self) -> Profile:
         p = SIM if self.sim else HW
-        return p if self.max_rounds is None else Profile(**{**p.__dict__, "max_rounds": self.max_rounds})
+        over = {}
+        if self.max_rounds is not None:
+            over["max_rounds"] = self.max_rounds
+        r = self.max_step_ratio
+        if r is not None and math.isfinite(r) and r > 0:
+            over |= {"ratio_up": min(p.ratio_up, r), "ratio_down": min(p.ratio_down, r)}
+        return Profile(**{**p.__dict__, **over}) if over else p
 
     def score(self, m: StepMetrics) -> float:
         if self.weights is None or self.baseline is None:

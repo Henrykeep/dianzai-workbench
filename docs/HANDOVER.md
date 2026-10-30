@@ -93,3 +93,4 @@
    - 评测稳定性：`dzbench/agent/evals.py` 等阶跃改按板子时间判定（wait_step_in_window），不再固定 sleep；满载 CPU 下 2026H 评测通过。
    - 上板验证可勾“全部采纳后自动阶跃”：service.propose_hint(verify_step) / verify_after_decide，server 的 proposal_decide 在整组采纳后后台跑 run_step_test，护栏判定走 tune_round。
 3. 速度/位置环预设 + 平滑切换 → 快照 `mode` 标签 + `snapshot_restore(ramp_s)`（session.py / snapshots.ramp_plan，界面快照页“—/速度环/位置环”和过渡秒数）。[仿真]；固件参数表没加模式字段（真要切环结构需固件自己有 mode 参数，可作为普通参数放进预设）。
+4. 最好一轮自动记录 + 一键回滚 + max_step_ratio → service._save_best_snapshot（快照“自动-最好一轮”）、Agent 菜单“回到最好一轮”（tune_best / tune_rollback_best）、config `tune.max_step_ratio` → TuneGuard.profile（只收紧）。[仿真]

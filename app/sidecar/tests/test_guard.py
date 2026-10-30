@@ -102,3 +102,33 @@ def test_fixed_seed_benchmark_is_reproducible_and_never_violates_bounds():
     greedy = lambda m, gains, g: '{"action":"PROPOSE","param":"kp","value":2.0}'
     r = bench.run("llm", 7, llm=greedy, start={"kp": 0.03, "ki": 0.3})
     assert r["violations"] == 0 and r["gains"]["kp"] < 2.0
+
+
+def test_max_step_ratio_only_tightens():
+    """缺口第 4 项：tune.max_step_ratio 单步相对上限；比档位默认宽时不放宽。"""
+    g = TuneGuard({"kp": (0, 100)}, sim=False, max_step_ratio=0.2)
+    v, notes = g.check("kp", 1.0, 3.0)
+    assert v == pytest.approx(1.2) and notes
+    g.proposed_this_round = None
+    assert g.check("kp", 1.0, 0.1)[0] == pytest.approx(0.8)
+    g2 = TuneGuard({"kp": (0, 100)}, sim=False, max_step_ratio=5.0)
+    assert g2.profile.ratio_up == 0.5 and g2.profile.ratio_down == 0.3
+
+
+def test_best_round_saved_as_snapshot(tmp_path, monkeypatch):
+    """最好一轮变了自动落盘成快照“自动-最好一轮”（重启后可一键恢复）；同一轮不重复写。"""
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path))
+    from types import SimpleNamespace
+    from dzbench import snapshots
+    from dzbench.agent.service import AgentService
+    svc = AgentService.__new__(AgentService)
+    svc.s = SimpleNamespace(schema=SimpleNamespace(hash=0x1234), params={"kp": 9.0, "ki": 1.0})
+    g = TuneGuard({"kp": (0, 10)}, sim=True)
+    g.record(M(os_=5), {"kp": 0.5})
+    v = {}
+    svc._save_best_snapshot(g, v)
+    assert v["best_snapshot"] == AgentService.BEST_SNAPSHOT
+    assert snapshots.load(0x1234, AgentService.BEST_SNAPSHOT) == {"kp": 0.5, "ki": 1.0}
+    v2 = {}
+    svc._save_best_snapshot(g, v2)
+    assert "best_snapshot" not in v2

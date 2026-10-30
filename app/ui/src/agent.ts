@@ -171,6 +171,13 @@ export function initAgent(call: Call) {
   };
   $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
   $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
+  $("ag-best").onclick = async () => {
+    const b = await call<any>("tune_best").catch(() => null);
+    if (!b) { add(`<span class="lbl">还没有稳定的一轮可回滚（先做阶跃实验）</span>`, "msg bot"); return; }
+    const g = Object.entries(b.gains).map(([k, v]) => `${k}=${+(+(v as number)).toPrecision(4)}`).join(" ");
+    if (!window.confirm(`回到第 ${b.round} 轮（得分 ${b.score}）：${g}？`)) return;
+    call<any>("tune_rollback_best").then(r => add(`<span class="lbl">已回到第 ${r.round} 轮：改了 ${r.applied.length} 个参数</span>`, "msg bot"), () => {});
+  };
   $("ag-guard").onclick = () => call("tune_reset").then(() => add(`<span class="lbl">调参护栏已重置：之前的轮次和“最好一轮”不再参考</span>`, "msg bot"), () => {});
   $("ag-new").onclick = () => call("agent_reset").then(() => { feed.innerHTML = AGENT_IDLE; }, () => {});
   $("ag-yaml").onclick = () => call("yaml_writeback").then(renderChange, () => {});

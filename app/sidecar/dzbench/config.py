@@ -19,7 +19,8 @@ DEFAULTS: dict = {
     "build": {"keil_uv4": None, "keil_project": None, "keil_target": None, "elf": None,
               "image": None, "link_schema": None},   # image：要烧的文件（缺省 = elf）；link_schema：烧后核对心跳哈希
     "tune": {"vbat_min": None, "temp_max": None, "max_rounds_hw": 8, "max_rounds_sim": 20,
-             "rule_mode": "staged", "weights": "balanced"},   # 无 LLM：staged（P→I→D）或 hints；打分权重 balanced/conservative/actuator
+             "rule_mode": "staged", "weights": "balanced",
+             "max_step_ratio": None},   # 单步相对变化上限（如 0.2 = 每步 ±20%），只会比档位默认更严   # 无 LLM：staged（P→I→D）或 hints；打分权重 balanced/conservative/actuator
     "step_test": None,      # segments: 4 + delta:[..] = 四段正负阶跃；plant_stable: 开环实验门禁（默认 false）
                             # {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}
     "step_tests": {},       # 多个对象：{工程名: step_test}；和 step_test（可为列表）一起按“遥测里有 y/sp”自动选

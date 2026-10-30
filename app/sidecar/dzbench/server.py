@@ -258,6 +258,11 @@ class Server:
             return self.svc.loop.reset()
         if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”（烧录要几秒，放线程池）
             return await run(None, self.svc.action_decide, int(m["id"]), bool(m["accept"]))
+        if op == "tune_best":                      # 只读：最好一轮（给“回到最好一轮”按钮的确认框）
+            b = self.svc._guard().best()
+            return {"round": b.n, "gains": b.gains, "score": round(b.score, 4)} if b else None
+        if op == "tune_rollback_best":             # 用户在确认框里点了确定 = 已人工确认
+            return await run(None, self.svc.rollback_best)
         if op == "tune_reset":
             return self.svc.reset_guard()
         if op == "tune_rule_round":                # 无 LLM 模式：规则给一项建议（仍是待确认提议）
