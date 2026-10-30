@@ -125,9 +125,12 @@ CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm
          stm32f103c8t6-car-cubemx:port_selftest stm32f103c8t6-car-cubemx:motor_speed_demo stm32f407-skystar-cubemx:port_selftest \
          mspm0g3507-tianmengxing:port_selftest mspm0g3507-launchpad:port_selftest mspm0g3507-launchpad:motor_speed_demo \
          stm32f407-skystar:port_selftest stm32f407-skystar:motor_speed_demo dji-rm-c:port_selftest
+# 工具链锁定 Arm GNU Toolchain 13.3.rel1（tools/arm_toolchain.sh：优先 /opt/arm/...13.3.rel1/bin，版本不对直接失败）
 cross:
-	@for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done
-	@$(MAKE) -s BOARD=mspm0g3507-launchpad APP=car_2wd LINK=rtt >/dev/null 2>&1 || { echo "✗ cross LINK=rtt mspm0g3507-launchpad/car_2wd"; exit 1; }; echo "✓ mspm0g3507-launchpad/car_2wd LINK=rtt"
+	@tools/arm_toolchain.sh --check
+	@tc=$$(tools/arm_toolchain.sh --bin)arm-none-eabi- || exit 1; \
+	for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a TC=$$tc >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a TC=$$tc; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done; \
+	$(MAKE) -s BOARD=mspm0g3507-launchpad APP=car_2wd LINK=rtt TC=$$tc >/dev/null 2>&1 || { echo "✗ cross LINK=rtt mspm0g3507-launchpad/car_2wd"; exit 1; }; echo "✓ mspm0g3507-launchpad/car_2wd LINK=rtt"
 
 # VS Code / clangd：写 build/compile_commands.json（当前 BOARD+APP 的真实编译参数；切换板子后重跑）
 compdb: $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
