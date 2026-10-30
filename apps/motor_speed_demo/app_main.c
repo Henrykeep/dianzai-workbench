@@ -6,7 +6,7 @@
  * 换板子 = 换 BOARD=xxx 重新编译；本文件一行不改。
  *
  *  - CTRL 定时器 1 kHz：读编码器 -> 速度 PID -> 电机
- *  - 主循环：LED 2 Hz 闪烁（活着的心跳）；每 20 ms 通过 LINK 发一行遥测；
+ *  - 主循环：LED 2 Hz 闪烁（活着的心跳；板上没有 gpio.LED 就跳过）；每 20 ms 通过 LINK 发一行遥测；
  *            从 LINK 接收 "S<转速>\n" 修改目标转速（单位：转/秒），例如 "S2.5\n"
  */
 #include <stdio.h>
@@ -90,7 +90,10 @@ void app_loop(void)
 {
     static uint32_t last_led, last_tx;
     uint32_t now = pal_millis();
+#ifdef RES_GPIO_LED   /* LED 可选：板上没有就不闪 */
     if (now - last_led >= 250u) { last_led = now; pal_gpio_toggle(RES_GPIO_LED); }
+#endif
+    (void)last_led;
     if (now - last_tx >= 20u) {
         last_tx = now;
         char msg[96];

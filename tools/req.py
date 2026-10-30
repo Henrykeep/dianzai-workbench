@@ -31,8 +31,81 @@ _SEC = re.compile(r"^\s*[一二三四五六七八九十]+\s*[、.．]\s*(\S+)")
 _PART = [(re.compile(r"基本要求"), "basic"), (re.compile(r"发挥部分"), "advanced")]
 _ITEM = re.compile(r"^\s*(?:[（(]\s*(\d{1,2})\s*[)）]|(\d{1,2})\s*[.．、](?!\d))\s*(.+)")
 _SCORE = re.compile(r"[（(]\s*(\d+(?:\.\d+)?)\s*分\s*[)）]\s*$")
-_NUM = re.compile(r"(≤|≥|<|>|不大于|不超过|不小于)?\s*([+-±]?\d+(?:\.\d+)?)\s*(cm|mm|m/s|ms|s|m|°|Hz|kHz|V|mA|A|%|次|圈|秒|分钟)(?![a-zA-Z])")
-_OPS = {"≤": "<=", "不大于": "<=", "不超过": "<=", "≥": ">=", "不小于": ">=", "<": "<", ">": ">"}
+_UNIT = (r"(kHz|MHz|Hz|mV|μV|uV|kV|V|mA|μA|uA|A|kW|mW|W|kΩ|MΩ|Ω|dBm|dB|ms|μs|us|ns|km/h|m/s|cm/s|°/s|r/min|rpm|"
+         r"cm|mm|km|m|°|rad|%|‰|℃|kg|g|克|N|lx|div|s|秒|分钟|min|小时|h|次|圈|帧|条|个|片|匝)(?![a-zA-Z])")
+_UOPT = "(?:" + _UNIT + ")?"
+_NUMV = r"([+-]?\d+(?:\.\d+)?)"
+_OPW = (r"(≤|≥|<|>|不大于|不超过|不小于|不低于|不少于|不高于|不多于|至少|至多|小于|大于|低于|高于|少于|多于|"
+        r"误差的绝对值均?≤|误差的绝对值均?不大于|误差不大于|误差≤|偏差≤)")
+_OPS = {"≤": "<=", "不大于": "<=", "不超过": "<=", "不高于": "<=", "不多于": "<=", "至多": "<=", "≥": ">=",
+        "不小于": ">=", "不低于": ">=", "不少于": ">=", "至少": ">=", "<": "<", "小于": "<", "低于": "<", "少于": "<",
+        ">": ">", "大于": ">", "高于": ">", "多于": ">"}
+# 先匹配的模式吃掉文本，后面的不再重复抓：范围 → 带公差 → 比较 → 裸数值（工作条件/设定值）
+_M_RANGE = re.compile(_NUMV + r"\s*" + _UOPT + r"\s*(?:~|～|〜|－|—|至|到)\s*" + _NUMV + r"\s*" + _UNIT)
+_M_TOL = re.compile(_NUMV + r"\s*" + _UOPT + r"\s*±\s*" + _NUMV + r"\s*" + _UOPT)
+_M_CMP = re.compile(_OPW + r"\s*±?\s*" + _NUMV + r"\s*" + _UOPT)
+_M_BARE = re.compile(r"(?<![\d.])" + _NUMV + r"\s*" + _UNIT)
+_NAME = re.compile(r"([A-Za-z][A-Za-z0-9_]*|[\u4e00-\u9fff（）()A-Za-z0-9 ]{1,12}?)\s*[=＝:：]?\s*$")
+
+
+def _name_before(text: str, i: int) -> str:
+    """数值前面最近的量名：符号（Uo、fi）优先，否则前面几个汉字。"""
+    pre = re.split(r"[，,。；;、：:]", text[max(0, i - 24):i])[-1]
+    sym = re.findall(r"([A-Za-zηφθ][A-Za-z0-9_ ]{0,6})\s*[=＝]\s*$", pre)
+    if sym:
+        return sym[-1].replace(" ", "")
+    pre = re.sub(r"(误差的绝对值均?|误差|偏差|为|是|在|均|且|内|时间|≤|≥|<|>|不大于|不超过|不小于|不低于|不少于|不高于|至少|小于|大于|=)+\s*$", "", pre.strip())
+    return (pre[-10:].strip() or "待填")
+
+
+def extract_metrics(text: str) -> list[dict]:
+    """原文里每个 数值+单位（范围、±公差、比较、设定值），按出现顺序；名字从前文猜，必须人工核对。"""
+    used = [False] * len(text)
+    found = []
+
+    def take(m):
+        if any(used[m.start():m.end()]):
+            return False
+        for k in range(m.start(), m.end()):
+            used[k] = True
+        return True
+
+    for m in _M_RANGE.finditer(text):
+        if take(m):
+            u = m.group(4) or m.group(2)
+            found.append((m.start(), {"name": _name_before(text, m.start()), "op": "in",
+                                      "value": [float(m.group(1)), float(m.group(3))], "unit": u}))
+    for m in _M_TOL.finditer(text):
+        if take(m):
+            v, t = float(m.group(1)), float(m.group(3))
+            found.append((m.start(), {"name": _name_before(text, m.start()), "op": "in",
+                                      "value": [round(v - t, 6), round(v + t, 6)], "unit": m.group(2) or m.group(4) or ""}))
+    for m in _M_CMP.finditer(text):
+        if take(m):
+            op = next((v for k, v in _OPS.items() if m.group(1).endswith(k)), "<=")
+            found.append((m.start(), {"name": _name_before(text, m.start()), "op": op, "value": float(m.group(2)), "unit": m.group(3) or ""}))
+    for m in _M_BARE.finditer(text):
+        if take(m):
+            found.append((m.start(), {"name": _name_before(text, m.start()), "op": "==", "value": float(m.group(1)), "unit": m.group(2)}))
+    out = []
+    for _, d in sorted(found, key=lambda x: x[0]):
+        d["how"] = "待填（init 抓到的数值：核对含义；== 多半是工作条件/设定值）"
+        out.append(d)
+    return out
+
+
+KEYWORDS = ROOT / "tools" / "catalog" / "needs_keywords.yaml"
+
+
+def load_keywords(p: pathlib.Path = KEYWORDS) -> dict[str, list[str]]:
+    return {k: [str(x) for x in v or []] for k, v in (yaml.safe_load(p.read_text(encoding="utf-8")) or {}).items()} if p.exists() else {}
+
+
+def suggest_needs(text: str, kw: dict[str, list[str]]) -> list[str]:
+    t = text.lower()
+    return [tag for tag, words in kw.items() if any(w.lower() in t for w in words)]
+
+
 _RULE = re.compile(r"不得|不能|禁止|只能|必须|不允许|不大于|不超过|封存|不予测试|视为|即认为")
 
 
@@ -82,7 +155,8 @@ def _paragraphs(text: str):
         yield sec, _join(buf)
 
 
-def init_skeleton(text: str, code: str, source: str) -> dict:
+def init_skeleton(text: str, code: str, source: str, kw: dict | None = None) -> dict:
+    kw = load_keywords() if kw is None else kw
     items, rules, n, part = [], [], {"basic": 0, "advanced": 0}, "basic"
     for sec, para in _paragraphs(text):
         para = re.sub(r"\s+", " ", para)
@@ -98,10 +172,8 @@ def init_skeleton(text: str, code: str, source: str) -> dict:
             sm = _SCORE.search(body)
             if sm:
                 it["score"] = float(sm.group(1)); it["text"] = body[:sm.start()].rstrip("。 ")
-            for op, v, u in _NUM.findall(it["text"]):
-                if op:
-                    it["metrics"].append({"name": "待填", "op": _OPS[op], "value": float(v.lstrip("+±")), "unit": u,
-                                          "how": "待填（init 抓到的阈值，核对含义）"})
+            it["metrics"] = extract_metrics(it["text"])
+            it["needs"] = suggest_needs(it["text"], kw)
             items.append(it)
         elif "说明" in sec or "要求" in sec or m:
             for sent in re.split(r"(?<=[。；])", para):
@@ -309,7 +381,7 @@ def main(argv=None) -> int:
         out = pathlib.Path(ns.o)
         if out.exists():
             sys.exit(f"✗ {out} 已存在，不覆盖（人工改过的拆解不能被草稿冲掉）")
-        out.write_text("# 由 tools/req.py init 起稿：分值、指标、子系统、needs 必须对照原文人工核对\n"
+        out.write_text("# 由 tools/req.py init 起稿：分值、指标、子系统、needs 必须对照原文人工核对（needs 按 tools/catalog/needs_keywords.yaml 关键词猜）\n"
                        + yaml.safe_dump(d, allow_unicode=True, sort_keys=False, width=200), encoding="utf-8")
         print(f"写入 {out}：评分项 {len(d['items'])} 条、疑似规则约束 {len(d['constraints'])} 条（草稿）")
         return 0

@@ -40,8 +40,11 @@ def test_init_old_style():
     ids = [(i["id"], i["part"], i.get("score")) for i in d["items"]]
     assert ids == [("B1", "basic", 15.0), ("B2", "basic", 20.0), ("A1", "advanced", 25.0)], ids
     assert d["items"][0]["text"].startswith("摆杆从静止开始，15s 内") and "幅度不小于 50cm" in d["items"][0]["text"]
-    assert [(m["op"], m["value"], m["unit"]) for m in d["items"][0]["metrics"]] == [(">=", 50.0, "cm")]
-    assert [(m["op"], m["value"]) for m in d["items"][2]["metrics"]] == [("<=", 5.0)]
+    # init 现在抓全部数值；== 是设定值/工作条件（如“15s 内”），阈值另列
+    thr = lambda i: [m for m in d["items"][i]["metrics"] if m["op"] != "=="]
+    assert [(m["op"], m["value"], m["unit"]) for m in thr(0)] == [(">=", 50.0, "cm")]
+    assert (15.0, "s") in [(m["value"], m["unit"]) for m in d["items"][0]["metrics"] if m["op"] == "=="]
+    assert [(m["op"], m["value"]) for m in thr(2)] == [("<=", 5.0)]
     texts = [c["text"] for c in d["constraints"]]
     assert any("一块主控板" in t for t in texts) and any("商品化云台" in t for t in texts)
     assert not any("更换队员" in t for t in texts), "参赛注意事项不应进约束"
@@ -51,6 +54,7 @@ def test_init_new_style_multiline_score():
     d = req.init_skeleton(NEW, "X", "t")
     assert [(i["id"], i.get("score")) for i in d["items"]] == [("B1", 16.0), ("B2", 13.0)]
     assert [(m["value"], m["unit"]) for m in d["items"][0]["metrics"]] == [(20.0, "s"), (2.0, "cm")]
+    assert "sense.line" in d["items"][0]["needs"] and "act.wheel_drive" in d["items"][0]["needs"], d["items"][0]["needs"]
     assert any("红外" in c["text"] for c in d["constraints"])
     assert any("不大于 2 英寸" in c["text"] for c in d["constraints"]), "跨行的“英 寸”要接上"
 
@@ -137,6 +141,19 @@ items:
         assert st["B1"] == "台架通过" and st["B3"] == "未测", st
         md = req.render_evidence(d)
         assert "仿真过了就行" in md and "“B1 已得分”" in md, "非现场通过自动禁止说已得分"
+
+
+def test_init_metrics_and_needs():
+    """init 抓全数值（范围/公差/比较/设定值，含无单位的比较）并按通用关键词表起草 needs。"""
+    txt = "Uo=32V±0.1V、频率 fo=60±0.2Hz、Io 在 0.2A～2.0A 间变化，功率因数不低于 0.98，每项完成时间不超过 2 秒，小车显示距离"
+    ms = req.extract_metrics(txt)
+    got = [(m["op"], m["value"], m["unit"]) for m in ms]
+    assert ("in", [31.9, 32.1], "V") in got and ("in", [59.8, 60.2], "Hz") in got, got
+    assert ("in", [0.2, 2.0], "A") in got and (">=", 0.98, "") in got and ("<=", 2.0, "秒") in got, got
+    nd = req.suggest_needs(txt, {"act.wheel_drive": ["小车"], "ui.display": ["显示"], "x.none": ["不存在的词"]})
+    assert nd == ["act.wheel_drive", "ui.display"], nd
+    kw = req.load_keywords()
+    assert kw and all(isinstance(v, list) for v in kw.values()), "tools/catalog/needs_keywords.yaml 读不出来"
 
 
 if __name__ == "__main__":
