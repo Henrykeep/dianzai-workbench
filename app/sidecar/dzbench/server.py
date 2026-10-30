@@ -453,7 +453,11 @@ class Server:
         if op == "watch_stop":
             return self.svc.watch_stop()
         if op == "agent_models":
-            return await run(None, lambda: agent_llm.discover_models(m.get("form") or {}))
+            r = await run(None, lambda: agent_llm.discover_models(m.get("form") or {}))
+            if r.get("reason") == "contest_mode":      # 比赛模式拦下外部请求：同时推 agent_error，界面统一提示
+                await self._broadcast({"type": "agent_error", "code": "contest_mode", "message": r["message_zh"], "message_zh": r["message_zh"],
+                                       "fix_action": r["fix_action"], "retryable": False})
+            return r
         if op == "agent_ollama":
             return agent_llm.ollama(m.get("action", "check"), m.get("model", ""))
         if op == "agent_config_test":

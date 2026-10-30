@@ -31,6 +31,16 @@ def cfg(tmp_path, monkeypatch):
     monkeypatch.setattr(llm, "config_path", lambda: tmp_path / "config.json")
 
 
+def _keys_ok(r):
+    assert set(r) == llm.MODELS_KEYS, set(r)                 # 返回键集合精确等于约定（docs/dev/events.md），没有 message
+    assert r["fix_action"] == (None if r["ok"] else llm.MODELS_FIX[r["reason"]])
+
+
+def _log(tmp_path):
+    p = tmp_path / "logs" / "llm_models.log"
+    return p.read_text(encoding="utf-8") if p.exists() else ""
+
+
 def test_lists_model_ids_with_key(cfg):
     seen = []
 
@@ -42,37 +52,105 @@ def test_lists_model_ids_with_key(cfg):
         r = llm.discover_models({"provider": "custom", "base_url": url + "/", "api_key": KEY})
     finally:
         srv.shutdown()
-    assert r == {"ok": True, "models": ["deepseek-v4.1-flash", "glm-4"]}
+    _keys_ok(r)
+    assert r["ok"] is True and r["models"] == ["deepseek-v4.1-flash", "glm-4"] and r["reason"] is None
     assert seen == [("/v1/models", f"Bearer {KEY}")]
     assert not llm.config_path().exists()                     # 只读，不写配置
 
 
-@pytest.mark.parametrize("code,body", [(404, {"error": "not found"}), (405, {}), (200, b"<html>ok</html>"), (200, {"models": []}), (200, {"data": []})])
-def test_unsupported_falls_back_to_manual(cfg, code, body):
+@pytest.mark.parametrize("code,body,reason", [(404, {"error": "not found"}, "unsupported"), (405, {}, "unsupported"), (501, {}, "unsupported"),
+                                              (200, b"<html>ok</html>", "unsupported"), (200, {"models": []}, "unsupported"),
+                                              (200, {"data": []}, "empty")])
+def test_unsupported_or_empty_falls_back_to_manual(cfg, code, body, reason):
     srv, url = _serve(lambda h: (code, body))
+    try:
+        r = llm.discover_models({"base_url": url, "api_key": KEY})
+        assert llm.list_models({"base_url": url, "api_key": KEY}) == []
+    finally:
+        srv.shutdown()
+    _keys_ok(r)
+    assert r["ok"] is False and r["models"] == [] and r["reason"] == reason and r["fix_action"] == "manual_model" and r["message_zh"]
+
+
+@pytest.mark.parametrize("code,reason,fix", [(401, "auth", "check_key"), (403, "auth", "check_key"), (503, "error", "retry"), (500, "error", "retry")])
+def test_http_errors_classified(cfg, tmp_path, code, reason, fix):
+    srv, url = _serve(lambda h: (code, {"error": f"bad key {KEY} Bearer {KEY}"}))
     try:
         r = llm.discover_models({"base_url": url, "api_key": KEY})
     finally:
         srv.shutdown()
-    assert r["ok"] is False and r["models"] == [] and r["reason"] == "unsupported" and r["message"]
-    assert llm.list_models({"base_url": url, "api_key": KEY}) == []
+    _keys_ok(r)
+    assert r["reason"] == reason and r["fix_action"] == fix and str(code) in r["message_zh"]
+    assert KEY not in json.dumps(r, ensure_ascii=False) and KEY not in _log(tmp_path) and str(code) in _log(tmp_path)
 
 
-def test_errors_reported_without_leaking_key(cfg):
-    srv, url = _serve(lambda h: (401, {"error": "invalid key"}))
-    try:
-        bad = llm.discover_models({"base_url": url, "api_key": KEY})
-    finally:
-        srv.shutdown()
-    assert bad["reason"] == "error" and "401" in bad["message"] and "Key" in bad["message"]
-    srv, url = _serve(lambda h: (503, {"error": "busy"}))
-    try:
-        five = llm.discover_models({"base_url": url, "api_key": KEY})
-    finally:
-        srv.shutdown()
-    assert five["reason"] == "error" and "503" in five["message"]
-    down = llm.discover_models({"base_url": "http://127.0.0.1:9/v1", "api_key": KEY})
-    assert down["ok"] is False and down["reason"] == "error" and "无法连接" in down["message"]
-    assert llm.discover_models({"base_url": "", "provider": "custom"})["reason"] == "error"
-    for r in (bad, five, down):
-        assert KEY not in json.dumps(r, ensure_ascii=False)
+def test_network_errors_category_only_and_redacted_log(cfg, tmp_path, monkeypatch):
+    import socket
+    import ssl
+    import urllib.error
+    cases = [(urllib.error.URLError(socket.timeout("timed out")), "连接超时"),
+             (urllib.error.URLError(socket.gaierror(-2, "Name or service not known")), "DNS"),
+             (urllib.error.URLError(ConnectionRefusedError(111, "Connection refused")), "拒绝"),
+             (urllib.error.URLError(ssl.SSLError(1, "CERTIFICATE_VERIFY_FAILED")), "TLS"),
+             (OSError(f"weird failure Authorization: Bearer {KEY} sk-abcdefghijklmnop"), "网络错误")]
+    for exc, zh in cases:
+        def boom(*a, exc=exc, **k):
+            raise exc
+        monkeypatch.setattr(llm.urllib.request, "urlopen", boom)
+        r = llm.discover_models({"base_url": "https://api.example.com/v1", "api_key": KEY})
+        _keys_ok(r)
+        assert r["reason"] == "error" and r["fix_action"] == "retry" and zh in r["message_zh"], r
+        assert "Errno" not in r["message_zh"] and "failure" not in r["message_zh"] and "refused" not in r["message_zh"]   # 不含原始异常
+    log = _log(tmp_path)
+    assert "weird failure" in log and KEY not in log and "sk-abcdefghijklmnop" not in log    # 原文脱敏后进本地日志
+
+
+def test_contest_mode_blocks_before_request(cfg, tmp_path, monkeypatch):
+    calls = []
+    import urllib.error
+
+    def fake(*a, **k):
+        calls.append(a)
+        raise urllib.error.URLError(ConnectionRefusedError(111, "refused"))
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake)
+    (tmp_path / "config.json").write_text(json.dumps({"contest_mode": True}), encoding="utf-8")
+    r = llm.discover_models({"base_url": "https://api.example.com/v1", "api_key": KEY})
+    _keys_ok(r)
+    assert r["reason"] == "contest_mode" and r["fix_action"] == "enable_cloud" and calls == []     # 零调用
+    assert KEY not in json.dumps(r, ensure_ascii=False)
+    for local in ("http://localhost:11434/v1", "http://127.0.0.1:11434/v1", "http://[::1]:11434/v1"):   # 本机不拦：照常请求
+        assert llm.discover_models({"base_url": local})["reason"] != "contest_mode"
+    assert len(calls) == 3
+    calls.clear()
+    (tmp_path / "config.json").write_text(json.dumps({"contest_mode": True, "cloud_enabled": True}), encoding="utf-8")
+    assert llm.discover_models({"base_url": "https://api.example.com/v1", "api_key": KEY})["reason"] != "contest_mode" and len(calls) == 1
+
+
+def test_server_agent_models_contest_mode_pushes_agent_error(cfg, tmp_path, monkeypatch, home):
+    import asyncio
+    from dzbench import server as srv
+    monkeypatch.setattr(llm.urllib.request, "urlopen", lambda *a, **k: (_ for _ in ()).throw(AssertionError("不该发请求")))
+    (tmp_path / "config.json").write_text(json.dumps({"contest_mode": True}), encoding="utf-8")
+    sv = srv.Server()
+    sent = []
+
+    async def bc(ev):
+        sent.append(ev)
+    sv._broadcast = bc
+    r = asyncio.run(sv._op({"op": "agent_models", "form": {"base_url": "https://api.example.com/v1", "api_key": KEY}}))
+    assert set(r) == llm.MODELS_KEYS and r["reason"] == "contest_mode"
+    assert [e for e in sent if e["type"] == "agent_error" and e["code"] == "contest_mode" and e["fix_action"] == "enable_cloud"]
+    assert KEY not in json.dumps(sent + [r], ensure_ascii=False)
+
+
+def test_empty_url(cfg):
+    r = llm.discover_models({"base_url": "", "provider": "custom"})
+    _keys_ok(r)
+    assert r["reason"] == "error"
+
+
+def test_models_contract_documented():
+    import pathlib
+    doc = (pathlib.Path(__file__).resolve().parents[3] / "docs/dev/events.md").read_text(encoding="utf-8")
+    for k in llm.MODELS_KEYS | set(llm.MODELS_FIX) | set(llm.MODELS_FIX.values()):
+        assert f"`{k}`" in doc, k
