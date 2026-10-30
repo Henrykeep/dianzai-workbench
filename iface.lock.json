@@ -1489,6 +1489,7 @@
    "dzctl.h: #define DZCTL_HB_STANDALONE (1u << 14)",
    "dzctl.h: #define DZCTL_HB_SA_RUNNING (1u << 15)",
    "dzctl.h: #define DZCTL_MODE_MAGIC 0xA5u",
+   "dzctl.h: #define DZCTL_HB_PARAMS_DIRTY (1u << 16)",
    "dzctl.h: #define DZCTL_SAVE_OK 0u",
    "dzctl.h: #define DZCTL_SAVE_BUSY 1u",
    "dzctl.h: #define DZCTL_SAVE_NO_NVM 2u",
@@ -1515,6 +1516,10 @@
    "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
    "dzctl.h: uint32_t dzctl_board_uid(void);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
+   "dzctl.h: typedef enum { DZCTL_ST_SUBSYS = 1, DZCTL_ST_PARAMS = 2, DZCTL_ST_NVM = 3, DZCTL_ST_SENSOR = 4, DZCTL_ST_POWER = 5 } dzctl_selftest_item_t;",
+   "dzctl.h: void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms);",
+   "dzctl.h: void dzctl_set_params_hash(uint32_t h);",
+   "dzctl.h: uint32_t dzctl_hash32(const void *data, uint32_t len);",
    "dzctl.h: bool dzctl_is_bb_request(const dzframe_t *f);",
    "dzctl.h: typedef struct { uint8_t loop;",
    "dzctl.h: float amp, hyst, timeout_s;",
@@ -1535,8 +1540,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "d1a1703d2b48cd7f",
-  "version": "0.10.0"
+  "hash": "ccdf79ef04e6ae06",
+  "version": "0.11.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

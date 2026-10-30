@@ -72,6 +72,7 @@ bool dzctl_is_estop(const dzframe_t *f) { return f && f->kind == DZF_DATA && f->
 static volatile dzctl_estop_cause_t s_es_cause;
 static volatile uint32_t s_es_t;
 static volatile float s_es_v;
+static volatile uint32_t s_st_mask, s_st_t, s_par_h;
 
 void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
 {
@@ -84,6 +85,19 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     (void)dzframe_put_u32(out, (uint32_t)s_es_cause);           /* 0.8.0：急停原因、时刻、触发值 */
     (void)dzframe_put_u32(out, s_es_t);
     (void)dzframe_put_f32(out, s_es_v);
+    (void)dzframe_put_u32(out, s_st_mask);                      /* 0.11.0：自检失败项、自检时刻、RAM 参数指纹（len 40） */
+    (void)dzframe_put_u32(out, s_st_t);
+    (void)dzframe_put_u32(out, s_par_h);
+}
+
+void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms) { s_st_mask = fail_mask; s_st_t = t_ms ? t_ms : 1u; }
+void dzctl_set_params_hash(uint32_t h) { s_par_h = h; }
+uint32_t dzctl_hash32(const void *data, uint32_t len)
+{
+    const uint8_t *p = (const uint8_t *)data;
+    uint32_t h = 2166136261u;
+    for (uint32_t i = 0; p && i < len; i++) { h ^= p[i]; h *= 16777619u; }
+    return h;
 }
 
 bool dzctl_is_bb_request(const dzframe_t *f) { return f && f->kind == DZF_DATA && f->id == DZCTL_ID_BB && f->len == 0u; }
@@ -163,7 +177,7 @@ int dzctl_selftest(void)
     fail += dzctl_set(&t, 3, 1.0f, &v) != DZCTL_BAD_ID;
     memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 0;
     dzctl_heartbeat(&t, 1u, &ack);
-    fail += ack.kind != DZF_HEARTBEAT || ack.len != 28u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
+    fail += ack.kind != DZF_HEARTBEAT || ack.len != 40u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
     fail += !dzctl_handle(&t, &in, &ack) || ack.kind != DZF_PARAM_ACK || dzframe_get_u8(&ack, 0) != DZCTL_OK
             || dzframe_get_f32(&ack, 1) != 1.0f;
     {   /* 黑匣子帧 */

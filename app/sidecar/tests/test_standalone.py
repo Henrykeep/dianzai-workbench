@@ -130,3 +130,30 @@ def test_run_modes_standalone_power_cycle_and_tethered_hb_loss(home, tmp_path, m
         assert s.status()["run_mode"]["mode"] == "tethered"
     finally:
         s.disconnect()
+
+
+def test_selftest_and_params_saved_fields(home, tmp_path, monkeypatch):
+    """progress 要的板上数据：自检 {pass, failed_items, t}、run_mode、params_saved（RAM 与 flash 是否一致）。"""
+    monkeypatch.setenv("DZ_SIM_NVM", str(tmp_path / "nvm.bin"))
+    s = _up()
+    try:
+        assert _wait(lambda: s.status()["selftest"] is not None)
+        st = s.status()
+        assert st["selftest"]["pass"] is True and st["selftest"]["failed_items"] == [] and st["selftest"]["t"] >= 0, st
+        assert st["params_saved"] is False and len(st["params_hash"]) == 8     # 没存过
+        assert s.save_params()["ok"] is True
+        assert _wait(lambda: s.status()["params_saved"] is True)
+        h = s.status()["params_hash"]
+        s.set_param("kp", 0.21)
+        assert _wait(lambda: s.status()["params_saved"] is False)              # 改了没存
+        assert s.status()["params_hash"] != h
+    finally:
+        s.disconnect()
+
+
+def test_selftest_dict_decode():
+    from dzbench.session import selftest_dict
+    assert selftest_dict(0, 0) is None
+    d = selftest_dict(0b11, 1500)
+    assert d["pass"] is False and [i["code"] for i in d["failed_items"]] == [1, 2] and d["t"] == 1.5
+    assert d["failed_items"][1]["key"] == "params" and "参数" in d["failed_items"][1]["message_zh"]

@@ -38,6 +38,11 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 - 运行模式：心跳 status bit14 `DZCTL_HB_STANDALONE`（1 脱机 / 0 联机），bit15 `DZCTL_HB_SA_RUNNING`（脱机已启动）。
 - 'M' 切模式：`{'M', mode, DZCTL_MODE_MAGIC=0xA5}`，板回 `{'M', rc}`（0 已切并写 flash，1 没停稳，2 无 flash，3 写失败，4 缺确认字节）。
   模式只由人切换（界面确认卡 / 板上长按），固件从不自动切；模式单独存 flash，与参数无关。
+## 0.11.0
+
+- 心跳尾部再追加 `u32 selftest_mask, u32 selftest_t_ms, u32 params_hash`（len 28 → 40）：
+  自检失败项 bit (code−1)（1 子系统 2 参数 3 flash 4 传感器 5 电源），t_ms = 0 表示应用没报自检；
+  params_hash = RAM 参数 FNV-1a 32；status bit16 `DZCTL_HB_PARAMS_DIRTY` = RAM 与 flash 那份不一致。
 
 ## 0.9.0
 

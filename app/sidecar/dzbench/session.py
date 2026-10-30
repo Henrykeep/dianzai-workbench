@@ -70,6 +70,8 @@ class Session:
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
+        self.selftest: dict | None = None        # dzctl 0.10.0 心跳尾部自检结果（selftest_dict），旧固件 / 应用没报 = None
+        self.params_hash: int | None = None
         self.estop_cause: dict | None = None     # dzctl 0.8.0 心跳里的急停原因（estop_cause_dict），没急停 = None
         self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
@@ -121,6 +123,7 @@ class Session:
             self._t_tr = self.t_connect
             self.hb_status = None
             self.estop_cause = None
+            self.selftest = None; self.params_hash = None
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
@@ -337,6 +340,9 @@ class Session:
                                 self._pending_marks.append(m)
                     if len(payload) >= 28:
                         es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
+                        if len(payload) >= 40:
+                            m_, t_, ph = struct.unpack_from("<III", payload, 28)
+                            self.selftest, self.params_hash = selftest_dict(m_, t_), ph
                         if es:
                             es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
                         if es != self.estop_cause:
@@ -774,6 +780,9 @@ class Session:
             st.update(hb_status_dict(self.hb_status))
             st["estop_cause"] = self.estop_cause
             st["run_mode"] = run_mode_dict(self.hb_status)
+            st["selftest"] = self.selftest
+            st["params_saved"] = None if self.params_hash is None or self.hb_status is None else not (self.hb_status & (1 << 16))
+            st["params_hash"] = None if self.params_hash is None else f"{self.params_hash:08x}"
             if self.tr is not None:
                 log_t, plot_t = self._times_locked(now)
                 hist = self.health.history()
@@ -822,7 +831,27 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
-HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存"}
+
+
+# dzctl 0.10.0 dzctl_selftest_item_t：心跳 selftest_mask 的 bit (code−1)
+SELFTEST_ITEMS = {1: ("subsys", "子系统自检没通过（某个子系统的 selftest 返回失败）"),
+                  2: ("params", "参数越界或非法（已按默认值运行前请检查参数表）"),
+                  3: ("nvm", "flash 存储区不可用：参数存不下，掉电后恢复默认"),
+                  4: ("sensor", "传感器无数据（编码器 / 视觉 / IMU）"),
+                  5: ("power", "电源电压不在允许范围")}
+
+
+def selftest_dict(mask: int, t_ms: int) -> dict | None:
+    """心跳 u32 selftest_mask, u32 t_ms → {pass, failed_items:[{code,key,message_zh}], t}；t_ms = 0（应用没报）→ None。"""
+    if not t_ms:
+        return None
+    items = []
+    for b in range(32):
+        if mask & (1 << b):
+            k, msg = SELFTEST_ITEMS.get(b + 1, (f"item_{b + 1}", f"自检项 #{b + 1} 没通过"))
+            items.append({"code": b + 1, "key": k, "message_zh": msg})
+    return {"pass": not items, "failed_items": items, "t": round(t_ms / 1000.0, 3)}
 
 
 def run_mode_dict(w: int | None) -> dict | None:

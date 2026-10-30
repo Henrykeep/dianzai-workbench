@@ -82,6 +82,8 @@ static volatile float s_amp[2];   /* 主循环采样换算（ADC 不放进 1 kHz
 #endif
 static bool use_current(void) { return HAVE_ISENSE && g_link_params.stall_src == 1u; }
 static runmode_t s_rm;
+static bool s_flash_ok;          /* flash 里有一份有效参数 */
+static uint32_t s_flash_h;       /* 那份参数的指纹（dzctl_hash32） */
 static volatile uint8_t s_mode_req = 0xFFu, s_mode_magic;
 static dzctl_wd_t s_wd;   /* 上位机心跳看门狗：调参时上位机崩溃/拔线 -> 输出归零并锁存急停 */
 
@@ -160,6 +162,7 @@ static uint16_t load_params(void)
         float v;
         if (dzctl_set(&dst, i, dzctl_get(&src, i), &v) != DZCTL_OK) { g_link_params = g_link_params_default; return 2u; }
     }
+    s_flash_ok = true; s_flash_h = dzctl_hash32(&g_link_params, (uint32_t)sizeof g_link_params);
     return 0u;
 }
 
@@ -208,6 +211,7 @@ static void save_params(void)
     bool still = s_estop || (s_state.cmd_v_mps == 0.0f && s_state.cmd_w_rps == 0.0f && sa * sa + sb * sb < 0.01f);
     dz_err_t rc = !s_have_kv ? DZ_ENOTSUP : !still ? DZ_EBUSY
                 : persist_blob_save(&s_kv, KEY_PARAMS, LINK_SCHEMA_HASH, &g_link_params, (uint16_t)sizeof g_link_params);
+    if (rc == DZ_OK) { s_flash_ok = true; s_flash_h = dzctl_hash32(&g_link_params, (uint32_t)sizeof g_link_params); }
     bb_log(&s_bb, pal_millis(), BB_EV_PARAM_SAVE, (uint16_t)(rc < 0 ? -rc : rc), 0.0f, 0.0f);
     dzframe_t f;
     memset(&f, 0, sizeof f);
@@ -249,7 +253,10 @@ dz_err_t app_init(void)
     if ((e = wheel_init(&s_w[1], RES_PWM_MOTOR_B, RES_GPIO_MOTOR_B_IN1, RES_GPIO_MOTOR_B_IN2, RES_ENCODER_MOTOR_B)) != DZ_OK) return e;
     if ((e = subsys_sched_init(&s_sched, list, 1, &s_state, &s_params)) != DZ_OK) return e;
     {   /* 上电自检：不过也不罢工（上位机要能看到为什么），而是急停锁存 + 心跳标志 + 原因 */
-        int bad = (subsys_sched_selftest(&s_sched) >= 0) + !params_sane();
+        uint32_t mask = (subsys_sched_selftest(&s_sched) >= 0 ? 1u << (DZCTL_ST_SUBSYS - 1) : 0u)
+                      | (!params_sane() ? 1u << (DZCTL_ST_PARAMS - 1) : 0u);
+        int bad = (int)((mask & 1u) + ((mask >> 1) & 1u));
+        dzctl_selftest_report(mask, pal_millis());
         bad_boot = bad != 0 || s_estop;
         dzctl_set_flags(DZCTL_HB_SELFTEST_FAIL, bad != 0);
         if (bad) { s_estop = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), (float)bad); }
@@ -412,6 +419,11 @@ void app_loop(void)
         dzctl_table_t t = link_param_table(&g_link_params);
         dzframe_t f;
         last_hb = now;
+        {
+            uint32_t h = dzctl_hash32(&g_link_params, (uint32_t)sizeof g_link_params);
+            dzctl_set_params_hash(h);
+            dzctl_set_flags(DZCTL_HB_PARAMS_DIRTY, !s_flash_ok || h != s_flash_h);
+        }
         dzctl_heartbeat(&t, seq++, &f);
         send(&f);
     }
