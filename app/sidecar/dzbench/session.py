@@ -316,7 +316,10 @@ class Session:
     def resume(self, rec: dict) -> dict:
         """侧车重启后自动连回上次的板子：先试原口；打不开就按记下的 USB 身份/板 ID 重扫端口；
         都不行 → board=disconnected、reason=port_not_found，记录放回去（下次重启再试，用户点“断开”才放弃）。
-        只恢复链路，不解除急停。用户在这期间点了连接/断开（_gen 变了）就让位。"""
+        只恢复链路，不解除急停。用户在这期间点了连接/断开（_gen 变了）就让位。
+        硬规则（统筹者）：自动重连只恢复通信和遥测，绝不重发运行/运动命令或目标值。这里只经 connect()，
+        它对外只发上位机心跳（HEARTBEAT, LEN=0）和读参（PARAM_SET 空载荷 = 只读）；不重放参数、预设、
+        定时/触发发送（这些不落盘，重启即清空）。板子原来空闲就仍空闲，急停锁存仍锁存，恢复运动只能靠人。"""
         port, baud = str(rec.get("port") or ""), int(rec.get("baud") or 0) or None
         with self.lock:
             gen0 = self._gen
