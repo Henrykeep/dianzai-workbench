@@ -1,0 +1,46 @@
+# 嘉楠 K230（CanMV，MicroPython）视觉协处理板（kind: coprocessor）—— 缺口清单第 5 项。
+# 不跑本框架 C 代码；只描述它与主控之间的 dzframe/1 通道。帧格式：A5 5A VER KIND ID SEQ LEN payload CRC16-CCITT-FALSE。
+# 发送端：host/k230/dzsend.py（拷到 /sdcard）+ third_party/vendored/k230_* 里打过 dzframe 补丁的脚本（DZ_FRAME = True）。
+# 主控侧：python3 tools/gen_coproc.py boards/k230-vision/board.yaml -o <dir> --prefix cp_k230
+schema_version: 1
+name: k230-vision
+kind: coprocessor
+vendor: Canaan
+description: K230 跑色块/激光/矩形/钢球识别，经串口用 dzframe 发像素坐标或云台角度
+
+coprocessor:
+  device: Canaan K230 (CanMV)
+  class: other                # MicroPython 相机（非 Linux）
+  link:
+    transport: uart
+    protocol: dzframe/1
+    baud: 115200
+    logic_level_v: 3.3          # 【未验证】按所用 K230 开发板排针确认
+    host_resource: VISION
+  channels:
+    - id: 1
+      name: target
+      dir: to_host
+      rate_hz: TODO             # 25E 脚本（激光/目标点），实测后填写
+      fields:
+        - { name: flags, type: u8, note: "bit0 有效" }
+        - { name: x_px,  type: i16, unit: px, note: 显示坐标系（脚本 DISPLAY 尺寸） }
+        - { name: y_px,  type: i16, unit: px }
+    - id: 2
+      name: ball
+      dir: to_host
+      rate_hz: TODO             # 2026 钢球 YOLO + Kalman，实测后填写
+      fields:
+        - { name: flags,  type: u8,  note: "bit0 识别到 bit1 丢帧中（Kalman 外推值）" }
+        - { name: x_px,   type: i16, unit: px }
+        - { name: y_px,   type: i16, unit: px }
+        - { name: r_px,   type: u16, unit: px, note: 半径 }
+    - id: 3
+      name: gimbal
+      dir: to_host
+      rate_hz: TODO             # 矩形/目标追踪 → 云台角度
+      fields:
+        - { name: cmd,      type: u8,  note: "上游 send_frame 的 cmd（0x01 = 追踪）" }
+        - { name: pan_x10,  type: i16, unit: "0.1deg" }
+        - { name: tilt_x10, type: i16, unit: "0.1deg" }
+  params: []

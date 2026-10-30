@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [编译] K230 视觉脚本库（缺口清单第 5 项）：直接复用参考仓库代码——`third_party/vendored/k230_edc_skill/`（Electronics-Design-Competition-Skill@cd46b72：2026 钢球 YOLO11+Kalman、2025E 激光三版）和 `third_party/vendored/k230_mspm0g_contest/`（mspm0g-contest-skill@cc7b2bd：矩形追踪→云台、矩形/形状/三角形检测、传感器诊断）。发送函数加可关的 `DZ_FRAME` 补丁走 host/k230/dzsend.py；新板描述 `boards/k230-vision/board.yaml`（通道 target/ball/gimbal），gen_coproc 生成主控解码。`tools/test_k230_vision.py` 进 make check（通道/字段与 board.yaml 一致、编码与 dzlink 相同）。[未测] K230 实机；EDC-Skill 上游未声明许可证，仅私有仓库自用
 - [仿真] 最好一轮落盘 + 一键回滚 + max_step_ratio（缺口清单第 4 项）：护栏的“最好一轮”一变就存成快照“自动-最好一轮”（侧车重启/护栏重置后仍可在快照页恢复）；Agent 菜单新增“回到最好一轮”（op `tune_best` 只读 + 确认框 → `tune_rollback_best`）；新配置 `tune.max_step_ratio`（单步 ±ratio，只会比档位默认更严）。tests/test_guard.py 两例。思路参考 llm-pid-tuner（history.py best 行、max_step 限幅、rollback_to_best），代码自写。[未测] 真板
 - [仿真] 环模式预设 + 平滑切换（缺口清单第 3 项）：快照可打“速度环 / 位置环”标签（`snapshot_save {mode}`，列表显示标签）；恢复时可设平滑过渡秒数（`snapshot_restore {ramp_s}`，默认 0.5 s，上限 10 s），每 50 ms 一步线性插值，只发要变的参数，最后一步回读校验；中途急停立即停写并报 `ramp_aborted`。纯函数 `snapshots.ramp_plan`；tests/test_snapshots_ramp.py + car_2wd 仿真端到端。思路参考 PID_Helper pid-session.ts（草稿/生效值分离），代码自写。[未测] 真板；固件侧没有“环模式”参数（标签只在上位机）
 - [仿真] “上板验证”可选自动阶跃：仿真搜索卡片加勾选“全部采纳后自动做一次阶跃实验”。`tune_propose {verify_step}` 把一个候选的几张提议卡记成一组，你全部采纳后侧车在后台跑 `run_step_test`，TuneGuard 判定（继续/达标/回滚）照常走 tune_round 卡片；有一张被拒整组作废、不做实验；实验失败发中文错误卡。写参数仍只在你点采纳之后。tests/test_search.py 新增分组用例。[未测] 真板上一整轮
