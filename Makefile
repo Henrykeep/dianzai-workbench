@@ -206,6 +206,7 @@ test check: TREE_SNAP := $(shell mktemp 2>/dev/null || echo /tmp/dz-tree-$$$$)
 test:
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
+	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
@@ -215,6 +216,10 @@ test:
 # 推送前：干净克隆 + 空 HOME + 无器件包里跑 CI 同款步骤（tools/preflight.sh）
 # 许可扫描（make check 调用）：vendored/third_party 每目录 LICENSE、Python 依赖 pip-licenses、前端 npm 依赖。
 # 统一输出：✗ [licenses/<类>] 什么 · 原因：… · 处理：…；GPL/LGPL/AGPL、无许可、认不出即失败；CC-BY 登记 docs/ATTRIBUTION.md 即可。
+# 带负载回归：所有核占满时急停 点击→latched、解除→cleared 的 p95 / max ≤ 200 ms（≥50 次）。慢（约 1 min），不进 make test。
+estop-load:
+	$(PY) -m pytest -q -s -p no:cacheprovider app/sidecar/loadtests/test_estop_load.py
+
 licenses:
 	$(PY) tools/check_vendored.py
 	$(PY) tools/test_check_vendored.py
@@ -298,7 +303,7 @@ check:
 fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）
 	tools/fetch_third_party.sh
 	tools/fetch_sysconfig.sh
-	cd app/ui && npm ci --no-audit --no-fund
+	tools/fetch_ui_deps.sh   # node_modules 为软链接则报错退出（#33），否则 npm ci
 
 clean:
 	rm -rf build

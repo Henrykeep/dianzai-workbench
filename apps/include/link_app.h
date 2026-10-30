@@ -133,7 +133,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         dzrt_poll(&L->rt, now, L->latched, -1);
         if (was_sa != !dzrt_needs_host(&L->rt)) dzctl_wd_init(&L->wd, 1000u);   /* 切模式：看门狗重新计 */
     }
-    if (dzrt_hb_due(now, L->latched, &L->hb_was_estop, &L->last_hb)) {   /* 急停上升沿立即发 */
+    if (dzrt_hb_due(now, L->latched, &L->hb_was_estop, &L->last_hb)) {   /* 急停上升沿 / 下降沿立即发 */
         dzctl_heartbeat(&t, L->seq++, &f);
         link_app_send(&f);
     }
