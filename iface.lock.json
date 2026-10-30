@@ -478,6 +478,36 @@
   "hash": "cc8e641a4215a515",
   "version": "1.0.0"
  },
+ "firmware/drivers/as5600": {
+  "decls": [
+   "as5600.h: #define AS5600_ADDR 0x36u",
+   "as5600.h: typedef struct { pal_id_t i2c;",
+   "as5600.h: int8_t dir;",
+   "as5600.h: float vel_tau_s;",
+   "as5600.h: } as5600_cfg_t;",
+   "as5600.h: typedef struct { as5600_cfg_t cfg;",
+   "as5600.h: uint16_t raw, zero;",
+   "as5600.h: int32_t turns;",
+   "as5600.h: float angle;",
+   "as5600.h: float angle_multi;",
+   "as5600.h: float vel;",
+   "as5600.h: uint32_t t_us;",
+   "as5600.h: bool has, ready;",
+   "as5600.h: uint32_t errors;",
+   "as5600.h: uint8_t status;",
+   "as5600.h: } as5600_t;",
+   "as5600.h: dz_err_t as5600_init(as5600_t *e, const as5600_cfg_t *cfg);",
+   "as5600.h: dz_err_t as5600_check_magnet(as5600_t *e, uint8_t *status);",
+   "as5600.h: dz_err_t as5600_update(as5600_t *e, uint32_t now_us);",
+   "as5600.h: dz_err_t as5600_set_zero_here(as5600_t *e);",
+   "as5600.h: static inline float as5600_angle(const as5600_t *e) { return e->angle;",
+   "as5600.h: } static inline float as5600_angle_multi(const as5600_t *e) { return e->angle_multi;",
+   "as5600.h: } static inline float as5600_velocity(const as5600_t *e) { return e->vel;",
+   "as5600.h: } dz_err_t as5600_selftest(void);"
+  ],
+  "hash": "d3520ffa3318ffc5",
+  "version": "1.0.0"
+ },
  "firmware/drivers/battery": {
   "decls": [
    "battery.h: typedef enum { BAT_NONE = 0, BAT_OK, BAT_LOW, BAT_CRIT } battery_state_t;",

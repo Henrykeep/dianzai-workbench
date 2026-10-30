@@ -53,6 +53,7 @@
             -I${PROJECT_LOC}/../../../firmware/proto/dzimu
             -I${PROJECT_LOC}/../../../firmware/proto/dzrtt
             -I${PROJECT_LOC}/../../../firmware/proto/peerlink
+            -I${PROJECT_LOC}/../../../firmware/drivers/as5600
             -I${PROJECT_LOC}/../../../firmware/drivers/battery
             -I${PROJECT_LOC}/../../../firmware/drivers/bmi088
             -I${PROJECT_LOC}/../../../firmware/drivers/bt_serial
@@ -142,6 +143,7 @@
         <file path="../../../firmware/proto/dzimu/dzimu.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/proto/dzrtt/dzrtt.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/proto/peerlink/peerlink.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/drivers/as5600/as5600.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/battery/battery.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/bmi088/bmi088.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/drivers/bt_serial/bt_serial.c" targetDirectory="dz/firmware" action="link"/>

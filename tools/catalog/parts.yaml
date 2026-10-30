@@ -208,6 +208,19 @@ parts:
     repo: [firmware/drivers/wit_imu, examples/2026H_ball/io/io_imu.c]
     status: 仿真
     res: [{ type: uart, names: [IMU], baud: 115200, irq: 4 }]
+  - id: as5600
+    name: AS5600 12 位磁编码器（I2C 0x36）
+    kind: sensor
+    provides: [sense.angle]
+    bus: i2c
+    specs: {}
+    pros: [非接触绝对角, 便宜, 给云台 / 无刷 FOC 做转子角]
+    cons: [I2C 读一次约 70 µs, 地址固定 0x36 一条总线只能挂一个]
+    risks: [磁铁距离 / 充磁方向不对时角度跳]
+    substitutes: []
+    repo: [firmware/drivers/as5600]
+    status: 仿真
+    res: [{ type: i2c, names: [ENC], speed_hz: 400000 }]
   - id: hcsr04
     name: HC-SR04 超声波
     kind: sensor
