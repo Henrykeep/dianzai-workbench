@@ -31,6 +31,12 @@ GPL 项目（betaflight-configurator）只参考思路和布局，不看样式�
 | 飞书客户端 | [飞书帮助中心](https://www.feishu.cn/hc/zh-CN/) | 窄导航 + 顶部只留搜索和全局 | 顶栏只留连接胶囊、排障、工具箱、急停 |
 | 调参上位机 | [betaflight-configurator](https://github.com/betaflight/betaflight-configurator)（GPL，仅看布局） | 左侧按功能分页、顶部连接、PID 表格 + 实时曲线 | 同思路：左步骤导航 / 顶部连接胶囊 / 参数列 + 曲线；不复用任何代码样式 |
 | 多曲线对比 | [PlotJuggler](https://github.com/facontidavide/PlotJuggler)（MPL-2.0） | 拖拽分屏、多曲线叠加、时间轴联动 | 示波器多通道共享时间轴；拖拽分屏列入后续 |
+| Tauri 桌面布局 | [mountain-loop/yaak](https://github.com/mountain-loop/yaak)（MIT） | Tauri 应用：侧栏 + 分割面板 + 命令面板 | 同为 Tauri，学分割面板与 ⌘K 写法；未借代码 |
+| 图标侧栏 + 状态栏 | [podman-desktop](https://github.com/podman-desktop/podman-desktop)（Apache-2.0） | 可收起图标侧栏、底部状态栏 | 对应左侧导航收起态 56px 与只读状态栏 |
+| 实时时序面板 | [rerun-io/rerun](https://github.com/rerun-io/rerun)（Apache-2.0） | 时序面板拼接、共享时间游标 | 波形多通道共享时间轴，后续做面板拼接 |
+| 请求/响应双栏 | [usebruno/bruno](https://github.com/usebruno/bruno)（MIT）、[Kong/insomnia](https://github.com/Kong/insomnia)（Apache-2.0） | 左列表、中编辑、右结果 | 调参页「参数列 → 曲线 → Agent」三栏 |
+| 嵌入式 IDE | Eclipse Theia（EPL）、Arduino IDE 2（AGPL） | 板卡/端口选择在顶栏 | 只看思路：连接胶囊放顶栏；不搬代码 |
 
 ## 3. 待拍板（未引入）
+- 本轮未借用任何外部代码片段；以上均为学习布局思路。
 - 不引新依赖。uPlot 已在仓库（MIT）；如要拖拽分屏或命令面板库（cmdk 为 MIT、React 依赖）需先过许可证确认。
