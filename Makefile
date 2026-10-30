@@ -200,6 +200,7 @@ selftest:
 	$(MAKE) APP=port_selftest BOARD=$(BOARD)
 
 test:
+	@tools/require_fetch.sh   # 缺 third_party/CMSIS_6 → 「缺少 third_party/CMSIS_6，请先运行 make fetch」并退出非零
 	$(MAKE) -C tests/host
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
@@ -220,6 +221,8 @@ preflight:
 	tools/preflight.sh
 
 check:
+	@tools/require_fetch.sh   # 先于一切：没 make fetch 就直接说，别等编译报错
+	tools/require_fetch.sh --selftest
 	$(PY) tools/check_redef.py --selftest
 	$(PY) tools/check_redef.py
 	$(PY) tools/validate_board.py boards/*/board.yaml
