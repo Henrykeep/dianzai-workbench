@@ -851,3 +851,4 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .estop.locked{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--estop)}   /* 锁存：只认本地服务上报，仍可再按 */
 .alerts .al-wd{padding-left:var(--sp2);border-left:1px solid var(--line2)}
 .msg.bot.blk-note .act{margin-top:var(--sp1)}
+.dlg.llm .cst.warn{background:var(--warn-bg);color:var(--warn)}

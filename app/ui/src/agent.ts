@@ -5,6 +5,7 @@ import { runAction, resolveFix } from "./progress";
 import { Receipts, RECEIPT_LABEL, newMsgId, blockedCard, newBlockers, noticeView, NoticeGate, Notice } from "./receipt";
 import { TurnGate, Watch, timeoutCard, errorCard, Card } from "./agentwatch";
 import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
+import { modelLister, type El } from "./llmcfg";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -484,21 +485,21 @@ export function initAgent(call: Call) {
     prov = k;
     document.querySelectorAll<HTMLElement>("#cfg-provs .pv").forEach(b => b.setAttribute("aria-checked", String(b.dataset.k === k)));
     if (fill && provs[k]) { $<HTMLInputElement>("cfg-url").value = provs[k].base_url; $<HTMLInputElement>("cfg-model").value = provs[k].model; }
-    cfgSt("", "还没测试");
+    cfgSt("", "尚未测试连接");
   }
   async function openCfg(first = false) {
     const c = await call("agent_config").catch(() => null);
     if (!c) return;
     provs = c.providers; firstRun = first;
-    $("cfg-title").textContent = first ? "接上大模型（第一次用）" : "大模型设置";
+    $("cfg-title").textContent = first ? "配置大模型（首次使用）" : "大模型设置";
     $("cfg-provs").innerHTML = Object.entries(provs).map(([k, p]) =>
-      `<button type="button" class="pv" role="radio" data-k="${esc(k)}"><b>${esc(p.name)}</b><span class="mono">${esc(p.model || "自己填")}</span></button>`).join("");
+      `<button type="button" class="pv" role="radio" data-k="${esc(k)}"><b>${esc(p.name)}</b><span class="mono">${esc(p.model || "手动填写")}</span></button>`).join("");
     document.querySelectorAll<HTMLElement>("#cfg-provs .pv").forEach(b => b.onclick = () => pickProv(b.dataset.k!, true));
     pickProv(c.provider, false);
     $<HTMLInputElement>("cfg-url").value = c.base_url; $<HTMLInputElement>("cfg-model").value = c.model; $<HTMLInputElement>("cfg-repo").value = c.repo ?? "";
     const key = $<HTMLInputElement>("cfg-key"); key.value = ""; key.type = "password";
-    key.placeholder = c.has_key ? `已保存 ${c.key_hint}（留空 = 不改）` : "sk-…（Ollama 本地可留空）";
-    cfgSt(c.configured ? "ok" : "", c.configured ? `已配置 · ${esc(c.model)}` : "还没测试");
+    key.placeholder = c.has_key ? `已保存（${c.key_hint || "已隐藏"}），留空则不修改` : "sk-…（Ollama 本地可留空）";
+    cfgSt(c.configured ? "ok" : "", c.configured ? `已配置 · ${esc(c.model)}` : "尚未测试连接");
     $("cfg-local").innerHTML = c.local_models.map((x: { model: string; size: string; note: string }) =>
       `<option value="${esc(x.model)}" ${x.model === c.local_model ? "selected" : ""}>${esc(x.model)} · ${esc(x.size)}</option>`).join("");
     const note = () => c.local_models.find((x: { model: string }) => x.model === $<HTMLSelectElement>("cfg-local").value)?.note ?? "";
@@ -511,36 +512,21 @@ export function initAgent(call: Call) {
   }
   $("ag-cfg").onclick = () => openCfg();
   $("cfg-eye").onclick = () => { const k = $<HTMLInputElement>("cfg-key"); k.type = k.type === "password" ? "text" : "password"; };
-  ["cfg-url", "cfg-model", "cfg-key"].forEach(id => $(id).oninput = () => cfgSt("", "改过了，再测一次"));
+  ["cfg-url", "cfg-model", "cfg-key"].forEach(id => $(id).oninput = () => cfgSt("", "配置已修改，请重新测试连接"));
   $("cfg-test").onclick = async () => {
-    const b = $<HTMLButtonElement>("cfg-test"); b.disabled = true; cfgSt("busy", `<span class="spin"></span>正在连 ${esc(fv("cfg-url"))} …`);
+    const b = $<HTMLButtonElement>("cfg-test"); b.disabled = true; cfgSt("busy", `<span class="spin"></span>正在连接 ${esc(fv("cfg-url"))} …`);
     const r = await call("agent_config_test", { form: form() }).catch((e: Error) => ({ ok: false, message: String(e.message || e), fix: "" }));
     b.disabled = false;
     cfgSt(r.ok ? "ok" : "bad", r.ok
-      ? `<b>通了</b> · ${esc(r.model)} · ${r.ms} ms${r.reply ? ` · 回复“${esc(r.reply)}”` : ""}`
-      : `<b>没通</b> · ${esc(r.message)}${r.fix ? `<br><span class="fix">→ ${esc(r.fix)}</span>` : ""}`);
+      ? `<b>连接成功</b> · ${esc(r.model)} · ${r.ms} ms${r.reply ? ` · 回复“${esc(r.reply)}”` : ""}`
+      : `<b>连接失败</b> · ${esc(r.message)}${r.fix ? `<br><span class="fix">→ ${esc(r.fix)}</span>` : ""}`);
   };
-  // 模型列表：GET {base_url}/models。首次配置时填好地址和 Key 后自动拉取；接口不可用时回退手动填写，预设默认模型只作最后兜底。
-  type ModelList = { ok: boolean; models: string[]; reason?: "unsupported" | "error"; message?: string };
+  // 模型列表：GET {base_url}/models。首次配置时填好地址和 Key 后自动拉取；失败按 reason / fix_action 回退，预设默认模型只作最后兜底。逻辑见 llmcfg.ts
   let firstRun = false;
-  async function listModels() {
-    cfgSt("busy", `<span class="spin"></span>正在获取可用模型…`);
-    const r: ModelList = await call<ModelList>("agent_models", { form: form() })
-      .catch((e: Error) => ({ ok: false, models: [], reason: "error" as const, message: String(e.message || e) }));
-    const model = $<HTMLInputElement>("cfg-model"), ids = r.models || [];
-    $("cfg-models").innerHTML = ids.map(i => `<option value="${esc(i)}">`).join("");
-    if (r.ok && ids.length) {
-      if (!ids.includes(model.value.trim())) { model.value = ""; model.placeholder = "请从列表中选择模型"; }
-      cfgSt("", `已获取 ${ids.length} 个可用模型，请在“模型”中选择`);
-      model.focus();
-      return;
-    }
-    if (!model.value.trim() && provs[prov]?.model) model.value = provs[prov].model;   // 最后兜底：预设默认模型
-    model.placeholder = "请按服务商文档填写模型名";
-    cfgSt("bad", `${esc(r.message || "未获取到模型列表")}。请手动填写模型名${r.reason === "error" ? "，或检查地址与 Key 后重试" : ""}`);
-  }
-  $("cfg-list").onclick = () => listModels();
-  ["cfg-url", "cfg-key"].forEach(id => $(id).addEventListener("change", () => { if (firstRun && fv("cfg-url")) listModels(); }));
+  const lister = modelLister({ call: (op, a) => call(op, a), el: id => $(id) as unknown as El, form, preset: () => provs[prov]?.model || "" });
+  $("cfg-list").onclick = () => lister.load();
+  $("cfg-retry").onclick = () => lister.load();
+  ["cfg-url", "cfg-key"].forEach(id => $(id).addEventListener("change", () => { if (firstRun && fv("cfg-url")) lister.auto(); }));
   $("cfg-ol").onclick = async () => {
     const b = $<HTMLButtonElement>("cfg-ol"), want = $<HTMLSelectElement>("cfg-local").value;
     b.disabled = true; olSt("busy", `<span class="spin"></span>检查本机 Ollama…`);
