@@ -19,6 +19,7 @@ import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
 import { initSteps } from "./steps";
 import { initCalWiz } from "./calwiz";
+import { initSymptoms } from "./symptoms";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[]; protect_fixed?: Fixed[] };
@@ -623,8 +624,11 @@ $("doctor").onclick = async () => {
 };
 
 createIcons({ icons: { Activity, Ellipsis, Eraser, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
+// 对话框原来写在右栏 <aside> 里：分页后右栏在 项目/烧录/标定/封箱 页隐藏，自检、赛前检查等对话框跟着看不见 → 统一挪到 body 下
+document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();
 const goStep = initSteps(() => !!S.status.connected);
+initSymptoms(s => goStep(s as Parameters<typeof goStep>[0]));
 // 跨页入口：回到… 菜单里的“某个快照 / 烧前固件”、工具箱“波形测量”
 $("gb-snap").onclick = () => { goStep("调参"); (document.querySelector('#dock-tabs [data-d="snaps"]') as HTMLElement)?.click(); };
 $("gb-fw").onclick = () => goStep("烧录");

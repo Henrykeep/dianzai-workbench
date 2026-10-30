@@ -31,8 +31,9 @@
     <div class="pins" id="stats"></div>
     <div class="sp"></div>
 
-    <details class="menu right" id="trouble-m"><summary class="btn" id="trouble" title="排障：自检、黑匣子、HardFault（Agent 工具）、链路告警；按症状排查页见后续提交"><i data-lucide="stethoscope"></i>排障</summary>
+    <details class="menu right" id="trouble-m"><summary class="btn" id="trouble" title="排障：按症状查、自检、黑匣子、HardFault（Agent 工具）"><i data-lucide="stethoscope"></i>排障</summary>
       <div class="pop">
+        <button class="mi" type="button" id="sym-open" title="按现象找原因：选一条症状，告诉你可能原因、先验什么、在工作台里点哪儿"><i data-lucide="list-checks"></i>按症状排查…</button>
         <button class="mi" id="doctor" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i>自检</button>
         <button class="mi" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；板子有掉电保存区时急停那刻冻进 flash，下次上电还在）"><i data-lucide="history"></i>读黑匣子</button>
         <span class="mh">HardFault：在调参页 Agent 里问“解一下 HardFault”（decode_hardfault 工具）</span>
@@ -198,6 +199,7 @@
       <div class="vh"><span class="ttl">台账</span><div class="sp"></div><select id="layer" class="sm" hidden title="串级分层（schema loops，内环在前）：选一层，读数/台账/验收换成这层，参数只列这层的增益。先调稳内层再往外"></select><span class="lbl mono" id="hist-n"></span></div>
       <div id="hist" class="hist"></div>
     </section>
+    <dialog id="sym-dlg" class="dlg"><form method="dialog"><h3>按症状排查</h3><input id="sym-q" class="in" placeholder="搜症状：乱码 / 复位 / 振荡 / 断电…" autocomplete="off"><ul id="sym-list" class="doc sym"></ul><p class="hint">症状表整理自 MICU-auto-embedded troubleshooting.md，分类用 failure-taxonomy.md。</p><div class="act"><button class="btn">关闭</button></div></form></dialog>
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
       <dialog id="predlg" class="dlg"><form method="dialog"><h3>赛前检查</h3><div id="pre-sum" class="pre-sum"></div><ul id="pre-list" class="doc"></ul><ul id="pre-bb" class="doc" hidden></ul>
         <p class="hint">板上参数要等于固件默认值：调好的值先“定稿”重烧，不然一复位就丢。人工项（电池、螺丝、线束…）在导出的清单里打勾。</p>

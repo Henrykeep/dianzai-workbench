@@ -382,3 +382,4 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .wz h4{margin:0 0 4px;display:flex;gap:8px;align-items:baseline}
 .wz ul{margin:4px 0;padding-left:18px}.wz .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
 .wz .out{font-size:12px;opacity:.85;white-space:pre-wrap}
+.doc.sym{max-height:60vh;overflow:auto}.doc.sym li{margin:6px 0}.doc.sym .row{display:flex;gap:6px;margin-top:3px}
