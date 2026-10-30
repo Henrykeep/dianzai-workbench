@@ -1,3 +1,4 @@
+import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
 import { Msg } from "./ws";
 
@@ -151,10 +152,18 @@ export function initAgent(call: Call) {
   const VERDICT: Record<string, string> = { continue: "继续", done: "达标，结束", rollback: "变差，建议回滚到最好一轮", stop: "停止" };
   function renderRound(m: Msg) {
     const v = m.verdict, k = m.metrics;
+    setRound({ verdict: v, metrics: k });
+    if (v.action === "continue" && !v.advice) autoSuggest();
     add(`<div class="hd"><span class="dotk"></span><span class="t">第 ${v.round} 轮阶跃：${esc(VERDICT[v.action] ?? v.action)}</span><span class="lbl">程序判定</span></div>
       <p>超调 ${n(k.overshoot_pct, 1, "%")} · 调节 ${n(k.settling_s, 3, " s")} · 稳态误差 ${n(k.sse_pct, 1, "%")} · 振荡 ${k.oscillations} · 评分 ${v.score}</p>
       ${v.best ? `<div class="lbl">最好：第 ${v.best.round} 轮 ${esc(JSON.stringify(v.best.gains))}${v.rolled_back ? "（仿真已自动回滚）" : ""}</div>` : ""}
-      ${v.reason ? `<div class="lbl">${esc(v.reason)}</div>` : ""}`);
+      ${v.reason ? `<div class="lbl">${esc(v.reason)}</div>` : ""}`, "card round");
+  }
+  // 建议卡：离线规则（tune_analyze）给出的第一条带改动的建议 → 提议卡（右栏），采纳/驳回仍走 proposal_decide
+  async function autoSuggest() {
+    const r = await call<any>("tune_analyze", { seconds: 5 }).catch(() => null);
+    const h = r?.hints?.find((x: any) => x.changes && Object.keys(x.changes).length);
+    if (h) call("propose", { changes: h.changes, reason: h.text, source: "规则" }).catch(() => {});
   }
   function renderSweep(m: Msg) {
     const s = m.summary || {}, bad = new Set<number>(s.unreliable || []);

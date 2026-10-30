@@ -135,7 +135,8 @@ class TuneGuard:
                 x.label = "recent"
         if best and best.label not in ("unstable", "last_rejected"):
             best.label = "best"
-        verdict = {"round": r.n, "score": round(r.score, 4), "stable": stable(m), "good_enough": good_enough(m, self.good)}
+        verdict = {"round": r.n, "score": round(r.score, 4), "stable": stable(m), "good_enough": good_enough(m, self.good),
+                   "target": {k: self.good[k] for k in ("overshoot_pct", "sse_pct", "osc") if k in self.good}}   # 界面建议卡的“目标”列
         why = self._env_stop(sample or {})
         tail = self.rounds[-self.good["consecutive"]:]
         if why:

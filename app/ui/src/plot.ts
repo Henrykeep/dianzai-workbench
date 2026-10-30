@@ -34,6 +34,7 @@ export class Plot {
   cur: [number | null, number | null] = [null, null];   // A/B 光标（绝对时间）
   view: number | null = null;    // 非空 = 视图中心钉在这个时间（心跳条/时间线点过来）；恢复运行时清掉
   marks: { t: number; tag: string; color: string }[] = [];   // 事件竖线（timeline.ts）
+  annot: { i: number; tPeak: number; yPeak: number; mp: number; ts: number | null; tsv: number } | null = null;   // 本轮 Mp / ts 尺寸标注
   ghost: Ghost | null = null;    // 余辉：上一轮相对 t0 的数据
   layout: Layout = "split";
   private lanes: Lane[] = [];
@@ -81,7 +82,7 @@ export class Plot {
     const [a, b] = windowSlice(this.t, t0, t0 + dur);
     return { rel: this.t.slice(a, b).map(x => x - t0), ys: this.ys.map(y => y.slice(a, b)), label: "" };
   }
-  private repaint() { this.dirty = true; if (!this.running) this.lanes.forEach(l => l.u.redraw(false)); }
+  repaint() { this.dirty = true; if (!this.running) this.lanes.forEach(l => l.u.redraw(false)); }
 
   push(t: number[], y: Record<string, number[]>) {
     if (!t.length) return;
@@ -124,6 +125,17 @@ export class Plot {
       c.beginPath(); c.moveTo(Math.round(p) + .5, top); c.lineTo(Math.round(p) + .5, top + height); c.stroke(); c.setLineDash([]);
       if (first) { c.fillStyle = color; c.font = `500 ${11 * devicePixelRatio}px ${css("--f-mono")}`; c.fillText(tag, p + 4 * devicePixelRatio, top + 12 * devicePixelRatio); }
     };
+    const an = this.annot;
+    if (an && an.i === l.i) {             // Mp：峰值处短横线 + 标签；ts：调节完成处竖虚线 + 标签（文字加底色防糊）
+      const lab = (x: number, y: number, t: string) => { c.font = `500 ${11 * devicePixelRatio}px ${css("--f-mono")}`;
+        const w = c.measureText(t).width + 8 * devicePixelRatio; c.fillStyle = css("--s2"); c.fillRect(x, y - 12 * devicePixelRatio, w, 16 * devicePixelRatio);
+        c.fillStyle = css("--ink"); c.fillText(t, x + 4 * devicePixelRatio, y); };
+      const px = X(an.tPeak), py = u.valToPos(an.yPeak, "y", true);
+      if (inX(px)) { c.strokeStyle = css("--text"); c.lineWidth = devicePixelRatio; c.beginPath(); c.moveTo(px, py); c.lineTo(px, py + 18 * devicePixelRatio); c.moveTo(px - 16 * devicePixelRatio, py); c.lineTo(px + 16 * devicePixelRatio, py); c.stroke();
+        lab(px + 6 * devicePixelRatio, py + 4 * devicePixelRatio, `Mp ${an.mp.toFixed(1)}%`); }
+      if (an.ts != null) { const tx = X(an.ts); if (inX(tx)) { c.strokeStyle = css("--muted"); c.setLineDash([2 * devicePixelRatio, 3 * devicePixelRatio]); c.beginPath(); c.moveTo(tx, top); c.lineTo(tx, top + height); c.stroke(); c.setLineDash([]);
+        lab(tx + 4 * devicePixelRatio, top + height - 8 * devicePixelRatio, `ts ${an.tsv < 1 ? (an.tsv * 1000).toFixed(0) + " ms" : an.tsv.toFixed(2) + " s"}`); } }
+    }
     for (const m of this.marks) vline(m.t, css(m.color), [1, 3], m.tag);
     if (this.t0 != null) vline(this.t0, css("--warn"), [3, 3], "t0");
     if (A != null) vline(A, css("--acc-t"), [], "A");

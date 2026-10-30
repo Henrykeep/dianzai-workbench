@@ -276,7 +276,7 @@ ul.doc i{font-style:normal;color:var(--muted)}
 .toast span{color:var(--muted)}
 .toast.ok{box-shadow:var(--sh-pop),inset 2px 0 0 var(--ok)} .toast.info{box-shadow:var(--sh-pop),inset 2px 0 0 var(--info)} .toast.warn{box-shadow:var(--sh-pop),inset 2px 0 0 var(--warn)}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-@media (max-width:1366px){.app{--w-left:248px;--w-side:280px;--w-lab:120px} #ag-tune,#ag-sweep{display:none} .conn select{max-width:200px} .reads{gap:var(--sp3)} .rd{min-width:80px}}
+@media (max-width:1366px){.app{--w-left:248px;--w-side:280px;--w-lab:120px} .conn select{max-width:200px} .reads{gap:var(--sp3)} .rd{min-width:80px}}
 
 /* 测量 / 历史（docs/26 §3.5） */
 .meas,.hist{flex:1;min-height:0;overflow:auto;padding:var(--sp2) var(--sp5)}
@@ -450,3 +450,35 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 /* 评分页右栏只有评分一个面板，不显示其他标签 */
 .app[data-step="评分"] #rail [data-side]:not([data-side="score"]){display:none}
 .app[data-step="模块"] .dock .commit{display:none}
+/* 时间线步骤栏：标签用正文色、当前步实底高亮、建议下一步下划线（对比度 ≥ 4.5:1） */
+.steps{gap:var(--sp1)}
+.steps button{height:32px;padding:0 var(--sp3);color:var(--text);font-size:var(--t-md)}
+.steps button:hover{color:var(--ink);background:var(--s-hover)}
+.steps button.on{background:var(--ink);color:var(--bg);font-weight:600}
+.steps button.next:not(.on){color:var(--ink)}
+/* 调参主卡：操作条 + 读数 + 主图合成一张卡 */
+.app[data-step="调参"] .work{background:var(--s2);border-radius:var(--r-lg);gap:0;overflow:hidden}
+.app[data-step="调参"] .tunebar,.app[data-step="调参"] .scope{background:none;border-radius:0}
+.app[data-step="调参"] .tunebar{padding:var(--sp3) var(--sp5) 0}
+.app[data-step="调参"] #verdict{color:var(--text)}
+.bad-t{color:var(--crit)} .rd .dt b.bad-t{color:var(--crit)}
+/* 台账：一轮一行 轮 / 改动 / 超调 / 上升 / 调节 / 判定 */
+.pane[data-side="hist"] .hist{padding:0 var(--sp5) var(--sp2)}
+.ledger tr[data-g]{cursor:pointer} .ledger tr[data-g]:hover td{color:var(--ink)}
+.ledger td{padding:6px 0;border-top:1px solid var(--hair)}
+.ledger .chg{text-align:left;color:var(--text);font-family:var(--f-mono);padding-left:var(--sp3)}
+.ledger th:nth-child(2){text-align:left;padding-left:var(--sp3)}
+.ledger td.mp{color:var(--crit)} .ledger tr.cur td{color:var(--ink)} .ledger tr.cur .hn{box-shadow:inset 2px 0 var(--acc);padding-left:var(--sp2)}
+/* 建议卡 */
+.card.sugg{padding:var(--sp3)}
+.sugg .sg-h{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:var(--sp2)}
+.sugg .sg-v{font:300 var(--t-lg) var(--f-sans);color:var(--ink)} .sugg .sg-v em{font-style:normal;color:var(--acc-t)}
+table.sg{width:100%;font:400 var(--t-sm)/20px var(--f-mono);color:var(--text);margin-bottom:var(--sp2)}
+table.sg th{font-weight:400;color:var(--muted);text-align:right} table.sg td{text-align:right} table.sg td:first-child{text-align:left}
+.sugg p{color:var(--text);margin:var(--sp2) 0}
+.sugg .act{display:grid;grid-template-columns:1fr auto;gap:var(--sp2);margin-top:var(--sp2)} .sugg .act .btn{height:40px;justify-content:center}
+/* 调参右栏只放建议：每轮的程序判定已经在台账“判定”列，不再在右栏重复成卡片 */
+.app[data-step="调参"] #props>.card.round{display:none}
+.ledger td.mp{color:inherit}
+.steps button{padding:0 var(--sp2)}
+.conn select{max-width:200px}

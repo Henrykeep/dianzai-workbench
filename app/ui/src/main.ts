@@ -1,3 +1,4 @@
+import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
 import { createIcons, Activity, Ellipsis, Eraser, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
@@ -453,13 +454,21 @@ function renderProposal(m: Msg) {
   const p = S.schema?.params.find(x => x.name === m.name);
   const d = document.createElement("div");
   d.className = "card";
-  d.innerHTML = `<div class="hd"><span class="dotk"></span><span class="t">${esc(m.name)} ${p ? fmt(m.current, p) : m.current} → <em>${p ? fmt(m.value, p) : m.value}</em></span><span class="lbl">${esc(m.source)}</span></div>
-    <p>${esc(m.reason)}${m.clamped ? "（已按范围限幅）" : ""}</p>
-    <div class="act"><button class="btn pri" data-a="1">采纳 <kbd>Y</kbd></button><button class="btn" data-a="0">拒绝 <kbd>N</kbd></button></div>`;
+  // 建议卡（v6 稿）：参数 旧 → 新、最近一轮实测 vs 护栏目标、一句理由、采纳 / 驳回
+  const R = lastRound, k = R?.metrics, tg = R?.verdict?.target ?? {};
+  const n1 = (v: any, d: number, u: string) => v == null || !Number.isFinite(+v) ? "—" : (+v).toFixed(d) + u;
+  const rows = k?.ok ? `<table class="sg"><tr><th></th><th>实测 #${esc(R!.verdict.round)}</th><th>目标</th></tr>
+      <tr><td>超调</td><td>${n1(k.overshoot_pct, 1, "%")}</td><td class="ok-t">${tg.overshoot_pct != null ? "≤ " + n1(tg.overshoot_pct, 0, "%") : "—"}</td></tr>
+      <tr><td>调节</td><td>${n1(k.settling_s, 2, " s")}</td><td>—</td></tr>
+      <tr><td>稳态误差</td><td>${n1(k.sse_pct, 1, "%")}</td><td class="ok-t">${tg.sse_pct != null ? "≤ " + n1(tg.sse_pct, 1, "%") : "—"}</td></tr></table>` : "";
+  d.className = "card sugg";
+  d.innerHTML = `<div class="sg-h"><span class="mono">${esc(m.name)}</span><span class="sg-v">${p ? fmt(m.current, p) : m.current} → <em>${p ? fmt(m.value, p) : m.value}</em></span></div>
+    ${rows}<p>${esc(m.reason)}${m.clamped ? "（已按范围限幅）" : ""}</p><div class="lbl">来源：${esc(m.source)}</div>
+    <div class="act"><button class="btn pri" data-a="1">采纳 <kbd>Y</kbd></button><button class="btn" data-a="0">驳回 <kbd>N</kbd></button></div>`;
   d.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
     try {
       const r = await call("proposal_decide", { id: m.id, accept: b.dataset.a === "1" });
-      d.classList.add("done"); d.querySelector(".act")!.innerHTML = `<span class="lbl">${r.status === "applied" ? "已采纳 · 下发 " + r.applied : "已拒绝"}</span>`;
+      d.classList.add("done"); d.querySelector(".act")!.innerHTML = `<span class="lbl">${r.status === "applied" ? "已采纳 · 下发 " + r.applied : "已驳回"}</span>`;
     } catch { /* toast */ }
   });
   if (m.source === "标定") { document.querySelector("#cal-props > .hint")?.remove(); $("cal-props").prepend(d); return; }   // 标定页的提议卡就地确认

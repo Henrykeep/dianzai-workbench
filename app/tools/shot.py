@@ -75,7 +75,7 @@ try:
         pg.evaluate("""() => new Promise(r => { const ws = new WebSocket('ws://127.0.0.1:18901');
             ws.onopen = () => ws.send(JSON.stringify({op:'param_set', rid:1, name:'ki', value:1.95}));
             ws.onmessage = e => { if (JSON.parse(e.data).rid === 1) { ws.close(); r(); } }; })""")
-        pg.click("#ag-tune"); pg.wait_for_selector(".card .hd >> text=阶跃分析", timeout=5000); pg.wait_for_timeout(300)
+        pg.evaluate("for (const d of document.querySelectorAll('#tune-more,#plot-more')) d.open = true"); pg.click("#ag-tune"); pg.wait_for_selector(".card .hd >> text=阶跃分析", timeout=5000); pg.wait_for_timeout(300)
         pg.screenshot(path=str(OUT / "app-tune.png"))
         pg.click(".chip[data-q^=超调]") if pg.locator(".chip").count() else (pg.fill("#ag-in", "超调好大，怎么办"), pg.click("#ag-send"))
         pg.wait_for_selector(".msg.bot >> text=离线规则助手", timeout=15000); pg.wait_for_timeout(300)
