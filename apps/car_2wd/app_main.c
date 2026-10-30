@@ -323,7 +323,7 @@ void app_loop(void)
         if (link_telem_pack(&f, &t)) { f.seq = seq++; send(&f); }
     }
     static bool hb_was_estop;
-    if (dzrt_hb_due(now, s_estop, &hb_was_estop, &last_hb)) {   /* 急停上升沿立即发（与 link_app 同一个助手） */
+    if (dzrt_hb_due(now, s_estop, &hb_was_estop, &last_hb)) {   /* 急停上升沿 / 下降沿立即发（与 link_app 同一个助手） */
         dzctl_table_t t = link_param_table(&g_link_params);
         dzframe_t f;
         dzctl_heartbeat(&t, seq++, &f);
