@@ -92,7 +92,7 @@
               <button class="btn" id="fw-flash"><i data-lucide="zap"></i>烧录…</button>
               <button class="btn" id="fw-rollback"><i data-lucide="history"></i>回滚固件…</button>
       <div class="fwst"><span class="lbl" id="fw-st"></span></div></section>
-    <section class="page" data-page="标定" hidden><h3>标定</h3><p class="hint">标定向导在后续提交里接上（极性、循迹黑白、视觉、FOC 对齐、IMU 零偏）。现在：app.yaml 里手写 cal 点。</p></section>
+    <section class="page" data-page="标定" hidden><h3>标定</h3><p class="hint">从上往下做：先验方向，再标传感器。每步只读遥测；算出的值点“提议写入”后在右边提议卡确认才下发，下发后到封箱页存 flash / 写回 yaml。</p><div class="calgrid"><div id="calwiz"></div><div><h4>提议卡</h4><div id="cal-props" class="feed"><p class="hint">标定得出的写入提议出现在这里</p></div></div></div></section>
     <section class="page" data-page="封箱" hidden><h3>封箱</h3>
       <div class="act">
     <button id="pre" class="btn pri" title="赛前全绿检查：自检 + 板子固件/参数/急停/告警/链路 + 仓库已提交；可导出封箱清单（只读）"><i data-lucide="list-checks"></i>赛前全绿检查</button>

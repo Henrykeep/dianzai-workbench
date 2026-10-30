@@ -18,6 +18,7 @@ import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
 import { initSteps } from "./steps";
+import { initCalWiz } from "./calwiz";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[]; protect_fixed?: Fixed[] };
@@ -177,7 +178,7 @@ function applySchema(s: Schema | null) {
   ana.reset(); showXDiv();
   $("chan-n").textContent = `${S.plotted.length} 路 · ${s.period_ms ?? "?"} ms`;
   $("plot-sub").textContent = `schema ${s.hash}`;
-  renderChans(); renderParams(); loadSnaps(); { const tg = new Set(S.plotted.map(f => f.ref_for).filter(Boolean)), nm = (f: Field) => f.name;   // 被控量（有设定值指向的）排最前，设定值放最后：默认选中的是要找振荡的那个量
+  renderChans(); renderParams(); loadSnaps(); calwiz?.refresh(); { const tg = new Set(S.plotted.map(f => f.ref_for).filter(Boolean)), nm = (f: Field) => f.name;   // 被控量（有设定值指向的）排最前，设定值放最后：默认选中的是要找振荡的那个量
     fft.setFields([...S.plotted.filter(f => tg.has(f.name)).map(nm), ...S.plotted.filter(f => !tg.has(f.name) && !f.ref_for).map(nm), ...S.plotted.filter(f => f.ref_for).map(nm)]); }
   raw.binary();
 }
@@ -457,6 +458,7 @@ function renderProposal(m: Msg) {
       d.classList.add("done"); d.querySelector(".act")!.innerHTML = `<span class="lbl">${r.status === "applied" ? "已采纳 · 下发 " + r.applied : "已拒绝"}</span>`;
     } catch { /* toast */ }
   });
+  if (m.source === "标定") { document.querySelector("#cal-props > .hint")?.remove(); $("cal-props").prepend(d); return; }   // 标定页的提议卡就地确认
   $("props").prepend(d);
   notifySide("agent");
 }
@@ -502,6 +504,7 @@ function applyNone() {
 }
 
 const agent = initAgent(call);
+const calwiz = initCalWiz(call, () => S.plotted.map(f => f.name), () => S.schema?.params ?? [], t => toast(t, "warn", 3000));
 const fft = initFFT((op, a) => link.rpc(op, a ?? {}));
 const send = initSend((op, a) => link.rpc(op, a ?? {}), e => toast(e as Err));
 const raw = initRaw((op, a) => link.rpc(op, a ?? {}), v => { fft.setView(v === "fft"); document.querySelector<HTMLElement>(".scope")!.dataset.view = v; });   // 只属于示波的控件在原始/频谱里收起
