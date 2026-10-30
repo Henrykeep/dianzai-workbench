@@ -18,7 +18,10 @@ def serve(script):
     class H(BaseHTTPRequestHandler):
         def _go(self, body):
             log.append((self.command, self.path, body))
-            st, kind, payload = script(self, body)
+            r = script(self, body)
+            if r is None:          # 脚本自己写了响应（要发自定义头时）
+                return
+            st, kind, payload = r
             self.send_response(st)
             if kind == "sse":
                 self.send_header("Content-Type", "text/event-stream"); self.end_headers()
@@ -189,3 +192,68 @@ def test_agent_loop_through_mock_with_tool_call(cfgdir, home, tmp_path):
     assert "0 个" in r and any(e["type"] == "agent_tool" and e["name"] == "list_params" for e in ev)
     assert {"type": "agent_mode", "mode": "llm", "name": "m1"} in ev
     srv.shutdown()
+
+
+# ---------------------------------------------------------------- 第一次真模型评测暴露的问题（2026-10，经 OpenAI 兼容中转站）
+def test_sends_own_user_agent(cfgdir):
+    """Cloudflare 后面的中转站对默认 "Python-urllib" UA 直接 403（error code 1010）。"""
+    seen = []
+
+    def script(h, b):
+        seen.append(h.headers.get("User-Agent", ""))
+        return 200, "json", {"choices": [{"message": {"role": "assistant", "content": "收到"}}]}
+    srv, url, _ = serve(script)
+    llm.OpenAICompat(cfg(url), stream=False).chat([{"role": "user", "content": "hi"}])
+    srv.shutdown()
+    assert seen and "urllib" not in seen[0].lower()
+
+
+def test_think_block_hidden_and_does_not_break_json_fallback(cfgdir):
+    """推理模型把 <think>…</think> 写进正文：不推给界面，JSON 兜底也要越过思考里的花括号认出调用。"""
+    content = '<think>用户要遥测，参数形如 {seconds}</think>\n{"tool": "read_telemetry", "args": {"seconds": 2}}'
+    srv, url, _ = serve(lambda h, b: (200, "sse", [{"choices": [{"delta": {"content": content[:20]}}]},
+                                                    {"choices": [{"delta": {"content": content[20:]}}]}]))
+    ev = []
+    m = llm.OpenAICompat(cfg(url, tool_mode="json"), on_event=ev.append).chat([{"role": "user", "content": "x"}], TOOLS)
+    srv.shutdown()
+    assert m["tool_calls"][0]["function"]["name"] == "read_telemetry"
+    assert not any("think" in e.get("text", "") or "用户要遥测" in e.get("text", "") for e in ev if e["type"] == "agent_delta")
+    assert llm.strip_think("<think>a</think>答案") == "答案"
+
+
+def test_429_waits_retry_after_and_shows_clean_message(cfgdir, monkeypatch):
+    waits, n = [], {"k": 0}
+    monkeypatch.setattr(llm.time, "sleep", waits.append)
+
+    def script(h, b):
+        n["k"] += 1
+        if n["k"] == 1:
+            h.send_response(429); h.send_header("Retry-After", "3"); h.send_header("Content-Type", "application/json"); h.end_headers()
+            h.wfile.write(json.dumps({"error": {"message": "1分钟内最多请求15次 " + "x" * 400}}).encode())
+            return None
+        return 200, "json", {"choices": [{"message": {"role": "assistant", "content": "好"}}]}
+    srv, url, _ = serve(script)
+    ev = []
+    m = llm.OpenAICompat(cfg(url), stream=False, retries=2, on_event=ev.append).chat([{"role": "user", "content": "x"}])
+    srv.shutdown()
+    assert m["content"] == "好" and waits == [3.0]
+    assert next(e for e in ev if e["type"] == "agent_retry")["why"].startswith("模型服务返回 429：1分钟内")
+
+
+def test_native_tools_refused_with_zero_retries_still_falls_back(cfgdir):
+    """以前“不认 tools → 改 JSON”占掉一次重试：retries=0（测试连接）时直接 UnboundLocalError。"""
+    def script(h, b):
+        if "tools" in b:
+            return 400, "json", {"error": {"message": "tools not supported"}}
+        return 200, "json", {"choices": [{"message": {"role": "assistant", "content": '{"tool": "read_telemetry", "args": {}}'}}]}
+    srv, url, _ = serve(script)
+    m = llm.OpenAICompat(cfg(url), stream=False, retries=0).chat([{"role": "system", "content": "s"}, {"role": "user", "content": "x"}], TOOLS)
+    srv.shutdown()
+    assert m["tool_calls"][0]["function"]["name"] == "read_telemetry"
+
+
+def test_env_overrides_for_any_openai_compatible_relay(cfgdir, monkeypatch):
+    monkeypatch.setenv("DZBENCH_BASE_URL", "https://relay.example/v1")
+    monkeypatch.setenv("DZBENCH_MODEL", "some-flash")
+    c = llm.load_config()
+    assert (c["provider"], c["base_url"], c["model"]) == ("custom", "https://relay.example/v1", "some-flash")

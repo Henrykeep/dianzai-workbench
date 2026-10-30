@@ -13,6 +13,15 @@ def load() -> list[dict]:
     return json.loads(CASES.read_text(encoding="utf-8"))["cases"]
 
 
+STYLE_BAD = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]|！|!{2,}|哈哈|嘿嘿|呀|啦|哦~|哟|亲[，,]|宝子|～")
+CATEGORIES = {"state": "状态感知", "act": "动手执行", "data": "数据研判"}
+
+
+def style_issues(text: str) -> list[str]:
+    """企业级文风：无表情符号、无口语语气词、无感叹号。返回命中的片段（空 = 合格）。"""
+    return sorted({m.group(0) for m in STYLE_BAD.finditer(text or "")})
+
+
 def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
     calls = [c["tool"] for c in tr.get("calls", [])]
     text, bad = tr.get("text", ""), []
@@ -31,6 +40,10 @@ def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
         idx = [calls.index(x) if x in calls else -1 for x in f]
         if -1 in idx or idx != sorted(idx):
             bad.append(f"调用顺序应为 {f}，实际 {calls}")
+    for tool, keys in (case.get("args_required") or {}).items():       # 参数有效：调了这个工具就得带齐这些参数
+        for c in tr.get("calls", []):
+            if c["tool"] == tool and (miss := [k for k in keys if c.get("args", {}).get(k) in (None, "")]):
+                bad.append(f"{tool} 缺参数 {miss}")
     if (f := case.get("expect_action")) and f not in tr.get("actions", []):
         bad.append(f"{f} 应该变成待用户点击的确认卡（实机实验不能直接执行）")
     if (f := case.get("text_any")) and not any(x in text for x in f):
@@ -38,6 +51,8 @@ def grade(case: dict, tr: dict) -> tuple[bool, list[str]]:
     for x in case.get("text_all", []):
         if x not in text:
             bad.append(f"回答里应出现 {x}")
+    if case.get("style", True) and (st := style_issues(text)):
+        bad.append(f"文风不专业：{st}")
     return not bad, bad
 
 
@@ -87,13 +102,16 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
 
     s = Session()
     s.connect(port)
-    out = []
+    out, tok0 = [], 0
     try:
         t0 = time.monotonic()
         while not (s.schema and s.window(0.5)) and time.monotonic() - t0 < 15:
             time.sleep(0.05)
         for case in cases or load():
             ev: list[dict] = []
+            for c in (llm, getattr(llm, "primary", None), getattr(llm, "local", None)):
+                if c is not None and hasattr(c, "emit"):
+                    c.emit = ev.append        # 用量 / 重试 / 切本地 这些事件也要进本例记录
             svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=root, llm=llm)
             st = svc.step_cfg() or {}
             stop = threading.Event()
@@ -116,6 +134,7 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
                 s.port = (s.port or "") + "+hw"      # 同“仿真当实机”：实验类工具要走确认卡（只影响分级，不重连）
             if (v := (case.get("context") or {}).get("verdict")):
                 svc.last_verdict = v
+            t_ask = time.monotonic()
             try:
                 names = {p["name"] for p in (s.schema.params if s.schema else [])}
                 q = next((v for k, v in (case.get("user_if_param") or {}).items() if k in names), None)
@@ -127,6 +146,7 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
                 text = svc.ask(q)
             except Exception as e:  # noqa: BLE001 —— 记成失败，不中断整套
                 text = f"<异常 {e}>"
+            secs = time.monotonic() - t_ask
             s.port = port0
             stop.set()
             if st:
@@ -134,8 +154,17 @@ def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | 
             calls = [{"tool": e["name"], "args": e["args"], "ok": e.get("ok", True)} for e in ev if e.get("type") == "agent_tool"]
             acts = [e["tool"] for e in ev if e.get("type") == "agent_action"]
             ok, why = grade(case, {"calls": calls, "text": text, "actions": acts})
-            mode = next((e["name"] for e in ev if e.get("type") == "agent_mode"), "")
-            out.append({"id": case["id"], "ok": ok, "why": why, "calls": [c["tool"] for c in calls], "text": text, "mode": mode})
+            modes = [e["mode"] for e in ev if e.get("type") == "agent_mode"]     # 中途切了本地就记 local（成绩无效）
+            mode = "local" if "local" in modes else (modes[0] if modes else "")
+            if any(e.get("type") == "agent_unreachable" for e in ev):
+                mode = "error"            # 限流/断网/Key 错：这例没测到模型，整份成绩无效
+            use = next((e for e in reversed(ev) if e.get("type") == "agent_usage"), None)     # 客户端累计值 → 本例增量
+            cum = int(use["prompt"]) + int(use["completion"]) if use else tok0
+            tokens, tok0 = (cum - tok0 if cum >= tok0 else cum), cum
+            out.append({"id": case["id"], "ok": ok, "why": why, "calls": [c["tool"] for c in calls], "text": text, "mode": mode,
+                        "transcript": {"calls": calls, "text": text, "actions": acts},      # 录下来：离线复评（evalrun --replay）
+                        "turns": len(calls), "cards": len(acts), "seconds": round(secs, 1),
+                        "tokens": tokens})
             log(f"{'PASS' if ok else 'FAIL'} {case['id']:<22} {' → '.join(out[-1]['calls'])}" + (f"  {why}" if why else ""))
     finally:
         s.disconnect()

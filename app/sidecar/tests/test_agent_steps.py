@@ -211,3 +211,40 @@ def test_sim_score_run_save_writeback(tmp_path, home):
         assert clicks == 3
     finally:
         s.disconnect()
+
+
+UVX = """<?xml version="1.0"?>
+<Project><Targets><Target><TargetName>T</TargetName><TargetOption><TargetArmAds><Cads><VariousControls>
+<Define>USE_HAL_DRIVER</Define><IncludePath>../Core/Inc</IncludePath></VariousControls></Cads>
+<Aads><VariousControls><Define></Define><IncludePath></IncludePath></VariousControls></Aads></TargetArmAds></TargetOption>
+    <Groups>
+      <Group>
+        <GroupName>App</GroupName>
+      </Group>
+    </Groups></Target></Targets></Project>
+"""
+
+
+def test_project_chain_includes_keil_inject(repo, tmp_path):
+    """导入真工程：①–⑤ + Keil 注入仍是一张卡（自动找 MDK-ARM/*.uvprojx）；确认后 .uvprojx 有 dz/ 组且留 .bak。点 2 下。"""
+    import shutil
+    pj = tmp_path / "Car"; shutil.copytree(REPO / "tools/testdata/real/projects/Bldc - 副本 (6)", pj)
+    uv = pj / "MDK-ARM" / "Bldc.uvprojx"
+    (repo / "boards").unlink(); (repo / "boards").mkdir()                        # 导入要写 boards/：别写进真仓库
+    for e in (REPO / "boards").iterdir():
+        (repo / "boards" / e.name).symlink_to(e)
+    llm = FakeLLM([
+        {"role": "assistant", "content": None, "tool_calls": [call("project_chain", code="T6", src=str(tmp_path / "t.txt"), project=str(pj), name="t6car")]},
+        {"role": "assistant", "content": None, "tool_calls": [call("project_apply", code="T6")]},
+        {"role": "assistant", "content": "【实测】预览完成。"},
+    ])
+    svc, ev = _svc(repo, llm)
+    svc.ask("新题 T6，工程在 " + str(pj)); clicks = 1
+    chain = json.loads(llm.seen[1][0][-1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])["result"]
+    assert chain["to_write"][-1] == "keil", chain
+    assert "dz/" not in uv.read_text(encoding="utf-8")                           # 没确认：工程没动
+    cs = _cards(ev); assert len(cs) == 1 and cs[0]["tool"] == "project_apply"
+    assert any("Keil" in "".join(s["facts"]) for s in cs[0]["preview"]["steps"]), cs[0]["preview"]
+    r = svc.action_decide(cs[0]["id"], True); clicks += 1
+    assert "<GroupName>dz/" in uv.read_text(encoding="utf-8"), str(r)[-600:]
+    assert (uv.parent / "Bldc.uvprojx.bak").exists() and clicks == 2

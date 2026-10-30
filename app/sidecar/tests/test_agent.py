@@ -205,6 +205,15 @@ def test_agent_step_limit():
     assert "步数用完" in loop.ask("hi")
 
 
+def test_agent_step_limit_real_llm_still_answers():
+    """真模型（guards 开）步数用完时再要一次不带工具的总结，而不是只回“步数用完”。"""
+    fake = FakeLLM([{"role": "assistant", "tool_calls": [call("list_params")]}] * 2 + [{"role": "assistant", "content": "超调 30%，下一步减 kp"}])
+    loop = AgentLoop(fake, {"list_params": lambda: [{"name": "kp", "value": 1}]}, max_steps=2)
+    loop.guards = True
+    assert loop.ask("hi") == "超调 30%，下一步减 kp"
+    assert fake.seen[-1][1] is None          # 最后一问不给工具
+
+
 # ---------------------------------------------------------------- LLM 客户端与配置
 def test_config_key_local_and_masked(tmp_path, monkeypatch):
     monkeypatch.setenv("DZBENCH_HOME", str(tmp_path))
@@ -311,3 +320,9 @@ def test_edit_miss_gives_closest_lines(repo):
     with pytest.raises(GatewayError) as e:
         g.propose_edit("apps/x/main.c", "int gainz = 9;", "int other = 2;", "r")
     assert "已经在" in e.value.fix
+
+
+def test_answer_check_asks_for_fact_tags():
+    from dzbench.agent.loop import tagged
+    res = [{"name": "read_telemetry", "ok": True, "result": {"x": 1}}]
+    assert tagged("超调 30%", res) and tagged("【实测】超调 30%", res) is None and tagged("你好", []) is None
