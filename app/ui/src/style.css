@@ -368,6 +368,7 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .pop.tb{min-width:300px}
 .pop .row{display:flex;gap:var(--sp1);flex-wrap:wrap;padding:0 var(--sp2)}
 .app:not([data-step="调参"]) #rail [data-side="agent"]{display:none}
+.app:not([data-step="评分"]) #rail [data-side="score"]{display:none}
 
 /* 参数生命周期条 */
 .life{display:flex;gap:2px;padding:4px 6px;font-size:11px;border-bottom:1px solid var(--line,#333)}
@@ -393,3 +394,9 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .pf-out,.pf-pre{max-height:14em;overflow:auto;font-size:12px;background:var(--s1,#111);padding:6px;border-radius:4px;white-space:pre-wrap}
 .pf-tab{border-collapse:collapse;width:100%;font-size:12px}.pf-tab td,.pf-tab th{border-bottom:1px solid var(--line,#333);padding:2px 4px;text-align:left;vertical-align:top}
 .pf-tab .in{width:100%}.pf-ta{width:100%}
+/* 评分页 */
+.app[data-step="评分"]{--w-side:min(600px,40vw)}
+#sc-item{border-bottom:1px solid var(--line,#333);padding-bottom:8px}
+.score{display:flex;flex-direction:column;gap:8px}.score .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.sc-mat tr[data-id]{cursor:pointer}.sc-mat tr.on{background:var(--s1,#1a1a1a)}
+.score .ok{color:var(--ok,#6c6)}.score .bad{color:var(--crit,#e66)}

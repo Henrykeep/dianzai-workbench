@@ -1,0 +1,18 @@
+import { readFileSync } from "node:fs";
+import { condOk, csvOf, verdict, type Run } from "../src/score.ts";
+import { acceptEval } from "../src/accept.ts";
+const html = readFileSync("index.html", "utf8");
+for (const id of ["score", "sc-file", "sc-layer", "sc-mat", "sc-spec", "sc-n", "sc-dur", "sc-trig", "sc-cf", "sc-cop", "sc-cv", "sc-go", "sc-save", "sc-runs"]) if (!html.includes(`id="${id}"`)) throw "缺 #" + id;
+if (!condOk(1, ">", 0.5) || condOk(0.2, ">", 0.5) || condOk(NaN, "<", 1) || !condOk(2, "==", 2)) throw "condOk";
+const c = csvOf([0, 0.01], ["y", "r"], [[1, 2], [3, NaN]]);
+if (c !== "t_s,y,r\n0.0000,1,3\n0.0100,2,\n") throw "csv " + JSON.stringify(c);
+const t = Array.from({ length: 200 }, (_, k) => k * 0.01), sp = t.map(() => 1);
+const good = acceptEval(t, t.map(x => Math.min(1, x * 4)), sp, { y: "y", band: 0.05, hold_s: 0.3 });
+const bad = acceptEval(t, t.map(() => 0), sp, { y: "y", band: 0.05, hold_s: 0.3 });
+const R = (r: any, n: number): Run => ({ n, dur: 2, r, csv: "" });
+if (verdict([], 3, "bench").text !== "未验收") throw "默认未验收";
+if (verdict([R(good, 1), R(good, 2)], 3, "bench").text !== "已跑 2/3 轮") throw "未满轮";
+if (!verdict([R(good, 1), R(good, 2), R(good, 3)], 3, "bench").text.includes("未现场验收")) throw "台架不算得分";
+if (verdict([R(good, 1), R(good, 2), R(good, 3)], 3, "field").text !== "现场通过") throw "现场";
+if (verdict([R(good, 1), R(bad, 2), R(good, 3)], 3, "field").cls !== "bad") throw "最差一轮";
+console.log("score ok");

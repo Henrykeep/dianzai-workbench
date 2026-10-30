@@ -10,7 +10,7 @@ export const STEP_HINT: Record<Step, string> = {
   联调: "示波 / 频谱 / 事件时间线，看子系统一起跑",
   标定: "极性、传感器、零偏等标定值",
   调参: "左曲线右参数；底部实验 → 判定 → 回到…；右栏 Agent 助手",
-  评分: "按台账逐轮看到位判定",
+  评分: "按评分项跑 N 轮、判到位、存证据",
   封箱: "赛前全绿检查、存 flash、回读、写回 yaml",
 };
 // 页面布局：哪些区域可见（dock = 参数栏，side = 右栏，scope = 曲线区）、进页时右栏 / 曲线区切到哪个标签
@@ -22,7 +22,7 @@ export const LAYOUT: Record<Step, Lay> = {
   联调: { dock: false, side: true, scope: true, view: "plot", sideTab: "chans" },
   标定: { dock: false, side: false, scope: false },
   调参: { dock: true, side: true, scope: true, view: "plot", dockTab: "params", sideTab: "agent" },
-  评分: { dock: false, side: true, scope: true, view: "plot", sideTab: "hist" },
+  评分: { dock: false, side: true, scope: true, view: "plot", sideTab: "score" },
   封箱: { dock: false, side: false, scope: false },
 };
 export const nextOf = (s: Step): Step | null => STEPS[STEPS.indexOf(s) + 1] ?? null;

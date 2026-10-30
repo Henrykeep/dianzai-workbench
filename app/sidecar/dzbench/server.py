@@ -172,6 +172,12 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix) from None
+        if op == "score_items" or op == "score_save":       # 评分页：评分项来自 requirements.yaml；证据按 docs/verify 规范存（dzbench/scoring.py）
+            from . import scoring
+            try:
+                return await run(None, (scoring.items if op == "score_items" else scoring.save), self.svc, m)
+            except scoring.ScoreError as e:
+                raise LinkError(e.code, e.msg, e.fix) from None
         if op == "doctor":
             from . import doctor
             # 没指定就查侧车实际在用的工程仓库（DZBENCH_REPO / 配置 repo），以前传 None 会误报“没有 dzbench.json”（docs/29 F12）

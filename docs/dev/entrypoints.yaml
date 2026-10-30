@@ -53,7 +53,8 @@ actions:
   - {id: guard_reset,  label: 重置护栏,         at: step:调参,   ui: ag-guard,   ops: [tune_reset]}
   - {id: agent_chat,   label: Agent 助手,       at: step:调参,   ui: ag-form,    ops: [agent_ask, agent_reset, agent_set_mode, agent_journal, agent_tune_finish]}
   - {id: agent_undo,   label: 撤销 Agent,       at: step:调参,   ui: ag-undo,    ops: [agent_undo]}
-  # ── 评分 ──（评分页见 HANDOVER 17+；验收判定现跟着阶跃实验出）
+  # ── 评分 ──
+  - {id: score,        label: 评分项逐项验收,   at: step:评分,   ui: score,      ops: [score_items, score_save]}
   # ── 封箱 ──
   - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
   - {id: params_flash, label: 存参数到 flash,   at: step:封箱,   ui: pre-save,   ops: [cmd]}

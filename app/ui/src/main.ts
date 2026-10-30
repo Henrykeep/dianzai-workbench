@@ -21,6 +21,7 @@ import { initSteps } from "./steps";
 import { initCalWiz } from "./calwiz";
 import { initSymptoms } from "./symptoms";
 import { initProjFlow } from "./projflow";
+import { initScore } from "./score";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[]; protect_fixed?: Fixed[] };
@@ -162,6 +163,7 @@ $("ln-stall").onchange = e => link.rpc("serial_stall", { s: +(e.target as HTMLIn
 // ---------------------------------------------------------------- 通道
 function applySchema(s: Schema | null) {
   S.schema = s;
+  queueMicrotask(() => score.refresh());
   if (!s) return;
   S.plotted = s.fields.filter(f => f.name !== "t_ms" && !f.enum);
   S.enums = s.fields.filter(f => f.enum);
@@ -631,7 +633,10 @@ initChrome();
 const goStep = initSteps(() => !!S.status.connected);
 initSymptoms(s => goStep(s as Parameters<typeof goStep>[0]));
 initProjFlow(call, (t, k) => toast(t, k ?? "info", 6000));
+const score: { refresh(): void } = initScore(call, plot, () => S.schema?.accept ?? [], (t, k) => toast(t, k ?? "info", 9000));
 // 跨页入口：回到… 菜单里的“某个快照 / 烧前固件”、工具箱“波形测量”
 $("gb-snap").onclick = () => { goStep("调参"); (document.querySelector('#dock-tabs [data-d="snaps"]') as HTMLElement)?.click(); };
 $("gb-fw").onclick = () => goStep("烧录");
 $("tb-meas").onclick = () => { goStep("联调"); (document.querySelector('#view [data-v="fft"]') as HTMLElement)?.click(); };
+
+document.querySelector<HTMLElement>('#rail [data-side="score"]')?.addEventListener("click", () => score.refresh());

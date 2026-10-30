@@ -168,6 +168,7 @@
     <button class="ri" data-side="agent" title="Agent">Agent<span class="pip" id="ag-pip" hidden></span></button>
     <button class="ri" data-side="meas" title="测量：A/B 光标读数">测量<span class="pip" id="meas-pip" hidden></span></button>
     <button class="ri" data-side="hist" title="历史：每轮阶跃实验的曲线与参数">台账<span class="pip" id="hist-pip" hidden></span></button>
+    <button class="ri" data-side="score" title="评分：按评分项跑 N 轮、判到位、存证据">评分</button>
     <div class="sp"></div>
   </nav>
     <section class="pane" data-side="chans">
@@ -191,6 +192,17 @@
       <div class="vh"><span class="ttl">测量</span><div class="sp"></div><span class="lbl mono" id="meas-t0"></span></div>
       <div id="meas" class="meas"></div>
     </section>
+    <section class="pane" data-side="score" hidden><div id="score" class="score">
+      <div class="row"><select id="sc-file" class="in mono" title="评分项来源 requirements.yaml"></select><select id="sc-layer" class="in" title="证据层：仿真 / 台架 / 现场；只有现场全过才算得分"><option value="sim">仿真</option><option value="bench" selected>台架</option><option value="field">现场</option></select></div>
+      <div id="sc-item" hidden><h4 id="sc-title"></h4>
+        <div class="row">规格<select id="sc-spec" class="in mono"></select> 轮数<input id="sc-n" class="in" type="number" min="1" style="width:4em"> 最长<input id="sc-dur" class="in" type="number" min="0" style="width:4em">s</div>
+        <div class="row">开始<select id="sc-trig" class="in"><option value="btn">按按钮</option><option value="cond">遥测条件</option></select><span id="sc-condrow" hidden><select id="sc-cf" class="in mono"></select><select id="sc-cop" class="in"><option>&gt;</option><option>&lt;</option><option>&gt;=</option><option>&lt;=</option><option>==</option></select><input id="sc-cv" class="in" value="0.5" style="width:4em"></span></div>
+        <div class="row"><button class="btn pri" id="sc-go" type="button">开始一轮</button><span id="sc-state" class="hint"></span><button class="btn" id="sc-clear" type="button">清空本项</button><button class="btn" id="sc-save" type="button" disabled>保存证据</button></div>
+        <div id="sc-runs"></div>
+        <p class="hint">条件模式：条件成立开始计时，不再成立或满“最长”秒结束。每轮存 CSV + 曲线截图；结论默认“未验收”，只有现场层 N 轮全过才写“现场通过”。</p>
+      </div>
+      <div id="sc-mat"></div>
+</div></section>
     <section class="pane" data-side="hist" hidden>
       <div class="vh"><span class="ttl">台账</span><div class="sp"></div><select id="layer" class="sm" hidden title="串级分层（schema loops，内环在前）：选一层，读数/台账/验收换成这层，参数只列这层的增益。先调稳内层再往外"></select><span class="lbl mono" id="hist-n"></span></div>
       <div id="hist" class="hist"></div>
