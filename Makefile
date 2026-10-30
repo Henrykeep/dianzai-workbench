@@ -108,7 +108,7 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval preflight
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -184,6 +184,11 @@ vars: $(GEN)/board_gen.mk
 gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
+# 端到端基准：4 道题在 host-sim 上 构建 → 阶跃 →（继电起步）→ 验收评分，约 2 分钟；结果 build/bench/results.{json,md}
+# 当前基线（fw-runtime，2026-10-31）：motor_pos 99.5 / 2013C 88.2 / 2023E 71.1 / 2026H 85.3，平均 86.0（runtime 合入前为 2026H 84.7 / 平均 85.9）。ARGS="--only 2026H" 只跑一题
+bench:
+	$(PY) tools/bench/bench.py $(ARGS)
+
 agent-eval:
 	cd app/sidecar && $(PY) -m dzbench.agent.evalrun --repeat 3 $(ARGS)
 
@@ -257,6 +262,7 @@ check:
 	$(PY) tools/audit_port.py --selftest
 	$(PY) tools/check_ai_docs.py --selftest
 	$(PY) tools/check_ai_docs.py --check
+	$(PY) tools/bench/test_bench.py
 	$(MAKE) --no-print-directory licenses
 	$(PY) tools/check_version.py
 	$(MAKE) ioc-check

@@ -1,0 +1,26 @@
+id: 2026A
+title: 2026 A AC-AC变换电路
+source: /workspace/nuedc/A题_AC-AC变换电路.pdf
+_doc: 读题开局用例的标准答案：由 PDF 自动抽取（pdftotext，按“（N 分）”切分），入库后需人工核对。
+total_points: 120
+scoring_items:
+- text: 电路(简称变换电路)，系统框图如图 1 所示。Ii                   ua   Io单Uo相Ui    AC - AC u b              三相电电        T                 变换电路                     阻负载源                                  uc图 1 AC-AC 变换电路系统框图二、
+    要求1．变换电路输入：频率 fi=50Hz，电压 Ui=36V。启动变换电路，变换电路输出：三相对称交流电，其线电压 Uo=32V±0.1V、频率 fo=60±0.2Hz、负载线电流Io=2.0A
+  points: 10
+- text: 2．在要求 1 的工作条件下，变换电路输入侧功率因数（cosφi）不低于 0.98
+  points: 15
+- text: 3．在要求 1 的工作条件下，变换电路的效率（η）不低于 95%
+  points: 15
+- text: 4．在要求 1 的工作条件下，输出交流线电压总谐波畸变率（THD）不大于2%
+  points: 15
+- text: A- 1 / 35．在要求 1 的变换电路输入条件下，调整变换电路输出为：Uo=32V±0.1V、fo =30±0.2Hz、Io=2.0A
+  points: 10
+- text: 6．在要求 5 的工作条件下，改变电阻负载的阻值，Io 在 0.2A～2.0A 间变化，负载调整率 SI 不大于 0.3%
+  points: 15
+- text: 7．变换电路输入：fi=50Hz，Ui 在 31V～41V 改变，变换电路输出：三相对称交流电，其 fo =30Hz、Io=2.0A，Uo=32V，电压调整率 SU 不大于 0.3%
+  points: 15
+- text: 8．其它
+  points: 5
+- text: 9．设计报告
+  points: 20
+thresholds: []
