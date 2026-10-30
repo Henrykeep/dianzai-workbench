@@ -45,6 +45,8 @@ jobs:
         with: { name: dz-repo, path: app/dz-repo }
       - name: 单元测试（Windows 上自动跳过仿真 e2e）
         shell: bash
+        env:
+          PYTHONUTF8: "1"   # 打包后的 dzbench.exe 也会设；子进程工具脚本输出中文不炸 cp1252
         run: |
           bash tools/fetch_third_party.sh f4 f1 freertos mspm0
           pip install -r app/sidecar/requirements.txt pyinstaller

@@ -49,7 +49,7 @@ def test_board_name_strips_copy_noise_and_finds_uvprojx(tmp_path):
     assert board_name(d) == "bldc"
     c = tmp_path / "Car_Mode1021"; c.mkdir(); (c / "USART.ioc").write_text("")
     assert board_name(c) == "car-mode1021"
-    assert find_uvprojx(d).endswith("MDK-ARM/Bldc.uvprojx")
+    assert pathlib.Path(find_uvprojx(d)).as_posix().endswith("MDK-ARM/Bldc.uvprojx")
     e = tmp_path / "副本"; e.mkdir(); (e / "F407_motor.ioc").write_text("")
     assert board_name(e) == "f407-motor" and find_uvprojx(e) == ""
 
