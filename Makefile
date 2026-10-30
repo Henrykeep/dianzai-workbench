@@ -185,7 +185,7 @@ gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
 # 端到端基准：4 道题在 host-sim 上 构建 → 阶跃 →（继电起步）→ 验收评分，约 2 分钟；结果 build/bench/results.{json,md}
-# 当前基线（fw-runtime，2026-10-31）：motor_pos 99.5 / 2013C 88.2 / 2023E 71.1 / 2026H 85.3，平均 86.0（runtime 合入前为 2026H 84.7 / 平均 85.9）。ARGS="--only 2026H" 只跑一题
+# 当前基线（fw-runtime，2026-10-31）：motor_pos 99.5 / 2013C 88.2 / 2023E 71.1 / 2026H 84.7，平均 85.9（新克隆 make fetch 后实测）。ARGS="--only 2026H" 只跑一题
 bench:
 	$(PY) tools/bench/bench.py $(ARGS)
 

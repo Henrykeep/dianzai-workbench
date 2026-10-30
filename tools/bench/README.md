@@ -7,4 +7,4 @@
 - 用例：`cases.json`（`runner` 默认 sim_step；`kickoff` 类只做覆盖统计，不计分）；阶跃设定见仓库根 `dzbench.json` 的 step_tests。
 - 只跑某题：`make bench ARGS="--only 2026H"`；对比：`ARGS="--baseline old/results.json"`。
 - 评分口径单测（不起仿真板，`make check` 里跑）：`python3 tools/bench/test_bench.py`。
-- 基线（fw-runtime，2026-10-31，UTC+8）：motor_pos 99.5、2013C 88.2、2023E 71.1、2026H 85.3，平均 **86.0**（f6e455d runtime 合入前 2026H 84.7、平均 85.9；2026H 复用 dz_runtime 后得分略升）。
+- 基线（fw-runtime，2026-10-31，UTC+8）：motor_pos 99.5、2013C 88.2、2023E 71.1、2026H 84.7，平均 **85.9**（新克隆、空 HOME、make fetch 后实测；已构建的工作区可能因缓存差 ±0.1）。
