@@ -26,8 +26,6 @@ from .downsample import minmax
 from .logfile import read_header
 from .ports import list_ports
 from .sender import Sender
-from .spectrum import spectrum
-from .wavemeas import measure_window
 from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
 
@@ -124,17 +122,9 @@ class Server:
         if op == "snapshot_save":
             p = s.snapshot_save(m.get("name", ""), m.get("note", ""), m.get("mode", ""))
             return {"path": p, "snapshots": snapshots.list_all(s.schema.hash)}
-        if op == "polarity_check":          # 标定向导第 0 步：只读遥测窗口判方向（app/sidecar/dzbench/agent/polarity.py）
-            from .agent import polarity
-            secs = float(m.get("seconds", 3.0))
-            names = [n for n in (m["y"], m.get("e"), m.get("u")) if n]
-            win = {n: s.window_field(n, secs) for n in names}
-            r = polarity.check_window(win, m["step"], y=m["y"], e=m.get("e"), u=m.get("u"),
-                                      pushed_dir=int(m.get("pushed_dir", 1)), u_min=float(m.get("u_min", 0.0)))
-            if "signs" in m:                 # 前端把 push/jog 两步的结果攒齐后再要结论
-                g = m["signs"]
-                r["verdict"] = polarity.verdict(g.get("sensor", 0), g.get("err", 0), g.get("ctrl", 0), g.get("act", 0))
-            return r
+        if op == "polarity_check":          # 标定向导第 0 步（实现在 pageops，Agent 工具同一函数）
+            from . import pageops
+            return pageops.polarity_check(s, m)
         if op == "params_readback":
             path = m.get("path")
             if not path:                    # 界面按钮：默认写到 ~/.dzbench/readback/<时间>.txt
@@ -218,23 +208,9 @@ class Server:
             if m.get("seek") is not None:
                 await self._broadcast({"type": "seeked", **r})
             return r
-        if op == "fft":
-            name = m["field"]
-            t, y = self.session.window_field(name, float(m.get("seconds", 30)))
-            sch = self.session.schema
-            per = (sch.d["telemetry"].get("period_ms") or 0) / 1000 if sch else 0
-            return await run(None, lambda: spectrum(t, y, per or None) | {"field": name})
-        if op == "wave_measure":
-            name, secs = m["field"], float(m.get("seconds", 10))
-            t, y = self.session.window_field(name, secs)
-            ref = None
-            if m.get("ref"):
-                tr, ref = self.session.window_field(m["ref"], secs)
-                k = min(len(y), len(ref))                   # 同一遥测帧里的两个字段 = 同批采样
-                t, y, ref = t[-k:], y[-k:], ref[-k:]
-            sch = self.session.schema
-            per = (sch.d["telemetry"].get("period_ms") or 0) / 1000 if sch else 0
-            return await run(None, lambda: measure_window(t, y, per or None, ref) | {"field": name, "ref": m.get("ref")})
+        if op == "fft" or op == "wave_measure":    # 联调页（实现在 pageops，Agent 工具同一函数）
+            from . import pageops
+            return await run(None, getattr(pageops, op), self.session, m)
         if op == "send_raw":
             data = bytes.fromhex(m["hex"]) if "hex" in m else m["text"].encode("utf-8")
             return self.session.send_raw(data)
