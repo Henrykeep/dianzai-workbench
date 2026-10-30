@@ -158,6 +158,7 @@ aggressive 在实机档 8 轮内仍调不好（单步 ×0.7 下限太保守）�
 
 ## 烧录 / 编译 / 调试（全部 ⚠ 未上真机，假探针单测）
 
+- 协处理器部署（缺口 12）：菜单“协处理器部署…”，`dzbench/deploy.py` 走系统 ssh/scp（BatchMode，只密钥）推脚本、nohup 启动、停、`tail dz.log`。
 - 界面：Agent 菜单“调试探针…”选后端 / 探针类型 / 序列号（存 ~/.dzbench/machine.json），可按后端列出已插探针，点“用这个”填入。
 - `probes.py`（缺口 10）：调试后端 `flash.tool` = pyocd（默认）/ openocd / jlink / probe-rs，`flash.probe_kind` = stlink（默认）/ daplink / jlink，`flash.probe` = 序列号。烧录、烧前备份、ELF 变量实时读取共用同一后端。OpenOCD 默认自己起（接口 cfg 按探针类型选，目标 cfg 按 target 查表，没登记写 `flash.openocd.target_cfg`），写 `flash.openocd.host` 就连已在跑的；长连接，适合 20 ms 刷新。J-Link / probe-rs 每个操作起一次进程，变量刷新建议 ≥200 ms。J-Link 后端只认 J-Link 探针。自检会查可执行文件在不在。
 - `flash.py`：pyOCD 优先。前置条件：最近一次编译成功且镜像 sha256 未变、急停已锁存、配置了 target；探针 DP IDCODE 必须与目标内核一致；**默认 dry_run**；烧前备份同大小区域到 `~/.dzbench/flash_backup/`；烧后等心跳且 schema 哈希等于本次编译的 link_schema；不符可一键回滚到备份。

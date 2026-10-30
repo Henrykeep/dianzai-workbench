@@ -127,6 +127,7 @@
               <button class="mi" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）"><i data-lucide="shield-off"></i>重置护栏</button>
               <hr><span class="mh" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">固件</span>
               <button class="mi" id="fw-probe" title="选烧录/调试后端（pyOCD / OpenOCD / J-Link / probe-rs）、探针类型（ST-Link / DAPLink / J-Link）和序列号；存本机 ~/.dzbench/machine.json"><i data-lucide="settings"></i>调试探针…</button>
+              <button class="mi" id="fw-coproc" title="协处理器（MaixCAM / K230 / Jetson / 树莓派 / RDK）：SSH 推脚本、启动 / 停止、看日志；只走密钥登录"><i data-lucide="play"></i>协处理器部署…</button>
               <button class="mi" id="fw-build"><i data-lucide="hammer"></i>编译</button>
               <button class="mi" id="fw-flash"><i data-lucide="zap"></i>烧录…</button>
               <button class="mi" id="fw-rollback"><i data-lucide="history"></i>回滚固件…</button>
@@ -158,6 +159,24 @@
           <ul id="pb-found" class="doc"></ul>
           <p class="hint" id="pb-st"></p>
           <div class="act"><button class="btn" type="button" id="pb-scan">重新列探针</button><button class="btn pri" value="save">保存</button><button class="btn" value="cancel">取消</button></div>
+        </form>
+      </dialog>
+      <dialog id="cp-dlg" class="dlg">
+        <form method="dialog" id="cp-form">
+          <h3>协处理器部署（SSH）</h3>
+          <p class="hint">只走 SSH 密钥登录（先在终端 <code>ssh-copy-id 用户@IP</code>），不存密码。设置存本机 <code>~/.dzbench/machine.json</code>。程序后台跑，输出在远端目录 dz.log。</p>
+          <label>板子<select id="cp-kind" class="in"></select></label>
+          <label>IP<input id="cp-host" class="in" placeholder="192.168.1.20"></label>
+          <label>端口<input id="cp-port" class="in" type="number" min="1" max="65535"></label>
+          <label>用户<input id="cp-user" class="in"></label>
+          <label>远端目录<input id="cp-dir" class="in"></label>
+          <label>入口脚本<input id="cp-entry" class="in"></label>
+          <label>启动命令（{entry} = 入口）<input id="cp-run" class="in"></label>
+          <label>私钥（可空 = 默认）<input id="cp-key" class="in" placeholder="~/.ssh/id_ed25519"></label>
+          <label>本地脚本或目录<input id="cp-src" class="in" placeholder="vision/"></label>
+          <div class="act"><button class="btn" type="button" id="cp-save">保存</button><button class="btn" type="button" id="cp-push">推送</button><button class="btn" type="button" id="cp-start">启动</button><button class="btn" type="button" id="cp-stop">停止</button><button class="btn" type="button" id="cp-log">看日志</button><button class="btn" value="cancel">关闭</button></div>
+          <p class="hint" id="cp-st"></p>
+          <pre id="cp-out" class="doc" style="max-height:16em;overflow:auto"></pre>
         </form>
       </dialog>
       <dialog id="pre-dlg" class="dlg">

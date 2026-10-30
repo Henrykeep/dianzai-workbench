@@ -270,6 +270,23 @@ class Server:
             return self.svc.loop.reset()
         if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”（烧录要几秒，放线程池）
             return await run(None, self.svc.action_decide, int(m["id"]), bool(m["accept"]))
+        if op in ("coproc_get", "coproc_set", "coproc_push", "coproc_start", "coproc_stop", "coproc_status", "coproc_log"):
+            from . import deploy                   # 协处理器 SSH 部署对话框（缺口 12）
+            if op == "coproc_get":
+                return {"cfg": deploy.load(), "presets": deploy.PRESETS}
+            if op == "coproc_set":
+                return await run(None, lambda: deploy.save(m.get("values") or {}))
+            d = deploy.Deployer()
+            if op == "coproc_push":
+                return await run(None, lambda: d.push(str(m.get("path") or "")))
+            if op == "coproc_log":
+                return await run(None, lambda: d.log(int(m.get("lines") or 100)))
+            if op == "coproc_start":
+                return await run(None, d.start)
+            if op == "coproc_stop":
+                return await run(None, d.stop)
+            if op == "coproc_status":
+                return await run(None, d.status)
         if op == "probe_config_get":               # 调试探针设置对话框：当前后端 / 探针类型 / 序列号 + 按后端列探针
             return await run(None, lambda: self.svc.probe_config_get(bool(m.get("list", True))))
         if op == "probe_config_set":               # 人在对话框点“保存”：写本机 machine.json

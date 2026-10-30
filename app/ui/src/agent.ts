@@ -213,6 +213,40 @@ export function initAgent(call: Call) {
     call<any>("probe_config_set", { values }).then(r => fwSt(`调试后端：${r.tool}${r.probe_kind ? " / " + (KIND[r.probe_kind] ?? r.probe_kind) : ""}${r.probe ? " / " + r.probe : ""}`), () => {});
   });
 
+  // 协处理器 SSH 部署（缺口 12）：op coproc_get / set / push / start / stop / status / log
+  const CPF = ["host", "port", "user", "dir", "entry", "run", "key"];
+  let cpPresets: Record<string, any> = {};
+  const cpSt = (t: string) => { $("cp-st").textContent = t; };
+  const cpErr = (e: any) => cpSt(`✗ ${e?.message ?? e}${e?.fix ? "；" + e.fix : ""}`);
+  function cpShow(c: any) {
+    $("cp-kind").innerHTML = Object.entries(cpPresets).map(([k, p]) => `<option value="${esc(k)}" ${k === c.kind ? "selected" : ""}>${esc(p.label)}</option>`).join("");
+    for (const f of CPF) $<HTMLInputElement>("cp-" + f).value = String(c[f] ?? "");
+  }
+  const cpVals = () => {
+    const v: Record<string, string> = { kind: $<HTMLSelectElement>("cp-kind").value };
+    for (const f of CPF) v[f] = $<HTMLInputElement>("cp-" + f).value.trim();
+    return v;
+  };
+  const cpSave = () => call<any>("coproc_set", { values: cpVals() }).then(c => { cpShow(c); return c; });
+  const cpStatus = () => call<any>("coproc_status").then(r => cpSt(r.running ? `运行中（pid ${r.pid}）` : "没在跑"), cpErr);
+  $("fw-coproc").onclick = async () => {
+    const r = await call<any>("coproc_get").catch(() => null);
+    if (!r) return;
+    cpPresets = r.presets; cpShow(r.cfg); cpSt(""); $("cp-out").textContent = "";
+    $<HTMLDialogElement>("cp-dlg").show();
+    if (r.cfg.host) cpStatus();
+  };
+  $("cp-kind").onchange = () => {      // 换板子：带出该板默认用户 / 目录 / 启动命令
+    const p = cpPresets[$<HTMLSelectElement>("cp-kind").value];
+    if (p) { $<HTMLInputElement>("cp-user").value = p.user; $<HTMLInputElement>("cp-dir").value = p.dir; $<HTMLInputElement>("cp-run").value = p.run; }
+  };
+  $("cp-save").onclick = () => cpSave().then(() => cpSt("已保存"), cpErr);
+  $("cp-push").onclick = () => { cpSt("推送中…"); cpSave().then(() => call<any>("coproc_push", { path: $<HTMLInputElement>("cp-src").value.trim() }))
+    .then(r => cpSt(`已推送 ${r.pushed.join(", ")} → ${r.to}`), cpErr); };
+  $("cp-start").onclick = () => cpSave().then(() => call<any>("coproc_start")).then(r => cpSt(`已启动 pid ${r.pid}：${r.run}`), cpErr);
+  $("cp-stop").onclick = () => call<any>("coproc_stop").then(r => cpSt(r.stopped ? `已停止（${r.detail}）` : "本来就没在跑"), cpErr);
+  $("cp-log").onclick = () => call<any>("coproc_log", { lines: 200 }).then(r => { $("cp-out").textContent = r.text || "（dz.log 为空）"; cpStatus(); }, cpErr);
+
   // 调参前问答（缺口 9）：问题由侧车给，人点“确认”才生效
   $("ag-pre").onclick = async () => {
     const r = await call<any>("pretune_get").catch(() => null);

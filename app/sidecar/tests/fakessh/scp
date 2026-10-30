@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""假 scp：最后一个参数 user@host:dir/ → 拷到本机同名目录（~ 开头按 FAKE_SSH_HOME 展开）。"""
+import os, shutil, sys
+a = sys.argv[1:]
+if os.environ.get("FAKE_SSH_DOWN"):
+    sys.stderr.write("ssh: connect to host: No route to host\n"); sys.exit(255)
+files, i = [], 0
+while i < len(a):
+    if a[i] in ("-o", "-i", "-P"): i += 2; continue
+    if a[i].startswith("-"): i += 1; continue
+    files.append(a[i]); i += 1
+dest = files.pop().split(":", 1)[1]
+if dest.startswith("~/"): dest = os.path.join(os.environ["FAKE_SSH_HOME"], dest[2:])
+for f in files:
+    t = os.path.join(dest, os.path.basename(f.rstrip("/")))
+    (shutil.copytree(f, t, dirs_exist_ok=True) if os.path.isdir(f) else shutil.copy(f, t))
