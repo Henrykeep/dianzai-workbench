@@ -354,3 +354,24 @@ def test_git_errors_are_translated():
     assert "不是 git 仓库" in h and "git init" in h
     assert "index.lock" in git_hint("fatal: Unable to create '/r/.git/index.lock': File exists.")
     assert "处理" in git_hint("something odd")
+
+
+def test_preload_first_turn_read_cap_and_continue_action():
+    """r4 验收提速：第一轮附仓库地图/板卡清单（只附一次）；只读调用超上限回错误让模型动手；
+    步数用完发结构化“继续”动作；建项目类请求步数加倍。"""
+    from dzbench.agent.loop import READ_CAP
+    ev = []
+    fake = FakeLLM([{"role": "assistant", "tool_calls": [call("list_files")]}] * (READ_CAP + 2) + [{"role": "assistant", "content": "好"}])
+    loop = AgentLoop(fake, {"list_files": lambda: ["a"]}, ev.append, max_steps=READ_CAP + 2, preload=lambda: "板卡：b1")
+    loop.ask("看看仓库")
+    assert "板卡：b1" in loop.messages[1]["content"]
+    errs = [m for m in loop.messages if m["role"] == "tool" and "read_cap" in m["content"] or "只读调用已达上限" in str(m.get("content"))]
+    assert errs, "超上限后应回错误"
+    cont = [e for e in ev if e.get("type") == "agent_continue"]
+    assert cont and cont[0]["op"] == "agent_ask" and cont[0]["steps"] == READ_CAP + 2
+    loop.ask("再看看")
+    assert sum("板卡：b1" in str(m.get("content")) for m in loop.messages) == 1          # 只附第一轮
+    ev.clear()
+    big = AgentLoop(FakeLLM([{"role": "assistant", "tool_calls": [call("x")]}] * 40), {"x": lambda: 1}, ev.append, max_steps=3)
+    big.ask("帮我从新建工程一路做到仿真跑通")
+    assert [e for e in ev if e.get("type") == "agent_continue"][0]["steps"] == 6

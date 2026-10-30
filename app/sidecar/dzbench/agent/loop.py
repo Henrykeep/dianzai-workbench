@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Callable
 
 from .gateway import FORBIDDEN_TOOLS, GatewayError
@@ -35,7 +36,13 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
 17. 评分：score_items → score_run(item, n) → 全过才 score_save → score_writeback(dir=保存返回的目录)。不过就先调参，不要回写 pass。
 18. 仿真调参可用 tune_autopilot 连跑；实机只能逐轮 run_step_test + propose_param_change，每次写都要人确认。
 19. 文风：专业、书面、简洁。用准确术语（超调量、调节时间、稳态误差、相位裕度等），先结论后依据；不寒暄、不客套、不用语气词和表情符号，不用感叹号。
+20. 新建项目 / 从零做到仿真跑通这类大任务：第一轮就给出编号计划和最多 3 个关键问题（缺的只问真缺的）；题型是电机速度环/位置环时直接调 quick_start（一句话起项目，一张卡确认后自动建项目、上仿真、调参、评分），不要等题目 PDF，也不要先逐个读文件。上下文里已附仓库地图和板卡/项目清单，不要再为这些调 list_files / project_state。
    标定先 polarity_check（push 再 jog）；联调看振荡/噪声用 fft、wave_measure。"""
+
+READ_ONLY = {"read_file", "list_files", "repo_map", "list_params", "read_telemetry", "step_analysis", "board_memory", "read_symbol",
+             "build_log", "project_state", "score_items", "tune_context"}
+READ_CAP = 8                                   # 一轮里只读工具的上限（r4 验收：读了十几次才动手）
+BIG_TASK = re.compile(r"新建|从零|建项目|建工程|一路做|做到.*(跑通|调好)|整个项目")
 
 TOOLS = [
     {"name": "read_telemetry", "description": "最近 seconds 秒每个通道的 min/max/mean/last",
@@ -104,6 +111,8 @@ TOOLS = [
                       "project": {"type": "string", "description": "已有 CubeMX/Keil 工程路径（没有就从零新建）"}, "name": {"type": "string"},
                       "mcu": {"type": "string"}, "uvprojx": {"type": "string", "description": "要注入的 Keil .uvprojx（导入的工程会自动找）"},
                       "app": {"type": "string", "description": "Keil 注入按哪个应用挑模块（默认 = code）"}, "hand_edit": {"type": "string", "enum": ["merge", "keep"], "description": "dz/ 组被手改过时用户的选择"}}, "required": ["code"]}},
+    {"name": "quick_start", "description": "一句话起项目（电机速度环/位置环）：解析题型和主控 → ①–⑤ 整链预览 → 一张确认卡（方案+引脚表）；用户确认后自动写项目、连仿真板、一键起步调参、评分",
+     "parameters": {"type": "object", "properties": {"text": {"type": "string", "description": "用户原话，如“两轮车速度环，STM32F1”"}}, "required": ["text"]}},
     {"name": "project_apply", "description": "把 project_chain 预览过的所有步一次写入仓库（一张确认卡）",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}},
     {"name": "polarity_check", "description": "标定：只读遥测判方向（step=push 人推一下 / jog 小幅点动）",
@@ -182,8 +191,9 @@ def tagged(text: str, results: list[dict]) -> str | None:
 class AgentLoop:
     def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8,
                  project_rules: str = "", gate: Callable | None = None, knowledge: Callable[[str], list[dict]] | None = None,
-                 memory: Callable[[], str] | None = None):
+                 memory: Callable[[], str] | None = None, preload: Callable[[], str] | None = None):
         self.llm, self.handlers, self.emit, self.max_steps = llm, handlers, emit, max_steps
+        self.preload = preload or (lambda: "")
         self.knowledge = knowledge or (lambda text: [])
         self.gate = gate or (lambda tool, args, run: run())
         self._rules, self._memory = project_rules, memory or (lambda: "")
@@ -260,10 +270,13 @@ class AgentLoop:
         self.condense()
         mp = MODES[self.mode]["prompt"]
         kn = "".join(f"[工作台知识 {k['name']}，按触发词附上]\n{k['body']}\n\n" for k in self.knowledge(text))
-        self.messages.append({"role": "user", "content": kn + (f"（{mp}）\n" if mp else "") + text})
-        results, checked = [], False
+        first = not any(m["role"] == "user" for m in self.messages)
+        pre = (self.preload() if first else "") or ""        # 第一轮附仓库地图 + 板卡/项目清单：省掉 list_files / project_state 的来回
+        self.messages.append({"role": "user", "content": (f"[工作台上下文，不是用户提问]\n{pre}\n\n" if pre else "") + kn + (f"（{mp}）\n" if mp else "") + text})
+        results, checked, reads = [], False, 0
         det = StuckDetector()
-        for _ in range(self.max_steps):
+        steps = self.max_steps * 2 if BIG_TASK.search(text) else self.max_steps   # 建项目这类长链给双倍步数
+        for _ in range(steps):
             try:
                 m = self.llm.chat(self.messages, self.tools())
             except LLMError:
@@ -291,6 +304,11 @@ class AgentLoop:
                     allow = MODES[self.mode]["tools"]
                     if allow is not None and name not in allow:
                         raise GatewayError("mode", f"当前是{MODES[self.mode]['name']}模式，不能用 {name}；需要的话请用户切换模式")
+                    if name in READ_ONLY:
+                        reads += 1
+                        if reads > READ_CAP:
+                            raise GatewayError("read_cap", f"本轮只读调用已达上限 {READ_CAP} 次",
+                                               "基于已拿到的数据直接给计划/结论，或调用写/执行类工具；真缺信息就问用户")
                     res = {"ok": True, "result": self.gate(name, args, lambda: self.handlers[name](**args))}
                 except (GatewayError, Exception) as e:   # noqa: BLE001 —— 工具错误回给模型，让它自己改
                     res = {"ok": False, "error": getattr(e, "message", str(e))}
@@ -306,6 +324,8 @@ class AgentLoop:
             if self.guards and (why := det.check(self.messages)):    # OpenHands 卡死检测：提醒过还在转 → 停下交给人
                 self.emit({"type": "agent_stuck", "reason": why})
                 return f"（我卡住了：{why}。先停在这里，请你看一下上面的结果，换个问法或给我更多信息。）"
+        self.emit({"type": "agent_continue", "label": "继续", "op": "agent_ask", "text": "继续",      # 结构化“继续”动作：界面给一个按钮
+                   "steps": steps, "tools": [r["name"] for r in results][-8:]})
         if self.guards:      # 真模型：步数到了也要给个结论，不能只丢一句“步数用完”（首轮真模型评测里 2/20 例这样收尾）
             self.messages.append({"role": "user", "content": "[工作台通知，不是用户提问] 工具步数用完了。不要再调工具："
                                   "基于上面已拿到的数据直接给结论和下一步（引用具体数字），并说明还缺什么数据。"})

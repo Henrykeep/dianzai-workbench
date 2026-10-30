@@ -106,7 +106,8 @@ class AgentService:
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
-        }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
+            "quick_start": lambda text: self.quick_start(text),
+        }, emit, preload=self._preload, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
 
@@ -256,6 +257,22 @@ class AgentService:
         r = steptools.project_chain(self.gw.root, code, **m)
         self.chains[code] = r
         return {k: v for k, v in r.items() if k != "batch"} | {"to_write": [s for s, _ in r["batch"]]}
+
+    def _preload(self) -> str:
+        """第一轮附上：仓库地图（顶层目录 + 一句话用途）、板卡、项目、仿真对象。几百字，换掉 3~6 次只读调用。"""
+        from .. import ports as ports_mod
+        root = pathlib.Path(self.gw.root)
+        st = steptools.project_state(root, None)
+        cm = {"apps": "应用固件（每个子目录一个应用）", "examples": "比赛项目（读题/方案/分配/生成的产物）", "boards": "板卡定义 board.yaml",
+              "firmware": "通用固件库（algo/drivers/proto，冻结层）", "tools": "命令行工具（req/scheme/alloc/gen/keil_inject）", "subsys": "子系统库"}
+        lines = [f"- {k}/：{v}" for k, v in cm.items() if (root / k).is_dir()]
+        try:
+            sims = ", ".join(ports_mod.sim_apps())
+        except Exception:  # noqa: BLE001
+            sims = ""
+        return ("仓库地图：\n" + "\n".join(lines) + f"\n板卡：{', '.join(st.get('boards') or []) or '无'}"
+                + f"\n项目：{', '.join(st.get('projects') or []) or '无'}" + (f"\n仿真对象：{sims}" if sims else "")
+                + f"\n当前连接：{self.s.port or '未连接'}")
 
     def quick_start(self, text: str) -> dict:
         """一句话起项目：解析 → ①–⑤ 整链预览（只写暂存区）→ 一张确认卡（方案 + 引脚表）。
