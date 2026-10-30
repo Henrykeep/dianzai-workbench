@@ -126,7 +126,8 @@ def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
         need = [sdk / ".metadata/product.json"]
     else:
         s = (re.match(r"stm32([a-z]\d)", (mcu or "").lower()) or [None, ""])[1]
-        need = [repo / f"third_party/stm32{s}xx-hal-driver/Inc/stm32{s}xx_hal_conf_template.h"] if s else []
+        v = repo / f"third_party/vendored/st_hal_conf/stm32{s}xx_hal_conf_template.h"     # F1/F4 模板随仓库带
+        need = [] if not s or v.exists() else [repo / f"third_party/stm32{s}xx-hal-driver/Inc/stm32{s}xx_hal_conf_template.h"]
     out = []
     for f in need:
         if not f.exists():

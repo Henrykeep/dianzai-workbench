@@ -187,10 +187,12 @@ def build(b: dict, name: str) -> dict[str, str]:
     for x in m["gpio"]:
         port, n = pn(x["pin"]); mh += [f"#define GPIO_{x['name']}_Pin GPIO_PIN_{n}", f"#define GPIO_{x['name']}_GPIO_Port {port}"]
     mh += ["/* USER CODE BEGIN Private defines */", "/* USER CODE END Private defines */", "#endif", ""]
-    tp = ROOT / f"third_party/stm32{s}xx-hal-driver/Inc/stm32{s}xx_hal_conf_template.h"
+    tp = ROOT / f"third_party/vendored/st_hal_conf/stm32{s}xx_hal_conf_template.h"     # 随仓库带的 ST 模板（BSD-3），见该目录 SOURCE.md
     if not tp.exists():
-        sys.exit(f"✗ 缺 {tp.relative_to(ROOT)}（third_party 不入库）：在仓库根目录运行 make fetch")
-    tpl = tp.read_text(encoding="utf-8")
+        tp = ROOT / f"third_party/stm32{s}xx-hal-driver/Inc/stm32{s}xx_hal_conf_template.h"
+    if not tp.exists():
+        sys.exit(f"✗ 缺 stm32{s}xx_hal_conf_template.h（STM32 HAL 未拉取）：在仓库根目录运行 make fetch")
+    tpl = re.sub(r"\A/\* Source: .*?\*/\n", "", tp.read_text(encoding="utf-8"))
     keep = {"", "GPIO", "RCC", "FLASH", "PWR", "CORTEX", "DMA", "EXTI", "TIM", "UART"} | ({"I2C"} if m["i2c"] else set())
     tpl = re.sub(r"^#define HAL_(\w*?)_?MODULE_ENABLED\b", lambda x: x[0] if x[1] in keep else "/* " + x[0] + " */", tpl, flags=re.M)  # 同 CubeMX：只开用到的模块
     conf = HDR + re.sub(r"(#define HSE_VALUE\s+)\(?\s*\d+U?\s*\)?", r"\g<1>8000000U", tpl, count=1)
