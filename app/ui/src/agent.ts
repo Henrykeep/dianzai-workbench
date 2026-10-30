@@ -72,7 +72,7 @@ export function initAgent(call: Call) {
     const ask = (k: string, q: string, d: string) => { const v = window.prompt(q, localStorage.getItem(k) || d); if (v != null) localStorage.setItem(k, v); return v; };
     const y = ask("dz.search.y", "反馈通道（开环台阶时录的输出，如 spd_a）", "spd_a"); if (!y) return;
     const u = ask("dz.search.u", "控制量通道（台阶加在这一路，如 pwm_a）", "pwm_a"); if (!u) return;
-    const mode = ask("dz.search.mode", "策略：pso / staged，加 ,wide 为宽范围（默认是 PID_Helper 原版窄范围）", "pso"); if (!mode) return;
+    const mode = ask("dz.search.mode", "策略：pso / staged，加 ,wide 为宽范围（默认窄范围：初值 0–2 倍）", "pso"); if (!mode) return;
     const [strategy, w] = mode.split(",").map(x => x.trim());
     const r = await call("tune_search", { y, u, seconds: 5, strategy, wide: w === "wide", top_k: 3 }).catch(() => null);
     if (!r) return;

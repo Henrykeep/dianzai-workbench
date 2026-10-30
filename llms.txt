@@ -33,8 +33,8 @@
 - 日志导入导出：app/sidecar/dzbench/logio.py（CSV / VOFA+ FireWater → .dzlog）、export.py（csv / plotjuggler / vofa）；曲线布局 分格/按单位/叠加（app/ui/src/plot.ts）
 - 协处理器 SSH 部署：app/sidecar/dzbench/deploy.py（MaixCAM / K230 / Jetson / 树莓派 / RDK；推脚本、启停、看 dz.log；只走密钥）
 - 串口 IMU：firmware/drivers/wit_imu（WIT 协议 JY61P / JY901 / HWT101）
-- 磁编码器：firmware/drivers/as5600（I2C 12 位绝对角、多圈、速度）
-- 无刷 FOC：firmware/algo/foc（电压型 SVPWM、开环、角度闭环、位置→速度串级、上电对齐；输出走 pal_pwm3_set）
+- 磁编码器：firmware/drivers/as5600【已停用为桩 2.0.0，待净室重写】
+- 无刷 FOC：firmware/algo/foc【已停用为桩 2.0.0，待净室重写】
 - [内置 Agent](docs/18-内置Agent.md)（含调参前问答：对象/执行器/安全限/超调上限，只收紧护栏）
 - [Agent 触发知识说明](docs/agent-knowledge/README.md)
 - [知识：堵转](docs/agent-knowledge/stall.md)
