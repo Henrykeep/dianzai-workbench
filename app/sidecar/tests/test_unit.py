@@ -119,3 +119,14 @@ def test_read_all_params_bg_swallows_thread_exception():
         threading.excepthook = old
     assert not caught
     assert any(e.get("code") == "param_read_aborted" for e in ev if isinstance(e, dict)), ev
+
+
+def test_estop_without_board_does_not_latch_or_alert():
+    """仿真板一连上就看到锁存急停的根因：没连板子时按 Esc（关下拉框）也锁住侧车并进告警条。"""
+    from dzbench.events import from_broadcast
+    s = Session()
+    r = s.estop("Esc 键")
+    assert r["nolink"] and r["src"] == "Esc 键" and s.tx_locked is False
+    assert from_broadcast(r) is None
+    kind, text = from_broadcast({"type": "estop", "sent": True, "src": "急停按钮"})
+    assert kind == "estop" and "急停按钮" in text and "解除急停 R" in text

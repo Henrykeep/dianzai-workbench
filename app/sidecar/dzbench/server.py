@@ -106,7 +106,7 @@ class Server:
         if op == "disconnect":
             return await run(None, s.disconnect)
         if op == "estop":                      # 不排队，直接在事件循环里发
-            r = s.estop()
+            r = s.estop(str(m.get("src") or "")[:20])
             await self._broadcast(r)
             return r
         if op == "cmd":

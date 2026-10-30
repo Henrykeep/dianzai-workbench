@@ -488,8 +488,13 @@ class Session:
         tr.write(frame)
         return True
 
-    def estop(self) -> dict:
-        """急停：连发 3 帧（丢一帧也能停）。没连接时如实告知，不假装成功。"""
+    def estop(self, src: str = "") -> dict:
+        """急停：连发 3 帧（丢一帧也能停）。没连接时如实告知，不假装成功，也不锁存（没有板子可停，锁住只会吓到刚打开软件的人）。
+        src = 谁按的（急停按钮 / Esc 键 / 空格键），写进告警文字。"""
+        by = f"（{src}）" if src else ""
+        if self.tr is None:
+            return {"type": "estop", "sent": False, "nolink": True, "src": src,
+                    "message": f"没连板子：急停{by}没有送达任何板子；连着真板时请直接断电/拔电池"}
         ok = False
         for _ in range(3):
             try:
@@ -500,9 +505,9 @@ class Session:
         self.tx_locked = True
         self.emit({"type": "tx_locked", "on": True})
         if isinstance(self.tr, ReplayTransport):
-            return {"type": "estop", "sent": False, "message": "回放中：急停没有发给任何板子"}
-        return {"type": "estop", "sent": ok,
-                "message": "急停已发送（3 帧）" if ok else "未连接：急停没有送达！直接断电/拔电池"}
+            return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
+        return {"type": "estop", "sent": ok, "src": src,
+                "message": f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池"}
 
     def send_data(self, id_: int, payload: bytes) -> bool:
         """发任意 DATA 帧（应用自定义命令，如 car_2wd 的 id=1 轮速设定）。0x7E/0x7F 走专用接口。"""
