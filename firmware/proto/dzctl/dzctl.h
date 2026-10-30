@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.8.0"
+#define DZCTL_VERSION "0.9.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
@@ -86,6 +86,14 @@ uint32_t dzctl_fw_rev(void);
 #define DZCTL_HB_SAFE_BOOT (1u << 8)   /**< 异常复位（看门狗/锁死）后进了安全态：输出关、锁急停，等人发 'R' */
 #define DZCTL_HB_STALL     (1u << 9)   /**< 堵转锁存 */
 #define DZCTL_HB_ESTOP     (1u << 10)  /**< 急停锁存中（任何原因） */
+#define DZCTL_HB_SELFTEST_FAIL (1u << 11)   /**< 0.9.0 上电自检没通过（同时以 DZCTL_ES_SELFTEST 急停） */
+#define DZCTL_HB_PARAMS_SHIFT 12u            /**< 0.9.0 bit12-13 上电参数来源：0 flash 1 没存过→默认 2 损坏/版本不符→默认 3 无 flash */
+#define DZCTL_HB_PARAMS_MASK  (3u << 12)
+/** 0.9.0 'W' 存参数：板回 DATA DZCTL_ID_CMD len=2 {'W', 结果}，结果 0 已写入 1 没停稳拒写 2 没有 flash 3 写失败 */
+#define DZCTL_SAVE_OK 0u
+#define DZCTL_SAVE_BUSY 1u
+#define DZCTL_SAVE_NO_NVM 2u
+#define DZCTL_SAVE_FAIL 3u
 /** 是不是黑匣子导出请求。 */
 bool dzctl_is_bb_request(const dzframe_t *f);
 typedef struct { uint8_t loop; float amp, hyst, timeout_s; bool start; } dzctl_relay_t;

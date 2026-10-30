@@ -111,6 +111,8 @@ class Server:
             return r
         if op == "cmd":
             return s.cmd(m["c"], m.get("n"))
+        if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
+            return await run(None, s.save_params)
         if op == "blackbox":
             return await run(None, s.blackbox)
         if op == "send_data":

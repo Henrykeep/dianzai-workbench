@@ -345,6 +345,8 @@ class Session:
                                     self._pending_marks.append(("estop", "板子急停：" + es["message_zh"]))
                     if h != self.schema_hash:
                         self._bind_schema(h)
+            elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
+                self.save_ack = payload[1]
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
                 self.relay_ack = payload[0]
             elif kind == DATA and id_ == ID_BB and len(payload) == 16:
@@ -535,6 +537,24 @@ class Session:
         time.sleep(wait_s)
         with self.lock:
             return list(self.bb_recs)
+
+    SAVE_STATUS = {0: "参数已写入 flash：下次上电自动加载", 1: "电机没停稳：为安全起见没写（停车或急停后再存）",
+                   2: "这块板子没有可用的 flash 存储区（board.yaml mcu.nvm_kb 为 0）", 3: "flash 写入失败（重试；反复失败说明存储区坏了）"}
+
+    def save_params(self, wait_s: float = 1.5) -> dict:
+        """dzctl 0.8.0：把板上当前参数一次写进 flash（'W'），等板子回执 {'W', 结果}。旧固件不回执 → ok=None。"""
+        self._check_tx()
+        self.save_ack = None
+        if not self._send(DATA, ID_CMD, b"W"):
+            raise LinkError("not_connected", "没连板子", "")
+        t_end = time.monotonic() + wait_s
+        while time.monotonic() < t_end and getattr(self, "save_ack", None) is None:
+            time.sleep(0.01)
+        a = getattr(self, "save_ack", None)
+        if a is None:
+            return {"ok": None, "result": None, "message_zh": "板子没回执（固件早于 dzctl 0.8.0？）：用黑匣子看“参数已存”记录"}
+        self.mark("param", self.SAVE_STATUS.get(a, f"保存结果 #{a}"))
+        return {"ok": a == 0, "result": a, "message_zh": self.SAVE_STATUS.get(a, f"保存结果 #{a}")}
 
     RELAY_STATUS = {0: "ok", 1: "参数非法或板上没有这个 PID 回路", 2: "板子急停中"}
 
@@ -771,7 +791,7 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
-HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败"}
 
 
 # dzctl 0.8.0 dzctl_estop_cause_t → (cause 键, 中文说明模板)。{v} = 触发值，{t} = 板上时刻 s。
@@ -801,8 +821,13 @@ def estop_cause_dict(cause: int, t_ms: int, value: float) -> dict | None:
 def hb_status_dict(w: int | None) -> dict:
     """心跳 status 字 → status() 里的 reset / hb_flags（旧固件没有这个字：都为 None）。"""
     if w is None:
-        return {"reset": None, "hb_flags": None}
-    return {"reset": RESET_NAMES.get(w & 0xFF, f"#{w & 0xFF}"), "hb_flags": [n for b, n in HB_FLAGS.items() if w & b]}
+        return {"reset": None, "hb_flags": None, "boot": None}
+    return {"reset": RESET_NAMES.get(w & 0xFF, f"#{w & 0xFF}"), "hb_flags": [n for b, n in HB_FLAGS.items() if w & b],
+            "boot": {"params": PARAM_SRC[(w >> 12) & 3], "selftest_ok": not (w & (1 << 11))}}
+
+
+# dzctl 0.8.0 心跳 bit12-13：上电参数从哪来（旧固件为 0 = 显示成 flash；看 boot 字段前先确认固件版本）
+PARAM_SRC = ("flash", "default_unsaved", "default_corrupt", "no_nvm")
 
 
 def hb_status_event(w: int) -> tuple[str, str] | None:

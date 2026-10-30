@@ -1481,6 +1481,13 @@
    "dzctl.h: #define DZCTL_HB_SAFE_BOOT (1u << 8)",
    "dzctl.h: #define DZCTL_HB_STALL (1u << 9)",
    "dzctl.h: #define DZCTL_HB_ESTOP (1u << 10)",
+   "dzctl.h: #define DZCTL_HB_SELFTEST_FAIL (1u << 11)",
+   "dzctl.h: #define DZCTL_HB_PARAMS_SHIFT 12u",
+   "dzctl.h: #define DZCTL_HB_PARAMS_MASK (3u << 12)",
+   "dzctl.h: #define DZCTL_SAVE_OK 0u",
+   "dzctl.h: #define DZCTL_SAVE_BUSY 1u",
+   "dzctl.h: #define DZCTL_SAVE_NO_NVM 2u",
+   "dzctl.h: #define DZCTL_SAVE_FAIL 3u",
    "dzctl.h: typedef enum { DZCTL_F32, DZCTL_U32, DZCTL_I32, DZCTL_U16, DZCTL_I16, DZCTL_U8, DZCTL_BOOL } dzctl_type_t;",
    "dzctl.h: typedef enum { DZCTL_OK = 0, DZCTL_CLAMPED = 1, DZCTL_BAD_ID = 2, DZCTL_BAD_LEN = 3, DZCTL_BAD_VALUE = 4 } dzctl_status_t;",
    "dzctl.h: typedef struct { const char *name;",
@@ -1523,8 +1530,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "7f2b688ed93bc850",
-  "version": "0.8.0"
+  "hash": "0ebfc27ff15a0ae1",
+  "version": "0.9.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

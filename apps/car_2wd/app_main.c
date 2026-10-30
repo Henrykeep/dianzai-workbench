@@ -19,6 +19,7 @@
  *     黑匣子（RAM 环 32 条）：复位原因、堵转、解除；上位机发 DATA id=0x7D len=0 导出。
  *   可选外设（car_aux.c）：板子有 VBAT 就监测电池（过放 → 急停），有 US_TRIG/US_ECHO 就测前方距离（太近 → 不许前进）。
  */
+#include <string.h>
 #include "board_gen.h"
 #include "link_io.h"
 #include "app.h"
@@ -63,6 +64,7 @@ static bb_rec_t s_bb_ring[32];
 /* 掉电保存（板子 board.yaml mcu.nvm_kb > 0 才有；没有/坏了 → 全部照常跑，只是不保存） */
 #define KEY_PARAMS 1u
 #define KEY_BB     2u
+#define CAR_EV_SELFTEST (BB_EV_APP + 0x10u)   /* 上电自检：arg = 失败项数 */
 static persist_flash_t s_nvf;
 static persist_kv_t s_kv;
 static persist_kvbb_t s_kvbb;
@@ -156,6 +158,17 @@ static uint16_t load_params(void)
     return 0u;
 }
 
+/* 自检用：每个参数都在 app.yaml 范围内（RAM 被踩/默认表写错时能看出来） */
+static bool params_sane(void)
+{
+    dzctl_table_t t = link_param_table(&g_link_params);
+    for (uint8_t i = 0; i < t.n; i++) {
+        float g = dzctl_get(&t, i), v;
+        if (g != g || dzctl_set(&t, i, g, &v) != DZCTL_OK || v != g) return false;
+    }
+    return true;
+}
+
 static uint16_t nvm_boot(void)
 {
     s_have_kv = nvm_pal_layout(&s_nvf, NULL, 0u) == DZ_OK && persist_kv_init(&s_kv, &s_nvf) == DZ_OK
@@ -164,6 +177,7 @@ static uint16_t nvm_boot(void)
 }
 
 /* 'W'：只在停着（急停锁存或指令为 0 且轮子不转）时写——F4 擦扇区会让 CPU 停顿约 0.3 s */
+static void send(const dzframe_t *f);
 static void save_params(void)
 {
     float sa = encoder_speed_rps(&s_w[0].enc), sb = encoder_speed_rps(&s_w[1].enc);
@@ -171,6 +185,13 @@ static void save_params(void)
     dz_err_t rc = !s_have_kv ? DZ_ENOTSUP : !still ? DZ_EBUSY
                 : persist_blob_save(&s_kv, KEY_PARAMS, LINK_SCHEMA_HASH, &g_link_params, (uint16_t)sizeof g_link_params);
     bb_log(&s_bb, pal_millis(), BB_EV_PARAM_SAVE, (uint16_t)(rc < 0 ? -rc : rc), 0.0f, 0.0f);
+    dzframe_t f;
+    memset(&f, 0, sizeof f);
+    f.kind = DZF_DATA; f.id = DZCTL_ID_CMD;
+    (void)dzframe_put_u8(&f, 'W');
+    (void)dzframe_put_u8(&f, (uint8_t)(rc == DZ_OK ? DZCTL_SAVE_OK : rc == DZ_EBUSY ? DZCTL_SAVE_BUSY
+                                       : rc == DZ_ENOTSUP ? DZCTL_SAVE_NO_NVM : DZCTL_SAVE_FAIL));
+    send(&f);
 }
 
 dz_err_t app_init(void)
@@ -202,7 +223,14 @@ dz_err_t app_init(void)
     if ((e = wheel_init(&s_w[0], RES_PWM_MOTOR_A, RES_GPIO_MOTOR_A_IN1, RES_GPIO_MOTOR_A_IN2, RES_ENCODER_MOTOR_A)) != DZ_OK) return e;
     if ((e = wheel_init(&s_w[1], RES_PWM_MOTOR_B, RES_GPIO_MOTOR_B_IN1, RES_GPIO_MOTOR_B_IN2, RES_ENCODER_MOTOR_B)) != DZ_OK) return e;
     if ((e = subsys_sched_init(&s_sched, list, 1, &s_state, &s_params)) != DZ_OK) return e;
-    if (subsys_sched_selftest(&s_sched) >= 0) return DZ_EIO;
+    {   /* 上电自检：不过也不罢工（上位机要能看到为什么），而是急停锁存 + 心跳标志 + 原因 */
+        int bad = (subsys_sched_selftest(&s_sched) >= 0) + !params_sane();
+        dzctl_set_flags(DZCTL_HB_SELFTEST_FAIL, bad != 0);
+        if (bad) { s_estop = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), (float)bad); }
+        bb_log(&s_bb, pal_millis(), CAR_EV_SELFTEST, (uint16_t)bad, 0.0f, 0.0f);
+    }
+    dzctl_set_flags(DZCTL_HB_PARAMS_MASK, false);
+    dzctl_set_flags((uint32_t)pl << DZCTL_HB_PARAMS_SHIFT, true);
     subsys_sched_set_mode(&s_sched, SUBSYS_MODE_RUN);
     dzframe_parser_init(&s_rx);
     dzctl_wd_init(&s_wd, 1000u);   /* 侧车每 250 ms 发一次心跳 */
