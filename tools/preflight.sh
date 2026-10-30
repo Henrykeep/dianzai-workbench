@@ -15,6 +15,7 @@ mkdir -p "$tmp/home" "$tmp/repo/third_party"
 if [ -d "$src/third_party" ]; then
   for d in "$src"/third_party/*/; do
     n=$(basename "$d"); { [ "$n" = packs ] || [ "$n" = vendored ]; } && continue   # vendored 是提交进仓库的，用克隆里的
+    case "$n" in sysconfig_*) ln -s "${d%/}" "$tmp/repo/third_party/$n"; continue;; esac   # SysConfig CLI 1.1G、只读工具：链接不复制
     cp -a "$d" "$tmp/repo/third_party/$n"
   done
 fi

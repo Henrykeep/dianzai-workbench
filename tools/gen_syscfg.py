@@ -8,14 +8,15 @@ MSPM0 没有复用知识表，引脚交给 TI SysConfig 自己的求解器：
 refs/mspm0g-contest-skill/03_Fireware/*/empty.syscfg、refs/ext/nuedc-2026-h-ball-balance/firmware/beam_control/empty.syscfg（MIT）。
 用法：gen_syscfg.py <alloc/board.yaml> <输出板目录> [--name N]
   输出：<目录>/board.yaml、ccs/<N>.syscfg、syscfg/ti_msp_dl_config.{c,h}
-环境：SYSCFG_CLI（默认 ~/ti/sysconfig_1.28.0/sysconfig_cli.sh）、M0_SDK_ROOT（默认 third_party/mspm0-sdk）。
+环境：SYSCFG_CLI（默认 third_party/sysconfig_1.28.0，其次 ~/ti/sysconfig_1.28.0）、M0_SDK_ROOT（默认 third_party/mspm0-sdk）。
 【仿真】只在本机 SysConfig 1.28 + SDK 2.11 上生成并交叉编译过；未在 GUI 打开、未上板。
 """
 import argparse, os, pathlib, re, subprocess, sys, tempfile
 import yaml
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-CLI = pathlib.Path(os.environ.get("SYSCFG_CLI", pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"))
+_LOCAL_CLI = REPO / "third_party/sysconfig_1.28.0/sysconfig_cli.sh"      # make fetch（tools/fetch_sysconfig.sh）装在这
+CLI = pathlib.Path(os.environ.get("SYSCFG_CLI") or (_LOCAL_CLI if _LOCAL_CLI.exists() else pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"))
 SDK = pathlib.Path(os.environ.get("M0_SDK_ROOT", REPO / "third_party/mspm0-sdk"))
 T = lambda v: v in (None, "", "TODO")
 HEAD = """/**
@@ -193,7 +194,7 @@ def main():
     if bad:
         sys.exit(f"✗ 还不会生成 {'/'.join(bad)}：在 SysConfig 里手配后用“导入已有工程”")
     if not CLI.exists():
-        sys.exit(f"✗ 找不到 SysConfig CLI：{CLI}（TI 官网免费下载 sysconfig 1.28，或设 SYSCFG_CLI）")
+        sys.exit(f"✗ 找不到 SysConfig CLI：{CLI}（在仓库根目录运行 make fetch 自动装 1.28，或设 SYSCFG_CLI）")
     out = pathlib.Path(x.out); name = x.name or out.name
     ng = len(_pwm_groups(r)); tmp = [f"PWM_G{k}" for k in range(ng)]
     with tempfile.TemporaryDirectory() as td:

@@ -5,12 +5,13 @@
 # 环境变量：SYSCFG_CLI（默认 ~/ti/sysconfig_1.28.0/sysconfig_cli.sh）、M0_SDK_ROOT（默认 third_party/mspm0-sdk）
 # 版本锁：SysConfig 1.28.0.4712 + MSPM0 SDK 2.11.00.07。换版本后生成文件的注释/默认值可能变，需重新 --write 并审阅 diff。
 set -euo pipefail
-CLI=${SYSCFG_CLI:-$HOME/ti/sysconfig_1.28.0/sysconfig_cli.sh}
+CLI=${SYSCFG_CLI:-}
+[ -n "$CLI" ] || { CLI=$(cd "$(dirname "$0")/.." && pwd)/third_party/sysconfig_1.28.0/sysconfig_cli.sh; [ -x "$CLI" ] || CLI=$HOME/ti/sysconfig_1.28.0/sysconfig_cli.sh; }
 SDK=${M0_SDK_ROOT:-third_party/mspm0-sdk}
 case "${1:-}" in ""|--*) ;; *) B=$1; shift;; esac
 BOARD=boards/${B:-mspm0g3507-tianmengxing}
 SC=$(ls "$BOARD"/ccs/*.syscfg | head -1)
-[ -x "$CLI" ] || { echo "找不到 SysConfig CLI：$CLI（设置 SYSCFG_CLI）"; exit 2; }
+[ -x "$CLI" ] || { echo "找不到 SysConfig CLI：$CLI（make fetch 自动装，或设 SYSCFG_CLI）"; exit 2; }
 [ -f "$SDK/.metadata/product.json" ] || { echo "SDK 缺 .metadata/product.json：tools/fetch_third_party.sh mspm0"; exit 2; }
 out=$(mktemp -d)
 "$CLI" --product "$SDK/.metadata/product.json" --device MSPM0G350X --package "LQFP-64(PM)" \

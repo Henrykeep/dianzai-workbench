@@ -115,8 +115,12 @@ def test_websocket_server(home):
     async def run():
         srv = Server()
         task = asyncio.ensure_future(srv.serve("127.0.0.1", port))
-        await asyncio.sleep(0.3)
-        async with websockets.connect(f"ws://127.0.0.1:{port}") as ws:
+        for _ in range(200):                # 等端口真的在听（机器忙时 0.3 s 固定等待不够，握手会超时）
+            try:
+                _r, w = await asyncio.open_connection("127.0.0.1", port); w.close(); break
+            except OSError:
+                await asyncio.sleep(0.05)
+        async with websockets.connect(f"ws://127.0.0.1:{port}", open_timeout=30) as ws:
             async def rpc(**m):
                 await ws.send(json.dumps(m | {"rid": m["op"]}))
                 while True:

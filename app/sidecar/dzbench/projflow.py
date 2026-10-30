@@ -139,7 +139,12 @@ def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
 
 
 def syscfg_cli() -> pathlib.Path:
-    return pathlib.Path(os.environ.get("SYSCFG_CLI") or pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh")
+    """SYSCFG_CLI → 仓库 third_party/sysconfig_1.28.0（make fetch 装的）→ ~/ti/sysconfig_1.28.0。"""
+    if os.environ.get("SYSCFG_CLI"):
+        return pathlib.Path(os.environ["SYSCFG_CLI"])
+    repo = pathlib.Path(os.environ.get("DZBENCH_REPO") or pathlib.Path(__file__).resolve().parents[3])
+    local = repo / "third_party/sysconfig_1.28.0/sysconfig_cli.sh"
+    return local if local.exists() else pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"
 
 
 def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work: pathlib.Path) -> tuple[bool, str]:
@@ -176,7 +181,7 @@ def scratch_options(repo: pathlib.Path, scheme: dict, work: pathlib.Path | None 
             continue
         fam, part = x["mcu"]["family"], x["mcu"]["part"].upper()
         ok = fam in IOC_FAMILIES or (fam == "mspm0" and syscfg_cli().exists())
-        why = "" if ok else ("MSPM0 从零要 TI SysConfig CLI（免费，装到 ~/ti/sysconfig_1.28.0 或设 SYSCFG_CLI），没有就在 SysConfig 里配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
+        why = "" if ok else ("MSPM0 从零要 TI SysConfig CLI（免费，在仓库根目录运行 make fetch 自动装，或设 SYSCFG_CLI），没有就在 SysConfig 里配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
         tpls = [n for n, bp in boards if bp.rstrip("X")[:11] == part.rstrip("X")[:11]]
         for t in [None, *tpls]:
             out.append({"mcu": x["id"], "family": fam, "tpl": t, "ok": ok, "why": why, "status": x["status"],
