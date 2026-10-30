@@ -34,12 +34,15 @@ HB_TIMEOUT_S = 2.0          # = linkstate.LOST_AFTER_S；板子心跳 500 ms，�
 class LinkError(Exception):
     """带“怎么修”的错误：UI 原样显示 message 和 fix。"""
 
-    def __init__(self, code: str, message: str, fix: str = ""):
+    def __init__(self, code: str, message: str, fix: str = "", fix_action: str | None = None):
         super().__init__(message)
-        self.code, self.message, self.fix = code, message, fix
+        self.code, self.message, self.fix, self.fix_action = code, message, fix, fix_action
 
     def as_dict(self) -> dict:
-        return {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        d = {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        if self.fix_action:
+            d["fix_action"] = self.fix_action
+        return d
 
 
 class Session:
