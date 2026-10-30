@@ -229,3 +229,30 @@ def project_apply(root, code: str, batch: list) -> dict:
             return {"written": out, "failed": step, "error": getattr(e, "msg", str(e))}
         out.append({"step": step, "written": r.get("written")})
     return {"written": out, "state": project_state(root, code)}
+
+
+# ---------------------------------------------------------------- 一句话起项目（最小版：电机速度/位置环）
+QUICK_KINDS = {   # 题型 → 仿真对象、阶跃指标模板
+    "speed": {"sim": "sim:car_2wd", "cn": "速度环", "band": 0.3,
+              "req": "（1）速度设定值阶跃后 1.2 s 内稳定，稳态误差不大于 0.3。\n（2）超调量不大于 20%。"},
+    "pos": {"sim": "sim:motor_pos", "cn": "位置环", "band": 0.05,
+            "req": "（1）位置设定值阶跃后 1.5 s 内稳定，稳态误差不大于 0.05。\n（2）超调量不大于 15%。"},
+}
+QUICK_MCU = [(r"f1|f103|c8t6", "stm32f103c8t6"), (r"f407|f4|vet6|天空星", "stm32f407vet6"), (r"vgt6", "stm32f407vgt6")]
+
+
+def quick_spec(text: str) -> dict:
+    """一句话 → 题型 + 主控 + 仿真对象 + 题目原文草稿。认不出题型就报错（先只支持电机速度/位置环）。"""
+    import hashlib
+    import re as _re
+    t = (text or "").strip()
+    low = t.lower()
+    kind = "pos" if _re.search(r"位置|角度|定位|pos", low) else "speed" if _re.search(r"速度|转速|速度环|speed|两轮|小车|电机", low) else None
+    if not kind:
+        from ..projflow import FlowError
+        raise FlowError("quick_kind", "一句话起项目目前只支持电机速度环 / 位置环", "例：“两轮车速度环，STM32F1”")
+    mcu = next((m for pat, m in QUICK_MCU if _re.search(pat, low)), "stm32f103c8t6")
+    k = QUICK_KINDS[kind]
+    code = "Q" + hashlib.sha1(t.encode()).hexdigest()[:6]
+    problem = f"{t}\n一、任务\n设计电机{k['cn']}闭环控制系统，主控 {mcu.upper()}。\n二、要求\n基本要求\n{k['req']}\n"
+    return {"code": code, "kind": kind, "kind_cn": k["cn"], "mcu": mcu, "sim": k["sim"], "band": k["band"], "problem": problem}

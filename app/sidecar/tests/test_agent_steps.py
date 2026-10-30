@@ -264,3 +264,29 @@ def test_project_chain_includes_keil_inject(repo, tmp_path):
     assert uv.read_text(encoding="utf-8") == edited                               # 选“保留”：一个字节不动
     svc.project_chain("T6", project=str(pj), name="t6car", hand_edit="merge"); svc.project_apply("T6")
     assert "dz/hand" not in uv.read_text(encoding="utf-8") and "MyDrv" in uv.read_text(encoding="utf-8")
+
+
+@pytest.mark.needs_sim
+def test_quick_start_one_sentence_e2e(repo):
+    """一句话起项目：输入“两轮车速度环，STM32F1” → 一张卡（方案 + 引脚表）→ 用户只点一次确认 →
+    写入项目、连仿真板、一键起步调参、评分。"""
+    svc, ev = _svc(repo, FakeLLM([]))
+    try:
+        r = svc.quick_start("两轮车速度环，STM32F1")
+        assert r["spec"]["kind"] == "speed" and r["spec"]["mcu"] == "stm32f103c8t6", r
+        assert r["action_id"] and not (repo / "examples" / r["spec"]["code"]).exists(), r["chain"]
+        cs = _cards(ev); assert len(cs) == 1 and cs[0]["tool"] == "project_apply"
+        pv = cs[0]["preview"]
+        assert any(x["k"] == "pin" for s in pv["steps"] for x in s["changes"]), pv               # 卡上有引脚表
+        assert any(s["title"] for s in pv["steps"]) and "调参" in pv["after"]
+        out = svc.action_decide(r["action_id"], True)["result"]                                 # 唯一一次点击
+        print("QUICK", json.dumps({"tune": {k: out["tune"][k] for k in ("final", "best_round", "passed")}, "score": {k: out["score"].get(k) for k in ("result", "item")}}, ensure_ascii=False))
+        code = r["spec"]["code"]
+        assert (repo / "examples" / code / "requirements.yaml").exists() and (repo / "examples" / code / "alloc").is_dir()
+        assert out["sim"] == "sim:car_2wd" and out["tune"]["rounds"] and out["tune"]["best_round"], out
+        assert out["score"].get("result") in ("pass", "partial", "fail"), out["score"]
+        assert len(_cards(ev)) == 1                                                             # 全程只有这一张卡
+    finally:
+        svc.s.disconnect()
+    with pytest.raises(Exception):
+        svc.quick_start("做一个温度报警器")

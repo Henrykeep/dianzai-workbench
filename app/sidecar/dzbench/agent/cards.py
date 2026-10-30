@@ -125,7 +125,7 @@ def build(svc, tool: str, args: dict) -> dict | None:
         npin = sum(1 for s in steps for x in s["changes"] if x["k"] == "pin")
         return {"title": f"写入项目 {args.get('code')}", "steps": steps,
                 "summary": f"{len(c.get('batch') or [])} 步 · {nf} 个文件" + (f" · {npin} 个引脚" if npin else "") + " · 都已在暂存区预览过",
-                "after": "按顺序写入仓库；某步失败就停在那一步，已写的保留"}
+                "after": ("写入后自动：连仿真板 → 一键起步调参 → 评分" if args.get("code") in getattr(svc, "quick", {}) else "按顺序写入仓库；某步失败就停在那一步，已写的保留")}
     if tool == "flow_accept":
         step, code = args.get("step"), args.get("code")
         home = steptools._flow(root).home
