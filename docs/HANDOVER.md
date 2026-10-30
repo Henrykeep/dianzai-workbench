@@ -15,7 +15,7 @@
 外加：做好版本管理（语义化版本、CHANGELOG 四级标注、一个逻辑改动一个提交、推送前 `make check`、`make test` 和 `make preflight`）。
 
 ## 用户偏好
-- 不要停下：没让停就继续做，问题攒着第二天一起问（写进 QUESTIONS.md / MORNING.md）。
+- 不要停下：没让停就继续做，问题攒着第二天一起问（写进 dev/QUESTIONS.md / dev/MORNING.md）。
 - UI：要“好看、高级、有工作台的样子”。参照 Saleae Logic 2、Linear、Grafana 这类仪器软件：中性深灰，停靠面板用分隔线分开，数字等宽对齐，蓝色点缀要克制。**不要紫色**，不要网页仪表盘那种卡片风。学参考要学到精髓，不要半吊子；要自己拿主意（“你不要我说什么就是什么”“自己看”）。
 - 写代码用 Keil5 / CCS，也接受 VSCode 等。STM32 一律 HAL，不写寄存器。调试器用 ST-Link（队友用 DAP-Link）。
 - CI 一失败用户就会收到邮件，所以 CI 必须保持全绿（app-windows 以前失败过）。
@@ -23,12 +23,12 @@
 ## 现状
 - 仓库 Henrykeep/dianzai-workbench，v0.11.0 已打 tag。之后的提交：89e4a3c、704baf3（docs/26 v4 原则）。
 - UI 改版：v4 设计稿（shots/redesign/v4/，17 条原则见 docs/26 和 refs/design-study.md）已获用户放行（“自己看”）。本次接手开始把它落进 app/ui。
-- 实机几乎全部是 [未测]，见 MORNING.md：电池分压比、编码器、QD4310 CRC、天猛星原理图等。
+- 实机几乎全部是 [未测]，见 dev/MORNING.md：电池分压比、编码器、QD4310 CRC、天猛星原理图等。
 
 ## 待办 / 待确认
 - v4 里还没在代码中实现的（见 docs/26 §5）：以阶跃为锚点的时间轴、A/B 区间测量、上一轮余辉、实验历史表、1280×800 下的布局、高对比主题、CJK 字体调优。
 - SIM_APPS 已改成扫描（v0.11）。docs/19 排期里还有跟随小车、起摆、风力摆。
-- QUESTIONS.md 里的 [待你确认] 9–12 项，以及 MORNING.md 的硬件清单。
+- dev/QUESTIONS.md 里的 [待你确认] 9–12 项，以及 dev/MORNING.md 的硬件清单。
 - 对用户的承诺：每一步都截图核对再报告；截图要在最后一次改动之后重拍；只报告能在截图里指出来的结论。
 
 ## 2026-10-29 晚（UTC+8）：核对清单后的第一批
@@ -108,4 +108,4 @@
 14. 串口线控 + 重连（缺口 14）：session.serial_lines_set / serial_pulse（esp_reset / esp_boot / stm32_reset / stm32_boot）/ serial_modem、stall_s 卡死检测、reconnecting 进度事件；界面连接栏“线控…”。[仿真]（假串口对象）；真 USB 转串口未接，STM32 脉冲极性待按板核对。
 15. 磁编码器 + FOC（缺口 15）：firmware/drivers/as5600（RAW ANGLE、零点 / 方向、多圈、速度、磁铁状态）+ firmware/algo/foc（电压型 SVPWM、开环、角度闭环、对齐）。[仿真]（tests/host/test_foc.c，简化 PMSM 模型）；真芯片 / 真电机未接，无电流环，PWM 输出要应用自己接 pal。
 16. FOC 串级 + 三相 PWM：firmware/algo/foc 1.1.0（foc_velocity_step / foc_pos_step / foc_duty_to_pal）+ PAL 1.8.0 pal_pwm3_set / pal_pwm3_check、board.yaml `pwm3:`（boardlib.check_pwm3，tools/test_pwm3_caps.py）；端口 host-sim 2.6.0 / cubemx 1.11.0 / mspm0 0.11.0。[仿真] host-sim，[编译] cubemx / mspm0；样例板没加 pwm3，真板未跑。
-17. 产品逻辑重组（功能冻结期，按 LOGIC_AUDIT）：① 入口规则表 docs/dev/entrypoints.yaml + tools/check_entrypoints.py（make check）。新加按钮 / op / Agent 工具必须先在表里登记一个入口。② 界面按时间线 8 步分页（app/ui/src/steps.ts）+ 常驻 排障 / 工具箱 / 急停；摆放由 check_entrypoints 核对。③ 参数生命周期条（草稿→RAM→快照→flash→yaml）；恢复合成 params_restore{source}、提议合成 propose{changes,source}，旧 op 已删。④ 标定向导 app/ui/src/calwiz.ts（极性 / 循迹 / FOC / IMU / 视觉），只读录制 + propose{source:"标定"} 提议卡在标定页确认。⑤ 按症状排障 app/ui/src/symptoms.ts（排障菜单，只做导航）；对话框启动时挪到 body（右栏隐藏时也能弹）。⑥ 项目页引导流程 app/ui/src/projflow.ts + 侧车 dzbench/projflow.py：读题→选型→导入工程→资源分配→生成，“运行”只在 ~/.dzbench/flow 暂存，“确认写入”才写；只调用 tools/ 脚本（req.py 等由另一位维护，别在这里改它们）。⑦ 评分页 app/ui/src/score.ts + dzbench/scoring.py：评分项矩阵（DS 计分矩阵结构）、N 轮按钮 / 遥测条件、最差一轮、证据经 req.py newlog 存 docs/verify。
+17. 产品逻辑重组（功能冻结期，按 LOGIC_AUDIT）：① 入口规则表 docs/dev/entrypoints.yaml + tools/check_entrypoints.py（make check）。新加按钮 / op / Agent 工具必须先在表里登记一个入口。② 界面按时间线 8 步分页（app/ui/src/steps.ts）+ 常驻 排障 / 工具箱 / 急停；摆放由 check_entrypoints 核对。③ 参数生命周期条（草稿→RAM→快照→flash→yaml）；恢复合成 params_restore{source}、提议合成 propose{changes,source}，旧 op 已删。④ 标定向导 app/ui/src/calwiz.ts（极性 / 循迹 / FOC / IMU / 视觉），只读录制 + propose{source:"标定"} 提议卡在标定页确认。⑤ 按症状排障 app/ui/src/symptoms.ts（排障菜单，只做导航）；对话框启动时挪到 body（右栏隐藏时也能弹）。⑥ 项目页引导流程 app/ui/src/projflow.ts + 侧车 dzbench/projflow.py：读题→选型→导入工程→资源分配→生成，“运行”只在 ~/.dzbench/flow 暂存，“确认写入”才写；只调用 tools/ 脚本（req.py 等由另一位维护，别在这里改它们）。⑦ 评分页 app/ui/src/score.ts + dzbench/scoring.py：评分项矩阵（DS 计分矩阵结构）、N 轮按钮 / 遥测条件、最差一轮、证据经 req.py newlog 存 docs/verify。⑧ 文档：过程文档在 docs/dev/（19、23、24、25、27、29、MORNING、QUESTIONS），docs/README 按 8 步分组；新写过程文档放 docs/dev/，使用说明留 docs/ 顶层。

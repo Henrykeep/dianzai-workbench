@@ -269,7 +269,7 @@ parts:
     specs: {}
     pros: [角度闭环在电机里，分辨率高, 2026H 用户实际方案]
     cons: [贵, 多占一个串口]
-    risks: [CRC/协议版本未实测（MORNING.md）]
+    risks: [CRC/协议版本未实测（docs/dev/MORNING.md）]
     substitutes: [stepper_42, servo_pwm]
     repo: [firmware/drivers/qd4310]
     status: 仿真

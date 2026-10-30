@@ -132,7 +132,7 @@ make agent-eval ARGS=--offline      # 离线助手对照组
 - **单步限制**（实机 / 仿真）：增幅 ≤×1.5 / ×3，降幅 ≥×0.7 / ×0.4，绝对变化 ≤ 量程×10% / 25%，参数为 0 时第一步 ≤ 量程×2% / 5%；再叠加板上 dzctl 限幅。
 - **每轮只改一个参数**；上一轮变差的（参数, 方向）下一轮禁止；证据不足用 `observe`。
 - **停止**：连续 2 轮 good-enough（超调 ≤10%、|稳态误差| ≤2%、进 2% 带、振荡 ≤1）；实机最多 8 轮（配置上限 10）、仿真 20 轮；遥测里有 vbat / temp 字段且配置了 `tune.vbat_min` / `tune.temp_max` 时越限即停。
-- **回滚到最好**：仿真自动；**实机要人点**（docs/QUESTIONS.md 第 19 条）。
+- **回滚到最好**：仿真自动；**实机要人点**（docs/dev/QUESTIONS.md 第 19 条）。
 - **上下文压缩** `tune_context`：指标 + ≤20 个关键样本（极值、设定跳变点、分桶极值）+ best / last_rejected / 最近 5 轮历史表 + 护栏规则原文。
 - **严格解析** `parse_reply`：只认 JSON 对象，action ∈ PROPOSE/OBSERVE/DONE，拒绝 bool/NaN/溢出，不从散文里猜参数。
 - **无 LLM 模式** `tune_rule_round`：默认**分阶段 P→I→D**（`tune.rule_mode=staged`，每阶段沿一个方向 ×1.3，变差就进下一阶段）；`hints` 为旧的规则提示。同样经护栏和人工确认。

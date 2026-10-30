@@ -1,4 +1,4 @@
-# 电赛工作台（第 0 阶段）
+# 电赛工作台
 
 可移植、可复用的电赛嵌入式工作台：**换板只改 `BOARD=`，换题只写 `project.yaml` + 子系统**。
 
@@ -23,7 +23,7 @@ make selftest BOARD=<板>                    # 移植层自检固件
 | docs/ | 设计文档，从 docs/README.md 开始 |
 
 ## 验证状态（实验是检验真理的唯一标准）
-- **已实测**：PC 上 178 项主机测试、dzlink 回环、各检查器自检；交叉编译（skystar、skystar-cubemx、dji-rm-c 临时 HSE）。
-- **未验证**：**所有硬件行为**——本阶段没有任何代码上过真实板子。合成的 .ioc/.syscfg 未经官方工具打开。
+- **已实测（PC 上）**：`make preflight`（干净克隆 + 空 HOME：make check、make test〔主机单测 + 仿真闭环 + 侧车 pytest〕、make compat、交叉编译）推送前要求在要推的那个提交上跑通；界面类型检查与单测（app/ui/tests）另跑；新界面在无头 Chrome 里对着 host-sim 走过。
+- **未验证**：**硬件行为**——CHANGELOG 里还没有一条 [上板]，真板、真电机、真传感器都要你带板子验（清单见 docs/dev/MORNING.md）。合成的 .ioc/.syscfg 没用官方工具打开过；Tauri 桌面壳里大部分新界面没点过。
 
-远端：本仓库仅本地 git，不推送。
+远端：GitHub `Henrykeep/dianzai-workbench`（main）；版本见 git 附注标签（当前 v0.10.0）和 CHANGELOG。

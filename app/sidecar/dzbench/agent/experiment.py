@@ -1,7 +1,7 @@
 """调参实验与打分：相对基线归一化打分 + 权重模板、四段正负阶跃、分阶段 P→I→D 搜索、开环/群体搜索门禁。
 
 思路来源：PID_Helper（gitee.com/qianmonai，GPL-3.0）——本文件为思路借鉴、代码自写；稳态判定已改用直接移植的版本（dzbench/tuning/identify.py → third_party/vendored/pid_helper）。
-见 docs/参考来源.md、docs/QUESTIONS.md 第 23 条。全部只在仿真/基准上验证过，未上实机。
+见 docs/参考来源.md、docs/dev/QUESTIONS.md 第 23 条。全部只在仿真/基准上验证过，未上实机。
 """
 from __future__ import annotations
 

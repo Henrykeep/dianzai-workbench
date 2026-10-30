@@ -247,7 +247,7 @@ class Session:
 
     def _reconnect_loop(self, port: str, baud: int, gen: int | None) -> None:
         """指数退避重开同一个口（同一波特率），直到成功或用户主动断开；成功后重读全部参数。
-        板子在断线期间应已按心跳超时自行进入安全状态（QUESTIONS 决定 1），这里不自动解除急停。"""
+        板子在断线期间应已按心跳超时自行进入安全状态（docs/dev/QUESTIONS.md 决定 1），这里不自动解除急停。"""
         k, warned = 0, False
         while True:
             delay = self.RECONNECT_BACKOFF[min(k, len(self.RECONNECT_BACKOFF) - 1)]
