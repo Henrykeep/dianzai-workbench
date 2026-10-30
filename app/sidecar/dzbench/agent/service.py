@@ -1059,7 +1059,7 @@ class AgentService:
                 code = f"llm_{st}"
             else:
                 code = "llm_timeout" if "超时" in e.message else ("llm_network" if e.down else "llm_error")
-            action = self.FIX_SETTINGS if st in (401, 402, 403, 404) or e.down or "Key" in e.message or "地址" in e.message else self.FIX_RESEND
+            action = self.FIX_SETTINGS if getattr(e, "model_hint", False) or st in (401, 402, 403, 404) or e.down or "Key" in e.message or "地址" in e.message else self.FIX_RESEND
             retryable = bool(getattr(e, "retry", False) or e.down)
             msg = f"{e.message}。{e.fix}" if e.fix else e.message
             detail = ""
