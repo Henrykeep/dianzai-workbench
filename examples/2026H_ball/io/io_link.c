@@ -127,6 +127,8 @@ void io_link_write(uint32_t now)
 {
     static uint32_t last_tx;
     static uint32_t last_hb = 0u - 500u;   /* 复位后第一拍就发心跳，上位机马上认出 schema */
+    static bool hb_was_estop;
+    bool estop;
     dzframe_t f;
     if (now - last_tx >= LINK_TELEM_PERIOD_MS) {
         link_telem_t t;
@@ -147,12 +149,12 @@ void io_link_write(uint32_t now)
     {
         bool was_sa = !dzrt_needs_host(&RT);
         coord_state_t cs = io_coord()->st;
-        dzrt_poll(&RT, now, cs == COORD_ESTOP || cs == COORD_FAULT, -1);
+        estop = cs == COORD_ESTOP || cs == COORD_FAULT;
+        dzrt_poll(&RT, now, estop, -1);
         if (was_sa != !dzrt_needs_host(&RT)) dzctl_wd_init(&WD, 1000u);
     }
-    if (now - last_hb >= 500u) {
+    if (dzrt_hb_due(now, estop, &hb_was_estop, &last_hb)) {   /* 置 DZCTL_HB_ESTOP；急停上升沿立即发 */
         dzctl_table_t pt = link_param_table(&g_project_params[io_coord()->profile_idx]);
-        last_hb = now;
         dzctl_set_flags(SAFETY_F_SAFE_BOOT | SAFETY_F_STALL, false);
         dzctl_set_flags(io_safety_flags(), true);
         dzctl_heartbeat(&pt, 0, &f);

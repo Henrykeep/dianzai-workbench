@@ -305,7 +305,6 @@ void app_loop(void)
     }
     dzctl_set_flags(SAFETY_F_SAFE_BOOT | SAFETY_F_STALL, false);
     dzctl_set_flags(safety_flags(&s_safe), true);
-    dzctl_set_flags(DZCTL_HB_ESTOP, s_estop);
     s_state.cmd_v_mps = car_aux_limit_v(s_state.cmd_v_mps);
     subsys_sched_poll(&s_sched, now);
     uint32_t st = pal_irq_save();
@@ -323,10 +322,10 @@ void app_loop(void)
         pal_irq_restore(st);
         if (link_telem_pack(&f, &t)) { f.seq = seq++; send(&f); }
     }
-    if (now - last_hb >= 500u) {
+    static bool hb_was_estop;
+    if (dzrt_hb_due(now, s_estop, &hb_was_estop, &last_hb)) {   /* 急停上升沿立即发（与 link_app 同一个助手） */
         dzctl_table_t t = link_param_table(&g_link_params);
         dzframe_t f;
-        last_hb = now;
         dzctl_heartbeat(&t, seq++, &f);
         send(&f);
     }

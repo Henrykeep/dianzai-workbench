@@ -32,6 +32,7 @@ typedef struct {
     dzctl_wd_t wd;
     uint32_t last_tx, last_hb;
     uint8_t seq, bb_seq;
+    bool hb_was_estop;
     volatile bool estop;
     volatile float sp[4];
     volatile uint32_t sp_ms;
@@ -61,7 +62,7 @@ static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*
     dzframe_parser_init(&L->rx);
     dzctl_wd_init(&L->wd, 1000u);           /* 侧车每 250 ms 发一次心跳 */
     L->last_tx = 0; L->last_hb = 0u - 500u; /* 复位后第一拍就发心跳（带 schema 哈希） */
-    L->seq = 0; L->estop = false; L->sp_ms = 0;
+    L->seq = 0; L->hb_was_estop = false; L->estop = false; L->sp_ms = 0;
     for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
     L->on_params = on_params; L->on_cmd = on_cmd; L->bb = 0;
     s_link_app_self = L;
@@ -126,9 +127,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         dzrt_poll(&L->rt, now, L->estop, -1);
         if (was_sa != !dzrt_needs_host(&L->rt)) dzctl_wd_init(&L->wd, 1000u);   /* 切模式：看门狗重新计 */
     }
-    dzctl_set_flags(DZCTL_HB_ESTOP, L->estop);
-    if (now - L->last_hb >= 500u) {
-        L->last_hb = now;
+    if (dzrt_hb_due(now, L->estop, &L->hb_was_estop, &L->last_hb)) {   /* 急停上升沿立即发 */
         dzctl_heartbeat(&t, L->seq++, &f);
         link_app_send(&f);
     }

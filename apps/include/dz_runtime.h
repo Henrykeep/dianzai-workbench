@@ -202,4 +202,16 @@ static inline void dzrt_poll(dzrt_t *R, uint32_t now, bool estop, int key_overri
     }
 }
 
+/** 心跳节拍（所有应用共用）：每拍按 estop 置 / 清 DZCTL_HB_ESTOP；急停上升沿立刻要发一帧心跳（上位机 ≤ 5 ms 看到 bit10），
+ *  否则每 500 ms 一帧。返回 true = 现在发心跳。*last_hb 初值取 0u - 500u（复位后第一拍就发）。 */
+static inline bool dzrt_hb_due(uint32_t now, bool estop, bool *was_estop, uint32_t *last_hb)
+{
+    bool edge = estop && !*was_estop;
+    *was_estop = estop;
+    dzctl_set_flags(DZCTL_HB_ESTOP, estop);
+    if (!edge && now - *last_hb < 500u) return false;
+    *last_hb = now;
+    return true;
+}
+
 #endif
