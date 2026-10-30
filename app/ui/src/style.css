@@ -772,3 +772,10 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 @media (max-width:1500px){:root:not(.nav-open) .app{margin-left:var(--w-nav-folded)} :root:not(.nav-open) .nav{width:var(--w-nav-folded)}
  :root:not(.nav-open) .nav .nl,:root:not(.nav-open) .nav .nd,:root:not(.nav-open) .nav-sec,:root:not(.nav-open) .nav .step-hint,:root:not(.nav-open) .nav .brand>span{display:none}
  :root:not(.nav-open) .nav .steps button,:root:not(.nav-open) .nav-fold{justify-content:center;padding:0}}
+.nav .steps button[data-state=blocked] .nd::before{content:"!";color:var(--warn);font-weight:700}
+.nav .steps button[data-state=todo]:not(.on) .nl{color:var(--dim)}
+.nav .steps button[data-state=doing]:not(.on) .nd::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--acc);opacity:.6}
+.nav .steps button.next:not(.on){box-shadow:inset 0 0 0 1px var(--acc-line)}
+.nav .step-hint{display:flex;flex-direction:column;gap:var(--sp1);-webkit-line-clamp:unset}
+.nav .step-hint .nx{color:var(--text)}
+.nav .step-hint .blk{color:var(--warn);text-decoration:none;font-size:var(--t-xs)} .nav .step-hint .blk:hover{text-decoration:underline}

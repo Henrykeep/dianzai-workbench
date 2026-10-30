@@ -18,6 +18,8 @@ import { initHbStrip } from "./hbstrip";
 import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
+import { fetchProgress, render as renderProgress } from "./progress";
+import type { Step } from "./steps";
 import { initSteps } from "./steps";
 import { initCalWiz } from "./calwiz";
 import { initSymptoms } from "./symptoms";
@@ -53,8 +55,8 @@ function renderAlerts() {
   document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   if (!l.length) { el.innerHTML = ""; return; }
   const last = l[l.length - 1];
-  const head = latched ? `<b class="al-h">板子已急停</b>` : `<b class="al-h">链路异常</b>`;
-  const how = latched ? `<span class="al-fix">排除原因后点右上角「解除」恢复</span>` : "";
+  const head = latched ? `<b class="al-h">已急停</b>` : `<b class="al-h">链路异常</b>`;
+  const how = latched ? `<span class="al-fix">处理：排除原因后点击右上角「解除」</span>` : "";
   el.innerHTML = `<span class="al-n">${l.length}</span>${head}<span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}<i>${last.log_t != null ? "dzlog " + last.log_t.toFixed(1) + " s" : ""}</i></span>${how}` +
     (l.length > 1 ? `<span class="al-more">${l.slice(0, -1).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
     `<span class="sp"></span><button class="btn sm" id="al-ack">知道了</button>`;
@@ -665,6 +667,18 @@ createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag,
 document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();
 const goStep = initSteps(() => !!S.status.connected);
+// 项目进度：接口优先、否则前端推断；每秒或切步时刷新
+const refreshProgress = async () => renderProgress(await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
+  current: (document.querySelector<HTMLElement>(".app")!.dataset.step || "项目") as Step,
+  connected: !!S.status.connected,
+  estop: AL.list.some(e => e.kind === "estop" || e.kind === "watchdog"),
+  gainsZero: noInitialGains(S.schema?.params ?? [], S.applied),
+  paramsDirty: pending().length > 0,
+  selftestFail: false,
+  visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
+}), goStep);
+window.addEventListener("dz-step", () => void refreshProgress());
+setInterval(() => void refreshProgress(), 1500);
 initSymptoms(s => goStep(s as Parameters<typeof goStep>[0]));
 initProjFlow(call, (t, k) => toast(t, k ?? "info", 6000));
 const score: { refresh(): void } = initScore(call, plot, () => S.schema?.accept ?? [], (t, k) => toast(t, k ?? "info", 9000));

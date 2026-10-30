@@ -45,7 +45,7 @@ actions:
   - {id: snap_save,    label: 存快照,           at: step:调参,   ui: snap-save,  ops: [snapshot_save, snapshot_list]}
   - {id: restore,      label: 回到…,            at: step:调参,   ui: p-def,      ops: [params_restore, tune_best]}
   - {id: step_test,    label: 阶跃实验,         at: step:调参,   ui: ag-step,    ops: [tune_step_test]}
-  - {id: tune_relay,   label: 无初值一键起步,   at: step:调参,   ui: ag-relay,   ops: [tune_relay]}
+  - {id: tune_relay,   label: 自整定,           at: step:调参,   ui: ag-relay,   ops: [tune_relay]}
   - {id: sweep_test,   label: 扫频,             at: step:调参,   ui: ag-sweep,   ops: [tune_sweep_test]}
   - {id: search,       label: 仿真搜索,         at: step:调参,   ui: ag-search,  ops: [tune_search, propose]}
   - {id: analyze,      label: 分析阶跃,         at: step:调参,   ui: ag-tune,    ops: [tune_analyze, propose]}

@@ -13,7 +13,7 @@
     <nav class="steps" id="steps" title="开发流程：点一步切到那一页；高亮 = 当前页，描边 = 建议的下一步，✓ = 已走过"><button data-step="项目" title="项目"><i data-lucide="folder-kanban"></i><span class="nl">项目</span><span class="nd" aria-hidden="true"></span></button><button data-step="烧录" title="烧录"><i data-lucide="zap"></i><span class="nl">烧录</span><span class="nd" aria-hidden="true"></span></button><button data-step="模块" title="模块"><i data-lucide="cpu"></i><span class="nl">模块</span><span class="nd" aria-hidden="true"></span></button><button data-step="联调" title="联调"><i data-lucide="activity"></i><span class="nl">联调</span><span class="nd" aria-hidden="true"></span></button><button data-step="标定" title="标定"><i data-lucide="crosshair"></i><span class="nl">标定</span><span class="nd" aria-hidden="true"></span></button><button data-step="调参" title="调参"><i data-lucide="sliders-horizontal"></i><span class="nl">调参</span><span class="nd" aria-hidden="true"></span></button><button data-step="评分" title="评分"><i data-lucide="clipboard-check"></i><span class="nl">评分</span><span class="nd" aria-hidden="true"></span></button><button data-step="封箱" title="封箱"><i data-lucide="package-check"></i><span class="nl">封箱</span><span class="nd" aria-hidden="true"></span></button></nav>
     <div class="sp"></div>
     <p class="lbl step-hint" id="step-hint"></p>
-    <button class="nav-fold" id="nav-fold" type="button" title="收起 / 展开侧栏（只显示图标）"><i data-lucide="panel-left"></i><span class="nl">收起</span></button>
+    <button class="nav-fold" id="nav-fold" type="button" title="收起或展开导航"><i data-lucide="panel-left"></i><span class="nl">收起</span></button>
   </aside>
   <header class="top">
 
@@ -142,7 +142,7 @@
 
     <section class="tunebar" data-page="调参">
       <div class="grp">
-    <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button><details class="menu up more" id="tune-more"><summary class="btn" title="次要实验与建议来源：不常用的收在这里">更多实验 <i data-lucide="chevron-down"></i></summary><div class="pop"><button class="mi" id="ag-relay" title="没有初值时用：设定值停在 step_test 的工作点，板子把 PID 输出换成继电器 ±amp（板端限幅、超时自动恢复），测临界增益 Ku/周期 Pu → 按 Tyreus–Luyben 给第一组 PID 提议卡（你采纳才写入）">无初值一键起步</button><button class="mi" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button><button class="mi" id="ag-search" title="开环给控制量一个台阶后点：辨识 FOPDT → 仿真里 PSO/分阶段搜索 → 列出 top-k；每个候选点“上板验证”才发提议卡，你确认后才写入">仿真搜索</button><button class="mi" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button><button class="mi" id="ag-pre" title="调参前先回答几个问题：对象类型、执行器、安全限、能接受的超调……Agent 和护栏按这些出初值、打分（只收紧护栏）"><i data-lucide="list-checks"></i>调参前问答</button><button class="mi" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button></div></details></div>
+    <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button><details class="menu up more" id="tune-more"><summary class="btn" title="次要实验与建议来源：不常用的收在这里">更多实验 <i data-lucide="chevron-down"></i></summary><div class="pop"><button class="mi" id="ag-relay" title="没有初值时用：设定值停在 step_test 的工作点，板子把 PID 输出换成继电器 ±amp（板端限幅、超时自动恢复），测临界增益 Ku/周期 Pu → 按 Tyreus–Luyben 给第一组 PID 提议卡（采纳后写入）">自整定</button><button class="mi" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button><button class="mi" id="ag-search" title="开环给控制量一个台阶后点：辨识 FOPDT → 仿真里 PSO/分阶段搜索 → 列出 top-k；每个候选点“上板验证”才发提议卡，你确认后才写入">仿真搜索</button><button class="mi" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button><button class="mi" id="ag-pre" title="调参前先回答几个问题：对象类型、执行器、安全限、能接受的超调……Agent 和护栏按这些出初值、打分（只收紧护栏）"><i data-lucide="list-checks"></i>调参前问答</button><button class="mi" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button></div></details></div>
       <div class="grp verdict"><span class="lbl">判定</span>
     <nav class="flow" id="flow" title="这一轮调参的进度：改参 → 阶跃 → 判读 → 定稿"><span data-s="conn">连接</span><span data-s="tune">调参</span><span data-s="step">阶跃</span><span data-s="read">判读</span><span data-s="save">定稿</span></nav><span class="lbl mono" id="verdict"></span></div>
       <details class="menu up right" id="goback"><summary class="btn" title="所有“回到过去”的操作都在这里，每项写清楚回到哪里">回到… <i data-lucide="undo-2"></i></summary>
@@ -266,10 +266,10 @@
       </dialog>
       <dialog id="cfg" class="dlg llm">
         <form method="dialog" id="cfg-form">
-          <button class="dlg-x" id="cfg-x" value="cancel" formnovalidate title="关闭（Esc 是急停，不用来关窗）" aria-label="关闭"><i data-lucide="x"></i></button>
+          <button class="dlg-x" id="cfg-x" value="cancel" formnovalidate title="关闭（Esc 为急停键）" aria-label="关闭"><i data-lucide="x"></i></button>
           <header class="lh"><span class="glyph"><i data-lucide="sparkles"></i></span><div>
             <h3 id="cfg-title">接上大模型</h3>
-            <p class="hint"><b>Esc 是急停</b>，关这个框请点右上角 × 或框外。任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。没网时自动切本机 Ollama 模型；调参、示波、急停、评分页本来就不依赖 Agent。</p></div></header>
+            <p class="hint"><b>Esc 为急停键</b>，不用于关闭本窗口；关闭请点击右上角 × 或窗口外部。任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。没网时自动切本机 Ollama 模型；调参、示波、急停、评分页本来就不依赖 Agent。</p></div></header>
           <div class="sec">1 · 服务商</div>
           <div id="cfg-provs" class="provs" role="radiogroup"></div>
           <div class="sec">2 · 接口</div>

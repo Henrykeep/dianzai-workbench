@@ -231,7 +231,7 @@ export function initAgent(call: Call) {
     call<any>("tune_relay").then(r => add(r?.ok
       ? `<span class="lbl">继电起步：Ku=${n(r.ku, 3, "")} Pu=${n(r.pu, 3, " s")}（${r.cycles} 个周期）→ ${esc(r.gains.rule.toUpperCase())} 初值已发提议卡</span>`
       : `<span class="lbl">继电起步没成功：${esc(r?.why ?? "")}</span>`, "msg bot"), () => {})
-      .finally(() => { b.disabled = false; b.textContent = "无初值一键起步"; });
+      .finally(() => { b.disabled = false; b.textContent = "自整定"; });
   };
   $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
   $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
@@ -384,7 +384,7 @@ export function initAgent(call: Call) {
     const c = await call("agent_config").catch(() => null);
     if (!c) return;
     provs = c.providers;
-    $("cfg-title").textContent = first ? "接上大模型（第一次用）" : "大模型设置";
+    $("cfg-title").textContent = first ? "配置大模型" : "大模型设置";
     $("cfg-provs").innerHTML = Object.entries(provs).map(([k, p]) =>
       `<button type="button" class="pv" role="radio" data-k="${esc(k)}"><b>${esc(p.name)}</b><span class="mono">${esc(p.model || "自己填")}</span></button>`).join("");
     document.querySelectorAll<HTMLElement>("#cfg-provs .pv").forEach(b => b.onclick = () => pickProv(b.dataset.k!, true));
@@ -448,8 +448,8 @@ export function initAgent(call: Call) {
   // 首启不弹窗（会挡住项目/调参等不依赖 Agent 的功能）：在 Agent 栏放一张空状态卡，用户想用时再点设置
   call("agent_config").then(c => {
     if (!c || c.configured) return;
-    const card = add(`<div class="ag-setup"><b>Agent 还没接大模型</b><p>接上后它能读需求、写代码、给调参建议。不接也不影响：新建项目、烧录、示波、调参、评分、急停都照常可用。</p></div>
-      <div class="act"><button class="btn pri" data-r="cfg">接上大模型…</button></div>`, "card setup-card");
+    const card = add(`<div class="ag-setup"><b>Agent 未配置</b><p>原因：尚未配置大模型服务。处理：点击「配置模型」。未配置时，新建项目、烧录、示波、调参、评分与急停均可正常使用。</p></div>
+      <div class="act"><button class="btn pri" data-r="cfg">配置模型</button></div>`, "card setup-card");
     card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
   }).catch(() => {});
 
