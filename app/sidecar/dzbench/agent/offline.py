@@ -16,6 +16,8 @@ NAME = "离线规则助手"
 INTENTS = (   # 顺序即优先级
     ("estop", r"急停"),
     ("edit", r"(\.ya?ml|默认值|源码|代码).*(改|换|设)|(改|换|设).*(\.ya?ml|默认值)"),
+    ("autotune", r"自动(调|整定)|一直调|调到(通过|达标)|连着调|autopilot"),
+    ("score", r"评分项\s*[\w.-]+.*(跑|测|证据|回写)|回写评分|(跑|测).{0,6}(遍|次).*(证据|评分)"),
     ("hw", r"上车|实机|实板|真车|上板"),
     ("loss", r"跟丢|丢了|丢帧|丢线|掉线|信号断|没信号|传感器断"),
     ("sweep", r"扫频|带宽|频率响应|频响|bode|波特"),
@@ -97,6 +99,11 @@ class OfflineAssistant:
             return None
         if it == "project":
             return self._project(user, done, step)
+        if it == "autotune":                    # 仿真连跑到护栏通过；实机工具自己会拒绝（回答里讲怎么逐轮来）
+            m = re.search(r"(\d+)\s*轮", user)
+            return [("tune_autopilot", {"rounds": int(m.group(1)) if m else 6})] if step == 0 else None
+        if it == "score":
+            return self._score(user, done, step)
         if it in ("hw", "asym", "result"):
             if step == 0:
                 return [("tune_context", {})]
@@ -154,6 +161,30 @@ class OfflineAssistant:
         pv = self.ok(done, "flow_preview")
         if step == 3 and pv and not pv.get("rc"):
             return [("flow_accept", {"step": nxt, "code": code} | ({"name": pv["name"]} if pv.get("name") else {}))]
+        return None
+
+    def _score(self, user: str, done: dict, step: int):
+        """评分剧本：看评分项 → 跑 N 次（band 只取评分项原文里 ≤/< 的那个数）→ 全过才出“存证据”卡；“回写”单独一句。"""
+        m = re.search(r"评分项\s*([\w.-]+)", user)
+        item = m.group(1) if m else None
+        if "回写" in user:
+            return [("score_writeback", {"item": item})] if step == 0 and item else None
+        if step == 0:
+            return [("score_items", {})]
+        its = (self.ok(done, "score_items") or {}).get("items") or []
+        it = next((x for x in its if x["id"] == item), None)
+        if step == 1 and it:
+            n = re.search(r"(\d+|[一二三四五六七八九十])\s*(遍|次|轮)", user)
+            cn = "一二三四五六七八九十"
+            k = (int(n.group(1)) if n.group(1).isdigit() else cn.index(n.group(1)) + 1) if n else 3
+            args = {"item": item, "n": k}
+            lim = next((x for x in it["metrics"] if x.get("op") in ("<=", "<") and isinstance(x.get("value"), (int, float))), None)
+            if not it.get("accept") and not any(x.get("accept") for x in it["metrics"]) and lim:
+                args["band"] = lim["value"]
+            return [("score_run", args)]
+        r = self.ok(done, "score_run")
+        if step == 2 and r and r.get("result") == "pass":
+            return [("score_save", {"item": item})]
         return None
 
     def _code(self, user: str, done: dict) -> str | None:
@@ -217,6 +248,30 @@ class OfflineAssistant:
                           (f"（板上参数：{'、'.join(p['name'] for p in (self.ok(done, 'list_params') or [])[:8])}）。" if self.ok(done, "list_params") else "。")
         if it == "project":
             return head + self._project_answer(user, done, e)
+        if it == "autotune":
+            r = self.ok(done, "tune_autopilot")
+            if not r:
+                return head + f"没能自动连跑（{e}）。实机每改一次参数都要你点采纳：问我“帮我调一下”，一轮一轮来。"
+            b = r.get("best_round") or {}
+            rows = "；".join(f"第 {x['round']} 轮 {'、'.join(f'{k}→{v:.4g}' for k, v in (x.get('change') or {}).items()) or '基线'} → {x['action']}" for x in r["rounds"] if x.get("round"))
+            return head + f"【实测】仿真自动调参 {len([x for x in r['rounds'] if x.get('round')])} 轮：{rows}。\n" + \
+                ("护栏判定通过。" if r.get("passed") else f"没到通过（{r.get('final')}），已回到最好一轮。") + \
+                (f"最好是第 {b.get('round')} 轮：{'、'.join(f'{k}={v:.4g}' for k, v in (b.get('gains') or {}).items())}，"
+                 f"超调 {_pct((b.get('metrics') or {}).get('overshoot_pct'))}。" if b else "") + "\n" + hw
+        if it == "score":
+            if "回写" in user:
+                w = self.ok(done, "score_writeback")
+                return head + ("回写卡在上面：看 diff，点“执行”才写 requirements.yaml。" if w else f"没法回写（{e}）。先让我跑完并存好证据。")
+            r = self.ok(done, "score_run")
+            if not r:
+                return head + (f"没跑成（{e}）。" if e else "告诉我评分项编号（例如“评分项 1 跑三遍留证据”）。")
+            if r.get("status") == "pending_human_click":
+                return head + "实机评分要你在上面的卡上点“执行”（检查实验前项目）。"
+            rows = "；".join(f"第 {x['n']} 次 {'✓' if x['pass'] else '✗ ' + (x.get('why') or '')}" for x in r["runs"])
+            s = head + f"【实测】评分项 {r['item']} 跑了 {len(r['runs'])} 次（判据 band={r['spec'].get('band')}）：{rows}。最差一次算数 → {r['result']}。"
+            if r["result"] == "pass":
+                return s + "\n存证据的卡在上面；存好后说“回写评分项 " + r["item"] + "”。"
+            return s + "\n没全过，不存证据、不回写。先去调参，再来跑。"
         if it == "loss":
             return head + "【实测】已看最近 2 s 遥测。传感器/视觉信号丢失时的数据不能拿来调参：先把信号找回来" \
                           "（目标回到视野、线回到传感器下、链路恢复），状态栏里的信号状态恢复正常后再做阶跃。这一轮不改参数。"
@@ -316,8 +371,10 @@ class OfflineAssistant:
                          "alloc": lambda: "资源分配", "gen": lambda: f"生成 {x.get('files')} 个文件" + (f"，缺子系统 {'、'.join(x['missing'])}" if x.get("missing") else "")}
                 rows.append(("✓ " if x.get("ok") else "✗ ") + x["step"] + "：" + (extra.get(x["step"], lambda: "")() if x.get("ok") else f"{x.get('why')} {x.get('fix', '')}"))
             s += "\n" + "\n".join(rows)
-            if ap and ap.get("status") == "pending_human_click":
-                return s + f"\n以上全部只在暂存区；总确认卡在右侧，点一次“执行”按顺序写入 {'、'.join(ch['to_write'])}。"
+            if ap and ap.get("status") == "pending_human_click":     # 细节都在卡片上，回答只说结论和下一步
+                bad = [x for x in ch.get("steps") or [] if x.get("missing")]
+                return f"【实测】{code}：{len(ch['to_write'])} 步都预览好了（只在暂存区）。看一眼上面的确认卡，点“执行”一次写入。" + \
+                    (f"\n注意：缺子系统 {'、'.join(bad[0]['missing'])}，写入后要新建。" if bad else "")
             return s + ("\n停在 " + ch["stopped_at"] if ch.get("stopped_at") else "")
         pv, acc = self.ok(done, "flow_preview"), self.ok(done, "flow_accept")
         if acc and acc.get("status") == "pending_human_click":
