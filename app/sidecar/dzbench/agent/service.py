@@ -95,6 +95,7 @@ class AgentService:
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
+            "progress_get": self.progress_get,
             "project_state": lambda code=None: steptools.project_state(self.gw.root, code),
             "flow_preview": lambda step, code, **m: steptools.flow_preview(self.gw.root, step, code, **m),
             "flow_accept": lambda step, code, **m: steptools.flow_accept(self.gw.root, step, code, **m),
@@ -108,6 +109,14 @@ class AgentService:
         }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
+
+    def progress_get(self) -> dict:
+        """与 op progress.get 同一份推导（dzbench/progress.py）；依赖自检沿用侧车缓存，没有就不报 missing_deps。"""
+        src = getattr(self, "progress_src", None)            # 侧车里挂的是 server.Progress（同一份依赖自检缓存）
+        if src is not None:
+            return src.snapshot()
+        from .. import progress
+        return progress.derive(progress.collect(self.s, self, None))
 
     # -------------------------------------------------------------- 计划 / 记忆 / 撤销
     def update_plan(self, steps: list, current: int | None = None) -> dict:

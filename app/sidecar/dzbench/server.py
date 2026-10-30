@@ -41,6 +41,10 @@ class Server:
         self.agent = AgentTools(self.session, self.emit)
         self.svc = AgentService(self.session, self.agent, self.emit)
         self.sender = Sender(self.session, self.emit)
+        from .progress import Progress
+        from . import doctor as _doctor
+        self.progress = Progress(self.session, self.svc, lambda: _doctor.run(str(self.svc.gw.root)))
+        self.svc.progress_src = self.progress
         self.recovered = lastsession.take_unclean()      # 上次侧车是不是崩了
 
     # 线程安全的广播
@@ -76,6 +80,9 @@ class Server:
                 await self._broadcast(ls)
             n += 1
             if n % (UI_HZ // 4) == 0:
+                pc = self.progress.changed()            # 进度有变化才推（依赖自检结果缓存，见 progress.py）
+                if pc:
+                    await self._broadcast(pc)
                 await self._broadcast(self.session.status() | {"clients": len(self.clients)})
 
     async def _op(self, m: dict):
@@ -86,6 +93,10 @@ class Server:
                     "recovered": self.recovered, "link": s.link.last,
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
+        if op == "progress.get":                       # 项目进度（只读；refresh=true 时重跑依赖自检）
+            if m.get("refresh") or self.progress.deps is None:
+                await run(None, self.progress.refresh_deps)
+            return self.progress.snapshot()
         if op == "list_ports":
             return await run(None, list_ports)
         if op == "serial_lines":                       # {"dtr": true/false/null, "rts": ...}；下次打开串口生效
@@ -393,6 +404,7 @@ class Server:
 
     async def serve(self, host: str, port: int, ui_dir: pathlib.Path | None = None) -> None:
         self.loop = asyncio.get_running_loop()
+        asyncio.get_running_loop().run_in_executor(None, self.progress.refresh_deps)
         ticker = asyncio.ensure_future(self._ticker())
         if self.recovered and self.session.auto_reconnect:            # 上次崩了：自动连回那块板
             rec = dict(self.recovered)

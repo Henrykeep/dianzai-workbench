@@ -98,6 +98,9 @@ class Session:
         self.raw_dropped = 0
         self.kv = KvParser()
         self._uid_marked = False
+        self.param_writes = 0                # 本次连接写参数的次数（进度：判断参数是否已写入 Flash）
+        self.flash_saved_writes = -1         # 黑匣子报“参数已存进 flash / 上电读了 flash”时的 param_writes；-1 = 没见过
+        self.run_mode: str | None = None     # 板子运行模式 tethered / standalone；固件上报后才有，否则 None
         self.tx_locked = False               # 急停后锁住侧车的一切主动发送（预设/定时/触发/原始），R 或重新连接才解
 
     # ------------------------------------------------------------------ 连接
@@ -405,6 +408,8 @@ class Session:
                 t_ms, code, arg, a, b = struct.unpack("<IHHff", payload)
                 with self.lock:
                     self.bb_recs.append(bb_record(t_ms, code, arg, a, b))
+                    if code in (6, 7) and arg == 0:      # 参数已存进 flash / 上电用的就是 flash 里的
+                        self.flash_saved_writes = self.param_writes
             elif kind == DATA and self.schema and id_ == self.schema.telem_id:
                 v = self.schema.decode(payload)
                 if v is not None:
@@ -656,6 +661,7 @@ class Session:
         Agent 落地参数、恢复快照时用；拖滑条不用（多一次往返）。"""
         v, clamped_here = self.schema.clamp(name, float(value)) if self.schema and name in self.schema.param_index else (value, False)
         applied, status = self._param_rpc(name, struct.pack("<f", v))
+        self.param_writes += 1
         out = {"name": name, "requested": value, "applied": applied, "status": "clamped" if clamped_here else status}
         if verify:
             rb = self.read_param(name)
@@ -761,7 +767,8 @@ class Session:
             return self.link.update(now, port=self.port, port_open=self.tr is not None,
                                     reconnecting=self.reconnecting or (self.resuming and self.tr is None), t_connect=self._t_tr,
                                     last_frame=self.last_frame,
-                                    reason="resuming" if self.resuming and self.tr is None else self.down_reason)
+                                    reason="resuming" if self.resuming and self.tr is None else self.down_reason,
+                                    mode=self.run_mode)
 
     def status(self) -> dict:
         now = time.monotonic()

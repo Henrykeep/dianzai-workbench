@@ -80,8 +80,8 @@ def load_sources():
     loop = (APP / "sidecar/dzbench/agent/loop.py").read_text(encoding="utf-8")
     tools_blk = loop.split("TOOLS = [", 1)[1] if "TOOLS = [" in loop else ""
     return {
-        "server_ops": set(re.findall(r'op == "([a-z_0-9]+)"', server)),
-        "ui_ops": set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_0-9]+)"', ui_src)),
+        "server_ops": set(re.findall(r'op == "([a-z_0-9.]+)"', server)),
+        "ui_ops": set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_0-9.]+)"', ui_src)),
         "html_ids": set(re.findall(r'\bid="([^"]+)"', html)),
         "regions": regions(html),
         "agent_tools": set(re.findall(r'"name":\s*"([a-z_0-9]+)"', tools_blk)),
