@@ -13,7 +13,7 @@ dz_err_t ball_beam_init(ball_beam_t *b, const ball_beam_cfg_t *c)
         c->timeout_ms < c->hold_ms || (c->dir != 1.0f && c->dir != -1.0f))
         return DZ_EINVAL;
     if (c->est_mode > 1u || c->loop_mode > 1u || !(c->est_lpf >= 0.0f && c->est_lpf <= 1.0f) ||
-        !(c->stic_deg >= 0.0f) || !(c->stic_vel >= 0.0f) || !(c->stic_e >= 0.0f) || c->bal_n > BB_BAL_MAX)
+        !(c->stic_deg >= 0.0f) || !(c->stic_vel >= 0.0f) || !(c->stic_e >= 0.0f) || !(c->i_vel >= 0.0f) || !(c->i_leak >= 0.0f && c->i_leak < 1.0f) || c->bal_n > BB_BAL_MAX)
         return DZ_EINVAL;
     for (uint8_t i = 0; i < c->bal_n; i++)
         if (!fin(c->bal_x[i]) || !fin(c->bal_deg[i]) || (i && !(c->bal_x[i] > c->bal_x[i - 1u]))) return DZ_EINVAL;
@@ -86,9 +86,11 @@ float ball_beam_update(ball_beam_t *b, float sp, float ff, uint32_t now, float d
         float x_now = b->x + b->v * ((float)age * 1e-3f + c->lead_s);
         float e = sp - x_now, v_des;
         b->state = BB_TRACK;
-        if (b->new_sample && c->i_zone > 0.0f && fabsf(e) < c->i_zone) {
+        if (b->new_sample && c->i_zone > 0.0f && fabsf(e) < c->i_zone && !(c->i_vel > 0.0f && fabsf(b->v) >= c->i_vel)) {
             if (e * b->e_prev < 0.0f) b->integ *= c->i_decay;
             b->integ = clampf(b->integ + c->ki * e * dt, -c->i_max, c->i_max);
+        } else if (b->new_sample && c->i_leak > 0.0f) {
+            b->integ *= c->i_leak;
         }
         if (b->new_sample) b->e_prev = e;
         b->new_sample = false;
@@ -109,7 +111,7 @@ ball_beam_state_t ball_beam_state(const ball_beam_t *b) { return b ? b->state : 
 dz_err_t ball_beam_selftest(void)
 {
     ball_beam_cfg_t c = { 0.55f, 0.20f, 0.07f, 0.72f, 320.0f, 0.016f, 0.055f, 55.0f, 2.5f, 0.5f,
-                          5.5f, 220.0f, 120u, 600u, 1.0f, 0u, 0.0f, 0u, 0.0f, 0.0f, 0.0f, 0u, {0}, {0} };
+                          5.5f, 220.0f, 120u, 600u, 1.0f, 0u, 0.0f, 0u, 0.0f, 0.0f, 0.0f, 0u, {0}, {0}, 0.0f, 0.0f };
     ball_beam_t b;
     float a = 0.0f;
     uint32_t t;

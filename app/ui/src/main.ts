@@ -67,8 +67,10 @@ function renderAlerts() {
     : `<span class="al-n">${l.length}</span><b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
   el.innerHTML +=
     (l.length > 1 ? `<span class="al-more">${l.slice(0, -1).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
-    `<span class="sp"></span><button class="btn sm" id="al-ack">知道了</button>`;
+    `<span class="sp"></span>` + (S.status.tx_locked ? `<button class="btn sm" id="al-r" title="确认安全后发 R：板子解除急停锁存，侧车恢复发送">解除急停 R</button>` : "") +
+    `<button class="btn sm" id="al-ack">知道了</button>`;
   el.querySelector<HTMLElement>(".al-t")!.onclick = () => jumpAt(last);
+  const r = el.querySelector<HTMLElement>("#al-r"); if (r) r.onclick = async () => { await call("cmd", { c: "R" }); renderAlerts(); };
   $("al-ack").onclick = async () => { const r = await call("alert_ack", { upto: AL.top() }); AL.ack(r.upto); renderAlerts(); };
 }
 const tl = initTimeline($("tl"), e => jumpAt({ log_t: e.log_t, plot_t: e.plot_t != null ? e.plot_t + 0.5 : null }),
@@ -108,15 +110,22 @@ const call = async <T = any>(op: string, args: Record<string, unknown> = {}) => 
 };
 
 // ---------------------------------------------------------------- 急停：永远可点，不依赖任何状态
-function estop() {
-  link.fire("estop");
+function estop(src = "按钮") {
+  link.fire("estop", { src });
   const b = $("estop"); b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 400);
   if (!link.open) toast({ code: "estop", message: "侧车未连接：急停没有送达！", fix: "立刻断电 / 拔电池" });
 }
-$("estop").onclick = estop;
+$("estop").onclick = () => estop("急停按钮");
 addEventListener("keydown", e => {
-  const typing = (e.target as HTMLElement).matches("input,select,textarea");
-  if (e.key === "Escape" || (e.code === "Space" && !typing)) { e.preventDefault(); estop(); return; }
+  const el = e.target as HTMLElement;
+  const typing = el.matches("input,select,textarea");
+  // Esc / 空格是急停快捷键；但 Esc 在下拉框、输入框、弹窗、展开菜单里是“关闭”，空格在按钮上是“点它”——
+  // 这些情况按急停会让新用户一连上就看到锁存的急停告警，所以交给浏览器默认行为（急停按钮永远可点）。
+  const closing = typing || !!el.closest("details[open]") || !!document.querySelector("dialog:modal");
+  const pressing = el.matches("button,summary,a,[role=button]");
+  if ((e.key === "Escape" && !closing) || (e.code === "Space" && !typing && !pressing)) {
+    e.preventDefault(); estop(e.key === "Escape" ? "Esc 键" : "空格键"); return;
+  }
   if (typing && !(e.ctrlKey || e.metaKey)) return;
   if (e.key === "p" || e.key === "P") setRun(!plot.running);
   if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); sendPending(); }
@@ -517,8 +526,10 @@ function renderProposal(m: Msg) {
 function renderStatus(st: Msg) {
   const was = S.status.connected;
   if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
+  const relock = S.status?.tx_locked !== st.tx_locked;
   S.status = st;
   if (!linkStateActive()) conn.set({ board: !!st.connected, alive: !!st.alive });   // 有 link.state 时以它为准
+  if (relock) renderAlerts();   // 急停锁存变化：告警条上的“解除急停 R”跟着出现/消失
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");

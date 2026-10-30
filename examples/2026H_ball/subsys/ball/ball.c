@@ -8,9 +8,28 @@
 #include "project_gen.h"
 #include "ball_beam.h"
 #include "accel_ff.h"
+#include "slew.h"
 
 
 static ball_beam_t s_bb;
+static slew_t s_sp;          /* 目标斜坡：sp_rate_pxps=0 时直通 */
+
+/* 分段斜坡：离最终目标 band 以内用慢速，否则快速；未就绪时从钢珠当前估计位置起步（无冲击） */
+static float sp_ramp(const params_t *p, float sp, float dt)
+{
+    slew_cfg_t c;
+    float r;
+    if (!(p->sp_rate_pxps > 0.0f)) { s_sp.ready = false; return sp; }
+    if (!s_sp.ready) {
+        if (!s_bb.primed) return sp;
+        slew_cfg_t z = { 0.0f, 0.0f, SLEW_BY_DIR };
+        (void)slew_init(&s_sp, &z, s_bb.x);
+    }
+    r = (p->sp_slow_pxps > 0.0f && fabsf(sp - s_sp.y) < p->sp_slow_band_px) ? p->sp_slow_pxps : p->sp_rate_pxps;
+    c.rise_per_s = c.fall_per_s = r; c.mode = SLEW_BY_DIR;
+    s_sp.cfg = c;
+    return slew_update(&s_sp, sp, dt);
+}
 
 static ball_beam_cfg_t cfg_from(const params_t *p)
 {
@@ -21,6 +40,7 @@ static ball_beam_cfg_t cfg_from(const params_t *p)
     c.angle_max = p->angle_max_deg; c.rate_max = p->rate_max_dps;
     c.hold_ms = p->hold_ms; c.timeout_ms = p->vision_timeout_ms; c.dir = p->beam_dir;
     c.est_mode = p->bb_est_mode; c.est_lpf = 0.3f; c.loop_mode = p->bb_loop_mode;
+    c.i_vel = p->i_vel_pxps; c.i_leak = p->i_leak;
     c.stic_deg = p->stic_deg; c.stic_vel = p->stic_vel; c.stic_e = p->stic_e;
     memset(c.bal_x, 0, sizeof c.bal_x); memset(c.bal_deg, 0, sizeof c.bal_deg);
     c.bal_n = p->bal_span_px > 0.0f ? 3u : 0u;
@@ -70,13 +90,13 @@ static void ball_step(void *state, const void *params, uint32_t now_ms)
     if (st->vision_out.new_sample) ball_beam_sample(&s_bb, st->vision_out.x_px, st->vision_out.t_ms);
     ff = accel_ff(st, p, now_ms);
     st->beam_out.ff_deg = ff;
-    publish(st, p, ball_beam_update(&s_bb, st->coord.ball_sp_px, ff, now_ms, PERIOD_MS_BALL * 1e-3f));
+    publish(st, p, ball_beam_update(&s_bb, sp_ramp(p, st->coord.ball_sp_px, PERIOD_MS_BALL * 1e-3f), ff, now_ms, PERIOD_MS_BALL * 1e-3f));
 }
 
 static void ball_on_mode(void *state, subsys_mode_t mode)
 {
     (void)state;
-    if (mode != SUBSYS_MODE_RUN) ball_beam_reset(&s_bb);   /* io 层在非运行态下发零点角/失能，见 io_main.c */
+    if (mode != SUBSYS_MODE_RUN) { ball_beam_reset(&s_bb); s_sp.ready = false; }   /* io 层在非运行态下发零点角/失能，见 io_main.c */
 }
 
 const subsys_t SUBSYS_BALL = { "ball", PERIOD_MS_BALL, false, ball_init, ball_step, ball_on_mode, 0 };

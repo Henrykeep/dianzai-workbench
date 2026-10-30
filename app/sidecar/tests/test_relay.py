@@ -34,3 +34,12 @@ def test_tl_rule_is_more_conservative_than_zn():
     zn = search.simulate_fopdt(relay.gains(r["ku"], r["pu"], "zn"), 2.0, 1.0, 0.2, u_lim=10.0)
     tl = search.simulate_fopdt(relay.gains(r["ku"], r["pu"]), 2.0, 1.0, 0.2, u_lim=10.0)
     assert tl["overshoot"] < zn["overshoot"] and tl["steady_error"] < 0.05
+
+
+def test_extra_rules_gains():
+    from dzbench.tuning.relay import gains, RULES
+    g = gains(1.0, 0.09, "pd_int")
+    assert g["ki"] == 0 and abs(g["kp"] - 0.45) < 1e-9 and g["kd"] > 0
+    z = gains(1.0, 0.09, "zn_no_os")
+    assert abs(z["kp"] - 0.2) < 1e-9 and z["ki"] > 0
+    assert {"tl", "zn", "zn_no_os", "pd_int"} <= set(RULES)

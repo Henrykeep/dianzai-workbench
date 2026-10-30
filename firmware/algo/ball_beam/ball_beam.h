@@ -6,7 +6,7 @@
  *   1) 视觉新样本 → α-β 滤波估计位置 x 与速度 v（Kalata 1984 的 α-β 跟踪器；P2 工程的设计）；
  *   2) 用 v 把位置外推到“现在 + lead_s”，补偿相机曝光/传输/机械延迟（P2：70 ms）；
  *   3) 串级：v_des = clamp(pos_k·e, ±vel_max)，θ = vel_k·(v_des − v) + I + ff（P1 工程的结构）；
- *   4) 积分只在新样本到达且 |e| < i_zone 时累加，误差变号时乘 i_decay（P1 策略），并钳在 ±i_max；
+ *   4) 积分只在新样本到达且 |e| < i_zone（可选再加 |v| < i_vel，否则按 i_leak 衰减）时累加，误差变号时乘 i_decay（P1 策略），并钳在 ±i_max；
  *   5) 输出限幅 ±angle_max、斜率限制 rate_max（°/s）。
  * 丢样本：age ≤ hold_ms 继续外推；hold_ms < age ≤ timeout_ms 保持上次角度；age > timeout_ms 视为丢球，
  * 斜坡回 0°、清积分，下一个样本重新初始化滤波器。
@@ -19,7 +19,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "dz_err.h"
-#define BALL_BEAM_VERSION "1.1.0"
+#define BALL_BEAM_VERSION "1.2.0"
 #define BB_BAL_MAX 5u
 
 /** A/B 选项：0 = A（默认，1.0.0 行为），1 = B（回退方案）。 */
@@ -50,6 +50,10 @@ typedef struct {
     uint8_t bal_n;           /**< 静平衡前馈表点数（0/1 关，2..BB_BAL_MAX 开）：θ0(x) = 球静止在 x 处所需的摆杆角 */
     float   bal_x[BB_BAL_MAX];   /**< px，严格递增 */
     float   bal_deg[BB_BAL_MAX]; /**< °，直接叠加在输出上（不乘 dir），表外按端点保持 */
+    /* ---- 1.2.0 可选项：条件积分（全 0 = 1.1.0 行为）。思路参考 nuedc-2026-h-ball-balance（MIT）：
+     *      只在误差小且对象几乎静止时积分，否则积分逐拍衰减 —— 防止“还在快速接近目标时”积分先攒满造成超调 ---- */
+    float   i_vel;           /**< px/s，>0 时只在 |v| < i_vel 才累加积分（0 关） */
+    float   i_leak;          /**< 不满足积分条件时每个新样本积分乘的系数 (0,1)（0 关 = 保持；参考值 31/32） */
 } ball_beam_cfg_t;
 
 typedef enum { BB_WAIT = 0, BB_TRACK, BB_HOLD, BB_LOST } ball_beam_state_t;

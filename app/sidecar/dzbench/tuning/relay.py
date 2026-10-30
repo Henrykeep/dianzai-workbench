@@ -24,14 +24,23 @@ from pid_atune import PIDATune  # noqa: E402
 
 
 def gains(ku: float, pu: float, rule: str = "tl") -> dict:
-    """zn = 原版 PID 规则（超调 30–40%，见 USAGE_MATRIX #1）；tl = Tyreus–Luyben（更保守，默认）；zn_pi = 原版 PI。"""
+    """规则见 RULES。zn = 原版 PID 规则（超调 30–40%，见 USAGE_MATRIX #1）；tl = Tyreus–Luyben（更保守，默认）；zn_pi = 原版 PI。"""
     if rule == "zn":
         kp, ti, td = 0.6 * ku, pu / 2, pu / 8
+    elif rule == "zn_no_os":                           # ZN“无超调”表：0.2Ku, Ti=Pu/2, Td=Pu/3（对非积分型对象）
+        kp, ti, td = 0.2 * ku, pu / 2, pu / 3
+    elif rule == "pd_int":                             # 积分型对象（位置环）：不要 I（对象自带积分，I 只会带来超调），D 加重
+        kp, ti, td = 0.45 * ku, 0.0, pu / 4
     elif rule == "zn_pi":
         kp, ti, td = 0.4 * ku, pu / 1.2, 0.0          # ki = 0.48·Ku/Pu
     else:
         kp, ti, td = ku / 2.2, 2.2 * pu, pu / 6.3
-    return {"kp": kp, "ki": kp / ti, "kd": kp * td, "rule": rule}
+    return {"kp": kp, "ki": kp / ti if ti else 0.0, "kd": kp * td, "rule": rule}
+
+
+RULES = {"tl": "Tyreus–Luyben（保守，非积分型对象默认）", "zn": "Ziegler–Nichols 原版 PID（超调大）",
+         "zn_no_os": "ZN 无超调表 0.2Ku", "zn_pi": "ZN 原版 PI",
+         "pd_int": "积分型对象 PD：0.45Ku、Td=Pu/4、无积分（位置环推荐）"}
 
 
 def relay_run(plant_step, *, dt: float, u0: float = 0.0, step: float, noise_band: float, pid: bool = True,
