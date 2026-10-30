@@ -8,5 +8,6 @@
   正文……
   ```
 - 短而具体：结论、判据、本仓库对应的文件和命令。不要整章抄教材。
+- 现有：stall、polarity、step-identify；视觉 vision-k230 / vision-color / vision-tuning（摘自 Electronics-Design-Competition-Skill，见 docs/参考来源.md）。
 - `project-memory.md` 是项目记忆：Agent 用 remember 工具提议、人在 diff 卡上接受后才追加。每次新对话放进系统提示。
 - 本目录在网关的 docs 层：Agent 只能提议改，人确认后落地。
