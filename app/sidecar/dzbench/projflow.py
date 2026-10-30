@@ -116,6 +116,36 @@ def subsys_plan(repo: pathlib.Path, req: dict, scheme: dict) -> dict:
     return {"chosen": chosen, "missing": missing}
 
 
+IOC_FAMILIES = ("stm32f1", "stm32f4")   # tools/gen_ioc.py 能写 .ioc 的系列
+
+
+def scratch_options(repo: pathlib.Path, scheme: dict) -> list[dict]:
+    """从零新建：芯片 × 板卡模板的候选（scheme 的 mcu 排第一；能生成 .ioc 的系列在前；同芯片的现有板卡可当接线模板）。"""
+    sc = _scheme_mod(repo); parts = sc.load_catalog()
+    boards = []
+    for b in sorted((repo / "boards").glob("*/board.yaml")):
+        try:
+            d = yaml.safe_load(b.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        if d.get("port") in ("stm32-cubemx", "mspm0-driverlib") and (d.get("mcu") or {}).get("part"):
+            boards.append((b.parent.name, d["mcu"]["part"].upper()))
+    out = []
+    for x in parts.values():
+        if x["kind"] != "mcu" or "mcu" not in x:
+            continue
+        fam, part = x["mcu"]["family"], x["mcu"]["part"].upper()
+        ok = fam in IOC_FAMILIES
+        why = "" if ok else ("MSPM0 从零要在 SysConfig 里配（本机还不能生成 .syscfg），配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
+        tpls = [n for n, bp in boards if bp.rstrip("X")[:11] == part.rstrip("X")[:11]]
+        for t in [None, *tpls]:
+            out.append({"mcu": x["id"], "family": fam, "tpl": t, "ok": ok, "why": why, "status": x["status"],
+                        "label": f"{x['name']}" + (f" · 沿用 boards/{t} 的接线" if t else " · 空白板（只按芯片分配）")})
+    pick = (scheme.get("mcu") or "").lower()
+    out.sort(key=lambda o: (not o["ok"], o["mcu"] != pick, o["tpl"] is not None, sc.RANK.get(o["status"], 9), o["mcu"], o["tpl"] or ""))
+    return out
+
+
 MIN_PROJECT = """# {name}：由工作台项目页起稿（目录里没有能直接用的子系统，先留空）；子系统用 tools/new_subsys.py 新建后加进 subsystems。
 schema_version: 1
 name: {name}
@@ -226,6 +256,47 @@ class Flow:
             if (st / "scheme.yaml").exists():
                 ch = scheme_choices(self.repo, yaml.safe_load(req.read_text(encoding="utf-8")) or {}, yaml.safe_load((st / "scheme.yaml").read_text(encoding="utf-8")) or {})
             return {"cmd": r["cmd"] + "\n" + r2["cmd"], "rc": r["rc"] or r2["rc"], "out": r["out"] + r2["out"], "files": self._files(st), "target": str(tgt / "scheme.yaml"), "choices": ch}
+        if step == "scratch":
+            # 从零新建：alloc（芯片知识表自动分配引脚 / 定时器 / DMA）→ gen_ioc 写 .ioc → ioc_import 反导核对
+            sch_p = tgt / "scheme.yaml"
+            if not sch_p.exists():
+                raise FlowError("no_scheme", f"{sch_p} 还没有：先确认第 2 步")
+            sch = yaml.safe_load(sch_p.read_text(encoding="utf-8")) or {}
+            opts = scratch_options(self.repo, sch)
+            if not m.get("mcu"):
+                return {"cmd": "", "rc": 0, "out": "", "files": {}, "options": opts, "target": ""}
+            o = next((x for x in opts if x["mcu"] == m["mcu"] and x["tpl"] == (m.get("tpl") or None)), None)
+            if not o:
+                raise FlowError("bad_mcu", f"没有这个选项：{m['mcu']} / {m.get('tpl')}")
+            if not o["ok"]:
+                raise FlowError("no_ioc_gen", o["why"])
+            name = _safe(board_slug(m.get("name") or f"{code}-{m['mcu']}"))
+            st = self.stage(code, "scratch")
+            s2 = dict(sch, mcu=m["mcu"]); (st / "scheme.yaml").write_text(yaml.safe_dump(s2, allow_unicode=True, sort_keys=False), encoding="utf-8")
+            args = ["tools/alloc.py", st / "scheme.yaml", "-o", st / "alloc", "--name", name]
+            if o["tpl"]:
+                args += ["--fixed", self.repo / "boards" / o["tpl"] / "board.yaml"]
+            if (tgt / "app.yaml").exists():
+                args += ["--app", tgt / "app.yaml"]
+            r1 = self._run(args)
+            if r1["rc"]:
+                return r1 | {"files": self._files(st / "alloc") if (st / "alloc").exists() else {}, "options": opts, "target": ""}
+            proj = st / "cubemx" / name
+            r2 = self._run(["tools/gen_ioc.py", st / "alloc" / "board.yaml", "-o", proj / f"{name}.ioc", "--name", name])
+            if r2["rc"]:
+                return {"cmd": r1["cmd"] + "\n" + r2["cmd"], "rc": r2["rc"], "out": r1["out"] + r2["out"], "options": opts, "name": name, "target": "",
+                        "files": {"alloc.md": (st / "alloc" / "alloc.md").read_text(encoding="utf-8")}}
+            ctrl = (re.search(r"CTRL=(TIM\d+)", r2["out"]) or [None, ""])[1]
+            r3 = self._run(["tools/ioc_import.py", proj / f"{name}.ioc", "-o", st / "check_board.yaml", "--base", st / "alloc" / "board.yaml",
+                            *(["--timer", f"CTRL={ctrl}"] if ctrl else [])])
+            dest = pathlib.Path(m.get("cubemx_dir") or (pathlib.Path.home() / "dz-cubemx" / name)).expanduser()
+            files = {"alloc.md": (st / "alloc" / "alloc.md").read_text(encoding="utf-8"), f"{name}.ioc": (proj / f"{name}.ioc").read_text(encoding="utf-8")}
+            return {"cmd": "\n".join(r["cmd"] for r in (r1, r2, r3)), "rc": r1["rc"] or r2["rc"] or r3["rc"], "out": r1["out"] + r2["out"] + r3["out"],
+                    "files": files, "options": opts, "name": name, "target": str(dest), "ioc": str(dest / f"{name}.ioc")}
+        if step == "scratch_ready":                      # 用户在 CubeMX 里点过 GENERATE CODE 没有（有 Core/Src/main.c 就算）
+            d = pathlib.Path(m.get("cubemx_dir") or "").expanduser()
+            return {"cmd": "", "rc": 0, "out": "", "files": {}, "target": str(d),
+                    "ready": (d / "Core" / "Src" / "main.c").exists(), "keil": bool(list(d.glob("MDK-ARM/*.uvprojx")))}
         if step == "import":
             src = pathlib.Path(m.get("project") or "").expanduser()
             if not (src.is_dir() and list(src.glob("*.ioc"))):
@@ -332,6 +403,14 @@ class Flow:
             for f in ("options.md", "scheme.md"):
                 if (st / f).exists():
                     put(tgt / "scheme" / f, (st / f).read_text(encoding="utf-8"))
+        elif step == "scratch":
+            name = _safe(m["name"]); dest = pathlib.Path(m.get("cubemx_dir") or (pathlib.Path.home() / "dz-cubemx" / name)).expanduser()
+            ioc = dest / f"{name}.ioc"
+            if ioc.exists() and not m.get("overwrite"):
+                raise FlowError("exists", f"{ioc} 已存在", "换个板名，或勾“覆盖”")
+            put(ioc, (st / "cubemx" / name / f"{name}.ioc").read_text(encoding="utf-8"))
+            for rel, text in self._files(st / "alloc").items():
+                put(tgt / "alloc" / rel, text)
         elif step == "import":
             name = _safe(m["name"]); src = st / "root" / "boards" / name
             if not (src / "board.yaml").exists():

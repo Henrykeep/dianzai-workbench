@@ -86,3 +86,24 @@ def test_keil_needs_second_confirm(tmp_path):
     with pytest.raises(FlowError) as e:
         f.accept("keil", {"code": "T2", "uvprojx": str(uv), "board": "b", "app": "a"})
     assert e.value.code == "need_confirm" and ".bak" in e.value.fix
+
+
+def test_scratch_allocs_and_writes_ioc(tmp_path):
+    """从零新建：选项按方案主控排序、MSPM0 标不可用；预览生成 .ioc 且 ioc_import 反导无错；确认写到 CubeMX 目录。"""
+    import shutil
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    for n in ("requirements.yaml", "scheme.yaml"):
+        shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
+    m = {"code": "S1", "dest": str(dest)}
+    opts = f.preview("scratch", m)["options"]
+    assert opts[0]["ok"] and any(not o["ok"] and o["family"] == "mspm0" for o in opts)
+    with pytest.raises(FlowError):
+        f.preview("scratch", m | {"mcu": "mspm0g3507"})
+    assert f.preview("scratch", m | {"mcu": "stm32f103c8t6"})["rc"] != 0     # H 题串口超出 F103C8：报“没分到”，不写半截 .ioc
+    for mcu in ("stm32f407vet6",):
+        cd = tmp_path / "cm" / mcu
+        r = f.preview("scratch", m | {"mcu": mcu, "cubemx_dir": str(cd)})
+        assert r["rc"] == 0 and "✗" not in r["out"] and "Mcu.UserName=STM32F" in r["files"][f"{r['name']}.ioc"]
+        w = f.accept("scratch", m | {"name": r["name"], "cubemx_dir": str(cd)})
+        assert (cd / f"{r['name']}.ioc").exists() and (dest / "alloc" / "alloc.md").exists() and w["written"]
+        assert f.preview("scratch_ready", m | {"cubemx_dir": str(cd)})["ready"] is False

@@ -44,7 +44,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   const next = (k: string) => {
     const n = STEPS_FLOW[STEPS_FLOW.indexOf(k as any) + 1]; if (!n) return;
     const c = root.querySelector<HTMLElement>(`[data-f="${n}"]`)!; c.scrollIntoView?.({ block: "nearest" });
-    if (n === "import" && !v("pf-proj")) { inp("pf-proj").focus(); return; }
+    if (n === "import" && !v("pf-proj")) { fork(); return; }
     c.querySelector<HTMLButtonElement>(".pf-run")?.click();
   };
   const written = (k: string, r: { written: string[] }) => { done(k, "已写入"); toast(`已写入：${r.written.join("、")}`, "ok"); next(k); };
@@ -113,7 +113,34 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
       written("import", w);
     });
   };
-  btn("import", () => runImport(false));
+  // ③ 分叉：没有现成工程 → 从零新建（alloc 自动分配 → 生成 .ioc → 人在 CubeMX 点一次 GENERATE → 自动接着导入）
+  let poll = 0;
+  const fork = async () => {
+    const r0 = await call<any>("flow_preview", { step: "scratch", ...base() }).catch(() => null); if (!r0) { inp("pf-proj").focus(); return; }
+    const R = res("import"), ok = r0.options.filter((o: any) => o.ok);
+    R.innerHTML = `<p class="hint">没填现成工程目录。二选一：有 CubeMX/Keil 工程就在上面填目录（导入已有工程）；没有就在这里从零新建——按方案的主控排序，第一项是默认。</p>
+      <select class="in" id="pf-scr">${r0.options.map((o: any, i: number) => `<option value="${i}"${o.ok ? "" : " disabled"}>${esc(o.label)}${o.ok ? "" : "（" + esc(o.why) + "）"}</option>`).join("")}</select><div id="pf-scr-res"></div>`;
+    const sel = R.querySelector<HTMLSelectElement>("#pf-scr")!; if (ok.length) sel.value = String(r0.options.indexOf(ok[0]));
+    const runS = async () => {
+      const o = r0.options[+sel.value]; const r = await call<any>("flow_preview", { step: "scratch", ...base(), mcu: o.mcu, tpl: o.tpl, name: v("pf-board") || undefined }); out("import", r);
+      const S = R.querySelector<HTMLElement>("#pf-scr-res")!;
+      S.innerHTML = `<p class="hint">引脚 / 定时器 / DMA 已按芯片知识表自动分配（alloc.md），并生成 CubeMX 工程 ${esc(r.name)}.ioc（工具链 MDK-ARM）。确认后写到 ${esc(r.ioc)}。</p>` + filesView(r.files, ["alloc.md", `${r.name}.ioc`]);
+      if (r.rc) return;
+      const b = document.createElement("button"); b.className = "btn pri"; b.type = "button"; b.textContent = `确认从零新建（写 ${r.name}.ioc）`; S.append(b);
+      b.onclick = async () => { b.disabled = true;
+        const w = await call<any>("flow_accept", { step: "scratch", ...base(), name: r.name, cubemx_dir: r.target }).catch(() => null); if (!w) { b.disabled = false; return; }
+        inp("pf-board").value = r.name; inp("pf-proj").value = lastProj = r.target;
+        S.innerHTML = `<p class="hint"><b>要你做一次：</b>用 STM32CubeMX 打开 <span class="mono">${esc(r.ioc)}</span>，核对后点 GENERATE CODE（本机跑不了 CubeMX 代码生成）。生成完这里会自动接着导入，不用再点。</p>`;
+        toast(`已写入：${w.written.join("、")}`, "ok");
+        clearInterval(poll); poll = window.setInterval(async () => {
+          const q = await call<any>("flow_preview", { step: "scratch_ready", ...base(), cubemx_dir: r.target }).catch(() => null);
+          if (q?.ready) { clearInterval(poll); runImport(false); }
+        }, 3000);
+      };
+    };
+    sel.onchange = runS; if (ok.length) runS();
+  };
+  btn("import", () => v("pf-proj") ? runImport(false) : fork());
   let lastProj = "";   // 失焦也会触发 change：同一个目录不重跑（否则正要点“确认导入”时结果被清掉）
   inp("pf-proj").addEventListener("change", () => { if (v("pf-proj") && v("pf-proj") !== lastProj) (lastProj = v("pf-proj"), root.querySelector<HTMLButtonElement>('[data-f="import"] .pf-run')!.click()); });
 
