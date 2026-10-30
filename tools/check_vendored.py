@@ -82,7 +82,9 @@ def check_sdk(base: pathlib.Path) -> list[str]:
                 if not ok:
                     errs.append(f"third_party/{d.name}/{a.name}: 包里没有许可文件")
             continue
-        if not any(lic.search(f.name) for f in d.iterdir()):
+        # 安装器装的工具（如 make fetch 装的 TI SysConfig）许可在 dist/license.txt：顶层或 dist/ 下有即可
+        tops = list(d.iterdir()) + (list((d / "dist").iterdir()) if (d / "dist").is_dir() else [])
+        if not any(lic.search(f.name) for f in tops):
             errs.append(f"third_party/{d.name}: 顶层没有 LICENSE/COPYING/EULA，许可不明不得用")
     return errs
 

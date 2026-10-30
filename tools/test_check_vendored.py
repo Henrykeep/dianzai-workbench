@@ -48,6 +48,7 @@ def main():
         tp = pathlib.Path(tp)
         (tp / "sdk_ok").mkdir(); (tp / "sdk_ok" / "license_x.txt").write_text("x")
         (tp / "sdk_bad").mkdir(); (tp / "sdk_bad" / "readme.md").write_text("x")
+        (tp / "tool_ok" / "dist").mkdir(parents=True); (tp / "tool_ok" / "dist" / "license.txt").write_text("x")   # 安装器装的工具：许可在 dist/
         e = C.check_sdk(tp)
         ok = len(e) == 1 and "sdk_bad" in e[0]
         print("✓" if ok else "✗", "SDK 目录缺许可文件失败、有则通过", "" if ok else e)

@@ -43,6 +43,8 @@ jobs:
         with: { workspaces: app/src-tauri }
       - uses: actions/download-artifact@v4
         with: { name: dz-repo, path: app/dz-repo }
+      - run: npm ci                    # 先装前端依赖：许可扫描/UI 单测要 node_modules（setup-node 已按 lock 缓存）
+        working-directory: app/ui
       - name: 单元测试（Windows 上自动跳过仿真 e2e）
         shell: bash
         env:
@@ -66,8 +68,6 @@ jobs:
         shell: bash
         working-directory: app/dz-repo
         run: ../../dist/dzbench.exe tools/req.py --help | head -3
-      - run: npm ci
-        working-directory: app/ui
       - name: 安装包（resources 带上 repo\）
         shell: bash
         working-directory: app/src-tauri
