@@ -33,6 +33,12 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
   `dzctl_estop_note(cause, t, v)` 只记第一个原因（之后的连锁急停不覆盖），`dzctl_estop_clear()` 在人发 `R` 时清。
   原因：1 手动 2 心跳超时（value=ms）3 堵转 4 欠压（V）5 过流（A）6 限位/超量程 7 自检失败（项数）8 异常复位安全态（复位原因）9 传感器故障。
   接入：apps/include/link_app.h（所有 link_app 板子）、car_2wd、examples/2026H_ball/io。中文说明在侧车 `ESTOP_CAUSES`。
+## 0.10.0
+
+- 运行模式：心跳 status bit14 `DZCTL_HB_STANDALONE`（1 脱机 / 0 联机），bit15 `DZCTL_HB_SA_RUNNING`（脱机已启动）。
+- 'M' 切模式：`{'M', mode, DZCTL_MODE_MAGIC=0xA5}`，板回 `{'M', rc}`（0 已切并写 flash，1 没停稳，2 无 flash，3 写失败，4 缺确认字节）。
+  模式只由人切换（界面确认卡 / 板上长按），固件从不自动切；模式单独存 flash，与参数无关。
+
 ## 0.9.0
 
 - 脱机运行：心跳 status bit11 = 上电自检失败（同时以原因 7 急停锁存），bit12-13 = 上电参数来源（0 flash / 1 没存过→默认 / 2 损坏或结构变了→默认 / 3 无 flash）。

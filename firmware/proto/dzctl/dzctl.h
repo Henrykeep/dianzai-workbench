@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.9.0"
+#define DZCTL_VERSION "0.10.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
@@ -89,6 +89,11 @@ uint32_t dzctl_fw_rev(void);
 #define DZCTL_HB_SELFTEST_FAIL (1u << 11)   /**< 0.9.0 上电自检没通过（同时以 DZCTL_ES_SELFTEST 急停） */
 #define DZCTL_HB_PARAMS_SHIFT 12u            /**< 0.9.0 bit12-13 上电参数来源：0 flash 1 没存过→默认 2 损坏/版本不符→默认 3 无 flash */
 #define DZCTL_HB_PARAMS_MASK  (3u << 12)
+#define DZCTL_HB_STANDALONE  (1u << 14)   /**< 0.10.0 运行模式：1 = 脱机（参数取自 flash、板上按键/自检后自启、不要求心跳，只靠板上保护）；0 = 联机（上位机给目标，心跳丢失急停） */
+#define DZCTL_HB_SA_RUNNING  (1u << 15)   /**< 0.10.0 脱机模式下已启动（按键或自检通过后自启） */
+/** 0.10.0 'M' 切运行模式（只能由人发起：界面确认卡 / 板上长按）：上位机 DATA DZCTL_ID_CMD len=3 {'M', 模式 0 联机 1 脱机, DZCTL_MODE_MAGIC}；
+ *  板回 {'M', 结果}：0 已切换并写入 flash 1 没停稳拒切 2 没有 flash 3 写失败 4 缺确认字节/模式非法（不切） */
+#define DZCTL_MODE_MAGIC 0xA5u
 /** 0.9.0 'W' 存参数：板回 DATA DZCTL_ID_CMD len=2 {'W', 结果}，结果 0 已写入 1 没停稳拒写 2 没有 flash 3 写失败 */
 #define DZCTL_SAVE_OK 0u
 #define DZCTL_SAVE_BUSY 1u

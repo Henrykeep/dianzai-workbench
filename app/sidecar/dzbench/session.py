@@ -337,6 +337,8 @@ class Session:
                                 self._pending_marks.append(m)
                     if len(payload) >= 28:
                         es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
+                        if es:
+                            es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
                         if es != self.estop_cause:
                             self.estop_cause = es
                             if es:
@@ -345,6 +347,8 @@ class Session:
                                     self._pending_marks.append(("estop", "板子急停：" + es["message_zh"]))
                     if h != self.schema_hash:
                         self._bind_schema(h)
+            elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("M"):
+                self.mode_ack = payload[1]
             elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
                 self.save_ack = payload[1]
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
@@ -556,6 +560,32 @@ class Session:
         self.mark("param", self.SAVE_STATUS.get(a, f"保存结果 #{a}"))
         return {"ok": a == 0, "result": a, "message_zh": self.SAVE_STATUS.get(a, f"保存结果 #{a}")}
 
+    MODE_STATUS = {0: "运行模式已切换并写入 flash（下次上电仍是这个模式）", 1: "电机没停稳：为安全起见没切（停车或急停后再切）",
+                   2: "这块板子没有可用的 flash 存储区：模式存不下，没切", 3: "flash 写入失败，没切", 4: "缺少确认字节或模式非法：没切"}
+    MODE_MAGIC = 0xA5
+
+    def set_run_mode(self, mode: str, confirmed: bool = False, wait_s: float = 1.5) -> dict:
+        """dzctl 0.10.0：切联机/脱机。只能由人发起——界面先弹确认卡，用户点确认后才带 confirmed=True 调用；
+        没确认就不发（板子那边也要确认字节，缺了拒切）。"""
+        if mode not in ("tethered", "standalone"):
+            raise ValueError(f"mode 只能是 tethered / standalone，收到 {mode!r}")
+        if not confirmed:
+            return {"ok": False, "result": None, "needs_confirm": True,
+                    "message_zh": "切换运行模式需要确认：" + ("脱机后板子不再要求上位机心跳，只靠板上保护" if mode == "standalone" else "联机后上位机断线会急停")}
+        self._check_tx()
+        self.mode_ack = None
+        if not self._send(DATA, ID_CMD, bytes([ord("M"), 1 if mode == "standalone" else 0, self.MODE_MAGIC])):
+            raise LinkError("not_connected", "没连板子", "")
+        t_end = time.monotonic() + wait_s
+        while time.monotonic() < t_end and getattr(self, "mode_ack", None) is None:
+            time.sleep(0.01)
+        a = getattr(self, "mode_ack", None)
+        if a is None:
+            return {"ok": None, "result": None, "message_zh": "板子没回执（固件早于 dzctl 0.10.0？）"}
+        msg = self.MODE_STATUS.get(a, f"切换结果 #{a}")
+        self.mark("param", ("运行模式 → " + ("脱机" if mode == "standalone" else "联机") + "：" if a == 0 else "运行模式没切：") + msg)
+        return {"ok": a == 0, "result": a, "message_zh": msg}
+
     RELAY_STATUS = {0: "ok", 1: "参数非法或板上没有这个 PID 回路", 2: "板子急停中"}
 
     def relay(self, loop: int, amp: float, hyst: float, timeout_s: float, wait_s: float = 0.5) -> dict:
@@ -743,6 +773,7 @@ class Session:
             marks, self._pending_marks = list(self._pending_marks), []
             st.update(hb_status_dict(self.hb_status))
             st["estop_cause"] = self.estop_cause
+            st["run_mode"] = run_mode_dict(self.hb_status)
             if self.tr is not None:
                 log_t, plot_t = self._times_locked(now)
                 hist = self.health.history()
@@ -791,7 +822,17 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
-HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中"}
+
+
+def run_mode_dict(w: int | None) -> dict | None:
+    """dzctl 0.10.0 心跳 bit14/15 → {mode: "tethered"|"standalone", started, label_zh}；旧固件（没 status 字）→ None。"""
+    if w is None:
+        return None
+    sa = bool(w & (1 << 14))
+    started = sa and bool(w & (1 << 15))
+    return {"mode": "standalone" if sa else "tethered", "started": started,
+            "label_zh": ("脱机（运行中）" if started else "脱机（待启动：板上按键短按）") if sa else "联机（上位机给目标，心跳丢失急停）"}
 
 
 # dzctl 0.8.0 dzctl_estop_cause_t → (cause 键, 中文说明模板)。{v} = 触发值，{t} = 板上时刻 s。
