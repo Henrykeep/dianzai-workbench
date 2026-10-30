@@ -202,7 +202,10 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
     try:
         ui.ok("connect", port="sim:car_2wd")
         _wait_status(ui, lambda e: e.get("alive"))
-        time.sleep(0.6)
+        t1 = time.monotonic()
+        while not s.params and time.monotonic() - t1 < 10:   # 参数读完（启动期的读参线程不再抢串口）
+            time.sleep(0.05)
+        time.sleep(0.3)
         held = threading.Event()
 
         def hog():
@@ -211,12 +214,28 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
                 time.sleep(3)
         threading.Thread(target=hog, daemon=True).start()
         held.wait(2)
+        hb_t = {}
+        orig_hb = s._on_heartbeat
+
+        def spy_hb(payload):
+            orig_hb(payload)
+            if s.estop_cause and "cause" not in hb_t:
+                hb_t["cause"] = time.monotonic()        # 带 estop_cause 的那帧心跳到达并处理完（收线程，持锁期间）
+        s._on_heartbeat = spy_hb
         m = ui.mark()
         t0 = time.monotonic()
         ui.ws.send(json.dumps({"op": "estop", "rid": 77, "src": "急停按钮"}))
         ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
         assert time.monotonic() - t0 <= 0.2
         assert s.tx_locked
+        la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
+        t_l = time.monotonic()
+        # 本地服务这一段（带原因的心跳到达 → WS latched）必须与持锁无关；总时长另含固件心跳周期（固件侧在修，≤500 ms 一拍）
+        side = t_l - hb_t["cause"]
+        assert side <= 0.05, f"持锁时 心跳到达→latched {side * 1000:.0f} ms"
+        assert hb_t["cause"] - t0 <= 0.55 and t_l - t0 <= 0.6, f"持锁时 点击→latched {(t_l - t0) * 1000:.0f} ms"
+        assert held.is_set() and time.monotonic() - t0 < 2.5    # 整个过程 hog 线程一直持着锁
+        assert la["cause"] == "manual" and s.fw_status()["estop_cause"]
     finally:
         ui.close(); st.stop()
 
@@ -322,3 +341,24 @@ def test_estop_cause_single_source():
     body = inspect.getsource(progress.collect)
     assert 'st.get("estop_cause")' not in body and 'st["estop_cause"]' not in body
     assert 'fw.get("estop_cause")' not in body
+
+
+@pytest.mark.parametrize("how", ["requested", "firmware", "flag_then_cause"])
+def test_no_separate_estop_cause_event_cause_rides_latched(home, how):
+    """不再推 type:"estop_cause"；cause / message_zh 随 estop state:"latched" 下发（人按 / 板子自己 / 急停位先到原因后到）。"""
+    from dzbench._dzlink import HEARTBEAT, encode
+    from dzbench.session import Session
+    out = []
+    s = Session(emit=out.append)
+    s.port = "/dev/ttyFAKE1"
+    s._bind_schema = lambda h: None
+    if how == "requested":
+        s.estop_source, s.tx_locked, s.estop_requested_at = "ui", True, time.monotonic()
+    if how == "flag_then_cause":
+        s._on_bytes(encode(HEARTBEAT, 0, 1, _hb(1 | (1 << 10))))
+    s._on_bytes(encode(HEARTBEAT, 0, 2, _hb(1 | (1 << 10), cause=3)))
+    assert not [m for m in out if m.get("type") == "estop_cause"]
+    la = [m for m in out if m.get("type") == "estop" and m.get("state") == "latched" and m.get("cause")]
+    assert la and la[-1]["cause"] == "stall" and la[-1]["message_zh"], out
+    assert la[-1]["source"] == ("ui" if how == "requested" else "firmware:stall")
+    assert {"seq", "t"} <= la[-1].keys()
