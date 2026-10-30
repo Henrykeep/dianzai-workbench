@@ -1,6 +1,7 @@
 import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
+import "./entry-data";
 import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
@@ -21,6 +22,8 @@ import { Alerts } from "./alerts";
 import { humanize, humanHtml } from "./errors";
 import { conn, onLinkState, linkStateActive } from "./conn";
 import { linkView, runState, modeLabel } from "./linkmsg";
+import { initProject } from "./project";
+import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopText } from "./estop";
 import { fetchProgress, render as renderProgress } from "./progress";
@@ -63,7 +66,7 @@ function renderAlerts() {
   const isE = (e: any) => e.kind === "estop" || e.kind === "watchdog";
   // 急停：只显示侧车给的说明（estop.ts 兜底），不显示 dzlog 时间戳
   el.innerHTML = latched
-    ? `<span class="al-n">${l.length}</span><span class="al-t" title="点击跳到这一刻"><b class="al-h">${esc(estopText(l.filter(isE).pop() as any))}</b></span>`
+    ? `<span class="al-n">${l.length}</span><span class="al-t" title="点击跳到这一刻"><b class="al-h">${esc(estopMessage(S.status as any) ?? estopText(l.filter(isE).pop() as any))}</b></span>`
     : `<span class="al-n">${l.length}</span><b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
   el.innerHTML +=
     (l.length > 1 ? `<span class="al-more">${l.slice(0, -1).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
@@ -515,6 +518,7 @@ function renderProposal(m: Msg) {
 
 // ---------------------------------------------------------------- 状态
 function renderStatus(st: Msg) {
+  renderBoard(st);
   const was = S.status.connected;
   if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
   S.status = st;
@@ -606,7 +610,7 @@ link.on(m => {
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
-    case "progress.changed": renderProgress(m as any, goStepRef); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
+    case "progress.changed": renderProgress(m as any, goStepRef); if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
     case "link.state": onLinkState(m as any); showLink(m as any); break;
     case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
@@ -621,6 +625,7 @@ link.onState = async open => {
   if (!open) return;
   const h = await link.rpc("hello");
   if ((h as any)?.link) { onLinkState((h as any).link); showLink((h as any).link); }
+  if (h && "project" in (h as any)) void proj.show((h as any).project ?? null);
   S.ports = h.ports; renderPorts(false);
   const applyFramedef = () => {
     const kind = $<HTMLSelectElement>("framedef").value;
@@ -709,18 +714,49 @@ function showLink(m: any) {
   renderAlerts();
 }
 let goStepRef: (s: any) => void = () => {};
+// 板上状态：保存参数 / 运行模式 / 自检失败项（文案取侧车 message_zh、label_zh，前端不拼）
+let savedAt: string | null = null, noSave = "", noMode = "";
+function renderBoard(st: any) {
+  const sv = $("tb-saved"); sv.textContent = noSave || savedView(st, savedAt); sv.classList.toggle("ok", !noSave && st.params_saved === true);
+  $<HTMLButtonElement>("tb-save").disabled = !!noSave; $("tb-save").title = noSave || "把板上当前参数写入掉电保存区（save_params）";
+  $("seal-mode-cur").textContent = st.run_mode?.label_zh ?? "—";
+  const g = modeGate(st), b = $<HTMLButtonElement>("seal-mode");
+  b.disabled = !!noMode || !g.enabled; $("seal-mode-why").textContent = noMode || g.reason;
+  const fails = selftestFailures(st); $("st-fail").hidden = !fails.length;
+  $("st-fail-l").innerHTML = fails.map(m => `<li>${esc(m)}</li>`).join("");
+  if (AL.list.some(e => e.kind === "estop" || e.kind === "watchdog")) renderAlerts();
+}
+$("tb-save").onclick = async () => {
+  const r = await saveParams((op, a) => link.rpc(op, a ?? {}));
+  if (r.ok) savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  else if (r.disable) noSave = r.note!; else toast({ code: "save_params", message: r.note!, fix: "" }, "warn", 6000);
+  renderBoard(S.status);
+};
+$("seal-mode").onclick = async () => {
+  const st: any = S.status;
+  const r = await switchMode((op, a) => link.rpc(op, a ?? {}), otherMode(st.run_mode), text => new Promise(res => {
+    const d = $<HTMLDialogElement>("mode-dlg"); $("mode-dlg-t").textContent = text;
+    d.onclose = () => res(d.returnValue === "yes"); d.returnValue = ""; d.showModal();
+  }));
+  if (r.disable) noMode = r.note!; else if (!r.ok && !r.cancelled) toast({ code: "set_run_mode", message: r.note!, fix: "" }, "warn", 6000);
+  renderBoard(S.status);
+};
+// 当前项目（hello / progress 的 project）：顶栏项目名 + 读题页空状态
+const proj = initProject((op, a) => link.rpc(op, a ?? {}), esc, () => void refreshProgressRef());
+let refreshProgressRef: () => Promise<void> | void = () => {};
 window.addEventListener("dz-goto", e => goStepRef((e as CustomEvent).detail));   // 其它模块（Agent 错误卡）请求切页
 const goStep = initSteps(() => !!S.status.connected); goStepRef = goStep;
 // 项目进度：接口优先、否则前端推断；每秒或切步时刷新
-const refreshProgress = async () => renderProgress(await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
+const refreshProgress = async () => { const p: any = await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
   current: (document.querySelector<HTMLElement>(".app")!.dataset.step || "项目") as Step,
   connected: conn.get().board,
   estop: AL.list.some(e => e.kind === "estop" || e.kind === "watchdog"),
   gainsZero: noInitialGains(S.schema?.params ?? [], S.applied),
   paramsDirty: pending().length > 0,
-  selftestFail: false,
+  selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}), goStep);
+}); renderProgress(p, goStep); if (p && "project" in p) void proj.show(p.project ?? null); };
+refreshProgressRef = refreshProgress;
 window.addEventListener("dz-step", () => void refreshProgress());
 initPjAsk(call, goStep);
 setInterval(() => void refreshProgress(), 1500);

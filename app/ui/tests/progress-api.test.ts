@@ -1,3 +1,6 @@
+import { readFileSync } from "fs";
+import { setEntrypoints, parseEntrypoints } from "../src/entry.ts";
+setEntrypoints(readFileSync("../../docs/dev/entrypoints.yaml", "utf8")   /* make check 在 app/ui 下跑 */);
 import { resolveFix, ACTIONS, Progress, pageHead } from "../src/progress.ts";
 import { errorCard } from "../src/agentwatch.ts";
 const has = () => true;
@@ -8,7 +11,11 @@ const st = resolveFix("run_selftest", has); if (st?.kind !== "wait" || st.note !
 const un = resolveFix("no_such_entry", has); if (un?.kind !== "none" || !un.note) throw "未登记兜底";
 if (resolveFix(null, has) !== null) throw "null";
 if (resolveFix("doctor", () => false)?.kind !== "none") throw "界面没有元素 → 不给可点按钮";
-for (const [id, a] of Object.entries(ACTIONS)) if (a.ready !== false && !a.ui) throw "可执行入口必须有 ui：" + id;
+for (const [id, a] of Object.entries(ACTIONS)) if (!a.ui) throw "可执行入口必须有 ui：" + id;
+// 未就绪来自入口表 ready: false，而不是前端写死
+const t = parseEntrypoints("  - {id: foo, label: 甲, at: x, ui: y, ready: false, ops: []}\n  - {id: bar, label: 乙, at: x, ui: z, ops: []}");
+if (t.get("foo")?.ready !== false || t.get("bar")?.ready !== true || t.get("foo")?.label !== "甲") throw "parseEntrypoints";
+if ((ACTIONS as any).run_selftest) throw "run_selftest 不应写死在 ACTIONS";
 // Agent 错误卡复用同一套解析
 const e = errorCard({ code: "x", message: "y", fix_action: "run_selftest", retryable: false }, has);
 if (e.other?.kind !== "wait" || e.retry || e.settings) throw "错误卡未就绪";
