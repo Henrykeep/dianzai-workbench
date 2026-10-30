@@ -18,9 +18,12 @@ typedef struct { TIM_HandleTypeDef *h; uint8_t invert; } cm_enc_t;
 typedef struct { UART_HandleTypeDef *h; uint8_t *rx_buf; uint16_t rx_size; uint8_t *tx_buf; uint16_t tx_size; } cm_uart_t;
 typedef struct { TIM_HandleTypeDef *h; } cm_timer_t;
 #ifdef HAL_ADC_MODULE_ENABLED
-typedef struct { ADC_HandleTypeDef *h; uint32_t channel; pal_adc_info_t info; } cm_adc_t;
+typedef struct { ADC_HandleTypeDef *h; uint32_t channel; pal_adc_info_t info;
+                 TIM_HandleTypeDef *blk_tim; uint32_t blk_trig; } cm_adc_t;
+/**< blk_tim 非空 = board.yaml adc.block：该定时器 TRGO（更新事件）触发 ADC 规则组，DMA（CubeMX 里给该 ADC 配的
+ *   DMA，Normal、半字）搬进缓冲；blk_trig = ADC_EXTERNALTRIGCONV_Tn_TRGO（1.10.0） */
 #else   /* CubeMX 工程没启用 ADC（hal_conf 里没有 HAL_ADC_MODULE_ENABLED）：只留占位类型 */
-typedef struct { void *h; uint32_t channel; pal_adc_info_t info; } cm_adc_t;
+typedef struct { void *h; uint32_t channel; pal_adc_info_t info; void *blk_tim; uint32_t blk_trig; } cm_adc_t;
 #endif
 
 /* 由 board_gen.c 提供（gen_board.py 按 board.yaml 生成，句柄名遵循 CubeMX 命名：TIM3 -> htim3，USART1 -> huart1） */

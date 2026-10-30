@@ -1607,6 +1607,10 @@
    "port_mspm0.h: typedef struct { ADC12_Regs *inst;",
    "port_mspm0.h: uint32_t chansel;",
    "port_mspm0.h: pal_adc_info_t info;",
+   "port_mspm0.h: GPTIMER_Regs *blk_tim;",
+   "port_mspm0.h: uint8_t blk_dma_ch;",
+   "port_mspm0.h: uint8_t blk_event_ch;",
+   "port_mspm0.h: uint8_t blk_dma_trig;",
    "port_mspm0.h: } m0_adc_t;",
    "port_mspm0.h: typedef struct { DAC12_Regs *inst;",
    "port_mspm0.h: pal_dac_info_t info;",
@@ -1648,8 +1652,8 @@
    "wwdt_calc.h: *actual_ms = (uint32_t)best;",
    "wwdt_calc.h: return 1;"
   ],
-  "hash": "22b25b6843646f6a",
-  "version": "0.9.0"
+  "hash": "e2afe126663c3212",
+  "version": "0.10.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -1699,10 +1703,14 @@
    "port_cubemx.h: typedef struct { ADC_HandleTypeDef *h;",
    "port_cubemx.h: uint32_t channel;",
    "port_cubemx.h: pal_adc_info_t info;",
+   "port_cubemx.h: TIM_HandleTypeDef *blk_tim;",
+   "port_cubemx.h: uint32_t blk_trig;",
    "port_cubemx.h: } cm_adc_t;",
    "port_cubemx.h: typedef struct { void *h;",
    "port_cubemx.h: uint32_t channel;",
    "port_cubemx.h: pal_adc_info_t info;",
+   "port_cubemx.h: void *blk_tim;",
+   "port_cubemx.h: uint32_t blk_trig;",
    "port_cubemx.h: } cm_adc_t;",
    "port_cubemx.h: typedef struct { I2C_HandleTypeDef *h;",
    "port_cubemx.h: } cm_i2c_t;",
@@ -1739,8 +1747,8 @@
    "port_cubemx.h: } cm_diag_t;",
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
-  "hash": "5e2f6639a1786661",
-  "version": "1.9.0"
+  "hash": "98342754017066fe",
+  "version": "1.10.0"
  },
  "ports/stm32f4-hal": {
   "decls": [

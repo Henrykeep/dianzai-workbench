@@ -113,6 +113,10 @@ resources:
     instance: ADC0
     channel: 2
     pin: PA25
+    block:                # pal_adc_block_read 硬件路径：TIMG6 零点事件（运行时配，MFCLK 4 MHz）→ 事件通道 1 → ADC0 → DMA 通道 0；【编译】未上板
+      timer: TIMG6
+      dma_ch: 0
+      event_ch: 1
     bits: 12
     vref_mv: 3300
     scale_num: 11         # 假定 10k:1k 分压（2S 锂电 8.4 V → 0.76 V）；【未验证】天猛星板上没有这个分压，要自己焊

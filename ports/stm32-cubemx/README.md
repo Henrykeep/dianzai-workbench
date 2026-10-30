@@ -35,3 +35,7 @@ board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：F1 = Flash 末尾（页 1 K
 - `pal_dac_write` 第一次调用时 `HAL_DAC_Start`，之后 `HAL_DAC_SetValue`（12 位/8 位右对齐）。
 - F103C8/CB、F401/F411/F412 没有 DAC：validate_board 拒绝写 `dac:`，`pal_dac_write` 返回 DZ_ENOTSUP。
 - 【编译】只在 F4（skystar-cubemx 样例）交叉编译过；H7/G4 句柄命名按 CubeMX 规则推出，未编译（仓库没有 H7 HAL）。
+
+## ADC 块采样硬件路径（1.10.0）
+
+board.yaml `adc[].block: {timer: TIM2}`：F4 可用 TIM2/3/8，F1 TIM3/8（ADC 规则组 TRGO 触发源）。CubeMX 里要给该 ADC 配 DMA（Normal，半字）并生成 DMA IRQ；定时器开 Base 即可，PSC/ARR 由移植层按采样率改写。完成判定轮询 DMA 剩余计数，不定义 HAL_ADC_ConvCpltCallback。【编译】未上板。

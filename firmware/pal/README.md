@@ -13,7 +13,7 @@
 | `pal_dac_write / pal_dac_info` | 有（board.yaml `dac:`，`host_sim_dac_get` 观测） | DZ_ENOTSUP（冻结端口） | 有（1.7.0，HAL_DAC，交叉编译；F103C8 等无 DAC 的型号 DZ_ENOTSUP） | 有（1.7.0，DAC12 DATA0 直写，交叉编译） |
 - 哪些芯片能写 `dac:`：tools/boardlib.py `DAC_PARTS`（F1 大容量/互联型、F405/407/410/413/415/417/423/427/429/437/439/446/469/479、H7/G4/L4/F7、MSPM0G350x/G150x）；F103C8/CB、F401/F411/F412、MSPM0G310x 没有 DAC，validate_board 直接拒绝并说明原因，pal_dac_write 返回 DZ_ENOTSUP。没登记的型号按“没有”处理，补表即可。
 - CubeMX：DAC 外设、输出缓冲、引脚在 .ioc 里配（标签 DAC_<名>，ioc_import 会认出来）；MSPM0：SysConfig 加 DAC12 模块（输出 PA15）。
-- 定时器触发 + DMA 的高速块采样**没做**（见缺口清单）。
+- 定时器触发 + DMA 高速块采样：board.yaml `adc[].block` 打开。stm32-cubemx 1.10.0（F1/F4，TRGO + DMA，≤200 kHz）、mspm0-driverlib 0.10.0（TIMG 零点事件 + DMA，≤500 kHz）【编译】未上板；不满足条件（无 block、不能整数分频、其他系列、f4-hal）退回软件定时。
 - 思路参考 LP-MSPM0G3507_freertos_firework@ede35a2 `bsp/adc`、`bsp/dac`（块采样 + 完成通知、DAC 码与 mV 换算），代码自写。
 
 ## 验证状态（实验是检验真理的唯一标准）

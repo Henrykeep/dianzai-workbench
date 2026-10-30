@@ -209,14 +209,17 @@ typedef struct {
 dz_err_t pal_adc_read(pal_id_t id, uint16_t *raw);
 dz_err_t pal_adc_info(pal_id_t id, pal_adc_info_t *info);
 
-/** pal_adc_block_read 允许的最高采样率（软件定时，PAL 1.6.0 新增）。 */
+/** pal_adc_block_read 软件定时路径允许的最高采样率（PAL 1.6.0 新增）。 */
 #define PAL_ADC_BLOCK_MAX_HZ 20000u
 /**
- * 按固定采样率阻塞采一块（给 algo/wavemeas、algo/spectrum 用）：第 i 个样本在起点后 i × (1e6 / rate_hz) µs 采。
- * rate_hz 须整除 1 000 000（周期为整数微秒，不悄悄取近似）且 ≤ PAL_ADC_BLOCK_MAX_HZ；n ≥ 1。
- * 软件定时（pal_micros + pal_adc_read），四个端口同一份实现（firmware/pal/pal_adc_block.inc）；
- * 某个样本迟到超过一个周期（被中断占用/单次转换太慢）返回 DZ_ETIMEOUT，buf 内容不可用。
- * 不是 DMA：采样期间 CPU 被占住，不得在中断里调用。要更高采样率需要端口的定时器触发 + DMA（未做）。
+ * 按固定采样率阻塞采一块（给 algo/wavemeas、algo/spectrum 用）：第 i 个样本在起点后 i × (1e6 / rate_hz) µs 采。n ≥ 1。
+ * 两条路径（firmware/pal/pal_adc_block.inc）：
+ *  - 硬件路径（stm32-cubemx 1.10.0 / mspm0-driverlib 0.10.0）：board.yaml adc 资源写了 block（定时器触发 + DMA）且 rate_hz 能被定时器整数分频时走这条，否则退回软件定时；
+ *    采样率上限由端口定（cubemx 200 kHz、mspm0 500 kHz），
+ *    ADC 溢出/DMA 出错返回 DZ_EIO，超时 DZ_ETIMEOUT。
+ *  - 软件定时（没配 block 的通道、host-sim、stm32f4-hal）：rate_hz 须整除 1 000 000 且 ≤ PAL_ADC_BLOCK_MAX_HZ；
+ *    某个样本迟到超过一个周期返回 DZ_ETIMEOUT，buf 内容不可用。
+ * 两条都阻塞到采完，不得在中断里调用。
  */
 dz_err_t pal_adc_block_read(pal_id_t id, uint16_t *buf, uint16_t n, uint32_t rate_hz);
 

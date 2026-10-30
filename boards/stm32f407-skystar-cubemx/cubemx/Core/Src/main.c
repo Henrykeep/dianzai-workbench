@@ -15,11 +15,13 @@
 ADC_HandleTypeDef hadc1;
 DAC_HandleTypeDef hdac;
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim6;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
+DMA_HandleTypeDef hdma_adc1;
 DMA_HandleTypeDef hdma_usart1_rx;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart2_rx;
@@ -31,6 +33,7 @@ static void MX_DMA_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_DAC_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM4_Init(void);
 static void MX_TIM6_Init(void);
@@ -47,6 +50,7 @@ int main(void)
   MX_ADC1_Init();
   MX_DAC_Init();
   MX_TIM1_Init();
+  MX_TIM2_Init();
   MX_TIM3_Init();
   MX_TIM4_Init();
   MX_TIM6_Init();
@@ -166,6 +170,22 @@ static void MX_TIM4_Init(void)
   if (HAL_TIM_Encoder_Init(&htim4, &sConfig) != HAL_OK) Error_Handler();
 }
 
+static void MX_TIM2_Init(void)
+{
+  /* ADC 块采样触发源（board.yaml adc.VBAT.block）：PSC/ARR 由移植层按采样率运行时改写，TRGO = 更新事件 */
+  TIM_MasterConfigTypeDef m = {0};
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 0;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 839;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK) Error_Handler();
+  m.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  m.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &m) != HAL_OK) Error_Handler();
+}
+
 static void MX_TIM6_Init(void)
 {
   htim6.Instance = TIM6;
@@ -207,6 +227,7 @@ static void MX_DMA_Init(void)
   __HAL_RCC_DMA2_CLK_ENABLE();
   HAL_NVIC_SetPriority(DMA1_Stream5_IRQn, 5, 0); HAL_NVIC_EnableIRQ(DMA1_Stream5_IRQn);
   HAL_NVIC_SetPriority(DMA1_Stream6_IRQn, 5, 0); HAL_NVIC_EnableIRQ(DMA1_Stream6_IRQn);
+  HAL_NVIC_SetPriority(DMA2_Stream0_IRQn, 5, 0); HAL_NVIC_EnableIRQ(DMA2_Stream0_IRQn);
   HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 5, 0); HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
   HAL_NVIC_SetPriority(DMA2_Stream7_IRQn, 5, 0); HAL_NVIC_EnableIRQ(DMA2_Stream7_IRQn);
 }

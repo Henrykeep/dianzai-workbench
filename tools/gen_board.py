@@ -301,8 +301,11 @@ def gen_cubemx(board: dict, src: str, sha: str) -> tuple[str, dict]:
     for r in res["timer"]:
         rows["timer"].append(f"    {{ &{need(r['instance'], 'TIM')} }}, /* {r['name']} */")
     for r in res["adc"]:
+        blk = r.get("block") or {}
+        bl = (f"&{need(blk['timer'], 'TIM')}, ADC_EXTERNALTRIGCONV_T{blk['timer'][3:]}_TRGO" if blk else "0, 0u")
         rows["adc"].append(f"    {{ &{need(r['instance'], 'ADC')}, ADC_CHANNEL_{r['channel']},\n"
-                           f"      {_adc_info(r)} }}, /* {r['name']} */")
+                           f"      {_adc_info(r)}, {bl} }}, /* {r['name']}"
+                           f"{'（块采样：' + blk['timer'] + ' TRGO 触发 + DMA）' if blk else ''} */")
     c.append("/* CubeMX 在 main.c / tim.c / usart.c / adc.c 中定义的句柄 */")
     c += [f"extern {t}_HandleTypeDef {h};" for h, t in handles] + [""]
     c += bufs + [""]
@@ -401,8 +404,12 @@ def gen_mspm0(board: dict, src: str, sha: str) -> tuple[str, dict]:
         rows["spi"].append(f"    {{ {bus}_INST, {cs}_PORT, {cs}_CS_PIN }}, /* {r['name']} {r['instance']} CS {r['cs']} mode {r.get('mode', 0)}（模式/速率在 .syscfg） */")
     for r in res.get("adc") or []:
         inst = r["instance"]   # ADC0 / ADC1 -> SysConfig 实例 ADC12_0 / ADC12_1
+        blk = r.get("block") or {}
+        bl = (f"{blk['timer']}, {int(blk.get('dma_ch', 0))}u, {int(blk.get('event_ch', 1))}u, DMA_{inst}_EVT_GEN_BD_TRIG"
+              if blk else "0, 0u, 0u, 0u")
         rows["adc"].append(f"    {{ ADC12_{inst[-1]}_INST, DL_ADC12_INPUT_CHAN_{int(r['channel'])},\n"
-                           f"      {_adc_info(r)} }}, /* {r['name']} {inst} CH{r['channel']} {r.get('pin', '')} */")
+                           f"      {_adc_info(r)}, {bl} }}, /* {r['name']} {inst} CH{r['channel']} {r.get('pin', '')}"
+                           f"{'（块采样：' + blk['timer'] + ' 触发 + DMA' + str(blk.get('dma_ch', 0)) + '）' if blk else ''} */")
     for r in res.get("dac") or []:
         rows.setdefault("dac", []).append(f"    {{ {r['instance']}, {{ {int(r.get('bits', 12))}u, {int(r.get('vref_mv', 3300))}u }} }}, /* {r['name']} {r['instance']} {r['pin']}（DAC12 配置在 .syscfg） */")
     if gpio_enc or any(r.get("dir") == "in" for r in res["gpio"]):

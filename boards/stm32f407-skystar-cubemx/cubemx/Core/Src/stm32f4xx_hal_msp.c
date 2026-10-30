@@ -16,6 +16,8 @@ static void af(GPIO_TypeDef *port, uint32_t pins, uint32_t alt, uint32_t pull)
   HAL_GPIO_Init(port, &g);
 }
 
+extern DMA_HandleTypeDef hdma_adc1;
+
 void HAL_ADC_MspInit(ADC_HandleTypeDef *h)
 {
   if (h->Instance == ADC1) {
@@ -23,6 +25,19 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef *h)
     __HAL_RCC_ADC1_CLK_ENABLE();
     g.Pin = GPIO_PIN_0; g.Mode = GPIO_MODE_ANALOG; g.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOC, &g);
+    /* ADC1 DMA：DMA2_Stream0 通道 0，Normal，半字（pal_adc_block_read 硬件路径） */
+    hdma_adc1.Instance = DMA2_Stream0;
+    hdma_adc1.Init.Channel = DMA_CHANNEL_0;
+    hdma_adc1.Init.Direction = DMA_PERIPH_TO_MEMORY;
+    hdma_adc1.Init.PeriphInc = DMA_PINC_DISABLE;
+    hdma_adc1.Init.MemInc = DMA_MINC_ENABLE;
+    hdma_adc1.Init.PeriphDataAlignment = DMA_PDATAALIGN_HALFWORD;
+    hdma_adc1.Init.MemDataAlignment = DMA_MDATAALIGN_HALFWORD;
+    hdma_adc1.Init.Mode = DMA_NORMAL;
+    hdma_adc1.Init.Priority = DMA_PRIORITY_HIGH;
+    hdma_adc1.Init.FIFOMode = DMA_FIFOMODE_DISABLE;
+    if (HAL_DMA_Init(&hdma_adc1) != HAL_OK) Error_Handler();
+    __HAL_LINKDMA(h, DMA_Handle, hdma_adc1);
   }
 }
 
@@ -45,6 +60,7 @@ void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *h)
 
 void HAL_TIM_Encoder_MspInit(TIM_HandleTypeDef *h)
 {
+  if (h->Instance == TIM2) { __HAL_RCC_TIM2_CLK_ENABLE(); }
   if (h->Instance == TIM4) { __HAL_RCC_TIM4_CLK_ENABLE(); af(GPIOD, GPIO_PIN_12|GPIO_PIN_13, GPIO_AF2_TIM4, GPIO_PULLUP); }
 }
 

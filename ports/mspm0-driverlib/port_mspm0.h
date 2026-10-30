@@ -23,7 +23,10 @@ typedef struct { I2C_Regs *inst; } m0_i2c_t;
 /** 一个 SPI 设备 = 总线实例 + 软件片选 GPIO（低有效；模式/速率在 SysConfig 的总线实例里，同总线设备共用） */
 typedef struct { SPI_Regs *inst; GPIO_Regs *cs_port; uint32_t cs_pin; } m0_spi_t;
 /** ADC 通道：SysConfig 实例 ADC12_<n> + 通道号（DL_ADC12_INPUT_CHAN_x）+ 换算信息 */
-typedef struct { ADC12_Regs *inst; uint32_t chansel; pal_adc_info_t info; } m0_adc_t;
+typedef struct { ADC12_Regs *inst; uint32_t chansel; pal_adc_info_t info;
+                 GPTIMER_Regs *blk_tim; uint8_t blk_dma_ch; uint8_t blk_event_ch; uint8_t blk_dma_trig; } m0_adc_t;
+/**< blk_tim 非空 = board.yaml adc.block：该定时器（本层独占，运行时用 MFCLK 4 MHz 配置）零点事件经 event_ch 触发 ADC，
+ *   DMA 通道 dma_ch 把 MEM0 结果搬进缓冲（pal_adc_block_read 硬件路径，0.10.0） */
 
 /** DAC 通道（PAL 1.7.0）：DAC12 外设（G350x/G150x 只有 DAC0，输出 PA15）+ 换算信息；参考电压/输出缓冲在 SysConfig */
 typedef struct { DAC12_Regs *inst; pal_dac_info_t info; } m0_dac_t;

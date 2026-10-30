@@ -778,7 +778,75 @@ dz_err_t pal_nvm_write(uint32_t off, const void *p, uint32_t n) { (void)off; (vo
 dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (void)n; return DZ_ENOTSUP; }
 #endif
 
-/* ---------- ADC 块采样（PAL 1.6.0） ---------- */
+/* ---------- ADC 块采样（PAL 1.6.0；1.10.0 加定时器触发 + DMA 硬件路径） ----------
+ * 定时器 TRGO（更新事件）→ ADC 外部触发 → DMA（Normal）。思路同 firework@ede35a2 bsp/adc/bsp_adc.c 的
+ * 定时器触发 + DMA 采集（MIT，阡陌），这里用 HAL 改写：临时改 ADC Init 的触发源并重新 HAL_ADC_Init，
+ * 采完停定时器/DMA、恢复原 Init（软件触发，pal_adc_read 照常）。完成判定轮询 DMA 剩余计数，
+ * 不占用 HAL_ADC_ConvCpltCallback（用户工程可自由定义）。仅 F1/F4（规则组触发宏名一致），其他系列退回软件定时。【编译】未上板。 */
+#if BOARD_ADC_COUNT > 0 && defined(HAL_ADC_MODULE_ENABLED) && defined(HAL_DMA_MODULE_ENABLED) && \
+    (defined(STM32F1) || defined(STM32F4))
+#define PAL_PORT_ADC_BLOCK_HW 1
+#define CM_ADC_BLOCK_HW_MAX_HZ 200000u
+static dz_err_t port_adc_block_hw(pal_id_t id, uint16_t *buf, uint16_t n, uint32_t rate_hz)
+{
+    if (id >= BOARD_ADC_COUNT) return DZ_ENODEV;
+    const cm_adc_t *a = &g_cm_adc[id];
+    ADC_HandleTypeDef *h = a->h; TIM_HandleTypeDef *t = a->blk_tim;
+    if (!t || !h->DMA_Handle || rate_hz > CM_ADC_BLOCK_HW_MAX_HZ) return DZ_ENOTSUP;
+    /* PSC/ARR：先取最小 PSC 让 ARR 落进 16 位，要求整数分频，否则退回软件定时 */
+    const uint32_t clk = timer_clock_hz(t);
+    if (clk % rate_hz) return DZ_ENOTSUP;
+    const uint32_t ticks = clk / rate_hz;
+    uint32_t psc = (ticks - 1u) / 65536u + 1u;
+    while (psc <= 65536u && ticks % psc) psc++;
+    if (psc > 65536u || ticks / psc < 2u) return DZ_ENOTSUP;
+
+    ADC_ChannelConfTypeDef cc = {0};
+    cc.Channel = a->channel; cc.Rank = 1;
+#if defined(STM32F4)
+    cc.SamplingTime = ADC_SAMPLETIME_15CYCLES;
+#else
+    cc.SamplingTime = ADC_SAMPLETIME_13CYCLES_5;
+#endif
+    const ADC_InitTypeDef saved = h->Init;
+    h->Init.ExternalTrigConv = a->blk_trig;
+    h->Init.ContinuousConvMode = DISABLE;
+    h->Init.NbrOfConversion = 1;
+    h->Init.ScanConvMode = DISABLE;
+#if defined(STM32F4)
+    h->Init.ExternalTrigConvEdge = ADC_EXTERNALTRIGCONVEDGE_RISING;
+    h->Init.DMAContinuousRequests = DISABLE;
+    h->Init.EOCSelection = ADC_EOC_SINGLE_CONV;
+#endif
+    dz_err_t r = DZ_OK;
+    if (HAL_ADC_Init(h) != HAL_OK || HAL_ADC_ConfigChannel(h, &cc) != HAL_OK) { r = DZ_EIO; goto restore; }
+    TIM_MasterConfigTypeDef mc = {0};
+    mc.MasterOutputTrigger = TIM_TRGO_UPDATE; mc.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+    __HAL_TIM_DISABLE(t);
+    __HAL_TIM_SET_PRESCALER(t, psc - 1u); __HAL_TIM_SET_AUTORELOAD(t, ticks / psc - 1u); __HAL_TIM_SET_COUNTER(t, 0u);
+    (void)HAL_TIM_GenerateEvent(t, TIM_EVENTSOURCE_UPDATE);   /* 装载 PSC */
+    __HAL_TIM_CLEAR_FLAG(t, TIM_FLAG_UPDATE);
+    if (HAL_TIMEx_MasterConfigSynchronization(t, &mc) != HAL_OK) { r = DZ_EIO; goto restore; }
+    if (HAL_ADC_Start_DMA(h, (uint32_t *)(void *)buf, n) != HAL_OK) { r = DZ_EIO; goto restore; }
+    __HAL_TIM_ENABLE(t);
+    {
+        const uint32_t limit_us = (uint32_t)(((uint64_t)n * 1000000u) / rate_hz) + 10000u, t0 = pal_micros();
+        while (__HAL_DMA_GET_COUNTER(h->DMA_Handle) != 0u) {
+#if defined(ADC_FLAG_OVR)
+            if (__HAL_ADC_GET_FLAG(h, ADC_FLAG_OVR)) { r = DZ_EIO; break; }
+#endif
+            if ((uint32_t)(pal_micros() - t0) > limit_us) { r = DZ_ETIMEOUT; break; }
+        }
+    }
+    __HAL_TIM_DISABLE(t);
+    (void)HAL_ADC_Stop_DMA(h);
+restore:
+    __HAL_TIM_DISABLE(t);
+    h->Init = saved;
+    (void)HAL_ADC_Init(h);
+    return r;
+}
+#endif
 #include "pal_adc_block.inc"
 
 /* ---------- DAC（PAL 1.7.0）：HAL_DAC_SetValue，右对齐 12 位（8 位资源用 DAC_ALIGN_8B_R）。

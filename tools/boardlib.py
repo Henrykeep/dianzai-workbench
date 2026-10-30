@@ -142,11 +142,55 @@ def check_dac(board: dict, res: dict, rep: Report) -> None:
             rep.err(f"[DAC] dac.{r.get('name')}: bits 须为 1..16 的整数")
 
 
+# ADC 块采样硬件路径能用作触发的定时器（规则组 TRGO 触发源，参考手册 ADC 外部触发表）
+ADC_BLOCK_TRGO = [(r"STM32F1", {"TIM3", "TIM8"}), (r"STM32F4", {"TIM2", "TIM3", "TIM8"})]
+
+
+def check_adc_block(board: dict, res: dict, rep: Report) -> None:
+    port = board.get("port"); part = (board.get("mcu") or {}).get("part", "")
+    used = {}
+    for t in ("pwm", "encoder", "timer"):
+        for r in res.get(t) or []:
+            for k in ("instance", "timer"):
+                if r.get(k): used[str(r[k])] = f"{t}.{r.get('name')}"
+    blk_tims, dma = {}, {}
+    for r in res.get("adc") or []:
+        b = r.get("block")
+        if not b:
+            continue
+        n, tim = r.get("name"), str(b.get("timer"))
+        if port not in ("stm32-cubemx", "mspm0-driverlib", "host-sim"):
+            rep.err(f"[ADC块] adc.{n}: block 只有 stm32-cubemx / mspm0-driverlib 实现（端口 {port}）"); continue
+        if tim in used:
+            rep.err(f"[ADC块] adc.{n}: block 定时器 {tim} 已被 {used[tim]} 占用（块采样要独占它）")
+        if tim in blk_tims and blk_tims[tim] != r.get("instance"):
+            rep.err(f"[ADC块] adc.{n}: 定时器 {tim} 已给 {blk_tims[tim]} 当触发源")
+        blk_tims[tim] = r.get("instance")
+        if port == "stm32-cubemx":
+            ok = next((s for p, s in ADC_BLOCK_TRGO if re.match(p, part)), None)
+            if ok is None:
+                rep.warn(f"[ADC块] adc.{n}: {part} 不在 F1/F4，移植层不走硬件路径（退回软件定时，最高 20 kHz）")
+            elif tim not in ok:
+                rep.err(f"[ADC块] adc.{n}: {part} 的 ADC 规则组只能由 {'/'.join(sorted(ok))} TRGO 触发（写的是 {tim}）")
+            if "dma_ch" in b or "event_ch" in b:
+                rep.warn(f"[ADC块] adc.{n}: cubemx 的 DMA 在 CubeMX 里给 {r.get('instance')} 配（Normal、半字），dma_ch/event_ch 不用")
+        elif port == "mspm0-driverlib":
+            if not re.fullmatch(r"TIM[GA]\d+", tim):
+                rep.err(f"[ADC块] adc.{n}: MSPM0 定时器写 TIMGx / TIMAx（写的是 {tim}）")
+            ch = b.get("dma_ch", 0)
+            if not 0 <= ch <= 6:
+                rep.err(f"[ADC块] adc.{n}: MSPM0G350x DMA 通道 0..6")
+            if ch in dma and dma[ch] != n:
+                rep.err(f"[ADC块] adc.{n}: DMA 通道 {ch} 已给 adc.{dma[ch]}")
+            dma[ch] = n
+
+
 def generic_check(board: dict, rep: Report) -> None:
     if board.get("port") == "stm32f4-hal" and board.get("name") not in F4HAL_FROZEN:
         rep.err("[移植层] stm32f4-hal 已冻结，新 STM32 板一律走 stm32-cubemx（docs/05-CubeMX工作流.md、docs/06-新增板卡.md）")
     res = board.get("resources", {}) or {}
     check_dac(board, res, rep)
+    check_adc_block(board, res, rep)
     # 1) 同类资源重名
     for t in RES_TYPES:
         names = [r.get("name") for r in res.get(t, []) or []]

@@ -788,6 +788,83 @@ dz_err_t pal_nvm_read(uint32_t off, void *p, uint32_t n) { (void)off; (void)p; (
 #endif
 
 /* ---------- ADC 块采样（软件定时，PAL 1.6.0）+ DAC（本端口未实现） ---------- */
+/* ---------- ADC 块采样硬件路径（0.10.0）：定时器零点事件 → ADC 重复单通道（事件触发）→ DMA 单块搬运 ----------
+ * 流程照 firework@ede35a2 bsp/adc/bsp_adc.c BSPADCConfigureTimerTriggeredCapture / BSPADCResetDMAChannel（MIT，阡陌）改写：
+ * 那边定时器/DMA 由 SysConfig 配好、DMA 完成走中断；这里定时器（MFCLK 4 MHz）、事件通道、DMA 都在运行时配，轮询 DMA 完成，
+ * 结束后恢复 ADC 的 CTL1/CTL2（单次软件触发），不影响 pal_adc_read。ADC 溢出（采样率超过转换速度）→ DZ_EIO。【编译】未上板。 */
+#if BOARD_ADC_COUNT > 0
+#define PAL_PORT_ADC_BLOCK_HW 1
+#define M0_ADC_BLOCK_HW_MAX_HZ 500000u
+#define M0_ADC_BLOCK_TIM_HZ    4000000u        /* MFCLK */
+static dz_err_t port_adc_block_hw(pal_id_t id, uint16_t *buf, uint16_t n, uint32_t rate_hz)
+{
+    if (id >= BOARD_ADC_COUNT) return DZ_ENODEV;
+    const m0_adc_t *a = &g_m0_adc[id];
+    if (!a->blk_tim) return DZ_ENOTSUP;
+    if (rate_hz > M0_ADC_BLOCK_HW_MAX_HZ || (M0_ADC_BLOCK_TIM_HZ % rate_hz) != 0u) return DZ_ENOTSUP;
+    const uint32_t load = M0_ADC_BLOCK_TIM_HZ / rate_hz;
+    if (load > 65536u || load < 2u) return DZ_ENOTSUP;
+    ADC12_Regs *adc = a->inst; GPTIMER_Regs *tim = a->blk_tim; const uint8_t ch = a->blk_dma_ch;
+
+    /* 定时器：MFCLK 4 MHz，周期 load，零点事件发布到 event_ch */
+    DL_SYSCTL_enableMFCLK();
+    if (!DL_Timer_isPowerEnabled(tim)) { DL_Timer_reset(tim); DL_Timer_enablePower(tim); delay_cycles(16); }
+    DL_Timer_stopCounter(tim);
+    static const DL_Timer_ClockConfig ck = { DL_TIMER_CLOCK_MFCLK, DL_TIMER_CLOCK_DIVIDE_1, 0u };
+    DL_Timer_setClockConfig(tim, (DL_Timer_ClockConfig *)&ck);
+    DL_Timer_TimerConfig tc = { DL_TIMER_TIMER_MODE_PERIODIC, load - 1u, DL_TIMER_STOP, DL_TIMER_INTERM_INT_DISABLED, 0u };
+    DL_Timer_initTimerMode(tim, &tc);
+    DL_Timer_setPublisherChanID(tim, DL_TIMER_PUBLISHER_INDEX_0, a->blk_event_ch);
+    DL_Timer_enableEvent(tim, DL_TIMER_EVENT_ROUTE_1, DL_TIMER_EVENT_ZERO_EVENT);
+
+    /* ADC：MEM0 = 本通道，每个事件转换一次（TRIGGER_NEXT），结果触发 DMA */
+    DL_ADC12_disableConversions(adc);
+    const uint32_t ctl1 = adc->ULLMEM.CTL1, ctl2 = adc->ULLMEM.CTL2;
+    DL_ADC12_initSingleSample(adc, DL_ADC12_REPEAT_MODE_ENABLED, DL_ADC12_SAMPLING_SOURCE_AUTO, DL_ADC12_TRIG_SRC_EVENT,
+        (DL_ADC12_SAMP_CONV_RES)(ctl2 & ADC12_CTL2_RES_MASK), (DL_ADC12_SAMP_CONV_DATA_FORMAT)(ctl2 & ADC12_CTL2_DF_MASK));
+    DL_ADC12_configConversionMem(adc, DL_ADC12_MEM_IDX_0, a->chansel, DL_ADC12_REFERENCE_VOLTAGE_VDDA,
+        DL_ADC12_SAMPLE_TIMER_SOURCE_SCOMP0, DL_ADC12_AVERAGING_MODE_DISABLED, DL_ADC12_BURN_OUT_SOURCE_DISABLED,
+        DL_ADC12_TRIGGER_MODE_TRIGGER_NEXT, DL_ADC12_WINDOWS_COMP_MODE_DISABLED);
+    DL_ADC12_setSubscriberChanID(adc, a->blk_event_ch);
+    DL_ADC12_clearInterruptStatus(adc, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED | DL_ADC12_INTERRUPT_TRIG_OVF |
+                                       DL_ADC12_INTERRUPT_OVERFLOW | DL_ADC12_INTERRUPT_DMA_DONE);
+    DL_ADC12_setDMASamplesCnt(adc, 1u);
+    DL_ADC12_enableDMATrigger(adc, DL_ADC12_DMA_MEM0_RESULT_LOADED);
+
+    /* DMA：单块，外设（MEM0 结果）→ 内存，半字 */
+    DL_DMA_disableChannel(DMA, ch);
+    DL_DMA_configTransfer(DMA, ch, DL_DMA_SINGLE_TRANSFER_MODE, DL_DMA_NORMAL_MODE, DL_DMA_WIDTH_HALF_WORD,
+                          DL_DMA_WIDTH_HALF_WORD, DL_DMA_ADDR_UNCHANGED, DL_DMA_ADDR_INCREMENT);
+    DL_DMA_setTrigger(DMA, ch, a->blk_dma_trig, DL_DMA_TRIGGER_TYPE_EXTERNAL);
+    DL_DMA_setSrcAddr(DMA, ch, DL_ADC12_getMemResultAddress(adc, DL_ADC12_MEM_IDX_0));
+    DL_DMA_setDestAddr(DMA, ch, (uint32_t)(uintptr_t)buf);
+    DL_DMA_setTransferSize(DMA, ch, n);
+    DL_DMA_enableChannel(DMA, ch);
+    DL_ADC12_enableDMA(adc);
+    DL_ADC12_enableConversions(adc);
+    DL_Timer_startCounter(tim);
+
+    const uint32_t limit_us = (uint32_t)(((uint64_t)n * 1000000u) / rate_hz) + 10000u, t0 = pal_micros();
+    dz_err_t r = DZ_OK;
+    while (DL_DMA_isChannelEnabled(DMA, ch)) {                       /* 单块传完 DMAEN 自动清零 */
+        if (DL_ADC12_getRawInterruptStatus(adc, DL_ADC12_INTERRUPT_OVERFLOW | DL_ADC12_INTERRUPT_TRIG_OVF)) { r = DZ_EIO; break; }
+        if ((uint32_t)(pal_micros() - t0) > limit_us) { r = DZ_ETIMEOUT; s_diag.adc_timeout++; break; }
+    }
+    /* 收尾：停定时器、拆事件、关 DMA，ADC 恢复单次软件触发 */
+    DL_Timer_stopCounter(tim);
+    DL_Timer_disableEvent(tim, DL_TIMER_EVENT_ROUTE_1, DL_TIMER_EVENT_ZERO_EVENT);
+    DL_Timer_setPublisherChanID(tim, DL_TIMER_PUBLISHER_INDEX_0, 0u);
+    DL_DMA_disableChannel(DMA, ch);
+    DL_ADC12_disableConversions(adc);
+    DL_ADC12_disableDMA(adc);
+    DL_ADC12_disableDMATrigger(adc, DL_ADC12_DMA_MEM0_RESULT_LOADED);
+    DL_ADC12_setSubscriberChanID(adc, 0u);
+    adc->ULLMEM.CTL1 = ctl1; adc->ULLMEM.CTL2 = ctl2;
+    DL_ADC12_clearInterruptStatus(adc, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED | DL_ADC12_INTERRUPT_TRIG_OVF |
+                                       DL_ADC12_INTERRUPT_OVERFLOW | DL_ADC12_INTERRUPT_DMA_DONE);
+    return r;
+}
+#endif
 #include "pal_adc_block.inc"
 
 /* ---------- DAC（PAL 1.7.0）：DAC12，SysConfig 配好 DAC12 模块（12 位、二进制格式、输出到 PA15、VDDA 参考）并 enable。

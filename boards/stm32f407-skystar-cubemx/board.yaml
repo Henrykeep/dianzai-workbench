@@ -128,6 +128,8 @@ resources:
     instance: ADC1
     channel: 10
     pin: PC0
+    block:                # pal_adc_block_read 硬件路径：TIM2 TRGO 触发 + DMA2_Stream0（.ioc 里配好）；【编译】未上板
+      timer: TIM2
     vref_mv: 3300
     scale_num: 1
     scale_den: 1

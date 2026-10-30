@@ -33,3 +33,7 @@ MSPM0（天猛星 MSPM0G3507）的 PAL 实现：**SysConfig + DriverLib**。SysC
 ## 掉电保存（0.7.0）
 
 board.yaml `mcu.nvm_kb` > 0 时 `pal_nvm_*` 可用：Flash 末尾，扇区 1 KB，64 位 + 硬件 ECC 编程（DriverLib `*FromRAM`）。不改 SDK 链接脚本，另传 `nvm_guard.ld` 做越界 ASSERT；CCS：projectspec（gen_ccs_projectspec.py）带 `-DDZ_NVM_KB/-DDZ_FLASH_KB` 和 `boards/<板>/ccs/dz_nvm_linker.cmd`（tools/gen_ide_nvm.py 由 SDK ticlang 模板生成，FLASH 截掉末尾 nvm_kb、定义 `__dz_nvm_base`）；.syscfg 里 `ProjectConfig.genLinker = false`，不再用 SysConfig 生成的链接文件。tiarmclang 下运行时核对 `__dz_nvm_base`，没用这份 .cmd 链接直接报错。[编译]（make）/[未测]（CCS 里没编译过）
+
+## ADC 块采样硬件路径（0.10.0）
+
+board.yaml `adc[].block: {timer: TIMG6, dma_ch: 0, event_ch: 1}`：定时器、事件通道、DMA 都在运行时配置（SysConfig 里不要再用这个定时器/DMA 通道/事件通道）。定时器时钟 MFCLK 4 MHz，采样率须整除 4 MHz。【编译】未上板，事件通道号未在板上验证。

@@ -1,11 +1,19 @@
-/* pal_adc_block_read 的唯一实现，四个端口各自 #include 一次（PAL 1.6.0）。只用 pal_micros / pal_delay_us / pal_adc_read。 */
+/* pal_adc_block_read 的唯一实现，四个端口各自 #include 一次（PAL 1.6.0；2026-10-30 加硬件路径钩子）。
+ * 端口若定义了 PAL_PORT_ADC_BLOCK_HW，须在 #include 之前实现
+ *   static dz_err_t port_adc_block_hw(pal_id_t id, uint16_t *buf, uint16_t n, uint32_t rate_hz);
+ * 返回 DZ_ENOTSUP = 该通道没配定时器触发 + DMA，退回下面的软件定时；其他返回值原样交给调用者。 */
 dz_err_t pal_adc_block_read(pal_id_t id, uint16_t *buf, uint16_t n, uint32_t rate_hz)
 {
-    if (buf == 0 || n == 0u || rate_hz == 0u || rate_hz > PAL_ADC_BLOCK_MAX_HZ || (1000000u % rate_hz) != 0u)
-        return DZ_EINVAL;
+    if (buf == 0 || n == 0u || rate_hz == 0u) return DZ_EINVAL;
+    dz_err_t e;
+#ifdef PAL_PORT_ADC_BLOCK_HW
+    e = port_adc_block_hw(id, buf, n, rate_hz);
+    if (e != DZ_ENOTSUP) return e;
+#endif
+    if (rate_hz > PAL_ADC_BLOCK_MAX_HZ || (1000000u % rate_hz) != 0u) return DZ_EINVAL;
     const uint32_t per = 1000000u / rate_hz;
     uint16_t dummy;
-    dz_err_t e = pal_adc_read(id, &dummy);              /* 先确认 id 有效、通道可用 */
+    e = pal_adc_read(id, &dummy);                       /* 先确认 id 有效、通道可用 */
     if (e != DZ_OK) return e;
     const uint32_t t0 = pal_micros();
     for (uint32_t i = 0; i < n; i++) {
