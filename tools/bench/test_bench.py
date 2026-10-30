@@ -9,5 +9,6 @@ assert bench.score(True, {"ok": True, "overshoot_pct": 50.0, "settling_s": 3.0},
 assert bench.score(False, {"ok": False}, {"pass": False}, acc)[0] == 0.0
 cfg = json.loads((bench.ROOT / "dzbench.json").read_text())["step_tests"]
 for p in json.loads((bench.ROOT / "tools/bench/cases.json").read_text())["cases"]:
+    assert p.get("runner", "sim_step") in bench.RUNNERS, p
     assert (p.get("experiment") or p["app"]) in cfg and "band" in p["accept"], p
 print("✓ bench 评分口径")

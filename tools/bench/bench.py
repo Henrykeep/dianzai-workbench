@@ -129,7 +129,7 @@ def reuse(p):
     return {**cat, "ratio": round(cat["reused"] / base, 3) if base else None, "src": src.relative_to(ROOT).as_posix()}
 
 
-def run_problem(p, cfg, journey, out_dir):
+def run_sim_step(p, cfg, journey, out_dir):
     st = cfg["step_tests"][p.get("experiment") or p["app"]]
     acc = p["accept"]
     out = {"id": p["id"], "kind": p.get("kind", "project"), "title": p["title"], "app": p["app"], "stages": {}}
@@ -178,6 +178,12 @@ def run_problem(p, cfg, journey, out_dir):
     out["reuse"] = reuse(p)
     out["elapsed_s"] = round(time.monotonic() - t0, 1)
     return out
+
+
+# 用例运行器：cases.json 每条用例的 runner 字段选其一（默认 sim_step）。
+# 接口：runner(case, dzbench_cfg, journey, out_dir) -> dict，必须含 id/kind/app/score/parts/final{pass,why,...}/
+# automation/reuse/readiness/stages；评分表只读这些字段。Agent 任务用例（llm-eval 定义口径）以后注册为 RUNNERS["agent"]。
+RUNNERS = {"sim_step": run_sim_step}
 
 
 def _f(x, fmt="{:.2f}"):
@@ -241,7 +247,7 @@ def main():
     out = pathlib.Path(args.out); out.mkdir(parents=True, exist_ok=True)
     for p in probs:
         print(f"… {p['id']} {p['title']}", flush=True)
-        res["problems"].append(run_problem(p, cfg, journey, out))
+        res["problems"].append(RUNNERS[p.get("runner", "sim_step")](p, cfg, journey, out))
     res["total"] = round(sum(r["score"] for r in res["problems"]) / max(1, len(res["problems"])), 1)
     res["auto_ratio"] = round(sum(r["automation"]["ratio"] for r in res["problems"]) / max(1, len(res["problems"])), 3)
     rr = [r["reuse"]["ratio"] for r in res["problems"] if r["reuse"]["ratio"] is not None]
