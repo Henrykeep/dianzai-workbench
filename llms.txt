@@ -29,6 +29,7 @@
 - [桌面工作台](docs/17-桌面工作台.md)（第三方板子：自定义帧结构 app/sidecar/dzbench/framedef.py，VOFA JustFloat/FireWater 预设）
 - 仿真 PID 搜索：app/sidecar/dzbench/tuning/search.py（PSO/分阶段，PID_Helper 移植在 third_party/vendored/pid_helper/pid_helper_pso.py，PSO 仅限仿真）
 - 调试后端：pyOCD / OpenOCD / J-Link / probe-rs（app/sidecar/dzbench/probes.py，flash.tool；ST-Link、DAPLink 都支持）；界面 Agent 菜单“调试探针…”选后端/探针/序列号（存 ~/.dzbench/machine.json）
+- 串口线控：DTR/RTS 实时开关、ESP32/STM32 复位与进下载脉冲、卡死检测重连（app/sidecar/dzbench/session.py serial_*）
 - 日志导入导出：app/sidecar/dzbench/logio.py（CSV / VOFA+ FireWater → .dzlog）、export.py（csv / plotjuggler / vofa）；曲线布局 分格/按单位/叠加（app/ui/src/plot.ts）
 - 协处理器 SSH 部署：app/sidecar/dzbench/deploy.py（MaixCAM / K230 / Jetson / 树莓派 / RDK；推脚本、启停、看 dz.log；只走密钥）
 - 串口 IMU：firmware/drivers/wit_imu（WIT 协议 JY61P / JY901 / HWT101）

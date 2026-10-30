@@ -21,6 +21,7 @@
           <label class="field" title="ESP32、带一键下载电路的 CH340 板：选“不拉高”防止一连就复位/进 BOOT">DTR/RTS<select id="lines">
             <option value="default">按配置</option><option value="low">不拉高</option></select></label>
           <label class="check" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
+          <button class="ib" id="lines-btn" title="连着时直接拨 DTR/RTS、一键复位 / 进 BOOT（ESP32 / STM32 一键下载电路）、看 CTS/DSR、串口卡死检测">线控…</button>
           <label class="field" title="不是工作台固件的板子怎么解析：key=value 文本、VOFA+ JustFloat / FireWater，或自定义帧结构（帧头/字段/校验/帧尾，JSON）">非工作台帧<select id="framedef">
             <option value="kv">key=value 文本</option><option value="justfloat">JustFloat</option><option value="firewater">FireWater</option><option value="custom">自定义…</option></select></label>
           <label class="field" title="JustFloat / FireWater 的通道数">通道<input id="framedef-n" type="number" min="1" max="32" value="4" style="width:4em"></label>
@@ -178,6 +179,19 @@
           <div class="act"><button class="btn" type="button" id="cp-save">保存</button><button class="btn" type="button" id="cp-push">推送</button><button class="btn" type="button" id="cp-start">启动</button><button class="btn" type="button" id="cp-stop">停止</button><button class="btn" type="button" id="cp-log">看日志</button><button class="btn" value="cancel">关闭</button></div>
           <p class="hint" id="cp-st"></p>
           <pre id="cp-out" class="doc" style="max-height:16em;overflow:auto"></pre>
+        </form>
+      </dialog>
+      <dialog id="ln-dlg" class="dlg">
+        <form method="dialog">
+          <h3>串口线控（DTR / RTS）</h3>
+          <p class="hint">勾上 = 线有效（多数 USB 转串口芯片上是引脚低电平）。改了马上生效，自动重连 / 下次打开沿用。复位 / 进 BOOT 按常见一键下载接法（ESP32：esptool 时序；STM32：DTR→NRST、RTS→BOOT0），板子接法不同会反着来，先在不怕复位的时候试。</p>
+          <label class="check"><input type="checkbox" id="ln-dtr"> DTR</label>
+          <label class="check"><input type="checkbox" id="ln-rts"> RTS</label>
+          <p class="mono" id="ln-modem"></p>
+          <div class="act"><button class="btn" type="button" data-pulse="esp_reset">ESP32 复位</button><button class="btn" type="button" data-pulse="esp_boot">ESP32 进下载</button><button class="btn" type="button" data-pulse="stm32_reset">STM32 复位</button><button class="btn" type="button" data-pulse="stm32_boot">STM32 进 ISP</button></div>
+          <label>卡死检测（秒，0 = 关）：开着口但这么久没收到字节就当断线重连<input id="ln-stall" class="in" type="number" min="0" max="60" step="0.5"></label>
+          <p class="hint" id="ln-st"></p>
+          <div class="act"><button class="btn" value="close">关闭</button></div>
         </form>
       </dialog>
       <dialog id="pre-dlg" class="dlg">

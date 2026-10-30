@@ -93,6 +93,15 @@ class Server:
             if any(m.get(k) is not None for k in ("dtr", "rts")):   # 都是 null = 回到配置文件 serial.dtr/rts
                 _p.LINES.update({k: m.get(k) for k in ("dtr", "rts")})
             return {"ok": True, **_p.line_settings()}
+        if op == "serial_lines_set":                   # 连着时直接改 DTR/RTS（线控对话框的开关）
+            return await run(None, lambda: s.serial_lines_set(m.get("dtr"), m.get("rts")))
+        if op == "serial_pulse":                       # 人点“复位 / 进 BOOT”按钮：按序列拨 DTR/RTS
+            return await run(None, lambda: s.serial_pulse(str(m.get("name") or "")))
+        if op == "serial_modem":                       # 读 CTS/DSR/RI/CD + 当前 DTR/RTS
+            return await run(None, s.serial_modem)
+        if op == "serial_stall":                       # 卡死检测秒数（0 = 关）
+            s.stall_s = max(0.0, float(m.get("s") or 0))
+            return {"stall_s": s.stall_s}
         if op == "connect":
             baud = m.get("baud")
             return await run(None, s.connect, m["port"], None if baud in (None, "auto", 0) else int(baud))

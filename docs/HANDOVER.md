@@ -105,3 +105,4 @@
 11. 串口 IMU（缺口 11）：firmware/drivers/wit_imu（维特 WIT 协议，JY61P / JY901 / HWT101；加速度/角速度/角度/磁场、新鲜度、非阻塞偏航清零）。[仿真]（tests/host wit_imu_fake）；真模块未接。
 12. 协处理器 SSH 部署（缺口 12）：dzbench/deploy.py + 菜单“协处理器部署…”（推送 / 启动 / 停止 / 日志），只走密钥登录。[仿真]（假 ssh/scp）；真板未接，预设用户/目录待核对。
 13. 日志导入导出 + 分格（缺口 13）：dzbench/logio.py（CSV / VOFA+ FireWater → .dzlog 回放，op log_import，底栏“导入…”）、export.py fmt=vofa + 无 schema 文本记录也能导出（底栏格式下拉）、textparse 实时认 FireWater；曲线区“分格 / 按单位 / 叠加”三种布局（plot.ts Layout，记 localStorage）。[仿真]；没拿真 VOFA+ 打开过导出文件，界面没在桌面端点过。
+14. 串口线控 + 重连（缺口 14）：session.serial_lines_set / serial_pulse（esp_reset / esp_boot / stm32_reset / stm32_boot）/ serial_modem、stall_s 卡死检测、reconnecting 进度事件；界面连接栏“线控…”。[仿真]（假串口对象）；真 USB 转串口未接，STM32 脉冲极性待按板核对。

@@ -52,6 +52,7 @@ class Session:
         self.host_hb = True                  # 测试用开关：False 模拟侧车卡死
         self._gen = 0                        # 每次 connect/disconnect +1，用来取消旧的自动重连
         self.auto_reconnect = True
+        self.stall_s = 0.0                   # >0：串口开着但这么久一个字节都没收到（之前收到过）= 当断线处理并重连
         self.on_sample: Callable[[dict], None] | None = None   # 触发发送用
         self.raw_on = False                  # 原始监视器（文本/HEX）开着才收集，省内存
         self._reset()
@@ -84,6 +85,8 @@ class Session:
         self.t_connect = 0.0
         self.reconnecting = False
         self.reconnects = 0
+        self.reconnect_attempt = 0
+        self._t_tr = 0.0
         self._raw: collections.deque = collections.deque()
         self._raw_bytes = 0
         self.raw_dropped = 0
@@ -114,6 +117,7 @@ class Session:
         self.health.reset()
         with self.lock:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
+            self._t_tr = self.t_connect
             self.hb_status = None
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
@@ -138,11 +142,73 @@ class Session:
                 if gen != self._gen and not self.reconnecting:
                     return
                 bound = self.schema_hash is not None and self.tr is not None
+            self._stall_check(gen)
             if bound and self.host_hb:
                 try:
                     self._send(HEARTBEAT, 0, b"")
                 except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
                     pass
+
+    def _stall_check(self, gen: int) -> None:
+        """USB 转串口卡死（CH340 / CP210x 偶发：口还在、驱动不报错、就是不来数据）：开了 stall_s 才查。"""
+        with self.lock:
+            if not (self.stall_s > 0 and self.tr is not None and not self.reconnecting and gen == self._gen
+                    and getattr(self.tr, "ser", None) is not None and self.last_rx > self._t_tr):
+                return
+            idle = time.monotonic() - self.last_rx
+        if idle > self.stall_s:
+            self._on_transport_error(f"{idle:.1f} s 没收到任何字节（串口卡死？）", gen)
+
+    # ------------------------------------------------------------------ DTR / RTS（缺口 14）
+    # 脉冲序列：(DTR, RTS, 保持 ms)。pyserial 的 True = 线有效 = 引脚低电平（经 USB 转串口芯片反相）。
+    # esp_boot / esp_reset 参考 esptool 的 ClassicReset / HardReset；stm32_* 是 FlyMCU 常见接法（DTR→NRST、RTS→BOOT0，经三极管），
+    # 板子接法不同就会反，所以只在人点按钮时执行，执行后线状态回到“不拉”。
+    PULSES = {
+        "esp_reset": [(False, True, 100), (False, False, 0)],
+        "esp_boot": [(False, True, 100), (True, False, 50), (False, False, 0)],
+        "stm32_reset": [(True, False, 100), (False, False, 0)],
+        "stm32_boot": [(True, True, 100), (False, True, 200), (False, False, 0)],
+    }
+
+    def _ser(self):
+        with self.lock:
+            tr = self.tr
+        ser = getattr(tr, "ser", None)
+        if ser is None:
+            raise LinkError("not_serial", "只有真串口能控制 DTR/RTS（仿真板 / 回放 / RTT 没有这两根线）", "先连上 USB 转串口")
+        return ser
+
+    def serial_modem(self) -> dict:
+        ser = self._ser()
+        out = {"dtr": bool(ser.dtr), "rts": bool(ser.rts)}
+        for k in ("cts", "dsr", "ri", "cd"):
+            try:
+                out[k] = bool(getattr(ser, k))
+            except Exception:  # noqa: BLE001  有的驱动不支持读调制解调器线
+                out[k] = None
+        return out
+
+    def serial_lines_set(self, dtr: bool | None = None, rts: bool | None = None) -> dict:
+        """连着的时候直接改线电平；同时记进 ports.LINES，自动重连 / 下次打开沿用。"""
+        ser = self._ser()
+        for k, v in (("dtr", dtr), ("rts", rts)):
+            if v is not None:
+                setattr(ser, k, bool(v))
+                _ports.LINES[k] = bool(v)
+        _ports.LINES.setdefault("dtr", None); _ports.LINES.setdefault("rts", None)
+        return self.serial_modem()
+
+    def serial_pulse(self, name: str) -> dict:
+        seq = self.PULSES.get(name)
+        if seq is None:
+            raise LinkError("bad_pulse", f"没有脉冲序列 {name}（有 {' / '.join(self.PULSES)}）")
+        ser = self._ser()
+        for dtr, rts, ms in seq:
+            ser.dtr, ser.rts = dtr, rts
+            if ms:
+                time.sleep(ms / 1000)
+        _ports.LINES.update({"dtr": False, "rts": False})
+        return {"pulse": name, "steps": len(seq), **self.serial_modem()}
 
     def disconnect(self) -> None:
         lastsession.clear()                   # 用户主动断开 = 正常结束（侧车崩了不会走到这里）
@@ -184,8 +250,12 @@ class Session:
         板子在断线期间应已按心跳超时自行进入安全状态（QUESTIONS 决定 1），这里不自动解除急停。"""
         k, warned = 0, False
         while True:
-            time.sleep(self.RECONNECT_BACKOFF[min(k, len(self.RECONNECT_BACKOFF) - 1)])
+            delay = self.RECONNECT_BACKOFF[min(k, len(self.RECONNECT_BACKOFF) - 1)]
+            time.sleep(delay)
             k += 1
+            self.reconnect_attempt = k
+            if k == 1 or k % 5 == 0:
+                self.emit({"type": "reconnecting", "port": port, "attempt": k, "next_s": self.RECONNECT_BACKOFF[min(k, len(self.RECONNECT_BACKOFF) - 1)]})
             with self.lock:
                 if gen != self._gen:
                     return
@@ -214,6 +284,8 @@ class Session:
                     return
                 self.tr, self.reconnecting = tr, False
                 self.reconnects += 1
+                self.reconnect_attempt = 0
+                self._t_tr = time.monotonic()
                 self.parser = Parser()
                 self.health.rebase()
                 t_open = time.monotonic()
@@ -609,7 +681,7 @@ class Session:
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
                   "schema_ok": self.schema is not None, "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
-                  "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "raw_dropped": self.raw_dropped,
+                  "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "reconnect_attempt": self.reconnect_attempt, "stall_s": self.stall_s, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}
             if isinstance(self.tr, ReplayTransport):
                 st.update(replay_pos=round(self.tr.position(), 2), replay_len=round(self.tr.duration, 2),

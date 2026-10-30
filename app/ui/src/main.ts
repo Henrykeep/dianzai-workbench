@@ -134,6 +134,25 @@ async function toggleConnect() {
   } catch { /* toast 已显示 */ } finally { btn.disabled = false; }
 }
 $("connect").onclick = toggleConnect;
+// 串口线控（缺口 14）：DTR/RTS 实时开关、复位 / 进 BOOT 脉冲、CTS/DSR、卡死检测
+const lnShow = (r: any) => {
+  $<HTMLInputElement>("ln-dtr").checked = !!r.dtr; $<HTMLInputElement>("ln-rts").checked = !!r.rts;
+  const b = (v: boolean | null) => v == null ? "?" : v ? "1" : "0";
+  $("ln-modem").textContent = `CTS ${b(r.cts)} · DSR ${b(r.dsr)} · RI ${b(r.ri)} · CD ${b(r.cd)}`;
+};
+const lnErr = (e: any) => { $("ln-st").textContent = `✗ ${e?.message ?? e}`; };
+$("lines-btn").onclick = async () => {
+  $("ln-st").textContent = ""; $<HTMLInputElement>("ln-stall").value = String(S.status.stall_s ?? 0);
+  $<HTMLDialogElement>("ln-dlg").show();
+  link.rpc("serial_modem", {}).then(lnShow, lnErr);
+};
+for (const k of ["dtr", "rts"]) $(`ln-${k}`).onchange = e => link.rpc("serial_lines_set", { [k]: (e.target as HTMLInputElement).checked }).then(lnShow, lnErr);
+$("ln-dlg").addEventListener("click", e => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>("[data-pulse]");
+  if (!b || !window.confirm(`${b.textContent}：会拨 DTR/RTS，板子可能复位。继续？`)) return;
+  link.rpc("serial_pulse", { name: b.dataset.pulse! }).then(r => { lnShow(r); $("ln-st").textContent = `已执行 ${b.textContent}`; }, lnErr);
+});
+$("ln-stall").onchange = e => link.rpc("serial_stall", { s: +(e.target as HTMLInputElement).value || 0 }).then(r => { $("ln-st").textContent = r.stall_s ? `卡死检测：${r.stall_s} s` : "卡死检测已关"; }, lnErr);
 
 // ---------------------------------------------------------------- 通道
 function applySchema(s: Schema | null) {
@@ -431,7 +450,7 @@ function renderStatus(st: Msg) {
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");
-  $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.reconnecting ? "重连中…" : st.baud || ""}</i>` : "未连接";
+  $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.reconnecting ? `重连中…${st.reconnect_attempt ? "（第 " + st.reconnect_attempt + " 次）" : ""}` : st.baud || ""}</i>` : "未连接";
   $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
   // 心跳 status 字（dzctl 0.5.0）：复位原因 + 安全态/堵转/急停标志；旧固件没有 → 不显示
   $("ro-schema").title = st.reset ? `板子复位原因：${st.reset}${st.hb_flags?.length ? "；" + st.hb_flags.join("、") : ""}` : "";
@@ -510,6 +529,7 @@ link.on(m => {
     case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
+    case "reconnecting": if (m.attempt >= 5) toast(`${m.port} 还没回来：已试 ${m.attempt} 次，每 ${m.next_s} s 再试；不想等就点“断开”`, "info", 4000); break;
     case "estop": toast(m.message, m.sent ? "info" : "crit", m.sent ? 2500 : 15000); break;
   }
 });
