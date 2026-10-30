@@ -8,7 +8,7 @@
 调节时间 20（≤ t_max/3 满分，≥ t_max 0 分，线性）。总分 = 各题平均。跑一次约 1~2 分钟。
 """
 from __future__ import annotations
-import argparse, json, math, os, pathlib, re, subprocess, sys, tempfile, time
+import argparse, json, math, os, pathlib, re, signal, subprocess, sys, tempfile, time
 
 import yaml
 
@@ -223,6 +223,8 @@ def table(res):
 
 
 def main():
+    # 仿真板走子进程 stdin/stdout，不占 TCP 端口；被 kill 时也要走到 finally 里的 disconnect，把仿真进程收掉
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--only", nargs="*", help="只跑这些题 id")
     ap.add_argument("--out", default=str(ROOT / "build/bench"))
