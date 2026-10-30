@@ -12,7 +12,7 @@ import time
 from .. import config as cfg_mod
 from .. import elfsym, hardfault, keil
 from ..agent_api import AgentTools
-from . import steptools
+from . import cards, steptools
 from .. import pageops
 from ..flash import FlashError, Flasher, schema_hash_of
 from ..session import LinkError, Session
@@ -240,30 +240,7 @@ class AgentService:
             raise GatewayError("forbidden", f"{tool} 是禁止操作，Agent 永远不能执行")
         if t == risk.HUMAN:
             aid = next(self._aid)
-            preview = None
-            if tool in ("flash", "flash_rollback"):
-                try:
-                    preview = (self.flasher.flash if tool == "flash" else self.flasher.rollback)(dry_run=True)
-                except FlashError as e:
-                    preview = {"error": e.message}
-            elif tool == "score_writeback":
-                from .. import scoring
-                r = getattr(self, "score_runs", {}).get(str(args.get("item"))) or {}
-                preview = scoring.writeback(self, {"item": str(args.get("item")), "dir": args.get("dir"), "layer": "sim" if self.sim else "bench",
-                                                   "result": r.get("result", "fail"), "note": args.get("note", "")}).get("diff")
-            elif tool == "score_save":
-                r = getattr(self, "score_runs", {}).get(str(args.get("item"))) or {}
-                preview = {"结果": r.get("result"), "轮数": len(r.get("runs") or []), "验收规格": r.get("spec")}
-            elif tool == "project_apply":
-                c = self.chains.get(args.get("code")) or {}
-                preview = {"一次写入": [steptools.LABEL.get(x, x) if x != "scratch" else "③ 从零新建（写 .ioc）" for x, _ in c.get("batch") or []],
-                           "各步结果": c.get("steps")}
-            elif tool == "flow_accept":
-                preview = {"写入": steptools.LABEL.get(args.get("step"), args.get("step")), "项目": args.get("code"),
-                           "暂存区": str(pathlib.Path.home() / ".dzbench/flow" / str(args.get("code")) / "stage" / str(args.get("step")))}
-            elif tool in self.EXPERIMENTS:
-                pa = self.prearm()
-                preview = {"prearm": pa} | ({"error": "；".join(pa["failed"])} if pa["failed"] else {})
+            preview = cards.build(self, tool, args)          # 卡片内容：人话 + 旧→新，见 agent/cards.py
             self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run, "t": time.monotonic()}
             self.emit({"type": "agent_action", "id": aid, "tool": tool, "args": args, "preview": preview, "sim": self.sim,
                        "as_hw": (self.s.port or "").endswith("+hw"),
@@ -328,14 +305,19 @@ class AgentService:
         r = getattr(self, "score_runs", {}).get(str(item))
         if not r:
             raise GatewayError("no_runs", f"评分项 {item} 还没跑", "先 score_run")
-        return scoring.save(self, {"code": r["code"], "item": str(item), "layer": "sim" if self.sim else "bench",
-                                   "runs": [{k: x[k] for k in ("n", "csv", "result")} for x in r["runs"]],
-                                   "summary": {"result": r["result"], "spec": r["spec"]}})
+        out = scoring.save(self, {"code": r["code"], "item": str(item), "layer": "sim" if self.sim else "bench",
+                                  "runs": [{k: x[k] for k in ("n", "csv", "result")} for x in r["runs"]],
+                                  "summary": {"result": r["result"], "spec": r["spec"]}})
+        r["dir"] = out.get("dir")                       # 回写默认指向刚存的证据
+        return out
 
-    def score_writeback(self, item: str, dir: str, note: str = "") -> dict:
+    def score_writeback(self, item: str, dir: str | None = None, note: str = "") -> dict:
         """先拿 diff（卡片里展示），确认后用同一 sha 写，文件期间被改过就拒绝。"""
         from .. import scoring
         r = getattr(self, "score_runs", {}).get(str(item)) or {}
+        dir = dir or r.get("dir")
+        if not dir:
+            raise GatewayError("no_evidence", f"评分项 {item} 还没存证据", "先 score_save")
         m = {"item": str(item), "dir": dir, "layer": "sim" if self.sim else "bench", "result": r.get("result", "fail"), "note": note}
         d = scoring.writeback(self, m)
         return scoring.writeback(self, m | {"confirm": True, "sha": d.get("sha")}) if d.get("sha") else d
@@ -536,7 +518,7 @@ class AgentService:
 
     START_CMDS = ("T", "P", "G", "S")     # 'R' 不在里面：它同时是“解除急停”，Agent/自动实验永远不发
 
-    EXPERIMENTS = ("run_step_test", "run_sweep_test", "open_loop_test")
+    EXPERIMENTS = ("run_step_test", "run_sweep_test", "open_loop_test", "score_run")
     ARM_TTL_S = 120.0
     LINK_STALE_S = 1.0
 

@@ -115,7 +115,7 @@ TOOLS = [
     {"name": "score_save", "description": "评分：把 score_run 的每轮数据存成证据（docs/verify/...）",
      "input_schema": {"type": "object", "properties": {"item": {"type": "string"}}, "required": ["item"]}},
     {"name": "score_writeback", "description": "评分：把结果回写到 requirements.yaml 该项（dir=证据目录）",
-     "input_schema": {"type": "object", "properties": {"item": {"type": "string"}, "dir": {"type": "string"}, "note": {"type": "string"}}, "required": ["item", "dir"]}},
+     "input_schema": {"type": "object", "properties": {"item": {"type": "string"}, "dir": {"type": "string"}, "note": {"type": "string"}}, "required": ["item"]}},
     {"name": "tune_autopilot", "description": "仅仿真：自动 提议→阶跃→护栏判 连跑到通过或 N 轮，报告最好一轮。实机不可用",
      "input_schema": {"type": "object", "properties": {"rounds": {"type": "integer"}}}},
 ]

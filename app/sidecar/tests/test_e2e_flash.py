@@ -92,7 +92,7 @@ def test_agent_flash_full_flow(rig, monkeypatch):
         m = ui.mark()
         assert ui.ok("flash")["status"] == "pending_human_click"
         card = ui.wait(lambda e: e["type"] == "agent_action", start=m)
-        pv = card["preview"]
+        pv = card["preview"]["plan"]
         assert pv["status"] == "dry_run" and pv["image"].endswith("fw.bin") and pv["base"] == "0x00000000"
         assert all(p["ok"] for p in pv["preconditions"])
         assert not [x for x in pyocd.LOG if x[0] == "program"]
@@ -117,7 +117,7 @@ def test_agent_flash_full_flow(rig, monkeypatch):
         m = ui.mark()
         assert ui.ok("flash_rollback")["status"] == "pending_human_click"
         card = ui.wait(lambda e: e["type"] == "agent_action", start=m)
-        assert card["tool"] == "flash_rollback" and card["preview"]["status"] == "dry_run"
+        assert card["tool"] == "flash_rollback" and card["preview"]["plan"]["status"] == "dry_run"
         r = ui.ok("agent_action_decide", id=card["id"], accept=True, timeout=30)["result"]
         assert r["status"] == "rolled_back" and r["verify"]["ok"] is True
         assert board.app == "car_2wd" and srv.session.schema_hash == car_hash
