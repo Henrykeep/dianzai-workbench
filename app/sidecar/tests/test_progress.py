@@ -189,9 +189,9 @@ def test_fix_actions_fetch_deps_and_run_selftest_entries():
     e = _entries()
     assert P.FIX["missing_deps"] == "fetch_deps" and P.FIX["selftest_fail"] == "run_selftest"
     assert e["fetch_deps"].get("ready", True) is True and e["fetch_deps"]["ops"] == ["fetch_deps"]
-    # 前端已接上（frontend-polish）：三个 op 从 script_ops 移到 actions，位置 page:tune / page:seal，不用 dynamic
+    # 前端已接上（frontend-polish）：三个 op 从 script_ops 移到 actions，位置 page:tune，不用 dynamic
     assert e["run_selftest"].get("ready", True) is True and e["run_selftest"]["ops"] == ["run_selftest"] and "run_selftest" not in SCRIPT_OPS_
-    assert not e["run_selftest"].get("dynamic") and e["run_selftest"]["at"] == "page:seal"
+    assert not e["run_selftest"].get("dynamic") and e["run_selftest"]["at"] == "page:tune"   # 前端 99ae17c 把按钮挪到调参页
     assert P.FIX["params_not_saved"] == "params_flash" and e["params_flash"]["ops"] == ["save_params"] and e["params_flash"]["at"] == "page:tune"
     assert "save_params" not in SCRIPT_OPS_ and "set_run_mode" not in SCRIPT_OPS_
 
