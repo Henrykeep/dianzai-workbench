@@ -1,0 +1,13 @@
+import { Watch, timeoutCard, errorCard, AGENT_TIMEOUT_MS } from "../src/agentwatch.ts";
+const w = new Watch(); w.start(0);
+if (w.tick(3200).label !== "思考中… 3 s" || w.tick(3200).timeout) throw "计时";
+w.touch(50_000); if (w.tick(100_000).timeout) throw "有事件不超时";
+if (!w.tick(50_000 + AGENT_TIMEOUT_MS + 1).timeout) throw "60 s 无事件超时";
+if (w.tick(200_000).timeout) throw "只触发一次";
+const w2 = new Watch(); w2.start(0); w2.stop(); if (w2.tick(999_999).timeout) throw "已结束不超时";
+const t = timeoutCard(); if (t.title !== "Agent 超过 60 秒未响应" || !t.why.includes("侧车") || !t.why.includes("模型服务") || !t.retry) throw "超时卡";
+const e = errorCard({ code: "llm_http", message: "HTTP 401 Unauthorized", detail: "trace...", fix_action: "open_settings", retryable: true });
+if (e.title !== "Agent 出错：模型服务认证失败" || !e.detail.includes("trace...") || !e.retry || !e.settings || e.fix.includes("open_")) throw "出错卡翻译 " + e.title;
+const e2 = errorCard({ code: "x", message: "怪错误", retryable: false });
+if (e2.title !== "Agent 出错：怪错误" || e2.retry) throw "不可重试";
+console.log("agentwatch ok");
