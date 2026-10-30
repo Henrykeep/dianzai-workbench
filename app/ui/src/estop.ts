@@ -1,17 +1,30 @@
-// 急停来源：枚举 + 兜底文案。正式文案由侧车在事件里给（detail / fix），前端只显示侧车给的说明。
-// 固件上报来源（source）后，侧车填 detail；侧车未给 detail 时才用这里的兜底。
-export type EstopSource = "manual" | "heartbeat_timeout" | "stall" | "undervoltage" | "unknown";
-export const ESTOP_FALLBACK: Record<EstopSource, { detail: string; fix: string }> = {
-  manual:            { detail: "手动急停", fix: "确认安全后点「解除」" },
-  heartbeat_timeout: { detail: "心跳超时（上位机未按时发送数据）", fix: "检查串口连接后点「解除」" },
-  stall:             { detail: "堵转", fix: "排除机械卡滞后点「解除」" },
-  undervoltage:      { detail: "欠压", fix: "更换或充电电池后点「解除」" },
-  unknown:           { detail: "", fix: "排除原因后点「解除」" },
+// 急停提示（问题池 #25 / #28）。来源由本地服务在事件里给 source：heartbeat_lost | firmware:<cause> | ui | selftest。
+// 前三种用固定文案；firmware:<cause> 优先用 status.estop_cause.message_zh；都没有时写「急停已触发，原因未上报」，详情给最近一次心跳时间。
+// 心跳超时（watchdog 事件）与急停分开提示，不混成一句。
+export type EstopCause = { cause?: string; message_zh?: string } | null | undefined;
+export type EstopEv = { kind?: string; source?: string; text?: string };
+export const SOURCE_TEXT: Record<string, string> = {
+  heartbeat_lost: "急停：板子收不到上位机心跳，已自动停车",
+  ui: "急停：在工作台上按了急停（按钮 / Esc / 空格）",
+  selftest: "急停：上电自检未通过，板子拒绝运行",
 };
-// 输出格式：「急停：<detail>。<fix>」；来源未知：「急停已触发（来源未知）。<fix>」
-export function estopText(e: { source?: string; detail?: string; fix?: string; kind?: string }): string {
-  const src = (e.source && e.source in ESTOP_FALLBACK ? e.source : e.kind === "watchdog" ? "heartbeat_timeout" : "unknown") as EstopSource;
-  const fb = ESTOP_FALLBACK[src];
-  const detail = e.detail || fb.detail, fix = e.fix || fb.fix;
-  return detail ? `急停：${detail}。${fix}` : `急停已触发（来源未知）。${fix}`;
+export const UNREPORTED = "急停已触发，原因未上报";
+const hhmmss = (ms: number) => new Date(ms).toLocaleTimeString("zh-CN", { hour12: false });
+export function estopView(ev: EstopEv | undefined, cause: EstopCause, lastHbMs?: number | null): { head: string; detail: string } {
+  const src = ev?.source ?? "";
+  const hb = lastHbMs ? `最近一次心跳 ${hhmmss(lastHbMs)}` : "最近一次心跳：未收到";
+  if (SOURCE_TEXT[src]) return { head: SOURCE_TEXT[src], detail: hb };
+  if (src.startsWith("firmware:")) {
+    const c = src.slice(9);
+    return { head: cause?.message_zh || `急停：固件报告停车（原因码 ${c || "空"}），本地服务未给出说明`, detail: hb };
+  }
+  if (cause?.message_zh) return { head: cause.message_zh, detail: hb };
+  return { head: UNREPORTED, detail: hb };
+}
+// 心跳超时单独一行
+export const watchdogText = (ev: EstopEv) => `心跳超时：${ev.text || "板子心跳中断"}`;
+// 锁存只认本地服务上报（status.tx_locked）；本地服务断开时保留最后一次上报值，前端不自行清除（#20）
+export function latchedOf(st: { tx_locked?: boolean } | undefined, prev: boolean, sidecarUp: boolean): boolean {
+  if (!sidecarUp) return prev;
+  return typeof st?.tx_locked === "boolean" ? st.tx_locked : prev;
 }

@@ -15,7 +15,7 @@ export function savedView(st: BoardStatus, savedAt: string | null): string {
 }
 export async function saveParams(rpc: Rpc): Promise<{ ok: boolean; note?: string; disable?: boolean }> {
   try { await rpc("save_params"); return { ok: true }; }
-  catch (e: any) { return missing(e) ? { ok: false, disable: true, note: "侧车暂不支持保存参数（save_params 接口未就绪）" } : { ok: false, note: e?.message ?? String(e) }; }
+  catch (e: any) { return missing(e) ? { ok: false, disable: true, note: "本地服务暂不支持保存参数（save_params 接口未就绪）" } : { ok: false, note: e?.message ?? String(e) }; }
 }
 // 封箱页「切换模式」：参数未保存不让切
 export function modeGate(st: BoardStatus): { enabled: boolean; reason: string } {
@@ -35,7 +35,7 @@ export async function switchMode(rpc: Rpc, mode: string, confirm: (text: string)
     }
     return { ok: true };
   } catch (e: any) {
-    return missing(e) ? { ok: false, disable: true, note: "侧车暂不支持切换运行模式（set_run_mode 接口未就绪）" } : { ok: false, note: e?.message ?? String(e) };
+    return missing(e) ? { ok: false, disable: true, note: "本地服务暂不支持切换运行模式（set_run_mode 接口未就绪）" } : { ok: false, note: e?.message ?? String(e) };
   }
 }
 export const estopMessage = (st: BoardStatus) => st.estop_cause?.message_zh || null;

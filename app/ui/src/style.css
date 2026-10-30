@@ -844,3 +844,10 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .seal-mode .hint{color:var(--warn)}
 .st-fail{margin:0 0 var(--sp3);padding:var(--sp3);border-radius:var(--r);background:var(--crit-bg);color:var(--ink)}
 .st-fail ul{margin:var(--sp1) 0 0 var(--sp4);font-size:var(--t-sm)}
+/* r7 回执 / 急停锁存 / 心跳超时分列 / blocker 通知 */
+.rcpt{align-self:flex-end;font-size:var(--t-xs);color:var(--muted)}
+.rcpt:empty{display:none}
+.rcpt[data-state=lost],.rcpt[data-state=blocked]{color:var(--warn)}
+.estop.locked{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--estop)}   /* 锁存：只认本地服务上报，仍可再按 */
+.alerts .al-wd{padding-left:var(--sp2);border-left:1px solid var(--line2)}
+.msg.bot.blk-note .act{margin-top:var(--sp1)}

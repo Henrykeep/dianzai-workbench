@@ -6,7 +6,7 @@ export type Project = { path: string; name: string } | null;
 export type ProjItem = { code: string; name: string; updated_at: string };
 type Rpc = (op: string, a?: any) => Promise<any>;
 export const isMissingOp = (e: any) => /bad_op|unknown op|未知操作|not supported|no such op|unknown_op/i.test(`${e?.code ?? ""} ${e?.message ?? e ?? ""}`);
-export const NO_API = "侧车暂不支持打开项目（project.list 接口未就绪）";
+export const NO_API = "本地服务暂不支持打开项目（project.list 接口未就绪）";
 export const topLabel = (p: Project) => (p ? p.name || p.path.split(/[\\/]/).filter(Boolean).pop() || p.path : "");
 // 探测「打开项目」是否可用：只读调用，不改任何状态
 export const fmtTime = (iso: string) => { const d = new Date(iso); if (isNaN(+d)) return iso ?? ""; const z = (n: number) => String(n).padStart(2, "0");
@@ -18,7 +18,7 @@ export async function probeOpen(rpc: Rpc): Promise<{ ok: boolean; note?: string;
 }
 export async function openProject(rpc: Rpc, code: string): Promise<{ ok: boolean; note?: string; project?: Project; relist?: boolean }> {
   try { const r = await rpc("project.open", { code }); return { ok: true, project: r?.project ?? null }; }
-  catch (e: any) { return isMissingOp(e) ? { ok: false, note: "侧车暂不支持打开项目（project.open 接口未就绪）" } : { ok: false, note: errNote(e), relist: e?.fix_action === "project_list" }; }
+  catch (e: any) { return isMissingOp(e) ? { ok: false, note: "本地服务暂不支持打开项目（project.open 接口未就绪）" } : { ok: false, note: errNote(e), relist: e?.fix_action === "project_list" }; }
 }
 
 let cur: Project | undefined;

@@ -18,7 +18,7 @@ export type AgentErr = { code?: string; message?: string; detail?: string; fix?:
 export type Card = { title: string; why: string; fix: string; detail: string; retry: boolean; settings?: boolean; other?: Fix | null; otherId?: string };
 export const timeoutCard = (): Card => ({
   title: "Agent 超过 60 秒未响应",
-  why: "侧车内部出错，或模型服务无响应",
+  why: "本地服务内部出错，或模型服务无响应",
   fix: "点「重试」重新发送；仍无响应请查看详情或在「大模型设置」中检查服务",
   detail: "60 秒内没有收到任何 Agent 事件（思考、工具调用、回复或报错）。",
   retry: true,
@@ -36,9 +36,9 @@ export function errorCard(m: AgentErr, has: (ui: string) => boolean = ui => type
   const internal = m.code === "tool_schema";
   return {
     title: "Agent 出错：" + (internal ? "工具定义格式错误" : h?.what ?? "本轮未完成"),
-    why: internal ? "这是工作台内部配置错误，不是你的操作问题" : (m.message || h?.why || "侧车未给出原因"),
+    why: internal ? "这是工作台内部配置错误，不是你的操作问题" : (m.message || h?.why || "本地服务未给出原因"),
     fix: internal ? "可先重发一次或换个说法；反复出现请把「详情」发给开发者，其它功能不受影响" : (h?.fix ?? (fa === "settings" ? "在「大模型设置」中检查后重试" : "点「重试」重新发送")),
-    detail: [m.code ? `code: ${m.code}` : "", internal && m.message ? m.message : "", m.detail || ""].filter(Boolean).join("\n") || "（侧车未提供更多信息）",
+    detail: [m.code ? `code: ${m.code}` : "", internal && m.message ? m.message : "", m.detail || ""].filter(Boolean).join("\n") || "（本地服务未提供更多信息）",
     retry: fa === "retry" || m.retryable === true,
     settings: fa === "settings",
     other, otherId: other ? m.fix_action! : undefined,
