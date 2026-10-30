@@ -32,6 +32,11 @@ params:
   - {name: i_zone_px, type: float, default: 55, min: 0, max: 400, unit: px, desc: P1，未验证}
   - {name: i_max_deg, type: float, default: 2.5, min: 0, max: 15, unit: °, desc: P1，未验证}
   - {name: i_decay, type: float, default: 0.5, min: 0, max: 1, unit: '', desc: 误差变号时积分衰减系数（P1 衰减比例未整理，TODO 核对）}
+  - {name: sp_rate_pxps, type: float, default: 200, min: 0, max: 2000, unit: px/s, desc: 目标点移动速率上限（0 关）}
+  - {name: sp_slow_pxps, type: float, default: 60, min: 0, max: 2000, unit: px/s, desc: 离最终目标 sp_slow_band_px 以内改用的慢速（0 = 不分段）}
+  - {name: sp_slow_band_px, type: float, default: 40, min: 0, max: 400, unit: px, desc: 分段斜坡的慢速区宽度}
+  - {name: i_vel_pxps, type: float, default: 10, min: 0, max: 400, unit: px/s, desc: 条件积分：球速低于它才积分（0 关）}
+  - {name: i_leak, type: float, default: 0.97, min: 0, max: 0.999, unit: '', desc: 不满足积分条件时每帧积分乘它（0 关；参考 31/32 ≈ 0.97）}
   - {name: angle_max_deg, type: float, default: 5.5, min: 0, max: 20, unit: °, desc: P1，未验证}
   - {name: rate_max_dps, type: float, default: 220, min: 0, max: 1000, unit: °/s, desc: P1，未验证}
   - {name: hold_ms, type: uint32, default: 120, min: 0, max: 2000, unit: ms, desc: P1 预测保持，未验证}
@@ -39,7 +44,7 @@ params:
   - {name: beam_dir, type: float, default: 1.0, min: -1, max: 1, unit: '', desc: TODO(用户)：+1/-1，θ>0 应使球向 +x 滚（P2 的 BEAM_DIR 也标着待确认）}
   - {name: bb_est_mode, type: uint8, default: 0, min: 0, max: 1, unit: '', desc: 0 α-β / 1 差分+低通}
   - {name: bb_loop_mode, type: uint8, default: 0, min: 0, max: 1, unit: '', desc: 0 串级（限 v_des）/ 1 单环}
-  - {name: stic_deg, type: float, default: 0, min: 0, max: 3, unit: °, desc: 静摩擦补偿（0 关），未验证}
+  - {name: stic_deg, type: float, default: 1, min: 0, max: 3, unit: °, desc: 静摩擦补偿（0 关），未验证}
   - {name: stic_vel, type: float, default: 8, min: 0, max: 200, unit: px/s, desc: 球速低于它才补偿}
   - {name: stic_e, type: float, default: 15, min: 0, max: 400, unit: px, desc: 误差大于它才补偿}
   - {name: bal_span_px, type: float, default: 0, min: 0, max: 1000, unit: px, desc: 静平衡前馈表 x = −span/0/+span（0 关）}

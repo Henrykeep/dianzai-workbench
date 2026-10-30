@@ -76,6 +76,8 @@
    "ball_beam.h: uint8_t bal_n;",
    "ball_beam.h: float bal_x[BB_BAL_MAX];",
    "ball_beam.h: float bal_deg[BB_BAL_MAX];",
+   "ball_beam.h: float i_vel;",
+   "ball_beam.h: float i_leak;",
    "ball_beam.h: } ball_beam_cfg_t;",
    "ball_beam.h: typedef enum { BB_WAIT = 0, BB_TRACK, BB_HOLD, BB_LOST } ball_beam_state_t;",
    "ball_beam.h: typedef struct { ball_beam_cfg_t cfg;",
@@ -94,8 +96,8 @@
    "ball_beam.h: float ball_beam_bal_ff(const ball_beam_cfg_t *c, float x_px);",
    "ball_beam.h: dz_err_t ball_beam_selftest(void);"
   ],
-  "hash": "22c12e7bc0ac2f81",
-  "version": "1.1.0"
+  "hash": "9f9eb37ae9842c56",
+  "version": "1.2.0"
  },
  "firmware/algo/capfreq": {
   "decls": [
@@ -1484,6 +1486,9 @@
    "dzctl.h: #define DZCTL_HB_SELFTEST_FAIL (1u << 11)",
    "dzctl.h: #define DZCTL_HB_PARAMS_SHIFT 12u",
    "dzctl.h: #define DZCTL_HB_PARAMS_MASK (3u << 12)",
+   "dzctl.h: #define DZCTL_HB_STANDALONE (1u << 14)",
+   "dzctl.h: #define DZCTL_HB_SA_RUNNING (1u << 15)",
+   "dzctl.h: #define DZCTL_MODE_MAGIC 0xA5u",
    "dzctl.h: #define DZCTL_SAVE_OK 0u",
    "dzctl.h: #define DZCTL_SAVE_BUSY 1u",
    "dzctl.h: #define DZCTL_SAVE_NO_NVM 2u",
@@ -1530,8 +1535,8 @@
    "dzctl.h: bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms);",
    "dzctl.h: int dzctl_selftest(void);"
   ],
-  "hash": "0ebfc27ff15a0ae1",
-  "version": "0.9.0"
+  "hash": "d1a1703d2b48cd7f",
+  "version": "0.10.0"
  },
  "firmware/proto/dzframe": {
   "decls": [
