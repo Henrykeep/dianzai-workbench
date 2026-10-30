@@ -59,6 +59,7 @@
         <span class="lbl mono" id="plot-sub"></span><span class="lbl mono po" id="xdiv"></span><div class="sp"></div>
         <button class="btn ghost sm po" id="t0-mark" title="把现在标为阶跃起点 t0（T）；再标一次时上一轮进历史并显示成余辉"><i data-lucide="flag"></i>t0 <kbd>T</kbd></button>
         <button class="ib po" id="cur-clr" title="清除 A/B 光标、t0 和余辉"><i data-lucide="eraser"></i></button>
+        <div class="seg po" id="layout" title="分格：每通道一格 / 同单位合一格 / 全部叠一格"><span data-l="split" class="on">分格</span><span data-l="unit">按单位</span><span data-l="one">叠加</span></div>
         <div class="seg po" id="win"><span data-w="2">2 s</span><span data-w="5" class="on">5 s</span><span data-w="10">10 s</span><span data-w="30">30 s</span></div>
         <div class="seg po" id="run"><span data-r="1" class="on">运行</span><span data-r="0">暂停 <kbd>P</kbd></span></div>
       </div>
@@ -214,7 +215,9 @@
       <select id="rp-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></span>
     <select id="logs" title="回放以前记录的 .dzlog"></select>
     <button class="ib" id="replay">回放</button>
-    <button class="ib" id="export" title="把这份记录导出成 CSV（UTF-8 BOM，Excel 直接打开）；Shift+点击 = PlotJuggler 格式（.pj.csv，时间列 time）">导出 CSV</button>
+    <select id="exp-fmt" title="导出格式"><option value="excel">CSV（Excel）</option><option value="plotjuggler">CSV（PlotJuggler）</option><option value="vofa">VOFA+ 文本</option></select>
+    <button class="ib" id="export" title="把这份记录导出：CSV 带 UTF-8 BOM（Excel 直接打开）/ PlotJuggler（.pj.csv，时间列 time）/ VOFA+ FireWater（.vofa.txt，每行逗号分隔）；Shift+点击 = PlotJuggler">导出</button>
+    <button class="ib" id="import" title="导入别的工具录的曲线：CSV（第一行列名，可带 t_s/time 时间列）或 VOFA+ FireWater 文本；转成 .dzlog 后直接回放">导入…</button>
     <span id="st-ws">侧车 —</span>
   </footer>
   <div id="toasts" class="toasts"></div>

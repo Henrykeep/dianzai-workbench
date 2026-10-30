@@ -1,6 +1,7 @@
 """key=value 文本遥测 → 虚拟 schema：视觉板 printf("x=%d,y=%d\\n")、第三方模块也能直接画曲线。
 识别 `名字=数`（名字可以是中文） 或 `名字:数`（逗号/空格/分号分隔都行），每行一个样本；新出现的名字自动加通道（最多 16 路）。
-思路参考 SerialWeb 的文本模板解析；代码自写。
+也认 VOFA+ FireWater 行（`v1,v2,v3` 或 `前缀:v1,v2`），通道自动叫 ch1、ch2…
+思路参考 SerialWeb 的文本模板解析、VOFA+ FireWater 协议说明；代码自写。
 """
 from __future__ import annotations
 
@@ -19,6 +20,8 @@ def _decode(b: bytes) -> str:
     except UnicodeDecodeError:
         return b.decode("gb18030", "replace")
 VIRTUAL_HASH = 0
+_NUM = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+FIREWATER = re.compile(rf"^\s*(?:[^\W\d]\w*\s*:)?\s*({_NUM}(?:\s*,\s*{_NUM})*)\s*$")
 
 
 class KvParser:
@@ -34,7 +37,12 @@ class KvParser:
         *lines, self.buf = EOL.split(self.buf)                # \n、\r\n、单独 \r 都算行尾
         out, grew = [], False
         for ln in lines:
-            kv = KV.findall(_decode(ln))
+            txt = _decode(ln)
+            kv = KV.findall(txt)
+            if not kv or (len(kv) == 1 and "," in txt):
+                m = FIREWATER.match(txt)                      # VOFA+ FireWater：[前缀:]v1,v2,…，通道叫 ch1…
+                if m:
+                    kv = [(f"ch{k + 1}", x) for k, x in enumerate(m.group(1).split(","))]
             if not kv:
                 continue
             v = {}

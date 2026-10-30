@@ -242,6 +242,12 @@ class Server:
         if op == "auto_reconnect":
             self.session.auto_reconnect = bool(m.get("on", True))
             return {"on": self.session.auto_reconnect}
+        if op == "log_import":                     # 导入 CSV / VOFA 文本 → .dzlog（之后照常回放）
+            from .logio import ImportError_, import_to_dzlog
+            try:
+                return await run(None, lambda: import_to_dzlog(m["path"], self.session.log_dir, float(m.get("period_ms") or 10)))
+            except (ImportError_, OSError) as e:
+                raise LinkError("import", getattr(e, "message", str(e)), getattr(e, "fix", "")) from e
         if op == "log_export":
             try:
                 return await run(None, lambda: dzlog_to_csv(m["path"], fmt=m.get("fmt", "excel")))

@@ -14,7 +14,10 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;
 export const num = (v: number) => { const a = Math.abs(v); return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3); };
 const divs = new WeakMap<uPlot, number>();
 
-type Lane = { i: number; r: number; u: uPlot; el: HTMLElement; rng: HTMLElement };
+type Lane = { i: number; r: number; cols: number[]; u: uPlot; el: HTMLElement; rng: HTMLElement };
+// 分格布局（缺口 13）：split = 每通道一格；unit = 同单位合一格；one = 全部叠在一格
+export type Layout = "split" | "unit" | "one";
+export const LAYOUTS: Layout[] = ["split", "unit", "one"];
 export type Ghost = { rel: number[]; ys: number[][]; label: string };
 
 export class Plot {
@@ -32,6 +35,7 @@ export class Plot {
   view: number | null = null;    // 非空 = 视图中心钉在这个时间（心跳条/时间线点过来）；恢复运行时清掉
   marks: { t: number; tag: string; color: string }[] = [];   // 事件竖线（timeline.ts）
   ghost: Ghost | null = null;    // 余辉：上一轮相对 t0 的数据
+  layout: Layout = "split";
   private lanes: Lane[] = [];
   private host: HTMLElement;
   private sync = uPlot.sync("dz-lanes");
@@ -57,7 +61,16 @@ export class Plot {
   last(i: number) { const a = this.ys[i]; return a?.length ? a[a.length - 1] : undefined; }
   clear() { this.t = []; this.ys = this.names.map(() => []); this.t0 = null; this.cur = [null, null]; this.dirty = true; }
   now() { return this.t.length ? this.t[this.t.length - 1] : 0; }
-  laneIdx() { return this.lanes.map(l => l.i); }
+  laneIdx() { return this.lanes.flatMap(l => [l.i, ...l.cols.filter(c => c !== l.r)]); }
+  setLayout(l: Layout) { this.layout = l; this.build(); this.dirty = true; }
+  // 每格的通道：[领头, ...叠加]；叠加通道不再单独占格
+  groups(idx: number[]): number[][] {
+    if (this.layout === "split") return idx.map(i => [i]);
+    if (this.layout === "one") return idx.length ? [idx] : [];
+    const by = new Map<string, number[]>();
+    idx.forEach(i => { const k = this.units[i] || `#${i}`; by.set(k, [...(by.get(k) ?? []), i]); });   // 没单位的各占一格
+    return [...by.values()];
+  }
   setCursor(k: 0 | 1, x: number | null) { this.cur[k] = x; this.repaint(); window.dispatchEvent(new Event("dz-cursor")); }
   setMarks(m: { t: number; tag: string; color: string }[]) { this.marks = m; this.repaint(); }
   jumpTo(x: number) { this.view = x; this.redraw(); this.setCursor(0, x); }
@@ -126,21 +139,24 @@ export class Plot {
     const idx = this.names.map((_, i) => i).filter(i => this.vis[i] && !isRef.has(i));
     const font = `400 11px ${css("--f-mono")}`;
     const grid = { stroke: css("--grid"), width: 1 }, tick = { show: false };
-    idx.forEach(i => {
+    const grp = this.groups(idx);
+    grp.forEach(([i, ...more]) => {
       const el = document.createElement("div"), r = this.refOf[i];
       el.className = "lane";
       el.style.setProperty("--c", chColor(i));   // 唯一的 inline：通道色绑定
       const ref = r >= 0 ? `<span class="lref" title="设定值（schema ref_for）">┄ ${esc(this.names[r])}</span>` : "";
       el.innerHTML = `<div class="lab"><b class="nm" title="${esc(this.names[i])}">${esc(this.names[i])}</b>
-        <span class="lv mono" id="lv-${i}">—</span>${ref}<span class="lr mono" id="lr-${i}"></span></div><div class="lc"></div>`;
+        <span class="lv mono" id="lv-${i}">—</span>${ref}${more.map(j => `<span class="lref" data-ov="${j}" title="叠加在这一格">${esc(this.names[j])} <span class="mono" id="lv-${j}">—</span></span>`).join("")}<span class="lr mono" id="lr-${i}"></span></div><div class="lc"></div>`;
+      el.querySelectorAll<HTMLElement>("[data-ov]").forEach(x => x.style.color = chColor(+x.dataset.ov!));
       this.host.append(el);
     });
-    idx.forEach((i, k) => {
+    grp.forEach(([i, ...more], k) => {
       const el = this.host.children[k] as HTMLElement, first = k === 0, r = this.refOf[i];
-      const lane: Lane = { i, r, el, rng: el.querySelector(".lr")!, u: null as unknown as uPlot };
+      const lane: Lane = { i, r, cols: [], el, rng: el.querySelector(".lr")!, u: null as unknown as uPlot };
       this.lanes.push(lane);
       const series: uPlot.Series[] = [{}, { stroke: chColor(i), width: 1.5, points: { show: false } }];
-      if (r >= 0 && this.vis[r]) series.push({ stroke: css("--setpoint"), width: 1, dash: [4, 3], points: { show: false } });
+      if (r >= 0 && this.vis[r]) { series.push({ stroke: css("--setpoint"), width: 1, dash: [4, 3], points: { show: false } }); lane.cols.push(r); }
+      more.forEach(j => { series.push({ stroke: chColor(j), width: 1.5, points: { show: false } }); lane.cols.push(j); });
       const u = new uPlot({
         width: 100, height: 100,
         legend: { show: false },
@@ -161,7 +177,7 @@ export class Plot {
         ],
         series,
         hooks: { draw: [uu => this.overlay(uu, lane, first)] },
-      }, [[], [], ...(series.length > 2 ? [[]] : [])] as any, el.querySelector(".lc") as HTMLElement);
+      }, [[], [], ...lane.cols.map(() => [])] as any, el.querySelector(".lc") as HTMLElement);
       // 单击放 A，Shift+单击放 B（Saleae / 示波器惯例），双击清除
       u.over.addEventListener("click", e => this.setCursor(e.shiftKey ? 1 : 0, u.posToVal(e.offsetX, "x")));
       u.over.addEventListener("dblclick", () => { this.cur = [null, null]; this.setCursor(0, null); });
@@ -180,7 +196,7 @@ export class Plot {
     const [dt, dy] = minmax(this.t, this.ys, a, b, t0, tEnd, px);
     for (const l of this.lanes) {
       const data: any[] = [dt, dy[l.i]];
-      if (l.u.series.length > 2) data.push(dy[l.r]);
+      l.cols.forEach(c => data.push(dy[c]));
       l.u.batch(() => { l.u.setData(data, false); l.u.setScale("x", { min: t0, max: tEnd }); });
       const d = divs.get(l.u);
       if (d) l.rng.textContent = `${num(d)}${this.units[l.i] ? " " + this.units[l.i] : ""}/div`;

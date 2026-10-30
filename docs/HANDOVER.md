@@ -104,3 +104,4 @@
 10. 调试后端 + 设置界面（Agent 菜单“调试探针…”，op probe_config_get/set，写 machine.json，按后端列探针）：dzbench/probes.py（OpenOCD TCL / JLinkExe / probe-rs CLI），flash.tool + flash.probe_kind（stlink 默认、daplink、jlink），烧录 / 备份 / 变量实时读取共用。[仿真]（假进程）；真探针未接，输出解析按文档写。
 11. 串口 IMU（缺口 11）：firmware/drivers/wit_imu（维特 WIT 协议，JY61P / JY901 / HWT101；加速度/角速度/角度/磁场、新鲜度、非阻塞偏航清零）。[仿真]（tests/host wit_imu_fake）；真模块未接。
 12. 协处理器 SSH 部署（缺口 12）：dzbench/deploy.py + 菜单“协处理器部署…”（推送 / 启动 / 停止 / 日志），只走密钥登录。[仿真]（假 ssh/scp）；真板未接，预设用户/目录待核对。
+13. 日志导入导出 + 分格（缺口 13）：dzbench/logio.py（CSV / VOFA+ FireWater → .dzlog 回放，op log_import，底栏“导入…”）、export.py fmt=vofa + 无 schema 文本记录也能导出（底栏格式下拉）、textparse 实时认 FireWater；曲线区“分格 / 按单位 / 叠加”三种布局（plot.ts Layout，记 localStorage）。[仿真]；没拿真 VOFA+ 打开过导出文件，界面没在桌面端点过。

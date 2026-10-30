@@ -3,7 +3,7 @@ import "./style.css";
 import { createIcons, Activity, Ellipsis, Eraser, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
 import { Err, Link, Msg } from "./ws";
-import { Plot, chColor, num } from "./plot";
+import { LAYOUTS, Layout, Plot, chColor, num } from "./plot";
 import { matchNames } from "./names";
 import { Param, clampLocal, pendingOf, rangeLabel } from "./params";
 import { AGENT_IDLE, agentIdle, initAgent } from "./agent";
@@ -380,6 +380,14 @@ $("cmd-send").onclick = () => { const c = $<HTMLInputElement>("cmd-c").value, n 
 $("win").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => {
   $("win").querySelectorAll("span").forEach(x => x.classList.toggle("on", x === s)); plot.win = +s.dataset.w!; showXDiv(); plot.redraw();
 });
+// 分格布局（缺口 13），记在 localStorage
+const setLayout = (l: string) => {
+  if (!(LAYOUTS as string[]).includes(l)) l = "split";
+  $("layout").querySelectorAll<HTMLElement>("span").forEach(x => x.classList.toggle("on", x.dataset.l === l));
+  localStorage.setItem("dz-layout", l); plot.setLayout(l as Layout);
+};
+$("layout").onclick = (e: MouseEvent) => { const s = (e.target as HTMLElement).closest<HTMLElement>("[data-l]"); if (s) setLayout(s.dataset.l!); };
+setLayout(localStorage.getItem("dz-layout") ?? "split");
 function setRun(on: boolean) { plot.running = on; if (on) plot.view = null; $("run").querySelectorAll<HTMLElement>("span").forEach(x => x.classList.toggle("on", (x.dataset.r === "1") === on)); }
 $("run").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => setRun(s.dataset.r === "1"));
 // 回放列表只列当前端口 / 仿真应用的记录（文件名带端口标签，见 session.start_log）；“其他端口”收在最后一项
@@ -470,8 +478,17 @@ $("rp-speed").onchange = () => call("replay_ctl", { speed: +$<HTMLSelectElement>
 $("export").onclick = async (e: MouseEvent) => {
   const p = $<HTMLSelectElement>("logs").value;
   if (!p) return toast("还没有记录可导出：连上板子会自动记录", "info");
-  const r = await call("log_export", { path: p, fmt: e.shiftKey ? "plotjuggler" : "excel" }).catch(() => null);
-  if (r) toast(`已导出 ${r.rows} 行 → ${r.path}`, "ok", 12000);
+  const r = await call("log_export", { path: p, fmt: e.shiftKey ? "plotjuggler" : $<HTMLSelectElement>("exp-fmt").value }).catch(() => null);
+  if (r) toast(`已导出 ${r.rows} 行 → ${r.path}${r.channels ? "（列顺序 " + r.channels.join(", ") + "）" : ""}`, "ok", 12000);
+};
+$("import").onclick = async () => {
+  const path = window.prompt("要导入的文件路径（CSV 或 VOFA+ 文本）", localStorage.getItem("dz.import") || "");
+  if (!path) return;
+  localStorage.setItem("dz.import", path);
+  const r = await call("log_import", { path: path.trim().replace(/^"|"$/g, "") }).catch(() => null);
+  if (!r) return;
+  toast(`已导入 ${r.rows} 行 · ${r.channels.length} 路（${r.fmt}，${r.seconds} s），开始回放`, "ok", 8000);
+  await loadLogs(); await call("replay", { path: r.path }); plot.clear();
 };
 $("chans").innerHTML = emptyState("activity", "连上后列出通道");
 $("props").innerHTML = AGENT_IDLE;
