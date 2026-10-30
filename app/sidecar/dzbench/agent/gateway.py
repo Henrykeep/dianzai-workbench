@@ -12,6 +12,7 @@ import difflib
 import fnmatch
 import itertools
 import pathlib
+import re
 import os
 import subprocess
 import threading
@@ -56,6 +57,24 @@ LAYERS: list[dict] = [
 ]
 DEFAULT = {"layer": "other", "read": ALLOW, "write": DENY, "why": "不在任何可写层"}
 FORBIDDEN_TOOLS = ("estop", "e_stop", "急停")
+
+
+PORCELAIN = re.compile(r"^[ MADRCU?!]{2} \S")
+GIT_HINTS = [   # git 原始报错 → 原因 + 处理
+    (r"not a git repository", "工程目录不是 git 仓库", "在工程根目录执行 git init 并提交一次，或在设置里把仓库指到正确目录"),
+    (r"index\.lock", "另一个 git 进程正在用这个仓库（或上次异常退出留下了锁）", "关掉其他 git 工具；确认没有在跑后删除 .git/index.lock"),
+    (r"Please tell me who you are|user\.email", "git 没配置提交人", "git config user.name 你的名字；git config user.email 你的邮箱"),
+    (r"pathspec .* did not match", "要提交的文件不在仓库里（路径不对或被删了）", "让 Agent 重新提议"),
+    (r"ignored by one of your \.gitignore", "文件被 .gitignore 忽略，无法提交", "换一个不被忽略的路径，或调整 .gitignore"),
+    (r"dubious ownership", "git 认为仓库属主不安全", "git config --global --add safe.directory <仓库路径>"),
+]
+
+
+def git_hint(out: str) -> str:
+    for pat, cause, fix in GIT_HINTS:
+        if re.search(pat, out or ""):
+            return f"{cause}。处理：{fix}\n（git 原文：{(out or '').strip()[-300:]}）"
+    return f"git 出错（原文：{(out or '').strip()[-300:]}）。处理：检查仓库状态（git status）后让 Agent 重新提议"
 
 
 class GatewayError(Exception):
@@ -217,8 +236,13 @@ class Gateway:
     def _apply(self, c: Change) -> None:
         # 1. 工作区里这些文件必须干净，且内容仍是提议时的旧内容（防止覆盖人手改动）
         rc, out = self._git("status", "--porcelain", "--", *c.files)
-        if rc != 0 or out.strip():
-            c.status, c.log = "failed", f"这些文件有未提交的改动，先提交或撤销：\n{out}"
+        if rc != 0:
+            c.status, c.log = "failed", git_hint(out)
+            return
+        dirty = [ln for ln in out.splitlines() if PORCELAIN.match(ln)              # 只看状态行；warning（新目录不存在等）不算
+                 and not (ln.startswith("?? ") and not c.files.get(ln[3:].strip().strip('"'), ("x",))[0])]   # 新建文件（旧内容为空）未跟踪不算
+        if dirty:
+            c.status, c.log = "failed", "这些文件有未提交的改动（防止覆盖你的手改）：\n" + "\n".join(dirty) + "\n处理：先提交或撤销这些改动，再让 Agent 重新提议"
             return
         for r, (old, _) in c.files.items():
             p = self.root / r
@@ -247,7 +271,7 @@ class Gateway:
         rc, out = self.runner(["git", "-c", "user.name=dzbench", "-c", "user.email=dzbench@localhost", "commit", "-q", "-m", msg,
                                "--", *c.files] if not self._has_identity() else ["git", "commit", "-q", "-m", msg, "--", *c.files], self.root)
         if rc != 0:
-            c.status, c.log = "failed", f"git commit 失败：{out}"
+            c.status, c.log = "failed", "git commit 失败：" + git_hint(out)
             return
         _, sha = self._git("rev-parse", "--short", "HEAD")
         c.status, c.commit, c.log = "committed", sha.strip(), "\n".join(logs) or "（该层无门禁）"

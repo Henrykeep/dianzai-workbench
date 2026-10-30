@@ -326,3 +326,52 @@ def test_answer_check_asks_for_fact_tags():
     from dzbench.agent.loop import tagged
     res = [{"name": "read_telemetry", "ok": True, "result": {"x": 1}}]
     assert tagged("超调 30%", res) and tagged("【实测】超调 30%", res) is None and tagged("你好", []) is None
+
+
+def test_gateway_first_file_in_new_project_dir(repo):
+    """新建项目写第一个文件：目录还不存在，git status 会打 warning（r4 验收卡在这）→ 不算未提交改动，照常写入并提交。"""
+    class Warn(Runner):
+        def __call__(self, cmd, cwd):
+            rc, out = super().__call__(cmd, cwd)
+            if cmd[:2] == ["git", "status"]:
+                out = "warning: could not open directory 'apps/dc_motor_pid/': No such file or directory\n" + out
+            return rc, out
+    g = Gateway(repo, runner=Warn())
+    c = g.propose_edit("apps/dc_motor_pid/main.c", "", "int main(void){return 0;}\n", "新建项目第一个文件")
+    r = g.decide(c["id"], True)
+    assert r["status"] == "committed", r["log"]
+    assert (repo / "apps/dc_motor_pid/main.c").exists() and "apps/dc_motor_pid/main.c" in git(repo, "show", "--name-only", "--format=", "HEAD")
+    # 真正的手改仍然拦
+    (repo / "apps/x/main.c").write_text((repo / "apps/x/main.c").read_text(encoding="utf-8") + "// hand\n", encoding="utf-8")
+    c2 = g.propose_edit("apps/x/main.c", "// hand\n", "// hand2\n", "r")
+    r2 = g.decide(c2["id"], True)
+    assert r2["status"] == "failed" and "未提交的改动" in r2["log"] and "处理" in r2["log"]
+
+
+def test_git_errors_are_translated():
+    from dzbench.agent.gateway import git_hint
+    h = git_hint("fatal: not a git repository (or any of the parent directories): .git")
+    assert "不是 git 仓库" in h and "git init" in h
+    assert "index.lock" in git_hint("fatal: Unable to create '/r/.git/index.lock': File exists.")
+    assert "处理" in git_hint("something odd")
+
+
+def test_preload_first_turn_read_cap_and_continue_action():
+    """r4 验收提速：第一轮附仓库地图/板卡清单（只附一次）；只读调用超上限回错误让模型动手；
+    步数用完发结构化“继续”动作；建项目类请求步数加倍。"""
+    from dzbench.agent.loop import READ_CAP
+    ev = []
+    fake = FakeLLM([{"role": "assistant", "tool_calls": [call("list_files")]}] * (READ_CAP + 2) + [{"role": "assistant", "content": "好"}])
+    loop = AgentLoop(fake, {"list_files": lambda: ["a"]}, ev.append, max_steps=READ_CAP + 2, preload=lambda: "板卡：b1")
+    loop.ask("看看仓库")
+    assert "板卡：b1" in loop.messages[1]["content"]
+    errs = [m for m in loop.messages if m["role"] == "tool" and "read_cap" in m["content"] or "只读调用已达上限" in str(m.get("content"))]
+    assert errs, "超上限后应回错误"
+    cont = [e for e in ev if e.get("type") == "agent_continue"]
+    assert cont and cont[0]["op"] == "agent_ask" and cont[0]["steps"] == READ_CAP + 2
+    loop.ask("再看看")
+    assert sum("板卡：b1" in str(m.get("content")) for m in loop.messages) == 1          # 只附第一轮
+    ev.clear()
+    big = AgentLoop(FakeLLM([{"role": "assistant", "tool_calls": [call("x")]}] * 40), {"x": lambda: 1}, ev.append, max_steps=3)
+    big.ask("帮我从新建工程一路做到仿真跑通")
+    assert [e for e in ev if e.get("type") == "agent_continue"][0]["steps"] == 6

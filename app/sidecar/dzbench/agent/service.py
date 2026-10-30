@@ -66,6 +66,7 @@ class AgentService:
         self.pretune: pretune_mod.PreTune | None = None   # 调参前问答（人确认过的偏好；只收紧护栏）
         self.staged = StagedSearch()
         self.actions: dict[int, dict] = {}
+        self.quick: dict[str, dict] = {}        # quick_start 的题型/仿真对象（确认后接着调参、评分）
         self.chains: dict[str, dict] = {}       # project_chain 的预览结果（project_apply 卡确认时用这一份，不重新跑）
         self._aid = itertools.count(1)
         self.syms: dict | None = None
@@ -105,7 +106,8 @@ class AgentService:
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
-        }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
+            "quick_start": lambda text: self.quick_start(text),
+        }, emit, preload=self._preload, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
 
@@ -256,11 +258,58 @@ class AgentService:
         self.chains[code] = r
         return {k: v for k, v in r.items() if k != "batch"} | {"to_write": [s for s, _ in r["batch"]]}
 
+    def _preload(self) -> str:
+        """第一轮附上：仓库地图（顶层目录 + 一句话用途）、板卡、项目、仿真对象。几百字，换掉 3~6 次只读调用。"""
+        from .. import ports as ports_mod
+        root = pathlib.Path(self.gw.root)
+        st = steptools.project_state(root, None)
+        cm = {"apps": "应用固件（每个子目录一个应用）", "examples": "比赛项目（读题/方案/分配/生成的产物）", "boards": "板卡定义 board.yaml",
+              "firmware": "通用固件库（algo/drivers/proto，冻结层）", "tools": "命令行工具（req/scheme/alloc/gen/keil_inject）", "subsys": "子系统库"}
+        lines = [f"- {k}/：{v}" for k, v in cm.items() if (root / k).is_dir()]
+        try:
+            sims = ", ".join(ports_mod.sim_apps())
+        except Exception:  # noqa: BLE001
+            sims = ""
+        return ("仓库地图：\n" + "\n".join(lines) + f"\n板卡：{', '.join(st.get('boards') or []) or '无'}"
+                + f"\n项目：{', '.join(st.get('projects') or []) or '无'}" + (f"\n仿真对象：{sims}" if sims else "")
+                + f"\n当前连接：{self.s.port or '未连接'}")
+
+    def quick_start(self, text: str) -> dict:
+        """一句话起项目：解析 → ①–⑤ 整链预览（只写暂存区）→ 一张确认卡（方案 + 引脚表）。
+        用户点确认 → 写入项目 → 连仿真板 → 一键起步调参 → 评分。返回 action_id 给界面。"""
+        sp = steptools.quick_spec(text)
+        d = steptools._flow(self.gw.root).home / sp["code"]; d.mkdir(parents=True, exist_ok=True)
+        (d / "problem.txt").write_text(sp["problem"], encoding="utf-8")
+        ch = self.project_chain(sp["code"], src=str(d / "problem.txt"), mcu=sp["mcu"])
+        if ch.get("stopped_at"):
+            return {"spec": sp, "chain": ch, "action_id": None}
+        self.quick[sp["code"]] = sp
+        card = self.gate("project_apply", {"code": sp["code"]}, lambda: None)
+        return {"spec": sp, "chain": ch, "action_id": card.get("action_id")}
+
+    def _quick_after(self, code: str, written: dict) -> dict:
+        """确认后接着跑：仿真板 → 一键起步调参 → 评分（仿真里都是 log 级，不再出卡）。"""
+        sp = self.quick.pop(code)
+        if not self.s.port:
+            self.s.connect(sp["sim"], 115200, log=False)
+            t0 = time.monotonic()
+            while (self.s.schema_hash is None or not self.s.params) and time.monotonic() - t0 < 10:
+                time.sleep(0.05)
+        if not self.sim:
+            return {"written": written, "stopped": "不在仿真板上：实机调参每轮要人确认，没有自动连跑"}
+        tune = self.tune_autopilot(4)
+        items = (steptools._yaml(pathlib.Path(self.gw.root) / "examples" / code / "requirements.yaml").get("items") or [])
+        score = self.score_run(str(items[0]["id"]), n=1, band=sp["band"]) if items else {"error": "没有评分项"}
+        return {"written": written, "sim": self.s.port, "tune": tune, "score": score}
+
     def project_apply(self, code: str) -> dict:
         r = self.chains.pop(code, None)
         if not r or not r["batch"]:
             raise GatewayError("no_chain", f"{code} 还没有可写入的预览", "先 project_chain")
-        return steptools.project_apply(self.gw.root, code, r["batch"])
+        out = steptools.project_apply(self.gw.root, code, r["batch"])
+        if code in self.quick and not out.get("failed"):
+            return self._quick_after(code, out)
+        return out
 
     # -------------------------------------------------------------- 评分：跑 N 次 → 存证据 → 回写
     def score_run(self, item: str, n: int = 3, path: str | None = None, band: float | None = None, hold_s: float = 0.3) -> dict:

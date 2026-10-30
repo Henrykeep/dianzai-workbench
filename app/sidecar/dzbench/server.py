@@ -165,11 +165,17 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix) from None
+        if op == "quick_start":     # 一句话起项目：{"op":"quick_start","text":"两轮车速度环，STM32F1"} → 一张确认卡；确认走 agent_action_decide
+            from .projflow import FlowError
+            try:
+                return await run(None, self.svc.quick_start, m["text"])
+            except (FlowError, GatewayError) as e:
+                raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix) from None
         if op == "project_chain" or op == "project_apply":   # 项目页“一键走完 ①–⑤（+Keil 注入）”：先整链预览，再一次写入（同 Agent 那张总卡）
             from .projflow import FlowError
             try:
                 if op == "project_chain":
-                    return await run(None, lambda: self.svc.project_chain(m["code"], **{k: m[k] for k in ("src", "project", "name", "mcu", "tpl", "uvprojx", "app") if m.get(k)}))
+                    return await run(None, lambda: self.svc.project_chain(m["code"], **{k: m[k] for k in ("src", "project", "name", "mcu", "tpl", "uvprojx", "app", "hand_edit") if m.get(k)}))
                 return await run(None, self.svc.project_apply, m["code"])
             except (FlowError, GatewayError) as e:
                 raise LinkError(e.code, e.msg, e.fix) from None
