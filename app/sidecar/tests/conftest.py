@@ -4,7 +4,17 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import os  # noqa: E402
+
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_shell_llm_env(monkeypatch):
+    """开发机 shell 里常 source 过模型网关配置（DZ_LLM_BASE_URL / DZ_LLM_API_KEY …）：测试一律从干净环境起，
+    要用的测试自己 monkeypatch.setenv。否则 test_first_run_setup_against_mock 这类“留空 = 用已保存配置”的断言会被 shell 带偏。"""
+    for k in [k for k in os.environ if k.startswith("DZ_LLM_")]:
+        monkeypatch.delenv(k, raising=False)
 
 
 @pytest.fixture
@@ -98,3 +108,12 @@ def pytest_terminal_summary(terminalreporter):
         text = str(r.longrepr or "")
         hint = next((h for keys, h in _HINTS if any(k in text for k in keys)), "看上面的回溯")
         terminalreporter.write_line(f"✗ {r.nodeid}\n    → {hint}")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_llm_env(monkeypatch):
+    """开发机/评测机上 source 过真 Key（DZ_LLM_*）也不能漏进单测：否则“没配 Key”的测试会拿真 Key 走、断言失败时把 Key 打进日志。
+    需要的测试自己 monkeypatch.setenv。"""
+    import os
+    for k in [k for k in os.environ if k.startswith(("DZ_LLM_", "DZBENCH_API_KEY", "DZBENCH_BASE_URL", "DZBENCH_MODEL"))]:
+        monkeypatch.delenv(k, raising=False)

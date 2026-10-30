@@ -7,7 +7,8 @@ import time
 
 import pytest
 
-from dzbench.session import Session
+from dzbench.session import LinkError, Session
+from dzbench._dzlink import DATA
 
 pytestmark = pytest.mark.needs_sim  # 原 skipif 条件统一放在 conftest.SIM_OK
 
@@ -209,10 +210,13 @@ def test_host_heartbeat_watchdog_latches_estop(home):
         assert wait(lambda: (sp() or 0) > 0.5), "命令应生效"
         s.host_hb = False
         time.sleep(1.6)                                   # cmd_timeout 也会停车，所以下面再发命令验证"锁存"
-        s.send_data(1, struct.pack("<ff", 0.3, 0.0))
+        assert wait(lambda: s.status()["estop_cause"]), "心跳里应带急停原因"
+        assert s.tx_locked and s.estop_source == "firmware:hb_timeout", "板子自己急停：侧车也锁存（r6 #20）"
+        with pytest.raises(LinkError):
+            s.send_data(1, struct.pack("<ff", 0.3, 0.0))
+        s._send(DATA, 1, struct.pack("<ff", 0.3, 0.0))   # 绕过侧车锁直接发：板子自己也要拒
         time.sleep(0.3)
         assert sp() == 0.0, "看门狗触发后应锁存急停，命令被拒"
-        assert wait(lambda: s.status()["estop_cause"]), "心跳里应带急停原因"
         es = s.status()["estop_cause"]
         assert es["cause"] == "hb_timeout" and 1000 <= es["value"] < 1600 and es["message_zh"].startswith("心跳超时"), es
         s.host_hb = True

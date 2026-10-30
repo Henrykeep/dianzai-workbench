@@ -128,7 +128,8 @@ def test_estop_without_board_does_not_latch_or_alert():
     r = s.estop("Esc 键")
     assert r["nolink"] and r["src"] == "Esc 键" and s.tx_locked is False
     assert from_broadcast(r) is None
-    kind, text = from_broadcast({"type": "estop", "sent": True, "src": "急停按钮"})
+    kind, text, source = from_broadcast({"type": "estop", "sent": True, "src": "急停按钮"})
+    assert source == "ui"
     assert kind == "estop" and "急停按钮" in text and "解除急停 R" in text
 
 

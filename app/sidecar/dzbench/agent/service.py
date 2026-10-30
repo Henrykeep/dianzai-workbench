@@ -97,6 +97,8 @@ class AgentService:
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
             "progress_get": self.progress_get,
+            "project_list": self.project_list,
+            "project_open": self.project_open,
             "project_state": lambda code=None: steptools.project_state(self.gw.root, code),
             "flow_preview": lambda step, code, **m: steptools.flow_preview(self.gw.root, step, code, **m),
             "flow_accept": lambda step, code, **m: steptools.flow_accept(self.gw.root, step, code, **m),
@@ -111,6 +113,18 @@ class AgentService:
         }, emit, preload=self._preload, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
+
+    def project_list(self) -> dict:
+        from .. import project
+        return {"projects": project.list_projects(self.gw.root), "current": project.current()}
+
+    def project_open(self, code: str) -> dict:
+        """与 op project.open 同一校验；错误按 原因 + 怎么解决 返回给模型。进度推送由侧车轮询 progress.changed 负责。"""
+        from .. import project
+        try:
+            return {"project": project.open_project(self.gw.root, code)}
+        except project.ProjectError as e:
+            return {"error": e.code, "message": e.msg, "fix": e.fix, "fix_action": e.fix_action}
 
     def progress_get(self) -> dict:
         """与 op progress.get 同一份推导（dzbench/progress.py）；依赖自检沿用侧车缓存，没有就不报 missing_deps。"""
@@ -616,7 +630,7 @@ class AgentService:
                     failed.append(f"读不回 {k}：{e}")
                     continue
                 if v is not None and abs(rb - v) > 1e-6 * max(1.0, abs(v)):
-                    failed.append(f"{k} 板上是 {rb:g}，侧车记录是 {v:g}（板子复位过或被改过）")
+                    failed.append(f"{k} 板上是 {rb:g}，本地服务记录是 {v:g}（板子复位过或被改过）")
         return {"ok": not failed, "failed": failed, "checked": checked}
 
     def step_start(self, st: dict) -> None:
@@ -625,7 +639,7 @@ class AgentService:
         时才发 'R'；急停状态下直接拒绝做实验。"""
         if not st.get("start"):
             return
-        if self.s.tx_locked:
+        if self.s.tx_locked or self.s.estop_cause or (self.s.hb_status or 0) & (1 << 10):   # 板子已报急停（心跳还没让本地锁上）也拒绝
             raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停 R”")
         w = self.s.window(0.3)
         sf, done = st.get("state_field", "state"), st.get("done_state")
@@ -1071,7 +1085,7 @@ class AgentService:
                 code = f"llm_{st}"
             else:
                 code = "llm_timeout" if "超时" in e.message else ("llm_network" if e.down else "llm_error")
-            action = self.FIX_SETTINGS if st in (401, 402, 403, 404) or e.down or "Key" in e.message or "地址" in e.message else self.FIX_RESEND
+            action = self.FIX_SETTINGS if getattr(e, "model_hint", False) or st in (401, 402, 403, 404) or e.down or "Key" in e.message or "地址" in e.message else self.FIX_RESEND
             retryable = bool(getattr(e, "retry", False) or e.down)
             msg = f"{e.message}。{e.fix}" if e.fix else e.message
             detail = ""

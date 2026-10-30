@@ -1,7 +1,8 @@
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
 import { Msg } from "./ws";
-import { runAction } from "./progress";
+import { runAction, resolveFix } from "./progress";
+import { Receipts, RECEIPT_LABEL, newMsgId, blockedCard, newBlockers, noticeView, NoticeGate, Notice } from "./receipt";
 import { TurnGate, Watch, timeoutCard, errorCard, Card } from "./agentwatch";
 import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 
@@ -20,8 +21,8 @@ export function agentIdle(fields: string[] = lastFields): string {
   const step = document.querySelector<HTMLElement>(".app")?.dataset.step ?? "调参";
   const BY: Record<string, [string, string[]]> = {      // 每页一句“我能替你干什么”+ 直接能点的说法
     项目: ["把题目 PDF 路径（和 CubeMX 工程目录，没有就从零新建）发我：五步一起预览，一张卡确认写入。", ["项目走到哪一步了", "推进项目 <题号>，题目 <PDF 路径>"]],
-    烧录: ["我能编译、烧录（烧前出卡确认）、烧坏一键回滚。", ["编译一下看有没有错", "烧录"]],
-    标定: ["先人推一下、再小幅点动，我判传感器 / 误差 / 输出方向。", ["检查一下极性"]],
+    烧录: ["我能编译、烧录（烧前出卡确认）、烧坏一键回滚。", ["编译并检查报错", "烧录"]],
+    标定: ["先用手推动、再小幅点动，我判传感器 / 误差 / 输出方向。", ["检查极性"]],
     评分: ["我按评分项跑 N 次、最差一次算数，存证据、回写 requirements.yaml（都出卡确认）。", ["评分项 1 跑三遍留证据"]],
   };
   const [lead, qs] = BY[step] ?? ["点“分析阶跃”离线看超调 / 调节时间；或直接问。改参数和文件都要你确认，碰不到急停。",
@@ -345,7 +346,7 @@ export function initAgent(call: Call) {
   // ---------------------------------------------------------------- 对话
   let tools: HTMLElement | null = null, mode: HTMLElement | null = null;
   let turnUsage: Usage | null = null, timeEl: HTMLElement | null = null;
-  // 示例问题：点一下直接问（第一次打开时最省事的入口）
+  // 示例问题：点击直接提问（第一次打开时最省事的入口）
   feed.addEventListener("click", e => {
     const q = (e.target as HTMLElement).closest<HTMLElement>(".chip")?.dataset.q;
     if (q) { $<HTMLInputElement>("ag-in").value = q; $<HTMLFormElement>("ag-form").requestSubmit(); }
@@ -368,25 +369,63 @@ export function initAgent(call: Call) {
       c.remove(); watch.stop(); $<HTMLInputElement>("ag-in").value = lastText; $<HTMLButtonElement>("ag-send").disabled = false; $<HTMLFormElement>("ag-form").requestSubmit();
     });
   }
+  // 回执：每条消息一个 msg_id；回合进行中也能继续发（不再禁用发送键，以前第 2、3 条因此被静默吞掉）
+  type Turn = { id: string; text: string; me: HTMLElement; tag: HTMLElement; w: HTMLElement | null; t0: number };
+  const turns: Turn[] = [];
+  const R = new Receipts((id, st, ack) => {
+    const t = turns.find(x => x.id === id) ?? lostTurns.get(id); if (!t) return;
+    t.tag.dataset.state = st; t.tag.textContent = RECEIPT_LABEL[st];
+    t.me.classList.toggle("undelivered", st === "lost");
+    const nx = t.tag.nextElementSibling;
+    if (st !== "lost" && nx?.classList.contains("undel")) nx.remove();
+    if (st === "lost") {
+      const f = document.createElement("div"); f.className = "undel";
+      f.innerHTML = `<button class="btn sm">重发</button>`;
+      f.querySelector("button")!.onclick = () => { f.remove(); t.me.remove(); t.tag.remove(); $<HTMLInputElement>("ag-in").value = t.text; $<HTMLFormElement>("ag-form").requestSubmit(); };
+      t.tag.after(f);
+    }
+    if (st === "blocked" && ack) {   // 本地服务暂停了这条：停掉等待计时，不出 60 s 超时卡；解除后本地服务回 running 再计时
+      showCard(blockedCard(ack));
+      if (t.w === live) { watch.stop(); if (thinkEl?.isConnected) thinkEl.textContent = "已暂停：等待解除急停"; }
+    }
+    if (st === "running" && t.w === live && !watch.on) watch.start(performance.now());
+  });
+  const lostTurns = new Map<string, Turn>();
+  function startLive(t: Turn) {
+    const w = add(`<span class="lbl">思考中… 0 s</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
+    t.w = w; t.t0 = performance.now(); turnUsage = null; timeEl = null;
+    lastText = t.text; gate.begin(); watch.start(performance.now());
+    thinkEl = w.firstElementChild as HTMLElement;
+    tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
+  }
+  function endTurn(t: Turn) {
+    const i = turns.indexOf(t); if (i >= 0) turns.splice(i, 1);
+    if (live === t.w) { watch.stop(); live = null; }
+    if (turns[0] && !turns[0].w) startLive(turns[0]);   // 下一条排队的消息接着显示「思考中」
+  }
   $("ag-form").onsubmit = async e => {
     e.preventDefault();
     const inp = $<HTMLInputElement>("ag-in"), text = inp.value.trim();
     if (!text) return;
-    inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
+    inp.value = "";
+    const id = newMsgId();
     const me = add(esc(text), "msg me");
-    const t0 = performance.now(); turnUsage = null; timeEl = null;
-    lastText = text; gate.begin(); watch.start(performance.now());
-    const w = add(`<span class="lbl">思考中… 0 s</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
-    thinkEl = w.firstElementChild as HTMLElement;
-    tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
+    const tag = document.createElement("div"); tag.className = "lbl rcpt"; me.after(tag);
+    const t: Turn = { id, text, me, tag, w: null, t0: performance.now() };
+    turns.push(t); lostTurns.set(id, t);
+    R.sent(id);
+    if (turns[0] === t) startLive(t);
     try {
-      const r = await call<any>("agent_ask", { text });
+      const r = await call<any>("agent_ask", { text, msg_id: id });
+      R.replied(id);
+      if (!t.w) startLive(t);
+      const w = t.w!;
       const txt = typeof r === "string" ? r : r?.text ?? "";
       if (txt.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
       else w.firstElementChild!.outerHTML = `<div>${esc(txt).replace(/\n/g, "<br>")}</div>`;
       const u = parseUsage(r); if (u) { usageLog.push(u); turnUsage = u; }
-      if (w.isConnected) { const t = document.createElement("div"); t.className = "lbl ag-time"; timeEl = t; t.textContent = fmtElapsed(elapsedOf(turnUsage, performance.now() - t0)); w.append(t); }
-      // 步数用完：给「继续执行」。侧车返回 continue 操作时用它，否则发一条「继续」
+      if (w.isConnected) { const d = document.createElement("div"); d.className = "lbl ag-time"; timeEl = d; d.textContent = fmtElapsed(elapsedOf(turnUsage, performance.now() - t.t0)); w.append(d); }
+      // 步数用完：给「继续执行」。本地服务返回 continue 操作时用它，否则发一条「继续」
       if (/步数用完/.test(txt) || r?.continue) {
         const c = add(`<div class="act"><button class="btn pri">继续执行</button></div>`, "card cont-card");
         c.querySelector("button")!.onclick = () => {
@@ -397,16 +436,39 @@ export function initAgent(call: Call) {
       }
     }
     catch {   // 不静默丢：标「未送达」并给「重发」
-      w.remove();
-      me.classList.add("undelivered");
-      const f = document.createElement("div"); f.className = "undel";
-      f.innerHTML = `<span>未送达</span><button class="btn sm">重发</button>`;
-      f.querySelector("button")!.onclick = () => { f.remove(); me.remove(); $<HTMLInputElement>("ag-in").value = text; $<HTMLFormElement>("ag-form").requestSubmit(); };
-      me.after(f);
+      t.w?.remove(); R.failed(id);
     }
-    // 不清 tools/mode：工具事件会比回答晚到（侧车线程 → 事件循环），留给这条消息直到下一问
-    finally { watch.stop(); live = null; $<HTMLButtonElement>("ag-send").disabled = !(document.getElementById("st-ws")?.textContent ?? "").includes("已连接"); }
+    // 不清 tools/mode：工具事件会比回答晚到（本地服务线程 → 事件循环），留给这条消息直到下一问
+    finally { endTurn(t); }
   };
+  // 进度推送带来新 blocker（如急停打断自整定）：Agent 面板立即发一条消息，修复按钮走统一 fix_action
+  // 进度推送带来新 blocker：Agent 面板发一条消息（本地服务发 agent_notice 时以它为准，替换前端这条）；同一 code 未清除前去重
+  const seenBlk = new Set<string>(), gateN = new NoticeGate(); let primed = false;
+  const notes = new Map<string, HTMLElement>();
+  function noteEl(code: string, body: string, fa: string | null | undefined, tag = "") {
+    const other = resolveFix(fa);
+    const html = `${body}${other ? `<div class="act"><button class="btn pri" ${other.kind === "run" ? "" : "disabled"} title="${esc(other.note ?? "")}">${esc(other.label)}</button>${tag ? `<span class="nb-note">${esc(tag)}</span>` : ""}</div>` : ""}`;
+    let c = notes.get(code);
+    if (c?.isConnected) c.innerHTML = html; else { c = add(html, "msg bot blk-note"); notes.set(code, c); }
+    c.dataset.code = code;
+    if (other?.kind === "run") c.querySelector("button")!.onclick = () => runAction(fa!, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
+  }
+  function onBlockers(bs: { code: string; message: string; fix_action?: string | null }[] = []) {
+    const fresh = newBlockers(seenBlk, bs);
+    gateN.sync(bs.map(b => b.code)); for (const k of [...notes.keys()]) if (!seenBlk.has(k)) notes.delete(k);
+    if (!primed) { primed = true; bs.forEach(b => gateN.offer(b.code)); return; }   // 打开页面时已有的 blocker 不刷屏
+    for (const b of fresh) if (gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
+  }
+  function onNotice(n: Notice) {
+    if (!n?.blocker_code) return;
+    const fallback = notes.get(n.blocker_code)?.dataset.src !== "notice" && notes.has(n.blocker_code);
+    if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复
+    seenBlk.add(n.blocker_code);
+    const v = noticeView(n);
+    noteEl(n.blocker_code, `<div><b>${esc(v.head)}</b></div>${v.lines.map(l => `<p>${esc(l)}</p>`).join("")}`, n.fix_action, v.tag);
+    notes.get(n.blocker_code)!.dataset.src = "notice";
+  }
+
 
   // ---------------------------------------------------------------- 设置
   // 首次没配 Key 时自动弹一次；可随时从“大模型设置”再打开。表单没保存前“测试连接”用的是表单里的值。
@@ -467,7 +529,7 @@ export function initAgent(call: Call) {
   $("cfg-ol").onclick = async () => {
     const b = $<HTMLButtonElement>("cfg-ol"), want = $<HTMLSelectElement>("cfg-local").value;
     b.disabled = true; olSt("busy", `<span class="spin"></span>检查本机 Ollama…`);
-    const r = await call("agent_ollama", { action: "check" }).catch(() => ({ ok: false, message: "侧车没响应" }));
+    const r = await call("agent_ollama", { action: "check" }).catch(() => ({ ok: false, message: "本地服务没响应" }));
     if (!r.ok) { b.disabled = false; return olSt("bad", `<b>没找到 Ollama</b> · ${esc(r.message)}${r.fix ? `<br><span class="fix">→ ${esc(r.fix)}</span>` : ""}`); }
     if (!r.models.some((n: string) => n === want || n === want + ":latest")) {
       olSt("busy", `<span class="spin"></span>Ollama 在跑；正在拉 ${esc(want)}（几个 GB，视网速要几分钟）…`);
@@ -577,6 +639,8 @@ export function initAgent(call: Call) {
       if (typeof m.type === "string" && m.type.startsWith("agent_")) watch.touch(performance.now());
       if (m.type === "agent_error") { gate.error(); watch.stop(); live?.remove(); showCard(errorCard(m as any)); }
       if (m.type === "agent_delta") onDelta(m.text);
+      if (m.type === "agent_ack") R.ack(m as any);
+      if (m.type === "agent_notice") onNotice(m as any);
       if (m.type === "agent_tool") streamed = "";
       if (["agent_mode", "agent_usage", "agent_retry", "agent_toolmode"].includes(m.type)) modeLine(m);
       if (m.type === "agent_unreachable" && gate.allowUnreachable()) renderDown(m);   // 同一轮已出 agent_error 卡：忽略随后的 agent_unreachable
@@ -589,6 +653,6 @@ export function initAgent(call: Call) {
       if (m.type === "sweep_result") renderSweep(m);
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
     },
-    add,
+    add, onBlockers,
   };
 }

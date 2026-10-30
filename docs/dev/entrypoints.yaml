@@ -3,13 +3,14 @@
 # （或写进 script_ops 并说明为什么）；界面调用的每个 op 都在这里登记；Agent 工具都有归属步。
 # 依据：/workspace/walk/LOGIC_AUDIT.md §3.1（时间线导航）、§3.3（入口唯一 + op 无孤儿）。
 # ready: false = 入口已登记、功能未就绪（如等固件支持）；不写 = 已就绪。
-# at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件>。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
+# at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件> | page:<旅程 id>（页内具名区域，index.html 用 data-region 标）。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
 
 # 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（读题定方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
 always:    [急停, 连接, 排障]
 nav:       [进度]   # 左侧导航 aside.nav：流程步骤 #steps 与下一步提示
+page:      [req, tune, seal]   # 页内具名区域 data-region page:req：读题页没有当前项目（project 为 null）时的空状态「新建项目 / 打开项目」；page:tune = 调参页页头「保存参数」；page:seal = 封箱页运行模式区
 
 actions:
   # ── 常驻 ──
@@ -25,8 +26,9 @@ actions:
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
   # 进度阻塞项的修复按钮（进度条按 fix_action 动态生成）。ready: false = 入口已登记但功能未就绪（界面置灰，侧车返回 not_ready）
   - {id: fetch_deps,   label: 一键安装依赖,     at: always:排障, ui: fix-deps, dynamic: true, ops: [fetch_deps]}
-  - {id: run_selftest, label: 板上自检,         at: always:排障, ui: fix-selftest, dynamic: true, ready: false, ops: [run_selftest]}
   # ── 项目 ──
+  - {id: project_new,  label: 新建项目,         at: page:req,   ui: pj-new,     ops: []}   # 只把焦点移到一句话输入（project_ask），不另起新建流程
+  - {id: project_open, label: 打开项目,         at: page:req,   ui: pj-open,    ops: [project.list, project.open]}   # 列表按钮 .pj-item 是这一入口的选项，选中即 project.open {code}
   - {id: project_ask,  label: 一句话新建工程,   at: step:项目,   ui: pj-ask-go,  ops: []}   # 只读 agent_config 判断是否已配置，配置入口仍是 llm_cfg
   - {id: project_sample, label: 打开示例项目,   at: step:项目,   ui: pj-sample,  ops: []}
   - {id: project_flow, label: 读题到生成引导,   at: step:项目,   ui: pflow,      ops: [flow_preview, flow_accept]}
@@ -67,7 +69,9 @@ actions:
   - {id: score,        label: 评分项逐项验收,   at: step:评分,   ui: score,      ops: [score_items, score_save, score_writeback]}
   # ── 封箱 ──
   - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
-  - {id: params_flash, label: 存参数到 flash,   at: step:封箱,   ui: pre-save,   ops: [cmd]}
+  - {id: run_mode,     label: 切换运行模式,     at: page:seal,   ui: seal-mode,  ops: [set_run_mode]}   # 先 confirmed=false，needs_confirm 出确认卡，人确认后 confirmed=true；Agent 只给跳转（human_only）
+  - {id: run_selftest, label: 板上自检,         at: page:seal,   ui: seal-selftest, ops: [run_selftest]}   # 也是进度阻塞项 selftest_fail 的修复动作；固件没报时照写 selftest_unreported 的原因 + 处理
+  - {id: params_flash, label: 存参数到 flash,   at: page:tune,   ui: tb-save,    ops: [save_params]}   # 调参页页头常驻；也是进度阻塞项 params_not_saved 的修复动作。原赛前检查对话框里的 cmd W 按钮已去掉（一个功能一个入口）
   - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}
   - {id: yaml_wb,      label: 写回 yaml,        at: step:封箱,   ui: ag-yaml,    ops: [yaml_writeback]}
   # ── 工具箱 ──
@@ -95,8 +99,6 @@ shared_ops:
 script_ops:
   send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
-  save_params: 把当前参数写进板子 flash（W 指令，回 {ok,result,message_zh}）；界面“保存到板子”按钮待前端接
-  set_run_mode: 切联机/脱机（M 指令 + 确认字节）；必须先过界面确认卡（confirmed=true 才发），界面按钮待前端接
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
@@ -107,6 +109,7 @@ agent_tools:
   step:烧录: [flash, flash_rollback, build, build_log, board_memory]
   always:排障: [decode_hardfault, read_symbol]
   step:项目: [repo_map, remember, list_files, read_file, propose_edit, update_plan, project_state, progress_get, flow_preview, flow_accept, project_chain, project_apply, quick_start]
+  nav:进度: [project_list, project_open]
   step:评分: [score_items, score_run, score_save, score_writeback]
   step:标定: [polarity_check]
   step:联调: [fft, wave_measure]

@@ -23,9 +23,11 @@ def test_decode():
 def test_events():
     assert hb_status_event(1) is None                       # 正常上电不报
     assert hb_status_event(1 | (1 << 10)) is None           # 普通急停已有自己的事件
-    k, t = hb_status_event(4 | (1 << 8))
+    k, t, src = hb_status_event(4 | (1 << 8))
+    assert src == "firmware:watchdog_reset"
     assert k == "watchdog" and "看门狗" in t and "R" in t
-    k, t = hb_status_event(1 | (1 << 9))
+    k, t, src = hb_status_event(1 | (1 << 9))
+    assert src.startswith("firmware:")
     assert k == "watchdog" and "堵转" in t
 
 

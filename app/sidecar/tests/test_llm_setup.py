@@ -33,6 +33,8 @@ def mock_url():
 
 def test_first_run_setup_against_mock(mock_url, tmp_path, monkeypatch):
     monkeypatch.setenv("DZBENCH_HOME", str(tmp_path)); monkeypatch.setenv("HOME", str(tmp_path)); monkeypatch.delenv("DZBENCH_API_KEY", raising=False)
+    for k in ("DZ_LLM_API_KEY", "DZ_LLM_BASE_URL", "DZ_LLM_MODEL", "DZBENCH_BASE_URL", "DZBENCH_MODEL"):   # 环境里有 Key 现在就算已配置
+        monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "config_path", lambda: tmp_path / "config.json")
     assert llm.public_config()["configured"] is False
     form = {"provider": "custom", "base_url": mock_url, "model": "mock-1", "api_key": "sk-good-123456"}

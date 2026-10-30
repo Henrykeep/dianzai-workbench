@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import pathlib
+import re
 
 import yaml
 
@@ -109,6 +110,15 @@ def score_items(svc, path: str | None = None) -> dict:
 
 
 # ---------------------------------------------------------------- 一句话跑完项目流程
+MCU_RE = re.compile(r"(?<![A-Za-z0-9])(stm32[fghlu]\d{3}[a-z0-9]{2,4}|mspm0[gl]\d{4})(?![A-Za-z0-9])", re.I)
+
+
+def mcu_from_text(text: str) -> str | None:
+    """题面/需求里写明的主控型号（如 STM32F103C8T6、MSPM0G3507）→ 小写；没写或写了多个不同的 → None（不猜）。"""
+    found = {m.group(1).lower() for m in MCU_RE.finditer(text or "")}
+    return found.pop() if len(found) == 1 else None
+
+
 def project_chain(root, code: str, src: str | None = None, project: str | None = None, name: str | None = None,
                   mcu: str | None = None, tpl: str | None = None, uvprojx: str | None = None, app: str | None = None, hand_edit: str | None = None) -> dict:
     """把还没做的步依次预览完（全部落在暂存区 + 沙盒题目目录，不动仓库），返回一张“批量写入”清单给 project_apply。
@@ -127,6 +137,8 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
         shutil.copytree(real, sb)
     else:
         sb.mkdir(parents=True)
+    if not mcu and src and pathlib.Path(src).is_file() and pathlib.Path(src).suffix.lower() in (".txt", ".md", ".yaml"):
+        mcu = mcu_from_text(pathlib.Path(src).read_text(encoding="utf-8", errors="replace"))
     st = project_state(root, code)
     todo = [s for s in STEPS if not st["steps"][LABEL[s]]]
     m0 = {"code": code, "dest": str(sb)}
@@ -150,10 +162,14 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
             r = f.preview("scheme", m0)
             if r["rc"]:
                 return stop("scheme", "方案起稿失败：" + r["out"][-300:])
-            f.accept("scheme", m0)
+            drafted0 = _yaml(f.home / code / "stage" / "scheme" / "scheme.yaml").get("mcu")
+            f.accept("scheme", m0 | ({"mcu": mcu} if mcu else {}))     # 题面/用户给的主控是硬约束：方案起稿选别的也按它写（r6 #22：要 F103 写成 F407）
             sch = _yaml(sb / "scheme.yaml")
-            steps.append({"step": "scheme", "ok": True, "mcu": sch.get("mcu"), "files": list(r["files"])})
-            batch.append(("scheme", {}))
+            row = {"step": "scheme", "ok": True, "mcu": sch.get("mcu"), "files": list(r["files"])}
+            if mcu and drafted0 and drafted0 != mcu:
+                row["mcu_note"] = f"方案起稿选的是 {drafted0}，按题面要求改为 {mcu}"
+            steps.append(row)
+            batch.append(("scheme", {"mcu": mcu} if mcu else {}))
         if "import" in todo:
             if project:
                 r = f.preview("import", {"code": code, "project": project} | ({"name": name} if name else {}))
@@ -162,6 +178,9 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
                 if r.get("need_repair"):
                     return stop("import", "main.c 的 USER CODE 标记坏了，要先看修复对比", "到项目页③看修复前后的对比，确认后再让我继续")
                 board = r["name"]
+                got = str(r.get("mcu") or _yaml(pathlib.Path(project) / "board.yaml").get("mcu") or "").lower()
+                if mcu and got and not got.startswith(mcu[:11]) and not mcu.startswith(got[:11]):
+                    return stop("import", f"导入工程的芯片是 {got}，题面要求 {mcu}，不一致", "换成该芯片的工程，或明确告诉我改用 " + got)
                 steps.append({"step": "import", "ok": True, "board": board, "aliases": len(r.get("aliases") or []), "overwrite": r.get("overwrite")})
                 if r.get("overwrite"):
                     return stop("import", f"boards/{board} 已存在，批量写入不覆盖", "换个板名（name），或在项目页③勾“覆盖”")
@@ -170,7 +189,8 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
                 opts = scratch_options(root, _yaml(sb / "scheme.yaml"))
                 o = next((x for x in opts if x["ok"] and (not mcu or x["mcu"] == mcu) and (tpl is None or x["tpl"] == tpl)), None)
                 if not o:
-                    return stop("scratch", "没有能生成 .ioc 的芯片候选" + (f"（{mcu}）" if mcu else ""), "给我 CubeMX 工程路径走导入")
+                    return stop("scratch", "没有能生成 .ioc 的芯片候选" + (f"（题面要求 {mcu}，不会换成别的芯片）" if mcu else ""),
+                                "给我该芯片的 CubeMX 工程路径走导入，或确认改用其它主控")
                 r = f.preview("scratch", m0 | {"mcu": o["mcu"], "tpl": o["tpl"]} | ({"name": name} if name else {}))
                 if r["rc"]:
                     return stop("scratch", "从零新建失败：" + r["out"][-300:])
@@ -251,7 +271,7 @@ def quick_spec(text: str) -> dict:
     if not kind:
         from ..projflow import FlowError
         raise FlowError("quick_kind", "一句话起项目目前只支持电机速度环 / 位置环", "例：“两轮车速度环，STM32F1”")
-    mcu = next((m for pat, m in QUICK_MCU if _re.search(pat, low)), "stm32f103c8t6")
+    mcu = mcu_from_text(text) or next((m for pat, m in QUICK_MCU if _re.search(pat, low)), "stm32f103c8t6")   # 写了完整型号就用原样
     k = QUICK_KINDS[kind]
     code = "Q" + hashlib.sha1(t.encode()).hexdigest()[:6]
     problem = f"{t}\n一、任务\n设计电机{k['cn']}闭环控制系统，主控 {mcu.upper()}。\n二、要求\n基本要求\n{k['req']}\n"

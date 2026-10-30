@@ -38,7 +38,7 @@ ACTIONS = {
     "tune_relay": "无初值一键起步调参",
     "estop_clear": "确认安全后解除急停",
     "run_selftest": "执行板上自检并读取结果",
-    "params_flash": "将参数写入 Flash",
+    "params_flash": "将参数写入 Flash",   # op save_params
     "project_flow": "读题到生成工程引导",
     "build": "编译固件",
     "cal_polarity": "极性自检",
@@ -60,12 +60,18 @@ BLOCKS = {"no_board": ["sim", "bringup", "tune", "score", "seal"],
           "params_not_saved": ["score", "seal", "mode:standalone"]}
 
 LINK_REASON = {"port_not_found": "未找到上次使用的串口", "port_ambiguous": "检测到多块同型号板子",
-               "transport_closed": "连接中断，正在重连", "resuming": "侧车重启后正在恢复连接",
+               "transport_closed": "连接中断，正在重连", "resuming": "本地服务重启后正在恢复连接",
                "no_frames": "已打开串口但未收到合法帧"}
 
 
-def _blocker(code: str, message: str) -> dict:
-    return {"code": code, "message": message, "fix_action": FIX[code], "blocks": list(BLOCKS[code])}
+FW_FIELDS = ("run_mode", "selftest", "params_saved", "params_hash", "estop_cause")   # 固件上报的状态快照（与 link.state 同名）
+
+
+def _blocker(code: str, message: str, detail=None) -> dict:
+    b = {"code": code, "message": message, "fix_action": FIX[code], "blocks": list(BLOCKS[code])}
+    if detail is not None:
+        b["detail"] = detail
+    return b
 
 
 def blockers(f: dict) -> list[dict]:
@@ -80,9 +86,12 @@ def blockers(f: dict) -> list[dict]:
         out.append(_blocker("no_board", "未连接板子" + (f"：{why}。" if why else "。")))
         return out                       # 板子不在线时，板上状态（急停、自检、参数）均不可信，不再判
     if f.get("estop"):
-        out.append(_blocker("estop", "急停已锁存" + (f"：{f['estop_reason']}" if f.get("estop_reason") else "。")))
+        b = _blocker("estop", "急停已锁存" + (f"：{f['estop_reason']}" if f.get("estop_reason") else "。"),
+                     f.get("estop_cause"))
+        b["source"] = f.get("estop_source") or "sidecar"
+        out.append(b)
     if f.get("selftest_fail"):
-        out.append(_blocker("selftest_fail", f"板上自检未通过：{f['selftest_fail']}。"))
+        out.append(_blocker("selftest_fail", f"板上自检未通过：{f['selftest_fail']}。", f.get("selftest_items")))
     gains = f.get("gains") or {}
     if gains and all(v is not None and float(v) == 0.0 for v in gains.values()):
         out.append(_blocker("gains_zero", "控制增益（" + "、".join(gains) + "）全部为零，闭环不会产生输出。"))
@@ -144,8 +153,9 @@ def derive(f: dict) -> dict:
     else:
         nxt = {"title": "全部完成", "action": "", "hint": "各步骤均已完成，可导出封箱清单存档。"}
     return {"steps": steps, "current": current, "next": nxt,
-            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks")} for b in bl],
-            "mode": f.get("mode"), "project": f.get("project")}
+            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks", "source", "detail") if k in b} for b in bl],
+            "mode": f.get("mode"), "project": f.get("project"),
+            **{k: (f.get("fw") or {}).get(k) for k in FW_FIELDS}}
 
 
 def standalone_blocker(snapshot: dict) -> dict | None:
@@ -166,6 +176,11 @@ def _params_saved(s) -> bool | None:
     return getattr(s, "flash_saved_writes", -1) == getattr(s, "param_writes", 0)
 
 
+def estop_cause_of(fw: dict | None, st: dict | None) -> dict | None:
+    """急停原因只有这一个来源：优先 fw_status()（会话快照）；没上报时再读 status.estop_cause。"""
+    return (fw or {}).get("estop_cause") or (st or {}).get("estop_cause") or None
+
+
 def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
     """从会话（Session）、Agent 服务（可选）和依赖自检结果收集事实。只读。"""
     st = s.status()
@@ -177,8 +192,17 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
     if estop:
         ev = [e for e in s.timeline.history() if e.get("kind") in ("estop", "watchdog")]
         reason = ev[-1]["text"] if ev else ("板子上报急停标志" if "急停" in flags else None)
-    self_fail = None
-    if "安全态" in flags and not estop:
+    fw = s.fw_status() if hasattr(s, "fw_status") else {}
+    ec = estop_cause_of(fw, st)                          # 急停原因唯一来源
+    if estop and ec and ec.get("message_zh"):
+        reason = ec["message_zh"]                        # 固件上报的急停原因优先于时间线推断
+    self_fail, self_items = None, None
+    stt = fw.get("selftest")
+    if stt is not None:                                  # 固件上报了自检结果：以它为准，不再推断
+        if not stt.get("pass"):
+            self_items = list(stt.get("failed_items") or [])
+            self_fail = "；".join(i.get("message_zh") or i.get("key") or "" for i in self_items) or "固件报告自检失败"
+    elif "安全态" in flags and not estop:
         self_fail = f"板子处于安全态（复位原因：{st.get('reset') or '未知'}）"
     elif st.get("reset") in ("看门狗", "内核锁死"):
         self_fail = f"异常复位（{st['reset']}）"
@@ -192,7 +216,7 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
             gains = {}
     return {
         "link": {"board": link.get("board"), "reason": link.get("reason")},
-        "mode": link.get("mode"),
+        "mode": link.get("mode") or (fw.get("run_mode") or {}).get("mode"),
         "schema_ok": bool(st.get("schema_ok")),
         "fw_rev": st.get("fw_rev"),
         "project": proj,
@@ -202,9 +226,11 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
         "params_read": len(s.params),
         "deps_missing": [d["name"] for d in (deps or []) if d.get("level") == "fail"],
         "estop": estop, "estop_reason": reason,
-        "selftest_fail": self_fail,
+        "estop_source": getattr(s, "estop_source", None) or ((ec or {}).get("source")),
+        "selftest_fail": self_fail, "selftest_items": self_items, "estop_cause": ec if estop else None,
+        "fw": fw,
         "gains": gains,
-        "params_saved": _params_saved(s),
+        "params_saved": fw["params_saved"] if fw.get("params_saved") is not None else _params_saved(s),
         "tune_best": tune_best,
         "project_ready": bool(getattr(svc, "cfg", {}).get("flash", {}).get("target")) if svc is not None else False,
     }

@@ -86,7 +86,7 @@ def main(argv=None, llm=None, run_sim=None) -> int:
         if not cfg.get("api_key") and cfg.get("provider") != "ollama":
             print("没有配置大模型 Key：在工作台 Agent 设置里填，或 export DZBENCH_API_KEY=…（只在本机）。", file=sys.stderr)
             return 2
-        llm = llm_mod.build(cfg)
+        llm = llm_mod.build(cfg | {"failover": False})   # 评测只测云端这个模型：断一次就切本地并一直用本地会让后面整批用例作废（v7 GLM 15/29 例）
 
     cases = evals.load()
     if a.only:

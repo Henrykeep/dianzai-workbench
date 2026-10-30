@@ -6,6 +6,8 @@ UI → 侧车：{"op": ..., "rid": 可选请求号, ...}；侧车回 {"type":"re
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import itertools
 import json
 import traceback
 import os
@@ -29,6 +31,7 @@ from .ports import list_ports
 from .sender import Sender
 from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
+from .notices import Notifier, cleared_notice
 
 UI_HZ = 60
 MAX_POINTS = 200
@@ -47,6 +50,15 @@ class Server:
         self.progress = Progress(self.session, self.svc, lambda: _doctor.run(str(self.svc.gw.root)))
         self.svc.progress_src = self.progress
         self.recovered = lastsession.take_unclean()      # 上次侧车是不是崩了
+        # 缺口 #25：Agent（LLM 长调用）独占一个线程，按顺序排队；不占默认线程池，绝不在事件循环里跑。
+        # 上位机心跳是 Session 的独立线程（_host_heartbeat），不经过事件循环，也不等 Agent。
+        self.agent_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="dz-agent")
+        self.tick_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="dz-tick")
+        self.estop_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="dz-estop")
+        self.agent_queue: list[str] = []          # 等待中的 msg_id（不含正在跑的）
+        self.agent_running: str | None = None
+        self._msg_ids = itertools.count(1)
+        self.notifier = Notifier()
 
     # 线程安全的广播
     def emit(self, msg: dict) -> None:
@@ -62,29 +74,38 @@ class Server:
         data = json.dumps(msg, ensure_ascii=False)
         await asyncio.gather(*(c.send(data) for c in list(self.clients)), return_exceptions=True)
 
+    def _tick_collect(self, n: int) -> list[dict]:
+        """在 dz-tick 线程里读会话（这些读要拿 session.lock）：别的线程长持锁时只卡这条线程，不卡事件循环/急停。"""
+        out = []
+        new = self.session.take_new()
+        if new:
+            t = [s[0] for s in new]
+            ys = {k: [float(s[1][k]) for s in new] for k in new[0][1] if k != "t_ms"}
+            t, ys = minmax(t, ys, MAX_POINTS)
+            out.append({"type": "telem", "t": t, "y": ys})
+        if self.session.raw_on:
+            raw = self.session.take_raw()
+            if raw:
+                out.append({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
+        ls = self.session.link_state()
+        if ls:
+            out.append(ls)
+        if n % (UI_HZ // 4) == 0:
+            pc = self.progress.changed()            # 进度有变化才推（依赖自检结果缓存，见 progress.py）
+            if pc:
+                out.append(pc)
+                out.extend(self.notifier.update(pc))  # 新增阻塞项：以 Agent 身份主动提醒（模板，不调大模型）
+            out.append(self.session.status() | {"clients": len(self.clients)})
+        return out
+
     async def _ticker(self) -> None:
         n = 0
+        loop = asyncio.get_running_loop()
         while True:
             await asyncio.sleep(1 / UI_HZ)
-            new = self.session.take_new()
-            if new:
-                t = [s[0] for s in new]
-                ys = {k: [float(s[1][k]) for s in new] for k in new[0][1] if k != "t_ms"}
-                t, ys = minmax(t, ys, MAX_POINTS)
-                await self._broadcast({"type": "telem", "t": t, "y": ys})
-            if self.session.raw_on:
-                raw = self.session.take_raw()
-                if raw:
-                    await self._broadcast({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
-            ls = self.session.link_state()
-            if ls:
-                await self._broadcast(ls)
             n += 1
-            if n % (UI_HZ // 4) == 0:
-                pc = self.progress.changed()            # 进度有变化才推（依赖自检结果缓存，见 progress.py）
-                if pc:
-                    await self._broadcast(pc)
-                await self._broadcast(self.session.status() | {"clients": len(self.clients)})
+            for msg in await loop.run_in_executor(self.tick_pool, self._tick_collect, n):
+                await self._broadcast(msg)
 
     async def _op(self, m: dict):
         s, op = self.session, m.get("op")
@@ -94,6 +115,17 @@ class Server:
                     "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
+        if op == "project.list":                       # 可打开的项目（只读，读题页空状态用）
+            return {"projects": await run(None, project_mod.list_projects, self.svc.gw.root), "current": project_mod.current()}
+        if op == "project.open":                       # 打开已有项目 = 设为当前项目（持久化）+ 推 progress.changed
+            try:
+                p = await run(None, project_mod.open_project, self.svc.gw.root, m.get("code"))
+            except project_mod.ProjectError as e:
+                raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
+            pc = self.progress.changed()
+            if pc:
+                await self._broadcast(pc)
+            return {"project": p}
         if op == "progress.get":                       # 项目进度（只读；refresh=true 时重跑依赖自检）
             if m.get("refresh") or self.progress.deps is None:
                 await run(None, self.progress.refresh_deps)
@@ -120,12 +152,16 @@ class Server:
             return await run(None, s.connect, m["port"], None if baud in (None, "auto", 0) else int(baud))
         if op == "disconnect":
             return await run(None, s.disconnect)
-        if op == "estop":                      # 不排队，直接在事件循环里发
-            r = s.estop(str(m.get("src") or "")[:20])
+        if op == "estop":                      # 不排队：专用单线程发（不占默认线程池，串口写阻塞也不卡事件循环）
+            r = await asyncio.get_running_loop().run_in_executor(self.estop_pool, s.estop, str(m.get("src") or "")[:20])
             await self._broadcast(r)
             return r
         if op == "cmd":
-            return s.cmd(m["c"], m.get("n"))
+            was = s.tx_locked
+            r = s.cmd(m["c"], m.get("n"))
+            if r and m["c"] == "R" and was:      # 解除急停：只发 'R'，不重发运动/设定值，不恢复调参（已取消的保持取消）
+                await self._broadcast(cleared_notice())
+            return r
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
@@ -184,9 +220,17 @@ class Server:
             r = await run(None, lambda: deps.fetch(self.progress.deps or [], repo))
             await run(None, self.progress.refresh_deps)
             return r
-        if op == "run_selftest":                       # 入口已登记但未就绪（entrypoints.yaml ready: false）
-            raise LinkError("not_ready", "当前固件尚未提供自检触发与结果上报，暂不能从工作台执行板上自检。",
-                            "固件支持后此入口自动启用；在此之前可读取黑匣子查看复位原因与安全态记录")
+        if op == "run_selftest":                       # 读取固件心跳上报的板上自检结果（上电自检由板子执行），并刷新进度
+            if not s.status().get("alive"):
+                raise LinkError("not_connected", "未连接板子，无法读取板上自检结果。", "先连接板子（或仿真板），再执行自检")
+            st = s.fw_status().get("selftest")
+            if st is None:
+                raise LinkError("selftest_unreported", "当前固件没有上报自检结果（固件早于 dzctl 0.10.0，或该应用尚未接入自检上报，目前仅 car_2wd 支持）。",
+                                "将固件更新到包含自检上报的版本并重新烧录；在此之前可读取黑匣子查看复位原因与安全态记录")
+            pc = self.progress.changed()
+            if pc:
+                await self._broadcast(pc)
+            return {"selftest": st, "pass": bool(st.get("pass")), "failed_items": st.get("failed_items") or []}
         if op == "flow_preview" or op == "flow_accept":     # 项目页引导流程：先暂存区预览，确认才写（dzbench/projflow.py）
             from .projflow import Flow, FlowError
             fl = Flow(self.svc.gw.root)
@@ -315,8 +359,8 @@ class Server:
         if op == "tune_search":                    # 开环阶跃 → 辨识 → 仿真 PSO/分阶段 → top-k（不写板子）
             return await run(None, lambda: self.svc.sim_search(m["y"], m["u"], float(m.get("seconds", 5)), m.get("strategy", "pso"),
                                                                bool(m.get("wide")), int(m.get("top_k", 3))))
-        if op == "agent_ask":
-            return await run(None, self.svc.ask, m["text"])
+        if op == "agent_ask":                      # 正常走 handler 里的 _agent_submit（立即回执 + 排队）；这里只给内部直调
+            return await asyncio.get_running_loop().run_in_executor(self.agent_pool, self.svc.ask, m["text"])
         if op == "agent_undo":                     # 人点“撤销 Agent 上一步”：参数改回 / git revert
             return await run(None, self.svc.undo_last)
         if op == "agent_set_mode":                 # 工作模式：通用 / 诊断 / 调参 / 改代码 / 审查（只收窄工具）
@@ -365,8 +409,8 @@ class Server:
             return await run(None, self.svc.run_sweep_test)
         if op == "tune_relay":                     # 调参 → 更多实验 → 无初值一键起步；用户点 = 已确认；十几秒，放线程池
             return await run(None, self.svc.run_relay_tune)
-        if op == "tune_step_test":                 # 用户自己点 = 已是人工确认
-            return self.svc.run_step_test()
+        if op == "tune_step_test":                 # 用户自己点 = 已是人工确认；要几秒，放线程池（以前在事件循环里跑，会卡住广播）
+            return await run(None, self.svc.run_step_test)
         # 编译 / 烧录 / 回滚都走风险网关：界面按钮和 Agent 同一条路（烧录、回滚 = human，弹确认卡；以前这里直接调烧录器，绕过了确认）
         if op == "build":
             return await run(None, lambda: self.svc.gate("build", {}, self.svc.build))
@@ -396,6 +440,64 @@ class Server:
             return await run(None, self.svc.gw.rollback, m["commit"])
         raise LinkError("bad_op", f"未知操作 {op}")
 
+    def _queue_state(self) -> dict:
+        return {"type": "agent_queue", "running": self.agent_running, "queued": list(self.agent_queue)}
+
+    async def _agent_submit(self, ws, m: dict) -> None:
+        """每条用户消息立刻回 agent_ack {msg_id, state}：queued / running / blocked。
+        急停锁存时明确拒绝（不排队、不静默丢弃）：ack state=blocked + reply ok=false code=estop_locked，
+        消息原文在 ack.text 里交还给界面，解除急停后由用户重发。"""
+        rid = m.get("rid")
+        mid = str(m.get("msg_id") or f"m{next(self._msg_ids)}")
+        s = self.session
+        if s.tx_locked:
+            cause = (s.estop_cause or {}).get("message_zh") or ""
+            msg = "已急停，请先解除" + (f"：{cause}" if cause else "")
+            ack = {"type": "agent_ack", "msg_id": mid, "rid": rid, "state": "blocked", "reason": "estop",
+                   "source": s.estop_source, "message": msg, "fix_action": "estop_clear", "human_only": True,
+                   "text": m.get("text")}
+            await self._send(ws, ack)
+            await self._send(ws, {"type": "reply", "rid": rid, "op": "agent_ask", "ok": False, "msg_id": mid,
+                                  "error": {"type": "error", "code": "estop_locked", "message": msg,
+                                            "fix": "确认安全后在界面点“解除急停”，再重发这条消息", "fix_action": "estop_clear"}})
+            return
+        state = "queued" if (self.agent_running or self.agent_queue) else "running"
+        self.agent_queue.append(mid)
+        await self._send(ws, {"type": "agent_ack", "msg_id": mid, "rid": rid, "state": state,
+                              "position": len(self.agent_queue) - (0 if self.agent_running else 1)})
+        await self._broadcast(self._queue_state())
+        loop = asyncio.get_running_loop()
+
+        def job():
+            self.agent_queue.remove(mid)
+            self.agent_running = mid
+            self.emit({"type": "agent_ack", "msg_id": mid, "rid": rid, "state": "running", "position": 0})
+            self.emit(self._queue_state())
+            try:
+                return self.svc.ask(m["text"])
+            finally:
+                self.agent_running = None
+                self.emit(self._queue_state())
+
+        async def finish():
+            try:
+                data = await loop.run_in_executor(self.agent_pool, job)
+                rep = {"type": "reply", "rid": rid, "op": "agent_ask", "ok": True, "msg_id": mid, "data": data}
+            except Exception as e:  # noqa: BLE001
+                traceback.print_exc()
+                rep = {"type": "reply", "rid": rid, "op": "agent_ask", "ok": False, "msg_id": mid,
+                       "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",
+                                 "fix": "请把这条信息和日志文件发给维护者"}}
+            await self._send(ws, rep)
+        asyncio.ensure_future(finish())
+
+    @staticmethod
+    async def _send(ws, msg: dict) -> None:
+        try:
+            await ws.send(json.dumps(msg, ensure_ascii=False, default=str))
+        except Exception:  # noqa: BLE001  连接已关
+            pass
+
     async def handler(self, ws) -> None:
         self.clients.add(ws)
         try:
@@ -404,27 +506,46 @@ class Server:
                     m = json.loads(raw)
                 except ValueError:
                     continue
-                rid = m.get("rid")
-                try:
-                    data = await self._op(m)
-                    ev = events.from_reply(m.get("op"), data)
-                    if ev:
-                        self.session.mark(*ev)
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": True, "data": data}
-                except (LinkError, GatewayError) as e:
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False, "error": e.as_dict()}
-                except (FlashError, GuardError, ElfError, ConfigError) as e:
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
-                           "error": {"type": "error", "code": getattr(e, "code", type(e).__name__),
-                                     "message": getattr(e, "message", str(e)), "fix": getattr(e, "fix", "")}}
-                except Exception as e:  # noqa: BLE001
-                    traceback.print_exc()          # 侧车日志里留完整堆栈，toast 只给一行
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
-                           "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",
-                                     "fix": "请把这条信息和日志文件发给维护者"}}
-                await ws.send(json.dumps(rep, ensure_ascii=False, default=str))
+                if m.get("op") == "agent_ask":       # 不 await：Agent 长调用期间同一连接上的急停/其他操作照常处理
+                    await self._agent_submit(ws, m)
+                    continue
+                if m.get("op") == "estop":           # 安全 P0：急停最高优先级，不排在本连接任何操作（烧录/调参/实验）后面
+                    await self._reply(ws, m)
+                    continue
+                # 其他操作按收到的顺序串行执行，但放进后台任务：读消息的循环不被长操作卡住（急停随时能进来）
+                prev = getattr(ws, "_dz_chain", None)
+                ws._dz_chain = asyncio.ensure_future(self._chained(prev, ws, m))
         finally:
             self.clients.discard(ws)
+
+    async def _chained(self, prev, ws, m: dict) -> None:
+        if prev is not None:
+            try:
+                await prev
+            except Exception:  # noqa: BLE001
+                pass
+        await self._reply(ws, m)
+
+    async def _reply(self, ws, m: dict) -> None:
+        rid = m.get("rid")
+        try:
+            data = await self._op(m)
+            ev = events.from_reply(m.get("op"), data)
+            if ev:
+                self.session.mark(*ev)
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": True, "data": data}
+        except (LinkError, GatewayError) as e:
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False, "error": e.as_dict()}
+        except (FlashError, GuardError, ElfError, ConfigError) as e:
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
+                   "error": {"type": "error", "code": getattr(e, "code", type(e).__name__),
+                             "message": getattr(e, "message", str(e)), "fix": getattr(e, "fix", "")}}
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()          # 侧车日志里留完整堆栈，toast 只给一行
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
+                   "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",
+                             "fix": "请把这条信息和日志文件发给维护者"}}
+        await self._send(ws, rep)
 
     async def serve(self, host: str, port: int, ui_dir: pathlib.Path | None = None) -> None:
         self.loop = asyncio.get_running_loop()

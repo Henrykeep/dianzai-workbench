@@ -12,7 +12,8 @@ KEY = "sk-secret-ABCDEFG123456"
 
 @pytest.fixture
 def env(tmp_path, monkeypatch):
-    for k in ("DZBENCH_API_KEY", "DZBENCH_BASE_URL", "DZBENCH_MODEL", "DZ_LLM_API_KEY", "DZ_LLM_BASE_URL"):
+    import os
+    for k in [k for k in os.environ if k.startswith(("DZ_LLM_", "DZBENCH_"))]:      # 清掉所有 DZ_LLM_* / DZBENCH_*，本机设过也不影响
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "config_path", lambda: tmp_path / "config.json")
     return tmp_path
@@ -82,3 +83,41 @@ def test_usage_on_reply_event(env):
     u = [e["usage"] for e in ev if e["type"] == "agent_usage"]
     assert u[0]["tokens_in"] == 7 and u[0]["tokens_out"] == 3 and u[0]["elapsed_ms"] >= 0
     assert set(u[1]) == {"elapsed_ms"}
+
+
+def test_env_only_key_counts_as_configured(env, monkeypatch):
+    """r6 #21：没有 config.json、只有环境变量里的 Key → 算已配置（界面不再显示“Agent 未配置”）。"""
+    assert not (env / "config.json").exists()
+    assert llm.public_config()["configured"] is False
+    monkeypatch.setenv("DZ_LLM_API_KEY", KEY)
+    pc = llm.public_config()
+    assert pc["configured"] is True and pc["has_key"] and KEY not in json.dumps(pc)
+
+
+def test_model_precedence_env_config_default(env, monkeypatch):
+    assert llm.load_config()["model"] == llm.PROVIDERS["deepseek"]["model"]                      # 默认
+    (env / "config.json").write_text(json.dumps({"provider": "custom", "base_url": "http://x/v1", "model": "cfg-model"}))
+    assert llm.load_config()["model"] == "cfg-model"                                              # config > 默认
+    monkeypatch.setenv("DZBENCH_MODEL", "legacy-model")
+    assert llm.load_config()["model"] == "legacy-model"                                           # 旧名仍可用
+    monkeypatch.setenv("DZ_LLM_MODEL", "env-model")
+    assert llm.load_config()["model"] == "env-model"                                              # DZ_LLM_MODEL 最优先
+
+
+@pytest.mark.parametrize("status", [503, 404])
+def test_custom_url_503_404_hints_model_name(env, status):
+    """自定义地址回 503/404 → 原因里说“模型名可能在这个服务上不存在”，处理里教 DZ_LLM_MODEL；agent_error 指向大模型设置。"""
+    srv, url, _ = serve(lambda h, b: (status, "json", {"error": {"message": 'No provider for "nope-model"'}}))
+    try:
+        with pytest.raises(llm.LLMError) as ei:
+            _client(url, model="nope-model").chat([{"role": "user", "content": "hi"}])
+    finally:
+        srv.shutdown()
+    e = ei.value
+    assert "nope-model 可能在这个服务上不存在" in e.message and "DZ_LLM_MODEL" in e.fix and getattr(e, "model_hint", False)
+    assert KEY not in e.message + e.fix
+    from dzbench.agent.service import AgentService
+    ev = []
+    fake = type("S", (), {"FIX_SETTINGS": "llm_cfg", "FIX_RESEND": "agent_chat", "emit": ev.append, "loop": type("L", (), {"llm": None})()})()
+    out = AgentService._agent_error(fake, e)
+    assert out["fix_action"] == "llm_cfg" and "DZ_LLM_MODEL" in out["message"] and out["type"] == "agent_error"

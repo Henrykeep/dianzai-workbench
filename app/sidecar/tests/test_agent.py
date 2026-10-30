@@ -381,3 +381,16 @@ def test_every_tool_has_input_schema():
     """8f57870 的 quick_start 写成了 parameters → 真模型每轮 KeyError 'input_schema'；脚本化测试测不到，这里兜住。"""
     from dzbench.agent.loop import TOOLS
     assert [t["name"] for t in TOOLS if "input_schema" not in t] == []
+
+
+def test_no_param_write_after_observe_same_turn():
+    """GLM v7：observe 之后同一轮又 propose_param_change。观察中的那一轮写参数直接回错误。"""
+    fake = FakeLLM([{"role": "assistant", "tool_calls": [call("observe")]},
+                    {"role": "assistant", "tool_calls": [call("propose_param_change", name="kp", value=1)]},
+                    {"role": "assistant", "content": "先观察"}])
+    wrote = []
+    loop = AgentLoop(fake, {"observe": lambda: {"ok": True}, "propose_param_change": lambda **m: wrote.append(m)}, max_steps=5)
+    loop.guards = True                                  # 护栏只对真模型开（脚本化模型按剧本走，见 test_wiring 全工具链）
+    loop.answer_checks = []
+    loop.ask("刚才那轮怎么样")
+    assert wrote == [] and any("observe_first" in m["content"] or "观察期间不改参数" in m["content"] for m in loop.messages if m["role"] == "tool")

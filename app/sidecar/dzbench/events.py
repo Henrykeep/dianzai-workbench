@@ -17,10 +17,13 @@ def from_broadcast(m: dict) -> tuple[str, str] | None:
     if t == "param":
         return "param", f"{m.get('name')} = {m.get('value')}" + ("" if m.get("status") in (None, "ok") else f"（{m.get('status')}）")
     if t == "estop":
+        if m.get("state") in ("latched", "cleared"):
+            return None                     # 固件锁存确认 / 解除：requested 那条已进时间线，解除另有 tx_locked 事件
         if m.get("nolink"):
             return None                     # 没连板子：只弹提示，不进告警条（不是板子上发生的事）
         by = f"：{m['src']}" if m.get("src") else ""
-        return "estop", ("急停" + by + "，板子已锁存 → 确认安全后点“解除急停 R”") if m.get("sent") else ("急停" + by + "（未送达）")
+        return ("estop", ("急停" + by + "，板子已锁存 → 确认安全后点“解除急停 R”") if m.get("sent") else ("急停" + by + "（未送达）"),
+                m.get("source") or "ui")
     if t == "reconnected":
         return "connect", f"自动重连 {m.get('port', '')}"
     if t == "tune_round":
@@ -49,11 +52,13 @@ class Timeline:
         self._n = 0
         self.acked = -1                 # 告警条：已确认到的事件序号（侧车记，多窗口/刷新一致）
 
-    def add(self, kind: str, text: str, log_t: float | None, plot_t: float | None) -> dict:
+    def add(self, kind: str, text: str, log_t: float | None, plot_t: float | None, source: str | None = None) -> dict:
         with self.lk:
             e = {"type": "event", "i": self._n, "kind": kind, "text": text,
                  "log_t": None if log_t is None else round(log_t, 2),
                  "plot_t": None if plot_t is None else round(plot_t, 3)}
+            if source:
+                e["source"], e["detail"] = source, text
             self._n += 1
             self.ev.append(e)
             return e
