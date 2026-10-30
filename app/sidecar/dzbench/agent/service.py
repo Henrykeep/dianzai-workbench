@@ -672,7 +672,10 @@ class AgentService:
         names = st.get("gains") or {}
         changes = {names[k]: round(g[k], 6) for k in ("kp", "ki", "kd") if names.get(k)}
         props = self.propose_hint(changes, f"继电起步：Ku={res['ku']:.4g} Pu={res['pu']:.3g}s，{g['rule'].upper()} 规则", source="继电起步") if changes else []
-        out = {"ok": True, "ku": res["ku"], "pu": res["pu"], "cycles": res["cycles"], "gains": g, "proposals": props}
+        from ..tuning.relay import RULES
+        alts = {r: {k: round(v, 6) for k, v in relay_gains(res["ku"], res["pu"], r).items() if k != "rule"} for r in RULES}
+        out = {"ok": True, "ku": res["ku"], "pu": res["pu"], "cycles": res["cycles"], "gains": g, "proposals": props,
+               "rules": {r: {"desc": RULES[r], **alts[r]} for r in RULES}}   # 同一组 Ku/Pu 换规则：前端可选另一套再提议
         self.emit({"type": "relay_result", **{k: v for k, v in out.items() if k != "proposals"}})
         return out
 
