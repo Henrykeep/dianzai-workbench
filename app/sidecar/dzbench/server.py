@@ -94,6 +94,17 @@ class Server:
                     "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
+        if op == "project.list":                       # 可打开的项目（只读，读题页空状态用）
+            return {"projects": await run(None, project_mod.list_projects, self.svc.gw.root), "current": project_mod.current()}
+        if op == "project.open":                       # 打开已有项目 = 设为当前项目（持久化）+ 推 progress.changed
+            try:
+                p = await run(None, project_mod.open_project, self.svc.gw.root, m.get("code"))
+            except project_mod.ProjectError as e:
+                raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
+            pc = self.progress.changed()
+            if pc:
+                await self._broadcast(pc)
+            return {"project": p}
         if op == "progress.get":                       # 项目进度（只读；refresh=true 时重跑依赖自检）
             if m.get("refresh") or self.progress.deps is None:
                 await run(None, self.progress.refresh_deps)
