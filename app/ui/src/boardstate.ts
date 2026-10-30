@@ -40,3 +40,11 @@ export async function switchMode(rpc: Rpc, mode: string, confirm: (text: string)
 }
 export const estopMessage = (st: BoardStatus) => st.estop_cause?.message_zh || null;
 export const selftestFailures = (st: BoardStatus) => (st.selftest && !st.selftest.pass ? st.selftest.failed_items.map(i => i.message_zh) : []);
+
+// run_selftest 出错：no_board → 「未连接板子」+「连接」（fix_action connect）；selftest_timeout → 「自检超时」+「重试」
+export type SelftestErrView = { text: string; btn: { label: string; action: "connect" | "retry" } | null };
+export function selftestErrView(e: { code?: string; message?: string; fix?: string; fix_action?: string } | null | undefined): SelftestErrView {
+  if (e?.code === "no_board") return { text: "未连接板子", btn: { label: "连接", action: "connect" } };
+  if (e?.code === "selftest_timeout") return { text: "自检超时", btn: { label: "重试", action: "retry" } };
+  return { text: [e?.message, e?.fix].filter(Boolean).join(" · ") || "读取自检失败", btn: null };
+}

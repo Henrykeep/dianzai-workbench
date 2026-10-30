@@ -1,4 +1,4 @@
-import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, CONFIRM_TEXT } from "../src/boardstate.ts";
+import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, CONFIRM_TEXT, selftestErrView } from "../src/boardstate.ts";
 import { ACTIONS, resolveFix } from "../src/progress.ts";
 const bad = async () => { throw { code: "bad_op", message: "未知操作" }; };
 (async () => {
@@ -26,4 +26,15 @@ const bad = async () => { throw { code: "bad_op", message: "未知操作" }; };
   const f = selftestFailures({ selftest: { pass: false, failed_items: [{ code: "enc", key: "enc_a", message_zh: "左轮编码器无脉冲" }], t: 1 } });
   if (f.join() !== "左轮编码器无脉冲" || selftestFailures({ selftest: null }).length || selftestFailures({ selftest: { pass: true, failed_items: [] } }).length) throw "selftest";
   console.log("boardstate ok");
+})().catch(e => { console.error(e); process.exit(1); });
+// run_selftest 错误（mock 本地服务回包）
+void (async () => {
+  const mock = (code: string) => Promise.reject({ code, message: "x", fix_action: code === "no_board" ? "connect" : undefined });
+  const v1 = await mock("no_board").catch(selftestErrView);
+  if (v1.text !== "未连接板子" || v1.btn?.label !== "连接" || v1.btn.action !== "connect") throw "no_board 视图";
+  const v2 = await mock("selftest_timeout").catch(selftestErrView);
+  if (v2.text !== "自检超时" || v2.btn?.label !== "重试" || v2.btn.action !== "retry") throw "selftest_timeout 视图";
+  const v3 = selftestErrView({ code: "other", message: "原因", fix: "处理" });
+  if (v3.text !== "原因 · 处理" || v3.btn) throw "其它错误照写原因";
+  console.log("selftest err ok");
 })().catch(e => { console.error(e); process.exit(1); });
