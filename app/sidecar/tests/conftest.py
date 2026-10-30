@@ -75,3 +75,12 @@ def _hermetic_pack(tmp_path_factory, monkeypatch, _hermetic_env):
     if not p.exists():
         p.write_bytes(b"PK\x05\x06" + b"\0" * 18)
     monkeypatch.setenv("DZBENCH_PACK", str(p))
+
+
+@pytest.fixture(autouse=True)
+def _no_real_llm_env(monkeypatch):
+    """开发机/评测机上 source 过真 Key（DZ_LLM_*）也不能漏进单测：否则“没配 Key”的测试会拿真 Key 走、断言失败时把 Key 打进日志。
+    需要的测试自己 monkeypatch.setenv。"""
+    import os
+    for k in [k for k in os.environ if k.startswith(("DZ_LLM_", "DZBENCH_API_KEY", "DZBENCH_BASE_URL", "DZBENCH_MODEL"))]:
+        monkeypatch.delenv(k, raising=False)
