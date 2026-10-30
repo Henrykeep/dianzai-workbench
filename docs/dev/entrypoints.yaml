@@ -72,7 +72,7 @@ actions:
   # ── 封箱 ──
   - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
   - {id: run_mode,     label: 切换运行模式,     at: page:seal,   ui: seal-mode,  ops: [set_run_mode]}   # 先 confirmed=false，needs_confirm 出确认卡，人确认后 confirmed=true；Agent 只给跳转（human_only）
-  - {id: enable_cloud, label: 比赛模式启用云端, at: toolbox:设置, ui: cloud-enable, dynamic: true, ready: false, ops: [set_cloud_enabled]}   # 合规底线：只能由人——先 confirmed=false 出确认卡，人确认后 confirmed=true；Agent 只给 goto settings:cloud（human_only）。界面入口待前端接（settings:cloud）
+  - {id: enable_cloud, label: 比赛模式启用云端, at: toolbox:设置, ui: cloud-enable, dynamic: true, ready: false, human_only: true, ops: [set_cloud_enabled]}   # 合规底线：只能由人——先 confirmed=false 出确认卡，人确认后 confirmed=true；Agent 只给 goto settings:cloud（human_only）。界面入口待前端接（settings:cloud）
   - {id: run_selftest, label: 板上自检,         at: page:tune,   ui: seal-selftest, ops: [run_selftest]}   # 也是进度阻塞项 selftest_fail 的修复动作；固件没报时照写 selftest_unreported 的原因 + 处理
   - {id: params_flash, label: 存参数到 flash,   at: page:tune,   ui: tb-save,    ops: [save_params]}   # 调参页页头常驻；也是进度阻塞项 params_not_saved 的修复动作。原赛前检查对话框里的 cmd W 按钮已去掉（一个功能一个入口）
   - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}

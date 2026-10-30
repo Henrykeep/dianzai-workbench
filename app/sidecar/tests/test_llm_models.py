@@ -143,8 +143,9 @@ def test_server_agent_models_contest_mode_pushes_agent_error(cfg, tmp_path, monk
     r = asyncio.run(sv._op({"op": "agent_models", "form": {"base_url": "https://api.example.com/v1", "api_key": KEY}}))
     _keys_ok(r)
     assert r["reason"] == "contest_mode"
-    assert [e for e in sent if e["type"] == "agent_error" and e["code"] == "contest_mode" and e["fix_action"] == "enable_cloud"
-            and e["human_only"] is True and e["goto"] == "settings:cloud"]
+    ae = [e for e in sent if e["type"] == "agent_error" and e["code"] == "contest_mode"]
+    assert len(ae) == 1 and set(ae[0]) == {"type", "code", "message_zh", "fix_action", "human_only", "goto", "retryable"}, ae   # 没有 message
+    assert ae[0]["fix_action"] == "enable_cloud" and ae[0]["human_only"] is True and ae[0]["goto"] == "settings:cloud"
     assert KEY not in json.dumps(sent + [r], ensure_ascii=False)
 
 

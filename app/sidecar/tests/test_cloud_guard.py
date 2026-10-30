@@ -120,3 +120,10 @@ def test_same_confirm_check_as_run_mode():
 def test_compliance_documented():
     doc = (ROOT / "docs/dev/events.md").read_text(encoding="utf-8")
     assert "合规底线" in doc and "settings:cloud" in doc and "`set_cloud_enabled`" in doc and "`human_only`" in doc
+
+
+def test_entrypoint_registered_human_only_not_script():
+    spec = yaml.safe_load((ROOT / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))
+    a = [x for x in spec["actions"] if "set_cloud_enabled" in (x.get("ops") or [])]
+    assert len(a) == 1 and a[0]["id"] == "enable_cloud" and a[0].get("human_only") is True, a
+    assert "set_cloud_enabled" not in spec["script_ops"]

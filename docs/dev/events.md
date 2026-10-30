@@ -29,7 +29,7 @@
 
 - `message_zh` 只按类别给中文（网络：连接超时 / 域名解析失败（DNS）/ 连接被拒绝 / TLS/证书握手失败 / 网络错误），不含原始异常、不含 Key。
 - 原始报错先脱敏（替换 api_key 值、`Bearer …`、`sk-…`）再写本地日志 `~/.dzbench/logs/llm_models.log`。
-- `contest_mode` 时回包另带 `human_only: true`、`goto: "settings:cloud"`（键集合 = 上面五个 + 这两个），并另推一条 `{type: "agent_error", code: "contest_mode", message, message_zh, fix_action: "enable_cloud", human_only: true, goto: "settings:cloud", retryable: false}`。
+- `contest_mode` 时回包另带 `human_only: true`、`goto: "settings:cloud"`（键集合 = 上面五个 + 这两个），并另推一条 `{type: "agent_error", code: "contest_mode", message_zh, fix_action: "enable_cloud", human_only: true, goto: "settings:cloud", retryable: false}`（键集合精确如此，没有 `message`）。
 - 开关：`~/.dzbench/config.json` 的 `contest_mode` / `cloud_enabled`。`contest_mode` 暂无设置入口（TODO），`cloud_enabled` 只能经下面的确认路径改。
 
 ## 合规底线：启用云端只能由人
@@ -41,4 +41,5 @@
 - `contest_mode` / `cloud_enabled` 不在设置表单的可写键里：`agent_config`（`save_config`）传了也忽略，并原样保留文件里的值。
 - Agent 工具表里没有、也不得有能改 `cloud_enabled` / `contest_mode` 的工具；`script_ops` 不得包含 `set_cloud_enabled`；名字含这些词的工具调用一律以 `human_only` 拒绝（内置 Agent 与外部 `agent_tool` 都是）。Agent 传 `confirmed: true` 无效。
 - 自动流程（`quick_start`、Agent 步骤）不读写这两个开关。
+- 入口登记：`docs/dev/entrypoints.yaml` 的 `enable_cloud`（`at: toolbox:设置`，`human_only: true`，`ops: [set_cloud_enabled]`），不进 `script_ops`。
 - 守护测试：`app/sidecar/tests/test_cloud_guard.py`。

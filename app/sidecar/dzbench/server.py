@@ -457,7 +457,7 @@ class Server:
         if op == "agent_models":
             r = await run(None, lambda: agent_llm.discover_models(m.get("form") or {}))
             if r.get("reason") == "contest_mode":      # 比赛模式拦下外部请求：同时推 agent_error，界面统一提示
-                await self._broadcast({"type": "agent_error", "code": "contest_mode", "message": r["message_zh"], "message_zh": r["message_zh"],
+                await self._broadcast({"type": "agent_error", "code": "contest_mode", "message_zh": r["message_zh"],
                                        "fix_action": r["fix_action"], "human_only": True, "goto": r["goto"], "retryable": False})
             return r
         if op == "agent_ollama":
