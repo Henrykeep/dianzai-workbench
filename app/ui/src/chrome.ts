@@ -8,6 +8,17 @@ export function applyTheme(t: string): void {
   window.dispatchEvent(new Event("dz-theme"));
 }
 
+// 所有下拉弹层（details.menu > .pop）：打开时按可用空间决定向上 / 向下展开，不跑出窗口
+function placePop(d: HTMLDetailsElement): void {
+  const pop = d.querySelector<HTMLElement>(":scope > .pop"); if (!pop || !d.open) return;
+  pop.classList.remove("pop-up", "pop-down"); pop.style.maxHeight = "";
+  const s = d.getBoundingClientRect(), h = pop.scrollHeight, below = innerHeight - s.bottom - 8, above = s.top - 8;
+  const up = h > below && above > below;
+  pop.classList.add(up ? "pop-up" : "pop-down");
+  pop.style.maxHeight = `${Math.max(120, up ? above : below) - 4}px`;
+}
+document.addEventListener("toggle", e => { const d = e.target as HTMLElement; if (d instanceof HTMLDetailsElement && d.classList.contains("menu")) placePop(d); }, true);
+addEventListener("resize", () => document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach(placePop));
 export function initChrome(): void {
   const saved = localStorage.getItem(KEY);
   const order = ["dark", "light", "hc"];
