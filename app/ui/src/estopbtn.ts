@@ -33,3 +33,31 @@ export function latchCleared(prev: boolean, cur: boolean) { return prev && !cur;
 export function onCleared(show: (text: string, btn: typeof RETUNE, onClick: () => void) => void, startTune: () => void) {
   show(CLEARED_TEXT, RETUNE, () => startTune());   // startTune 只在人点击时调用
 }
+
+// WS 上的 type:"estop" 消息：状态只看 state（requested|latched|cleared）。
+// 急停操作的回包也带 state:"requested" 与 sent（发送确认）；没有 state 的只可能是“没送达”（未连接 / 回放中）→ 告警，不改状态。
+export type EstopMsg = { type: "estop"; state?: string; cause?: string; message_zh?: string; ok?: boolean; sent?: boolean; message?: string }   // requested 用 ok + message_zh；sent/message 仅剩“未连接 / 回放中”的失败回包;
+export type EstopUi = { setPhase(p: EstopPhase): void; showCleared(): void; toast(text: string, kind: "info" | "crit", ms: number): void };
+let cause: { cause: string; message_zh: string } | null = null;
+export const latchedCause = () => cause;
+export function handleEstopMsg(m: EstopMsg, ui: EstopUi): void {
+  if (m.state) {
+    if (m.state === "latched" && (m.cause || m.message_zh)) cause = { cause: m.cause || "", message_zh: m.message_zh || "" };   // 急停原因随 latched 载荷到达（不再有 estop_cause 事件）
+    if (m.state === "cleared") cause = null;
+    const p = onEstopEvent(m.state);
+    if (p) ui.setPhase(p);
+    if (m.state === "cleared") ui.showCleared();
+    if (m.state === "requested" && (m.ok === false || m.sent === false)) ui.toast(m.message_zh || m.message || "急停没有送达，请直接断电或拔电池。", "crit", 15000);
+    return;
+  }
+  if (m.sent === false) { ui.toast(m.message_zh || m.message || "急停没有送达任何板子", "crit", 15000); ui.setPhase("idle"); }
+  // 不带 state 的 {sent:true}：约定里不存在，忽略（不据此改状态）
+}
+
+// 解除后只展示一张卡：cleared 事件、tx_locked true→false、本地服务的 agent_notice(estop_cleared) 三个来源都汇到这里，
+// 同一次解除只显示一次；再次锁存时 reset。Agent 面板不再单独渲染 estop_cleared。
+export const CLEARED_NOTICE = "estop_cleared";
+export function clearedOnce(show: () => void) {
+  let shown = false;
+  return { fire() { if (shown) return false; shown = true; show(); return true; }, reset() { shown = false; } };
+}

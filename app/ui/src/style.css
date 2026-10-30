@@ -563,7 +563,7 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 .app[data-step="调参"] .reads .rn{display:none}
 .app[data-step="调参"] .work{position:relative}
 .app[data-step="调参"] .scope{position:static}
-.app[data-step="调参"] .scope>.vh{position:absolute;top:0;right:156px;height:var(--h-vh);padding:0;z-index:3;background:none;gap:var(--sp2)}
+.app[data-step="调参"] .scope>.vh{position:absolute;top:var(--pgh,0px);right:156px;height:var(--h-vh);padding:0;z-index:3;background:none;gap:var(--sp2)}
 .app[data-step="调参"] #view,.app[data-step="调参"] #plot-sub,.app[data-step="调参"] #xdiv{display:none}
 .page>.hint,.page p.hint{max-width:960px}
 .page>.hint{width:100%!important;max-width:960px!important}
@@ -851,3 +851,9 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .estop.locked{box-shadow:0 0 0 2px var(--bg),0 0 0 4px var(--estop)}   /* 锁存：只认本地服务上报，仍可再按 */
 .alerts .al-wd{padding-left:var(--sp2);border-left:1px solid var(--line2)}
 .msg.bot.blk-note .act{margin-top:var(--sp1)}
+.pg-grp{display:flex;align-items:center;gap:var(--sp2);padding-right:var(--sp3);margin-right:var(--sp1);border-right:1px solid var(--line)}
+.pg-extra .pg-grp>.lbl{color:var(--muted)}
+.st-seal{display:flex;align-items:center;gap:var(--sp2);margin:0 0 var(--sp3);padding:var(--sp2) var(--sp3);border-radius:var(--r);border:1px solid var(--line)}
+.st-seal .lbl{color:var(--muted)} .st-seal.warn{border-color:var(--warn)} .st-seal.warn #st-seal-why{color:var(--warn)}
+.pg-grp>*,.pg-extra>.lbl{white-space:nowrap}
+.pg-head .pg-grp,.pg-head .pg-grp>*,.pg-head .pg-extra>.lbl{flex:none;white-space:nowrap}

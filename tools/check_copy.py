@@ -15,6 +15,8 @@ COLLOQ = ["一下", "搞定", "搞", "啥", "咋", "弄", "瞅", "呗", "嘛", "
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u26A0\u26A1\u2705\u274C\u2B50\uFE0F]")
 # 已改名的旧文案：出现即报
 RENAMED = {"解除并继续": "改成「解除急停」", "急停已解除，电机处于待机": "改成「已解除，电机保持静止，需重新开始调参」"}
+# 约定文案：必须原样出现在 app/ui/src 里（防止被改写或删掉）
+REQUIRED = ["请重新自检", "去调参页自检", "读取自检", "解除急停", "已解除，电机保持静止，需重新开始调参", "重新调参", "未连接板子", "自检超时", "重试", "连接"]
 FIX = {**RENAMED, "侧车": "改成「本地服务」", "！": "去掉感叹号，用句号", "!": "去掉感叹号，用句号", "emoji": "去掉 emoji，用文字或图标组件"}
 
 
@@ -154,8 +156,12 @@ def main():
     for f, ln, h, s in bad:
         fix = FIX.get(h, "换成书面语（如「一下」删掉，「试一下」→「试运行」）")
         print(f"{f.relative_to(ROOT)}:{ln} · 命中「{h}」 · {s} · 处理：{fix}")
-    print(f"check_copy: {len(files)} 个文件，{len(bad)} 处问题")
-    return 1 if bad else 0
+    allsrc = "".join(p.read_text(encoding="utf-8") for p in files)
+    miss = [w for w in REQUIRED if w not in allsrc]
+    for w in miss:
+        print(f"app/ui · 缺少约定文案「{w}」 · 处理：按约定恢复原文")
+    print(f"check_copy: {len(files)} 个文件，{len(bad) + len(miss)} 处问题")
+    return 1 if bad or miss else 0
 
 
 if __name__ == "__main__":

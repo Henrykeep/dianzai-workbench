@@ -23,10 +23,10 @@ import { humanize, humanHtml } from "./errors";
 import { conn, onLinkState, linkStateActive } from "./conn";
 import { linkView, runState, modeLabel } from "./linkmsg";
 import { initProject } from "./project";
-import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures } from "./boardstate";
+import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
-import { fireEstop, onEstopEvent, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE } from "./estopbtn";
+import { fireEstop, handleEstopMsg, latchedCause, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE, clearedOnce, CLEARED_NOTICE } from "./estopbtn";
 import { fetchProgress, render as renderProgress, runAction } from "./progress";
 import type { Step } from "./steps";
 import { initSteps } from "./steps";
@@ -62,13 +62,13 @@ function renderAlerts() {
   const latched = S.latched;
   document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   $("estop").classList.toggle("locked", latched);
-  if (latched) { setEstopPhase("latched"); clearedShown = false; document.querySelector(".toast.cleared")?.remove(); } else if (estopPhase === "latched") setEstopPhase("idle");
+  if (latched) { setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
   if (el.hidden) { el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
   const last = l[l.length - 1];
   const ev = l.filter(isE).pop() as any, wd = l.filter(isW).pop() as any;
-  const v = estopView(ev, (S.status as any).estop_cause, S.lastHbMs);
+  const v = estopView(ev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs);
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
   if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? v.head : "已解除（之前：" + v.head + "）")}</b></span>`;
@@ -122,17 +122,14 @@ const call = async <T = any>(op: string, args: Record<string, unknown> = {}) => 
 // ---------------------------------------------------------------- 急停：永远可点，不依赖任何状态
 let estopPhase: EstopPhase = "idle";
 // 解除确认（cleared 事件或 tx_locked → false）：只提示 + 「重新调参」；不自动发任何运动 / 调参请求
-let clearedShown = false;
-function showCleared() {
-  if (clearedShown) return; clearedShown = true;
-  onCleared((text, btn, go) => {
+const cleared = clearedOnce(() => onCleared((text, btn, go) => {
     const d = document.createElement("div"); d.className = "toast ok cleared";
     d.innerHTML = `<b>${esc(text)}</b><span class="act"><button class="btn sm pri" data-r="retune">${esc(btn.label)}</button><button class="btn sm" data-r="x">知道了</button></span>`;
     d.querySelector<HTMLElement>("[data-r=retune]")!.onclick = () => { d.remove(); go(); };
     d.querySelector<HTMLElement>("[data-r=x]")!.onclick = () => d.remove();
     $("toasts").prepend(d);
-  }, () => runAction(RETUNE.action, s => goStepRef(s)));
-}
+  }, () => runAction(RETUNE.action, s => goStepRef(s))));
+function showCleared() { cleared.fire(); }
 function setEstopPhase(p: EstopPhase) {
   estopPhase = p;
   const b = document.getElementById("estop"); if (!b) return;
@@ -563,7 +560,7 @@ function renderStatus(st: Msg) {
   if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
   S.status = st;
   if (!linkStateActive()) conn.set({ board: !!st.connected, alive: !!st.alive });   // 有 link.state 时以它为准
-  if (latchCleared(wasLatched, S.latched)) showCleared();
+  if (latchCleared(wasLatched, S.latched)) { setEstopPhase("idle"); showCleared(); }
   if (relock) renderAlerts();   // 急停锁存变化：告警条上的“解除急停 R”跟着出现/消失
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
@@ -653,14 +650,13 @@ link.on(m => {
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
     case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
+    case "agent_notice": if ((m as any).blocker_code === CLEARED_NOTICE) showCleared(); break;   // 与 cleared 事件合并成一张卡
     case "link.state": onLinkState(m as any); showLink(m as any); break;
     case "seeked": plot.clear(); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
     case "reconnecting": if (m.attempt >= 5) toast(`${m.port} 还没回来：已试 ${m.attempt} 次，每 ${m.next_s} s 再试；不想等就点“断开”`, "info", 4000); break;
-    case "estop": if (m.state) { const p = onEstopEvent(m.state); if (p) setEstopPhase(p); if (m.state === "cleared") showCleared(); break; }
-      if (m.sent && estopPhase === "pending") setEstopPhase(onEstopEvent("requested") ?? "requested");   // 旧回包 {sent:true}：按已发送处理
-      toast(m.message, m.sent ? "info" : "crit", m.sent ? 2500 : 15000); break;
+    case "estop": handleEstopMsg(m as any, { setPhase: setEstopPhase, showCleared, toast: (t, k, ms) => toast(t, k, ms) }); break;   // 状态只看 state
   }
 });
 link.onState = async open => {
@@ -755,6 +751,7 @@ function showLink(m: any) {
 }
 let goStepRef: (s: any) => void = () => {};
 // 板上状态：保存参数 / 运行模式 / 自检失败项（文案取侧车 message_zh、label_zh，前端不拼）
+let stSeenT: number | undefined, stSeenAt: number | null = null;
 let savedAt: string | null = null, noSave = "", noMode = "";
 function renderBoard(st: any) {
   const sv = $("tb-saved"); sv.textContent = noSave || savedView(st, savedAt); sv.classList.toggle("ok", !noSave && st.params_saved === true);
@@ -762,25 +759,38 @@ function renderBoard(st: any) {
   $("seal-mode-cur").textContent = st.run_mode?.label_zh ?? "—";
   const g = modeGate(st), b = $<HTMLButtonElement>("seal-mode");
   b.disabled = !!noMode || !g.enabled; $("seal-mode-why").textContent = noMode || g.reason;
+  if (st.selftest?.t !== stSeenT) { stSeenT = st.selftest?.t; stSeenAt = st.selftest ? Date.now() : null; }   // 记下界面收到自检结果的时刻（at 未上线时显示用）
+  const sv2 = sealSelftestView(st, stSeenAt);
+  $("st-seal-r").textContent = sv2.text; $("st-seal-t").textContent = sv2.when;
+  $("st-seal-why").textContent = sv2.need ? `${RESELFTEST}：${sv2.why}` : ""; $("st-seal-go").hidden = !sv2.need;
+  $("st-seal").classList.toggle("warn", sv2.need);
   const fails = selftestFailures(st); $("st-fail").hidden = !fails.length;
   $("st-fail-l").innerHTML = fails.map(m => `<li>${esc(m)}</li>`).join("");
   if (AL.list.some(e => e.kind === "estop" || e.kind === "watchdog")) renderAlerts();
 }
 $("tb-save").onclick = async () => {
   const r = await saveParams((op, a) => link.rpc(op, a ?? {}));
-  if (r.ok) savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  if (r.ok) { savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false }); }
   else if (r.disable) noSave = r.note!; else toast({ code: "save_params", message: r.note!, fix: "" }, "warn", 6000);
   renderBoard(S.status);
 };
 // 封箱页「读取自检」：读心跳上报的上电自检结果；固件没报（selftest_unreported）时照写侧车给的原因 + 处理
+$("st-seal-go").onclick = () => { goStepRef("调参"); const b = $("seal-selftest"); b.scrollIntoView({ block: "nearest" }); b.focus(); };
 $("seal-selftest").onclick = async () => {
-  const note = $("st-note");
+  const note = $("st-note"); note.textContent = "";
   try {
     const r: any = await link.rpc("run_selftest", {});
     note.textContent = r?.pass ? "自检通过" : "";
     const items: string[] = (r?.failed_items ?? []).map((i: any) => i.message_zh);
     $("st-fail").hidden = !items.length; $("st-fail-l").innerHTML = items.map(m => `<li>${esc(m)}</li>`).join("");
-  } catch (e: any) { note.textContent = [e?.message, e?.fix].filter(Boolean).join(" · "); }
+  } catch (e: any) {
+    const v = selftestErrView(e); note.textContent = v.text;
+    if (v.btn) {
+      const b = document.createElement("button"); b.className = "btn sm"; b.type = "button"; b.textContent = v.btn.label;
+      b.onclick = () => v.btn!.action === "retry" ? $("seal-selftest").click() : runAction("connect", s => goStepRef(s));
+      note.append(" ", b);
+    }
+  }
 };
 $("seal-mode").onclick = async () => {
   const st: any = S.status;
@@ -819,3 +829,6 @@ $("gb-fw").onclick = () => goStep("烧录");
 $("tb-meas").onclick = () => { goStep("联调"); (document.querySelector('#view [data-v="fft"]') as HTMLElement)?.click(); };
 
 document.querySelector<HTMLElement>('#rail [data-side="score"]')?.addEventListener("click", () => score.refresh());
+// 调参页视图控件浮在实验行右侧：顶部让出页头高度（页头随宽度换行，高度不固定），避免盖住页头上板区按钮
+{ const ph = document.getElementById("pg-head"), work = ph?.parentElement;
+  if (ph && work && "ResizeObserver" in window) new ResizeObserver(() => work.style.setProperty("--pgh", `${ph.offsetHeight}px`)).observe(ph); }
