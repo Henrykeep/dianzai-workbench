@@ -1,5 +1,6 @@
 // Agent 等待看门狗 + 错误卡文案。发出即「思考中」计时；60 s 无任何事件 → 超时卡；agent_error → 出错卡。不让用户干等。
 import { humanize } from "./errors";
+import { resolveFix, Fix } from "./progress";
 export const AGENT_TIMEOUT_MS = 60_000;
 export class Watch {
   t0 = 0; last = 0; on = false; fired = false;
@@ -13,8 +14,8 @@ export class Watch {
     return { label: `思考中… ${Math.floor((now - this.t0) / 1000)} s`, timeout };
   }
 }
-export type AgentErr = { code?: string; message?: string; detail?: string; fix_action?: string; retryable?: boolean };
-export type Card = { title: string; why: string; fix: string; detail: string; retry: boolean; settings?: boolean };
+export type AgentErr = { code?: string; message?: string; detail?: string; fix_action?: string | null; retryable?: boolean };
+export type Card = { title: string; why: string; fix: string; detail: string; retry: boolean; settings?: boolean; other?: Fix | null; otherId?: string };
 export const timeoutCard = (): Card => ({
   title: "Agent 超过 60 秒未响应",
   why: "侧车内部出错，或模型服务无响应",
@@ -22,15 +23,23 @@ export const timeoutCard = (): Card => ({
   detail: "60 秒内没有收到任何 Agent 事件（思考、工具调用、回复或报错）。",
   retry: true,
 });
-export function errorCard(m: AgentErr): Card {
-  const raw = [m.code, m.message, m.detail].filter(Boolean).join(" · ");
-  const h = humanize(raw);
+// fix_action 对照表（取值 = entrypoints.yaml 入口 id）：llm_cfg → 「大模型设置」；agent_chat 与 retryable 合并为一个「重试」；null → 无修复按钮
+export const FIX_ACTIONS = { llm_cfg: "settings", agent_chat: "retry" } as const;
+export function errorCard(m: AgentErr, has: (ui: string) => boolean = ui => typeof document !== "undefined" && !!document.getElementById(ui)): Card {
+  const fa = m.fix_action ? FIX_ACTIONS[m.fix_action as keyof typeof FIX_ACTIONS] : undefined;
+  // 对照表以外的入口 id：交给统一的 resolveFix（未就绪置灰「等待固件支持」，未登记置灰写明原因）
+  const other = m.fix_action && !fa ? resolveFix(m.fix_action, has) : null;
+  const h = humanize([m.code, m.message].filter(Boolean).join(" "));
+  const internal = m.code === "tool_schema";
   return {
-    title: "Agent 出错：" + (h?.what ?? m.message ?? "未知错误"),
-    why: h?.why ?? m.message ?? "侧车未给出原因",
-    fix: h?.fix ?? (m.retryable === false ? "请按详情排查后再试" : "点「重试」重新发送"),
-    detail: [m.code ? `code: ${m.code}` : "", m.detail ?? m.message ?? ""].filter(Boolean).join("\n"),
-    retry: m.retryable !== false,
-    settings: /setting|config|key|llm/i.test(m.fix_action ?? ""),   // fix_action 是动作码，不直接当文案；配置类 → 给「大模型设置」
+    title: "Agent 出错：" + (internal ? "工具定义格式错误" : h?.what ?? "本轮未完成"),
+    why: internal ? "这是工作台内部配置错误，不是你的操作问题" : (m.message || h?.why || "侧车未给出原因"),
+    fix: internal ? "可先重发一次或换个说法；反复出现请把「详情」发给开发者，其它功能不受影响" : (h?.fix ?? (fa === "settings" ? "在「大模型设置」中检查后重试" : "点「重试」重新发送")),
+    detail: [m.code ? `code: ${m.code}` : "", internal && m.message ? m.message : "", m.detail || ""].filter(Boolean).join("\n") || "（侧车未提供更多信息）",
+    retry: fa === "retry" || m.retryable === true,
+    settings: fa === "settings",
+    other, otherId: other ? m.fix_action! : undefined,
   };
 }
+// 同一轮只出一张错误卡：已出 agent_error 就吞掉随后的 agent_unreachable
+export class TurnGate { err = false; begin() { this.err = false; } error() { this.err = true; } allowUnreachable() { return !this.err; } }
