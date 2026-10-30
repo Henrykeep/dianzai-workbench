@@ -46,7 +46,8 @@ def serve(script):
 
 @pytest.fixture
 def cfgdir(tmp_path, monkeypatch):
-    monkeypatch.delenv("DZBENCH_API_KEY", raising=False)
+    for k in ("DZBENCH_API_KEY", "DZ_LLM_API_KEY", "DZ_LLM_BASE_URL"):
+        monkeypatch.delenv(k, raising=False)
     monkeypatch.setattr(llm, "config_path", lambda: tmp_path / "config.json")
     return tmp_path
 
@@ -139,7 +140,8 @@ def test_failover_cloud_down_switches_to_local_ollama(cfgdir):
     f = llm.build(emit=ev.append)
     f.primary.backoff = 0.01
     assert f.chat([{"role": "user", "content": "x"}])["content"] == "本地 qwen2.5:7b-instruct"
-    assert ev[-1]["type"] == "agent_mode" and ev[-1]["mode"] == "local" and "连不上" in ev[-1]["fallback"]
+    mode = [e for e in ev if e["type"] == "agent_mode"][-1]          # 之后本地回复还会发 agent_usage（只带耗时）
+    assert mode["mode"] == "local" and "连不上" in mode["fallback"]
     f.chat([{"role": "user", "content": "y"}])
     assert f.name == "qwen2.5:7b-instruct" and len(log) == 2
     srv.shutdown()
