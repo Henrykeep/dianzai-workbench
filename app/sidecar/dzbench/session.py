@@ -18,6 +18,7 @@ from .textparse import KvParser
 from .framedef import FrameDefError, FrameDefParser
 from .events import Timeline, crc_spike
 from .linkhealth import LinkHealth
+from .linkstate import LinkState
 from .logfile import RX, TX, LogWriter
 from . import ports as _ports
 from .ports import PortOpenError, explain_open_error, identity, probe_baud
@@ -27,7 +28,7 @@ from .transport import SIM_PREFIX, Transport, open_transport
 
 ID_CMD, ID_ESTOP = 0x7E, 0x7F
 ACK_STATUS = {0: "ok", 1: "clamped", 2: "bad_id", 3: "bad_len", 4: "bad_value"}
-HB_TIMEOUT_S = 1.6
+HB_TIMEOUT_S = 2.0          # = linkstate.LOST_AFTER_S；板子心跳 500 ms，任一合法帧都算活着
 
 
 class LinkError(Exception):
@@ -55,6 +56,7 @@ class Session:
         self.stall_s = 0.0                   # >0：串口开着但这么久一个字节都没收到（之前收到过）= 当断线处理并重连
         self.on_sample: Callable[[dict], None] | None = None   # 触发发送用
         self.raw_on = False                  # 原始监视器（文本/HEX）开着才收集，省内存
+        self.link = LinkState()              # 跨连接保留：since / seq 连续
         self._reset()
 
     def _reset(self) -> None:
@@ -79,6 +81,7 @@ class Session:
         self.rx_bytes = 0
         self.last_hb = 0.0
         self.last_rx = 0.0
+        self.last_frame = 0.0                    # 最近一帧合法帧（任意类型），link.state 据此判活
         self.log: LogWriter | None = None
         self.seq = 0
         self.estop_count = 0
@@ -316,6 +319,8 @@ class Session:
             text_mode = self.schema_hash is None and (self.schema is None or self.schema.d.get("virtual"))
         if text_mode:
             self._on_text(data, now)
+        if frames:
+            self.last_frame = now
         for kind, id_, seq, payload in frames:
             self.health.on_frame(seq)
             if kind == HEARTBEAT:
@@ -690,11 +695,19 @@ class Session:
         self.emit(e)
         return e
 
+    def link_state(self, now: float | None = None) -> dict | None:
+        """唯一的连接状态（见 linkstate.py）；变化或到保活间隔时返回一条 link.state，否则 None。"""
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            return self.link.update(now, port=self.port, port_open=self.tr is not None,
+                                    reconnecting=self.reconnecting, t_connect=self._t_tr,
+                                    last_frame=self.last_frame)
+
     def status(self) -> dict:
         now = time.monotonic()
         with self.lock:
             connected = self.tr is not None or self.reconnecting
-            alive = connected and now - self.last_hb < HB_TIMEOUT_S
+            alive = connected and now - self.last_frame <= HB_TIMEOUT_S
             st = {"type": "status", "connected": connected, "port": self.port, "baud": self.baud,
                   "alive": alive, "rx_bytes": self.rx_bytes, "good": self.parser.good, "bad": self.parser.bad,
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
@@ -724,7 +737,7 @@ class Session:
                           "检查共地、杜邦线长度、电机线是否和串口线捆在一起；数据仍按校验通过的帧显示")
         elif connected and not alive and now - self.t_connect > HB_TIMEOUT_S:
             st["hint"] = ("收到字节但没有合法帧：波特率可能不对" if self.rx_bytes and not self.parser.good
-                          else "超过 1.6 s 没有心跳：板子没上电/没跑工作台固件/线松了")
+                          else f"超过 {HB_TIMEOUT_S:g} s 没有合法帧：板子没上电/没跑工作台固件/线松了")
         return st
 
 
