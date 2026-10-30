@@ -23,8 +23,14 @@ import shutil  # noqa: E402
 SIM_OK = os.name != "nt" and bool(shutil.which("make")) and bool(shutil.which("cc"))
 
 
+# 第三方 SDK / HAL 不入库（.gitignore），新 worktree 里没有：标 @pytest.mark.needs_third_party("stm32f4xx-hal-driver", ...) 缺了就跳过，
+# 而不是红一片；要跑就 tools/fetch_third_party.sh f4 f1 freertos mspm0（CI 与 preflight 都拉全）。
+THIRD = pathlib.Path(__file__).resolve().parents[3] / "third_party"
+
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "needs_sim: 需要 host-sim 仿真板（Windows / 无 make+cc 时跳过）")
+    config.addinivalue_line("markers", "needs_third_party(*dirs): 需要 third_party/ 下的 SDK（缺了跳过）")
 
 
 def pytest_collection_modifyitems(config, items):
@@ -32,6 +38,10 @@ def pytest_collection_modifyitems(config, items):
     for it in items:
         if it.get_closest_marker("needs_sim") and not SIM_OK:
             it.add_marker(skip)
+        m = it.get_closest_marker("needs_third_party")
+        miss = [d for d in (m.args if m else ()) if not (THIRD / d).is_dir()]
+        if miss:
+            it.add_marker(pytest.mark.skip(reason=f"缺 third_party/{', '.join(miss)}：在仓库根目录运行 make fetch"))
 
 
 @pytest.fixture(autouse=True)

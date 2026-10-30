@@ -8,14 +8,15 @@ MSPM0 没有复用知识表，引脚交给 TI SysConfig 自己的求解器：
 refs/mspm0g-contest-skill/03_Fireware/*/empty.syscfg、refs/ext/nuedc-2026-h-ball-balance/firmware/beam_control/empty.syscfg（MIT）。
 用法：gen_syscfg.py <alloc/board.yaml> <输出板目录> [--name N]
   输出：<目录>/board.yaml、ccs/<N>.syscfg、syscfg/ti_msp_dl_config.{c,h}
-环境：SYSCFG_CLI（默认 ~/ti/sysconfig_1.28.0/sysconfig_cli.sh）、M0_SDK_ROOT（默认 third_party/mspm0-sdk）。
+环境：SYSCFG_CLI（默认 third_party/sysconfig_1.28.0，其次 ~/ti/sysconfig_1.28.0）、M0_SDK_ROOT（默认 third_party/mspm0-sdk）。
 【仿真】只在本机 SysConfig 1.28 + SDK 2.11 上生成并交叉编译过；未在 GUI 打开、未上板。
 """
 import argparse, os, pathlib, re, subprocess, sys, tempfile
 import yaml
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-CLI = pathlib.Path(os.environ.get("SYSCFG_CLI", pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"))
+_LOCAL_CLI = REPO / "third_party/sysconfig_1.28.0/sysconfig_cli.sh"      # make fetch（tools/fetch_sysconfig.sh）装在这
+CLI = pathlib.Path(os.environ.get("SYSCFG_CLI") or (_LOCAL_CLI if _LOCAL_CLI.exists() else pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"))
 SDK = pathlib.Path(os.environ.get("M0_SDK_ROOT", REPO / "third_party/mspm0-sdk"))
 T = lambda v: v in (None, "", "TODO")
 HEAD = """/**
@@ -90,9 +91,18 @@ def script(r: dict, asg: dict, pwm_names: list) -> str:
         per = t.get("instance") if not T(t.get("instance")) else asg.get(f"timer.{n}")
         if per:
             L.append(f'{v}.peripheral.$assign = "{per}";')
-    L += ['const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");', "SYSCTL.forceDefaultClkConfig = true;",
-          'const ProjectConfig = scripting.addModule("/ti/project_config/ProjectConfig");', "ProjectConfig.genLinker = false;"]
+    if r.get("dac"):                                          # DAC12 是单例模块，OUT0 = PA15（boardlib.check_dac 已拒绝别的实例 / 通道）
+        L += ['const DAC12 = scripting.addModule("/ti/driverlib/DAC12");',
+              "DAC12.dacOutputPinEn = true;", 'DAC12.dacAmplifier = "ON";', "DAC12.dacOutput12 = 0;"]
+    L += ['const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");', "SYSCTL.forceDefaultClkConfig = true;"]
+    L += sysctl_extra(r)
+    L += ['const ProjectConfig = scripting.addModule("/ti/project_config/ProjectConfig");', "ProjectConfig.genLinker = false;"]
     return "\n".join(L) + "\n"
+
+
+def sysctl_extra(r: dict) -> list:
+    """SYSCTL 里随外设自动打开的时钟：DAC12 必须有 MFPCLK（否则 SysConfig 报 "MFPCLK must be enabled when DAC12 peripheral is added"）。"""
+    return ["SYSCTL.MFPCLKEn = true;   /* DAC12 需要 MFPCLK */"] if r.get("dac") else []
 
 
 def _pwm_groups(r):
@@ -184,7 +194,7 @@ def main():
     if bad:
         sys.exit(f"✗ 还不会生成 {'/'.join(bad)}：在 SysConfig 里手配后用“导入已有工程”")
     if not CLI.exists():
-        sys.exit(f"✗ 找不到 SysConfig CLI：{CLI}（TI 官网免费下载 sysconfig 1.28，或设 SYSCFG_CLI）")
+        sys.exit(f"✗ 找不到 SysConfig CLI：{CLI}（在仓库根目录运行 make fetch 自动装 1.28，或设 SYSCFG_CLI）")
     out = pathlib.Path(x.out); name = x.name or out.name
     ng = len(_pwm_groups(r)); tmp = [f"PWM_G{k}" for k in range(ng)]
     with tempfile.TemporaryDirectory() as td:

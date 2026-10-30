@@ -266,6 +266,16 @@ extern "C" {
 #define ENC_MOTOR_B_B_IOMUX                                      (IOMUX_PINCM24)
 
 
+
+/* Defines for DAC12 */
+#define DAC12_IRQHandler                                         DAC0_IRQHandler
+#define DAC12_INT_IRQN                                           (DAC0_INT_IRQn)
+#define GPIO_DAC12_OUT_PORT                                                GPIOA
+#define GPIO_DAC12_OUT_PIN                                        DL_GPIO_PIN_15
+#define GPIO_DAC12_IOMUX_OUT                                     (IOMUX_PINCM37)
+#define GPIO_DAC12_IOMUX_OUT_FUNC                   IOMUX_PINCM37_PF_UNCONNECTED
+
+
 /* clang-format on */
 
 void SYSCFG_DL_init(void);
@@ -280,8 +290,8 @@ void SYSCFG_DL_UART_LINK_init(void);
 void SYSCFG_DL_UART_IMU_init(void);
 void SYSCFG_DL_SPI_BUS1_init(void);
 void SYSCFG_DL_ADC12_0_init(void);
-void SYSCFG_DL_DAC12_init(void);
 
+void SYSCFG_DL_DAC12_init(void);
 
 bool SYSCFG_DL_saveConfiguration(void);
 bool SYSCFG_DL_restoreConfiguration(void);

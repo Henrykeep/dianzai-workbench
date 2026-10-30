@@ -125,9 +125,12 @@ CROSS := stm32f407-skystar:car_2wd stm32f407-skystar-cubemx:motor_speed_demo stm
          stm32f103c8t6-car-cubemx:port_selftest stm32f103c8t6-car-cubemx:motor_speed_demo stm32f407-skystar-cubemx:port_selftest \
          mspm0g3507-tianmengxing:port_selftest mspm0g3507-launchpad:port_selftest mspm0g3507-launchpad:motor_speed_demo \
          stm32f407-skystar:port_selftest stm32f407-skystar:motor_speed_demo dji-rm-c:port_selftest
+# 工具链锁定 Arm GNU Toolchain 13.3.rel1（tools/arm_toolchain.sh：优先 /opt/arm/...13.3.rel1/bin，版本不对直接失败）
 cross:
-	@for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done
-	@$(MAKE) -s BOARD=mspm0g3507-launchpad APP=car_2wd LINK=rtt >/dev/null 2>&1 || { echo "✗ cross LINK=rtt mspm0g3507-launchpad/car_2wd"; exit 1; }; echo "✓ mspm0g3507-launchpad/car_2wd LINK=rtt"
+	@tools/arm_toolchain.sh --check
+	@tc=$$(tools/arm_toolchain.sh --bin)arm-none-eabi- || exit 1; \
+	for c in $(CROSS); do b=$${c%%:*}; a=$${c##*:}; $(MAKE) -s BOARD=$$b APP=$$a TC=$$tc >/dev/null 2>&1 || { $(MAKE) -s BOARD=$$b APP=$$a TC=$$tc; echo "✗ cross $$b/$$a"; exit 1; }; echo "✓ $$b/$$a"; done; \
+	$(MAKE) -s BOARD=mspm0g3507-launchpad APP=car_2wd LINK=rtt TC=$$tc >/dev/null 2>&1 || { echo "✗ cross LINK=rtt mspm0g3507-launchpad/car_2wd"; exit 1; }; echo "✓ mspm0g3507-launchpad/car_2wd LINK=rtt"
 
 # VS Code / clangd：写 build/compile_commands.json（当前 BOARD+APP 的真实编译参数；切换板子后重跑）
 compdb: $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
@@ -218,6 +221,7 @@ check:
 	CUBE_HAL= $(PY) tools/test_keil_inject.py   # 故意不给 HAL：CI 上没有 third_party，本地也按同样条件测
 	$(PY) tools/test_module_ide.py
 	$(PY) tools/test_mspm0_board.py
+	$(PY) tools/test_gen_syscfg.py
 	$(PY) tools/test_dac_caps.py
 	$(PY) tools/test_pwm3_caps.py
 	$(PY) tools/test_adc_block_caps.py
@@ -257,8 +261,9 @@ check:
 	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && for t in tests/*.test.ts; do node_modules/.bin/esbuild $$t --bundle --platform=node --log-level=error | node || exit 1; done; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
 
-fetch:
-	tools/fetch_stm32f4.sh
+fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）
+	tools/fetch_third_party.sh
+	tools/fetch_sysconfig.sh
 
 clean:
 	rm -rf build

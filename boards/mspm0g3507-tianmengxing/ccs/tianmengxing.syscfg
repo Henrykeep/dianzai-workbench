@@ -72,6 +72,7 @@ QEI1.peripheral.ccp0Pin.$assign = "PA29";
 QEI1.peripheral.ccp1Pin.$assign = "PA30";
 
 SYSCTL.forceDefaultClkConfig = true;
+SYSCTL.MFPCLKEn              = true;   /* DAC12 需要 MFPCLK（gen_syscfg.sysctl_extra 同规则） */
 
 TIMER1.$name              = "TIMER_CTRL";
 TIMER1.profile            = "Basic_Periodic";

@@ -139,8 +139,32 @@ def subsys_plan(repo: pathlib.Path, req: dict, scheme: dict) -> dict:
 IOC_FAMILIES = ("stm32f1", "stm32f4")   # tools/gen_ioc.py 能写 .ioc 的系列
 
 
+def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
+    """从零新建前查依赖：生成要用到、但不入库（.gitignore）的 third_party SDK 文件。返回缺的路径（相对仓库）。"""
+    if family == "mspm0":
+        sdk = pathlib.Path(os.environ.get("M0_SDK_ROOT") or repo / "third_party/mspm0-sdk")
+        need = [sdk / ".metadata/product.json"]
+    else:
+        s = (re.match(r"stm32([a-z]\d)", (mcu or "").lower()) or [None, ""])[1]
+        v = repo / f"third_party/vendored/st_hal_conf/stm32{s}xx_hal_conf_template.h"     # F1/F4 模板随仓库带
+        need = [] if not s or v.exists() else [repo / f"third_party/stm32{s}xx-hal-driver/Inc/stm32{s}xx_hal_conf_template.h"]
+    out = []
+    for f in need:
+        if not f.exists():
+            try:
+                out.append(f.relative_to(repo).as_posix())
+            except ValueError:
+                out.append(str(f))
+    return out
+
+
 def syscfg_cli() -> pathlib.Path:
-    return pathlib.Path(os.environ.get("SYSCFG_CLI") or pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh")
+    """SYSCFG_CLI → 仓库 third_party/sysconfig_1.28.0（make fetch 装的）→ ~/ti/sysconfig_1.28.0。"""
+    if os.environ.get("SYSCFG_CLI"):
+        return pathlib.Path(os.environ["SYSCFG_CLI"])
+    repo = pathlib.Path(os.environ.get("DZBENCH_REPO") or pathlib.Path(__file__).resolve().parents[3])
+    local = repo / "third_party/sysconfig_1.28.0/sysconfig_cli.sh"
+    return local if local.exists() else pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"
 
 
 def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work: pathlib.Path) -> tuple[bool, str]:
@@ -177,7 +201,7 @@ def scratch_options(repo: pathlib.Path, scheme: dict, work: pathlib.Path | None 
             continue
         fam, part = x["mcu"]["family"], x["mcu"]["part"].upper()
         ok = fam in IOC_FAMILIES or (fam == "mspm0" and syscfg_cli().exists())
-        why = "" if ok else ("MSPM0 从零要 TI SysConfig CLI（免费，装到 ~/ti/sysconfig_1.28.0 或设 SYSCFG_CLI），没有就在 SysConfig 里配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
+        why = "" if ok else ("MSPM0 从零要 TI SysConfig CLI（免费，在仓库根目录运行 make fetch 自动装，或设 SYSCFG_CLI），没有就在 SysConfig 里配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
         tpls = [n for n, bp in boards if bp.rstrip("X")[:11] == part.rstrip("X")[:11]]
         for t in [None, *tpls]:
             out.append({"mcu": x["id"], "family": fam, "tpl": t, "ok": ok, "why": why, "status": x["status"],
@@ -316,6 +340,10 @@ class Flow:
                 raise FlowError("bad_mcu", f"没有这个选项：{m['mcu']} / {m.get('tpl')}")
             if not o["ok"]:
                 raise FlowError("no_ioc_gen", o["why"])
+            miss = missing_sdk(self.repo, m["mcu"], o["family"])
+            if miss:
+                raise FlowError("missing_sdk", "缺第三方 SDK：" + "、".join(miss) + "（不入库，新克隆 / worktree 里没有）",
+                                f"在仓库根目录运行 make fetch（{self.repo}），拉完再点生成")
             name = _safe(board_slug(m.get("name") or f"{code}-{m['mcu']}"))
             st = self.stage(code, "scratch")
             s2 = dict(sch, mcu=m["mcu"]); (st / "scheme.yaml").write_text(yaml.safe_dump(s2, allow_unicode=True, sort_keys=False), encoding="utf-8")

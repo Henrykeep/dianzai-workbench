@@ -14,7 +14,15 @@ jobs:
       - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
       - run: pip install pyyaml jsonschema -r app/sidecar/requirements.txt
-      - run: sudo apt-get update && sudo apt-get install -y gcc-arm-none-eabi   # ELF 符号测试要它，否则静默跳过
+      - name: 缓存 Arm GNU Toolchain 13.3.rel1
+        uses: actions/cache@v4
+        with: { path: /opt/arm/arm-gnu-toolchain-13.3.rel1-x86_64-arm-none-eabi, key: arm-gnu-toolchain-13.3.rel1-x86_64 }
+      - name: Arm GNU Toolchain 13.3.rel1（官方 tarball + sha256，锁版本，见 tools/arm_toolchain.sh）
+        run: |
+          sudo mkdir -p /opt/arm && sudo chown "$USER" /opt/arm
+          tools/arm_toolchain.sh --install
+          echo /opt/arm/arm-gnu-toolchain-13.3.rel1-x86_64-arm-none-eabi/bin >> "$GITHUB_PATH"
+          tools/arm_toolchain.sh --check
       - run: tools/fetch_third_party.sh mspm0 f4 f1 freertos                     # 和 preflight 一样有全套 SDK：test_mspm0_board、从零新建（F1/F4 HAL）、FreeRTOS 板导入编译
       - run: make check
       - run: make test

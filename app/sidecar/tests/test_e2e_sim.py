@@ -109,11 +109,18 @@ def test_websocket_server(home):
     websockets = pytest.importorskip("websockets")
     from dzbench.server import Server
 
+    from wsui import free_port
+    port = free_port()                      # 系统分配的空闲端口：多个 worktree 同时 make test 不抢 18765
+
     async def run():
         srv = Server()
-        task = asyncio.ensure_future(srv.serve("127.0.0.1", 18765))
-        await asyncio.sleep(0.3)
-        async with websockets.connect("ws://127.0.0.1:18765") as ws:
+        task = asyncio.ensure_future(srv.serve("127.0.0.1", port))
+        for _ in range(200):                # 等端口真的在听（机器忙时 0.3 s 固定等待不够，握手会超时）
+            try:
+                _r, w = await asyncio.open_connection("127.0.0.1", port); w.close(); break
+            except OSError:
+                await asyncio.sleep(0.05)
+        async with websockets.connect(f"ws://127.0.0.1:{port}", open_timeout=30) as ws:
             async def rpc(**m):
                 await ws.send(json.dumps(m | {"rid": m["op"]}))
                 while True:

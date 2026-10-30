@@ -115,6 +115,7 @@ def test_scratch_allocs_and_writes_ioc(tmp_path):
         assert "合成" in (cd / "Core/Src/main.c").read_text(encoding="utf-8")
 
 
+@pytest.mark.needs_third_party("mspm0-sdk")
 def test_scratch_mspm0_syscfg(tmp_path):
     """MSPM0 从零：SysConfig 求解器分引脚 → 板目录（.syscfg + ti_msp_dl_config + board.yaml），syscfg_import 回核无错。没装 CLI 跳过。"""
     import shutil
@@ -126,3 +127,22 @@ def test_scratch_mspm0_syscfg(tmp_path):
         shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
     r = f.preview("scratch", {"code": "S2", "dest": str(dest), "mcu": "mspm0g3507", "name": "zz-m0-test"})
     assert r["rc"] == 0 and r["kind"] == "syscfg" and "TODO" not in r["files"]["board.yaml"].split("resources:")[1]
+
+
+def test_scratch_missing_sdk_says_make_fetch(tmp_path, monkeypatch):
+    """从零新建前查依赖：缺 third_party 的 HAL / MSPM0 SDK 时报清楚的 missing_sdk + make fetch，而不是生成到一半崩。"""
+    from dzbench import projflow
+    from dzbench.projflow import missing_sdk
+    monkeypatch.delenv("M0_SDK_ROOT", raising=False)
+    assert missing_sdk(tmp_path, "stm32f407vet6", "stm32") == ["third_party/stm32f4xx-hal-driver/Inc/stm32f4xx_hal_conf_template.h"]
+    assert missing_sdk(tmp_path, "mspm0g3507", "mspm0") == ["third_party/mspm0-sdk/.metadata/product.json"]
+    h = tmp_path / "third_party/stm32f1xx-hal-driver/Inc"; h.mkdir(parents=True); (h / "stm32f1xx_hal_conf_template.h").write_text("")
+    assert missing_sdk(tmp_path, "stm32f103c8t6", "stm32") == []
+    import shutil
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    for n in ("requirements.yaml", "scheme.yaml"):
+        shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
+    monkeypatch.setattr(projflow, "missing_sdk", lambda *a: ["third_party/stm32f4xx-hal-driver/Inc/stm32f4xx_hal_conf_template.h"])
+    with pytest.raises(FlowError) as e:
+        f.preview("scratch", {"code": "S1", "dest": str(dest), "mcu": "stm32f407vet6"})
+    assert e.value.code == "missing_sdk" and "make fetch" in e.value.fix and "hal_conf_template" in e.value.msg
