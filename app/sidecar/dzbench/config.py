@@ -61,6 +61,28 @@ def _read(p: pathlib.Path) -> dict:
         raise ConfigError(f"{p} 不是合法 JSON：{e}") from e
 
 
+MACHINE_FLASH_KEYS = ("tool", "probe_kind", "probe")     # 界面“调试探针设置”能写的键（本机文件，不进 git）
+
+
+def save_machine_flash(values: dict) -> dict:
+    """把 flash.tool / probe_kind / probe 写进 ~/.dzbench/machine.json（合并，不动别的键）；值为空 = 删掉该键回到默认。"""
+    p = snapshots.base_dir() / "machine.json"
+    m = _read(p)
+    f = m.setdefault("flash", {})
+    for k in MACHINE_FLASH_KEYS:
+        if k in values:
+            v = values[k]
+            if v in (None, ""):
+                f.pop(k, None)
+            else:
+                f[k] = str(v)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(m, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(p)
+    return f
+
+
 def load(repo: str | os.PathLike | None = None) -> dict:
     cfg = copy.deepcopy(DEFAULTS)
     _merge(cfg, _read(snapshots.base_dir() / "machine.json"))

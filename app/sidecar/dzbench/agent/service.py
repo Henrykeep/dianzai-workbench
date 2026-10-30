@@ -282,6 +282,32 @@ class AgentService:
             self.staged = StagedSearch(order=tuple(self._gains()) or ("kp", "ki", "kd"))
         return self.guard
 
+    # -------------------------------------------------------------- 调试探针设置（flash.tool / probe_kind / probe）
+    def probe_config_get(self, list_probes: bool = True) -> dict:
+        from .. import probes
+        f = self.cfg["flash"]
+        proj = cfg_mod._read(self.gw.root / "dzbench.json").get("flash", {}) if self.gw.root else {}
+        out = {"tool": f.get("tool") or "pyocd", "probe_kind": f.get("probe_kind") or "", "probe": f.get("probe") or "",
+               "target": f.get("target"), "tools": list(probes.TOOLS), "kinds": list(probes.PROBE_KINDS),
+               "status": probes.tool_status(f),
+               "project_overrides": [k for k in cfg_mod.MACHINE_FLASH_KEYS if k in proj]}   # 工程文件写了的键，本机设置会被它盖住
+        if list_probes:
+            out["list"] = probes.list_probes_for(out["tool"], f)
+        return out
+
+    def probe_config_set(self, values: dict) -> dict:
+        from .. import probes
+        v = {k: values.get(k) for k in cfg_mod.MACHINE_FLASH_KEYS if k in values}
+        if v.get("tool") and v["tool"] not in probes.TOOLS:
+            raise LinkError("bad_tool", f"不认识烧录工具 {v['tool']}")
+        if v.get("probe_kind") and v["probe_kind"] not in probes.PROBE_KINDS:
+            raise LinkError("bad_probe_kind", f"不认识探针类型 {v['probe_kind']}")
+        cfg_mod.save_machine_flash(v)
+        new = cfg_mod.load(self.gw.root)["flash"]             # 重新分层合并（工程文件 / 环境变量仍优先）
+        self.cfg["flash"].clear(); self.cfg["flash"].update(new)   # Flasher 持有同一个 dict，原地改
+        self.watch_stop()                                     # 旧后端的变量读取连接作废
+        return self.probe_config_get(list_probes=False)
+
     # -------------------------------------------------------------- 调参前问答（缺口 9）
     def pretune_get(self) -> dict:
         return {"questions": pretune_mod.QUESTIONS, "current": pretune_mod.to_dict(self.pretune)}

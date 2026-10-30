@@ -67,3 +67,34 @@ def test_errors(monkeypatch):
     monkeypatch.setenv("PATH", "/nonexistent")
     st = probes.tool_status({"tool": "probe-rs"})
     assert not st["ok"] and "cargo install" in st["fix"]
+
+
+@pytest.mark.skipif(os.name == "nt", reason="假探针是 POSIX 脚本")
+def test_list_probes_per_backend(log):
+    r = probes.list_probes_for("probe-rs")
+    assert [(p["uid"], p["kind"]) for p in r["probes"]] == [("0483:374b:066DFF555", "stlink"), ("0d28:0204:0240000034", "daplink")]
+    j = probes.list_probes_for("jlink")
+    assert j["probes"][0]["uid"] == "260112345" and j["probes"][0]["kind"] == "jlink"
+
+
+def test_probe_config_roundtrip(home, tmp_path, monkeypatch):
+    import json
+    from dzbench import config as cfg_mod, snapshots
+    from dzbench.agent.service import AgentService
+    from dzbench.flash import Flasher
+    monkeypatch.setattr(probes, "list_probes_for", lambda tool, f=None: {"via": tool, "probes": []})
+    (tmp_path / "dzbench.json").write_text(json.dumps({"flash": {"target": "stm32f407vetx"}}))
+
+    class GW: root = tmp_path
+    svc = AgentService.__new__(AgentService)
+    svc.gw, svc.cfg = GW(), cfg_mod.load(tmp_path)
+    svc.flasher = Flasher(None, svc.cfg)
+    r = svc.probe_config_set({"tool": "openocd", "probe_kind": "daplink", "probe": "0240000034"})
+    assert (r["tool"], r["probe_kind"], r["probe"]) == ("openocd", "daplink", "0240000034") and r["project_overrides"] == []
+    assert svc.flasher.cfg["flash"]["tool"] == "openocd"                 # Flasher 看到的是同一个 dict
+    m = json.loads((snapshots.base_dir() / "machine.json").read_text())
+    assert m["flash"] == {"tool": "openocd", "probe_kind": "daplink", "probe": "0240000034"}
+    svc.probe_config_set({"probe": ""})                                   # 清空 = 回默认
+    assert "probe" not in json.loads((snapshots.base_dir() / "machine.json").read_text())["flash"]
+    with pytest.raises(Exception):
+        svc.probe_config_set({"tool": "keil"})

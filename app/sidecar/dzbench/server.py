@@ -270,6 +270,10 @@ class Server:
             return self.svc.loop.reset()
         if op == "agent_action_decide":            # 风险等级 human 的动作卡：人点“执行/拒绝”（烧录要几秒，放线程池）
             return await run(None, self.svc.action_decide, int(m["id"]), bool(m["accept"]))
+        if op == "probe_config_get":               # 调试探针设置对话框：当前后端 / 探针类型 / 序列号 + 按后端列探针
+            return await run(None, lambda: self.svc.probe_config_get(bool(m.get("list", True))))
+        if op == "probe_config_set":               # 人在对话框点“保存”：写本机 machine.json
+            return await run(None, lambda: self.svc.probe_config_set(m.get("values") or {}))
         if op == "pretune_get":                    # 调参前问答：问题 + 当前偏好
             return self.svc.pretune_get()
         if op == "pretune_set":                    # 人在对话框点“确认”

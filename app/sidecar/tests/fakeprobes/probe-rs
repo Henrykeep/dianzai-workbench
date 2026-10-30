@@ -2,5 +2,6 @@
 import os, sys
 a = sys.argv[1:]
 open(os.environ["FAKEPROBE_LOG"], "a").write("probe-rs " + " ".join(a) + "\n")
-if a[0] == "info": print("ARM Chip:\n  DPIDR: 0x0bc11477\n  Designer: ARM Ltd")
+if a[0] == "list": print("The following debug probes were found:\n[0]: STLink V2-1 -- 0483:374b:066DFF555 (ST-LINK)\n[1]: DAPLink CMSIS-DAP -- 0d28:0204:0240000034 (CMSIS-DAP)")
+elif a[0] == "info": print("ARM Chip:\n  DPIDR: 0x0bc11477\n  Designer: ARM Ltd")
 elif a[0] == "read": n = int(a[-1]); print(" ".join(f"{i & 0xFF:02x}" for i in range(n)))

@@ -278,6 +278,45 @@ def make_backend(fcfg: dict):
     return cls(fcfg["target"], kind, fcfg.get("probe"), fcfg)
 
 
+def list_probes_for(tool: str, fcfg: dict | None = None) -> dict:
+    """按后端列已插探针 {probes: [{uid, desc, kind}], via, error?}。便宜的才做：
+    pyocd / openocd 用 pyOCD 枚举（它认 ST-Link / CMSIS-DAP(DAPLink) / J-Link，OpenOCD 自己没有便宜的列举命令）；
+    probe-rs 用 `probe-rs list`；jlink 用 JLinkExe ShowEmuList。"""
+    fcfg = fcfg or {}
+    tool = (tool or "pyocd").lower()
+    try:
+        if tool in ("pyocd", "openocd"):
+            from .flash import list_probes
+            ps = list_probes()
+            return {"via": "pyocd", "probes": [p | {"kind": _guess_kind(p.get("desc", ""))} for p in ps]}
+        if tool == "probe-rs":
+            out = _run([_exe("probe-rs", fcfg), "list"], 15)
+            ps = [{"uid": m.group(2), "desc": m.group(1).strip(), "kind": _guess_kind(m.group(1))}
+                  for m in re.finditer(r"\[\d+\]:\s*(.+?)\s*--\s*([0-9a-fA-F]{4}:[0-9a-fA-F]{4}(?::\S+)?)", out)]
+            return {"via": "probe-rs list", "probes": ps}
+        if tool == "jlink":
+            with tempfile.NamedTemporaryFile("w", suffix=".jlink", delete=False) as f:
+                f.write("ShowEmuList\nqc\n")
+            try:
+                out = _run([_exe("jlink", fcfg), "-NoGui", "1", "-CommandFile", f.name], 15)
+            finally:
+                os.unlink(f.name)
+            ps = [{"uid": m.group(1), "desc": (m.group(2) or "J-Link").strip(), "kind": "jlink"}
+                  for m in re.finditer(r"Serial number:\s*(\d+)(?:,\s*ProductName:\s*([^\n]+))?", out)]
+            return {"via": "JLinkExe ShowEmuList", "probes": ps}
+    except ImportError:
+        return {"via": "pyocd", "probes": [], "error": "没装 pyOCD，列不出探针（pip install pyocd）；序列号可以手填"}
+    except FlashError as e:
+        return {"via": tool, "probes": [], "error": e.message + ("；" + e.fix if e.fix else "")}
+    return {"via": tool, "probes": [], "error": f"不认识的后端 {tool}"}
+
+
+def _guess_kind(desc: str) -> str:
+    d = desc.lower()
+    return "stlink" if "st-link" in d or "stlink" in d else "jlink" if "j-link" in d or "jlink" in d else \
+        "daplink" if "dap" in d or "cmsis" in d else ""
+
+
 def tool_status(fcfg: dict) -> dict:
     """自检用：当前 tool 的可执行文件在不在（不连探针）。"""
     tool = (fcfg.get("tool") or "pyocd").lower()

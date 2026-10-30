@@ -4,6 +4,7 @@ open(os.environ["FAKEPROBE_LOG"], "a").write("jlink " + " ".join(sys.argv[1:]) +
 script = open(sys.argv[sys.argv.index("-CommandFile") + 1]).read()
 open(os.environ["FAKEPROBE_LOG"], "a").write(script)
 print("Found SW-DP with ID 0x0BC11477")
+if "ShowEmuList" in script: print("J-Link[0]: Connection: USB, Serial number: 260112345, ProductName: J-Link EDU Mini")
 for line in script.splitlines():
     if line.startswith("mem8"):
         a, n = [int(x.strip(), 16) for x in line[4:].split(",")]

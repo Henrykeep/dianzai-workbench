@@ -101,4 +101,4 @@
    - ADC 块采样硬件路径（cubemx 1.10.0 F1/F4 TRGO+DMA ≤200 kHz；mspm0 0.10.0 TIMG 事件+DMA ≤500 kHz），board.yaml adc.block 开启，不满足条件退回软件定时。[编译]，样例板 CubeMX 文件手改，未上板。
    - PAL 1.7.0：真板 DAC（cubemx HAL_DAC、mspm0 DAC12），validate_board 按芯片型号（boardlib.DAC_PARTS）放行/拒绝；样例板 skystar-cubemx PA4、天猛星 PA15。[编译]，CubeMX/SysConfig 文件是手改的。
 9. 调参前问答：Agent 菜单“调参前问答” → op pretune_get/pretune_set → dzbench/agent/pretune.py；偏好进 Agent 上下文 + 只收紧护栏（超调上限、权重、保守步子）。[仿真]；对话框未在桌面端点过，输出安全限没落到固件限幅。
-10. 调试后端：dzbench/probes.py（OpenOCD TCL / JLinkExe / probe-rs CLI），flash.tool + flash.probe_kind（stlink 默认、daplink、jlink），烧录 / 备份 / 变量实时读取共用。[仿真]（假进程）；真探针未接，输出解析按文档写，界面无切换入口。
+10. 调试后端 + 设置界面（Agent 菜单“调试探针…”，op probe_config_get/set，写 machine.json，按后端列探针）：dzbench/probes.py（OpenOCD TCL / JLinkExe / probe-rs CLI），flash.tool + flash.probe_kind（stlink 默认、daplink、jlink），烧录 / 备份 / 变量实时读取共用。[仿真]（假进程）；真探针未接，输出解析按文档写，界面无切换入口。

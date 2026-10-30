@@ -178,6 +178,41 @@ export function initAgent(call: Call) {
     if (!window.confirm(`回到第 ${b.round} 轮（得分 ${b.score}）：${g}？`)) return;
     call<any>("tune_rollback_best").then(r => add(`<span class="lbl">已回到第 ${r.round} 轮：改了 ${r.applied.length} 个参数</span>`, "msg bot"), () => {});
   };
+  // 调试探针设置：后端 / 探针类型 / 序列号（op probe_config_get / probe_config_set）
+  const KIND: Record<string, string> = { stlink: "ST-Link", daplink: "DAPLink（CMSIS-DAP）", jlink: "J-Link" };
+  async function probeFill(list = true, tool?: string) {
+    const r = await call<any>("probe_config_get", { list }).catch(() => null);
+    if (!r) return null;
+    const t = tool ?? r.tool;
+    $("pb-tool").innerHTML = r.tools.map((x: string) => `<option ${x === t ? "selected" : ""}>${esc(x)}</option>`).join("");
+    $("pb-kind").innerHTML = `<option value="">默认（J-Link 后端 = jlink，其余 = ST-Link）</option>` +
+      r.kinds.map((k: string) => `<option value="${k}" ${k === r.probe_kind ? "selected" : ""}>${esc(KIND[k] ?? k)}</option>`).join("");
+    if (!tool) $<HTMLInputElement>("pb-serial").value = r.probe;
+    const ps = r.list?.probes ?? [];
+    $("pb-list").innerHTML = ps.map((p: any) => `<option value="${esc(p.uid)}">${esc(p.desc)}</option>`).join("");
+    $("pb-found").innerHTML = !r.list ? "" : ps.length
+      ? ps.map((p: any) => `<li><button class="btn" type="button" data-uid="${esc(p.uid)}" data-kind="${esc(p.kind)}">用这个</button> ${esc(p.uid)} · ${esc(p.desc)}</li>`).join("")
+      : `<li>${esc(r.list.error || "没列到探针（" + r.list.via + "）")}</li>`;
+    const st = r.status;
+    $("pb-st").textContent = (st.ok ? (st.exe ? `${st.tool}：${st.exe}` : `${st.tool}`) : `${st.why}；${st.fix}`) +
+      (r.project_overrides.length ? `　注意：工程 dzbench.json 写了 ${r.project_overrides.join("/")}，会盖住这里的设置` : "");
+    return r;
+  }
+  $("fw-probe").onclick = async () => { if (await probeFill()) $<HTMLDialogElement>("probe-dlg").show(); };
+  $("pb-scan").onclick = () => probeFill(true, $<HTMLSelectElement>("pb-tool").value);
+  $("pb-found").addEventListener("click", e => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>("[data-uid]");
+    if (!b) return;
+    $<HTMLInputElement>("pb-serial").value = b.dataset.uid!;
+    if (b.dataset.kind) $<HTMLSelectElement>("pb-kind").value = b.dataset.kind;
+  });
+  $<HTMLDialogElement>("probe-dlg").addEventListener("close", () => {
+    if ($<HTMLDialogElement>("probe-dlg").returnValue !== "save") return;
+    const values = { tool: $<HTMLSelectElement>("pb-tool").value, probe_kind: $<HTMLSelectElement>("pb-kind").value,
+                     probe: $<HTMLInputElement>("pb-serial").value.trim() };
+    call<any>("probe_config_set", { values }).then(r => fwSt(`调试后端：${r.tool}${r.probe_kind ? " / " + (KIND[r.probe_kind] ?? r.probe_kind) : ""}${r.probe ? " / " + r.probe : ""}`), () => {});
+  });
+
   // 调参前问答（缺口 9）：问题由侧车给，人点“确认”才生效
   $("ag-pre").onclick = async () => {
     const r = await call<any>("pretune_get").catch(() => null);

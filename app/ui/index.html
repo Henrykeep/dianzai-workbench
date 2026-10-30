@@ -126,6 +126,7 @@
               <button class="mi" id="ag-best" title="把参数一键恢复到本次调参护栏记录的最好一轮（先弹确认框）；侧车重启后可在快照页恢复“自动-最好一轮”"><i data-lucide="undo-2"></i>回到最好一轮</button>
               <button class="mi" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）"><i data-lucide="shield-off"></i>重置护栏</button>
               <hr><span class="mh" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">固件</span>
+              <button class="mi" id="fw-probe" title="选烧录/调试后端（pyOCD / OpenOCD / J-Link / probe-rs）、探针类型（ST-Link / DAPLink / J-Link）和序列号；存本机 ~/.dzbench/machine.json"><i data-lucide="settings"></i>调试探针…</button>
               <button class="mi" id="fw-build"><i data-lucide="hammer"></i>编译</button>
               <button class="mi" id="fw-flash"><i data-lucide="zap"></i>烧录…</button>
               <button class="mi" id="fw-rollback"><i data-lucide="history"></i>回滚固件…</button>
@@ -147,6 +148,18 @@
       <dialog id="predlg" class="dlg"><form method="dialog"><h3>赛前检查</h3><div id="pre-sum" class="pre-sum"></div><ul id="pre-list" class="doc"></ul><ul id="pre-bb" class="doc" hidden></ul>
         <p class="hint">板上参数要等于固件默认值：调好的值先“定稿”重烧，不然一复位就丢。人工项（电池、螺丝、线束…）在导出的清单里打勾。</p>
         <div class="act"><label class="hint" title="勾上：板上固件必须就是仓库 HEAD；不勾：烧录之后只改了文档/上位机也算一致"><input type="checkbox" id="pre-strict"> 严格</label><button class="btn" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；板子有掉电保存区时急停那刻冻进 flash，下次上电还在）">读黑匣子</button><button class="btn" type="button" id="pre-save" title="把板上当前参数存进 flash（board.yaml mcu.nvm_kb；只在停车/急停时写），下次上电自动用">存参数</button><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
+      <dialog id="probe-dlg" class="dlg">
+        <form method="dialog" id="probe-form">
+          <h3>调试探针</h3>
+          <p class="hint">烧录、烧前备份、ELF 变量实时读取都走这里选的后端。存本机 <code>~/.dzbench/machine.json</code>（不进 git）；工程 dzbench.json 写了同名键时以工程为准。</p>
+          <label>后端<select id="pb-tool" class="in"></select></label>
+          <label>探针类型<select id="pb-kind" class="in"><option value="">默认（J-Link 后端 = jlink，其余 = ST-Link）</option></select></label>
+          <label>探针序列号（只插一个可留空）<input id="pb-serial" class="in" list="pb-list" autocomplete="off"><datalist id="pb-list"></datalist></label>
+          <ul id="pb-found" class="doc"></ul>
+          <p class="hint" id="pb-st"></p>
+          <div class="act"><button class="btn" type="button" id="pb-scan">重新列探针</button><button class="btn pri" value="save">保存</button><button class="btn" value="cancel">取消</button></div>
+        </form>
+      </dialog>
       <dialog id="pre-dlg" class="dlg">
         <form method="dialog" id="pre-form">
           <h3>调参前问答</h3>
