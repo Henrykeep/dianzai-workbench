@@ -23,7 +23,7 @@ import { humanize, humanHtml } from "./errors";
 import { conn, onLinkState, linkStateActive } from "./conn";
 import { linkView, runState, modeLabel } from "./linkmsg";
 import { initProject } from "./project";
-import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView } from "./boardstate";
+import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
 import { fireEstop, handleEstopMsg, latchedCause, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE, clearedOnce, CLEARED_NOTICE } from "./estopbtn";
@@ -751,6 +751,7 @@ function showLink(m: any) {
 }
 let goStepRef: (s: any) => void = () => {};
 // 板上状态：保存参数 / 运行模式 / 自检失败项（文案取侧车 message_zh、label_zh，前端不拼）
+let stSeenT: number | undefined, stSeenAt: number | null = null;
 let savedAt: string | null = null, noSave = "", noMode = "";
 function renderBoard(st: any) {
   const sv = $("tb-saved"); sv.textContent = noSave || savedView(st, savedAt); sv.classList.toggle("ok", !noSave && st.params_saved === true);
@@ -758,17 +759,23 @@ function renderBoard(st: any) {
   $("seal-mode-cur").textContent = st.run_mode?.label_zh ?? "—";
   const g = modeGate(st), b = $<HTMLButtonElement>("seal-mode");
   b.disabled = !!noMode || !g.enabled; $("seal-mode-why").textContent = noMode || g.reason;
+  if (st.selftest?.t !== stSeenT) { stSeenT = st.selftest?.t; stSeenAt = st.selftest ? Date.now() : null; }   // 记下界面收到自检结果的时刻（at 未上线时显示用）
+  const sv2 = sealSelftestView(st, stSeenAt);
+  $("st-seal-r").textContent = sv2.text; $("st-seal-t").textContent = sv2.when;
+  $("st-seal-why").textContent = sv2.need ? `${RESELFTEST}：${sv2.why}` : ""; $("st-seal-go").hidden = !sv2.need;
+  $("st-seal").classList.toggle("warn", sv2.need);
   const fails = selftestFailures(st); $("st-fail").hidden = !fails.length;
   $("st-fail-l").innerHTML = fails.map(m => `<li>${esc(m)}</li>`).join("");
   if (AL.list.some(e => e.kind === "estop" || e.kind === "watchdog")) renderAlerts();
 }
 $("tb-save").onclick = async () => {
   const r = await saveParams((op, a) => link.rpc(op, a ?? {}));
-  if (r.ok) savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  if (r.ok) { savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false }); }
   else if (r.disable) noSave = r.note!; else toast({ code: "save_params", message: r.note!, fix: "" }, "warn", 6000);
   renderBoard(S.status);
 };
 // 封箱页「读取自检」：读心跳上报的上电自检结果；固件没报（selftest_unreported）时照写侧车给的原因 + 处理
+$("st-seal-go").onclick = () => { goStepRef("调参"); const b = $("seal-selftest"); b.scrollIntoView({ block: "nearest" }); b.focus(); };
 $("seal-selftest").onclick = async () => {
   const note = $("st-note"); note.textContent = "";
   try {
@@ -822,3 +829,6 @@ $("gb-fw").onclick = () => goStep("烧录");
 $("tb-meas").onclick = () => { goStep("联调"); (document.querySelector('#view [data-v="fft"]') as HTMLElement)?.click(); };
 
 document.querySelector<HTMLElement>('#rail [data-side="score"]')?.addEventListener("click", () => score.refresh());
+// 调参页视图控件浮在实验行右侧：顶部让出页头高度（页头随宽度换行，高度不固定），避免盖住页头上板区按钮
+{ const ph = document.getElementById("pg-head"), work = ph?.parentElement;
+  if (ph && work && "ResizeObserver" in window) new ResizeObserver(() => work.style.setProperty("--pgh", `${ph.offsetHeight}px`)).observe(ph); }

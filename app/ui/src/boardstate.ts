@@ -48,3 +48,18 @@ export function selftestErrView(e: { code?: string; message?: string; fix?: stri
   if (e?.code === "selftest_timeout") return { text: "自检超时", btn: { label: "重试", action: "retry" } };
   return { text: [e?.message, e?.fix].filter(Boolean).join(" · ") || "读取自检失败", btn: null };
 }
+
+// 封箱页只读：最近一次自检的结果与时间（封箱前检查项）。
+// 是否「请重新自检」以本地服务给的 selftest.stale 为准，前端不推算；未通过也提示。字段未上线（stale 缺失）时只显示结果和时间。
+export const RESELFTEST = "请重新自检";
+export type SealSelftest = { text: string; when: string; need: boolean; why: string };
+type SelftestSnap = NonNullable<Selftest> & { at?: number; params_hash_at?: string; stale?: boolean };
+export function sealSelftestView(st: BoardStatus, seenAtMs: number | null, fmt = (t: number) => new Date(t).toLocaleTimeString("zh-CN", { hour12: false })): SealSelftest {
+  const s = st.selftest as SelftestSnap | null | undefined;
+  if (!s) return { text: "尚未自检", when: "", need: false, why: "" };
+  const at = typeof s.at === "number" ? (s.at < 1e11 ? s.at * 1000 : s.at) : seenAtMs;   // at：本地服务记录的自检时刻（秒或毫秒）；没有时用界面收到的时刻
+  const when = at ? fmt(at) : "";
+  if (!s.pass) return { text: "自检未通过", when, need: true, why: `${s.failed_items.length} 项未通过` };
+  if (s.stale === true) return { text: "自检通过", when, need: true, why: "自检之后参数已修改" };
+  return { text: "自检通过", when, need: false, why: "" };
+}

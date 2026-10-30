@@ -47,10 +47,10 @@ export function handleEstopMsg(m: EstopMsg, ui: EstopUi): void {
     const p = onEstopEvent(m.state);
     if (p) ui.setPhase(p);
     if (m.state === "cleared") ui.showCleared();
-    if (m.state === "requested" && m.sent === false) ui.toast(m.message || "急停没有送达，请直接断电或拔电池。", "crit", 15000);
+    if (m.state === "requested" && m.sent === false) ui.toast(m.message_zh || m.message || "急停没有送达，请直接断电或拔电池。", "crit", 15000);
     return;
   }
-  if (m.sent === false) { ui.toast(m.message || m.message_zh || "急停没有送达任何板子", "crit", 15000); ui.setPhase("idle"); }
+  if (m.sent === false) { ui.toast(m.message_zh || m.message || "急停没有送达任何板子", "crit", 15000); ui.setPhase("idle"); }
   // 不带 state 的 {sent:true}：约定里不存在，忽略（不据此改状态）
 }
 

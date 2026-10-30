@@ -1,4 +1,4 @@
-import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, CONFIRM_TEXT, selftestErrView } from "../src/boardstate.ts";
+import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, CONFIRM_TEXT, selftestErrView, sealSelftestView, RESELFTEST } from "../src/boardstate.ts";
 import { ACTIONS, resolveFix } from "../src/progress.ts";
 const bad = async () => { throw { code: "bad_op", message: "未知操作" }; };
 (async () => {
@@ -38,3 +38,20 @@ void (async () => {
   if (v3.text !== "原因 · 处理" || v3.btn) throw "其它错误照写原因";
   console.log("selftest err ok");
 })().catch(e => { console.error(e); process.exit(1); });
+// 封箱页只读自检项（mock 本地服务自检快照）：提示只看 stale，不推算
+{
+  const f = (t: number) => String(t);
+  const ok = { pass: true, failed_items: [], t: 5 };
+  const none = sealSelftestView({}, null, f);
+  if (none.need || none.text !== "尚未自检") throw "没自检：只显示，不提示";
+  const bad = sealSelftestView({ selftest: { pass: false, failed_items: [{ code: "imu", key: "imu", message_zh: "IMU 无响应" }], t: 5 } }, 1000, f);
+  if (!bad.need || bad.text !== "自检未通过" || bad.when !== "1000") throw "未通过要提示";
+  const old = sealSelftestView({ selftest: ok, params_hash: "h2" } as any, 1000, f);   // 字段未上线：哈希变了也不推算
+  if (old.need || old.when !== "1000") throw "无 stale 时不提示 " + JSON.stringify(old);
+  const fresh = sealSelftestView({ selftest: { ...ok, at: 1_700_000_000, params_hash_at: "h1", stale: false } } as any, 1000, f);
+  if (fresh.need || fresh.when !== "1700000000000") throw "stale=false 不提示，时间用 at " + JSON.stringify(fresh);
+  const stale = sealSelftestView({ selftest: { ...ok, at: 1_700_000_000_000, params_hash_at: "h1", stale: true } } as any, 1000, f);
+  if (!stale.need || stale.when !== "1700000000000") throw "stale=true 要提示";
+  if (RESELFTEST !== "请重新自检") throw "文案";
+  console.log("seal selftest ok");
+}
