@@ -53,11 +53,16 @@ export function selftestErrView(e: { code?: string; message?: string; fix?: stri
 // 是否「请重新自检」以本地服务给的 selftest.stale 为准，前端不推算；未通过也提示。字段未上线（stale 缺失）时只显示结果和时间。
 export const RESELFTEST = "请重新自检";
 export type SealSelftest = { text: string; when: string; need: boolean; why: string };
-type SelftestSnap = NonNullable<Selftest> & { at?: number; params_hash_at?: string; stale?: boolean };
+export function atMs(at: unknown): number | null {
+  if (typeof at === "number" && isFinite(at)) return at < 1e11 ? at * 1000 : at;
+  if (typeof at === "string" && at) { const t = Date.parse(at); return isNaN(t) ? null : t; }
+  return null;
+}
+type SelftestSnap = NonNullable<Selftest> & { at?: string | number; params_hash_at?: string; stale?: boolean };
 export function sealSelftestView(st: BoardStatus, seenAtMs: number | null, fmt = (t: number) => new Date(t).toLocaleTimeString("zh-CN", { hour12: false })): SealSelftest {
   const s = st.selftest as SelftestSnap | null | undefined;
   if (!s) return { text: "尚未自检", when: "", need: false, why: "" };
-  const at = typeof s.at === "number" ? (s.at < 1e11 ? s.at * 1000 : s.at) : seenAtMs;   // at：本地服务记录的自检时刻（秒或毫秒）；没有时用界面收到的时刻
+  const at = atMs(s.at) ?? seenAtMs;   // at：主机墙钟（带时区 ISO 8601；兼容秒 / 毫秒数字）；没有或解析不了时用界面收到的时刻
   const when = at ? fmt(at) : "";
   if (!s.pass) return { text: "自检未通过", when, need: true, why: `${s.failed_items.length} 项未通过` };
   if (s.stale === true) return { text: "自检通过", when, need: true, why: "自检之后参数已修改" };

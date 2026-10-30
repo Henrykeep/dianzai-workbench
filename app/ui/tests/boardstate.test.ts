@@ -1,4 +1,4 @@
-import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, CONFIRM_TEXT, selftestErrView, sealSelftestView, RESELFTEST } from "../src/boardstate.ts";
+import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, CONFIRM_TEXT, selftestErrView, sealSelftestView, RESELFTEST, atMs } from "../src/boardstate.ts";
 import { ACTIONS, resolveFix } from "../src/progress.ts";
 const bad = async () => { throw { code: "bad_op", message: "未知操作" }; };
 (async () => {
@@ -52,6 +52,13 @@ void (async () => {
   if (fresh.need || fresh.when !== "1700000000000") throw "stale=false 不提示，时间用 at " + JSON.stringify(fresh);
   const stale = sealSelftestView({ selftest: { ...ok, at: 1_700_000_000_000, params_hash_at: "h1", stale: true } } as any, 1000, f);
   if (!stale.need || stale.when !== "1700000000000") throw "stale=true 要提示";
+  if (atMs("2026-10-31T06:05:00+08:00") !== Date.UTC(2026, 9, 30, 22, 5)) throw "ISO 带时区";
+  if (atMs("2026-10-30T22:05:00Z") !== Date.UTC(2026, 9, 30, 22, 5)) throw "ISO Z";
+  if (atMs(1_700_000_000) !== 1_700_000_000_000 || atMs(1_700_000_000_000) !== 1_700_000_000_000) throw "数字秒/毫秒";
+  if (atMs("不是时间") !== null || atMs(undefined) !== null) throw "坏值";
+  const iso = sealSelftestView({ selftest: { ...ok, at: "2026-10-31T06:05:00+08:00", stale: false } } as any, 1000, f);
+  if (iso.when !== String(Date.UTC(2026, 9, 30, 22, 5))) throw "at ISO 用于显示";
+  if (sealSelftestView({ selftest: { ...ok, at: "bad" } } as any, 1000, f).when !== "1000") throw "坏 at 回退收到时刻";
   if (RESELFTEST !== "请重新自检") throw "文案";
   console.log("seal selftest ok");
 }
