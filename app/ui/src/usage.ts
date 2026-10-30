@@ -2,7 +2,7 @@
 export type Usage = { tokens_in?: number; tokens_out?: number; elapsed_ms?: number };
 export const usageLog: Usage[] = [];
 const n = (v: unknown) => (typeof v === "number" && isFinite(v) ? v : undefined);
-// 兼容两种来源：回复里的 usage 对象；旧的 agent_usage 事件（prompt / completion）
+// 主来源：agent_usage 事件 {type:"agent_usage", usage:{elapsed_ms, tokens_in?, tokens_out?}}；兼容旧的 prompt/completion 写法
 export function parseUsage(x: any): Usage | null {
   const u = x?.usage ?? (x?.type === "agent_usage" ? { tokens_in: x.prompt, tokens_out: x.completion, elapsed_ms: x.elapsed_ms } : null);
   if (!u || typeof u !== "object") return null;

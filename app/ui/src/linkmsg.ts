@@ -1,6 +1,6 @@
 // link.state 的 reason → 横幅文案；以及“重连后板子保持待机”的前端状态模型。
 // 硬规矩：重连后界面不自动重发任何运动指令/目标值/参数；运行态只认板子上报，断线即视为未知，重连后默认待机。
-export type LinkMsg = { board?: string; reason?: string; stale_after_ms?: number };
+export type LinkMsg = { board?: string; reason?: string; stale_after_ms?: number; mode?: string };
 export type LinkView = { text: string; tone: "neutral" | "warn" | ""; portAttn: boolean };
 export function linkView(m: LinkMsg): LinkView {
   if (m.board === "lost" && m.reason === "resuming") return { text: "连接中断，正在重连…", tone: "neutral", portAttn: false };
@@ -17,3 +17,5 @@ export const runState = {
   // 板子不在线：清掉断线前的“运行中”，不缓存任何待重发的指令
   onLink(board: string | undefined) { if (board !== "connected") run = "standby"; },
 };
+// 板子运行模式（link.state.mode）：只显示不切换；没有该字段就不显示
+export const modeLabel = (m: LinkMsg) => m.mode === "tethered" ? "联机模式" : m.mode === "standalone" ? "脱机模式" : "";

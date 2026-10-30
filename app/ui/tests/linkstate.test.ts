@@ -1,4 +1,4 @@
-import { linkView, runState } from "../src/linkmsg.ts";
+import { linkView, runState, modeLabel } from "../src/linkmsg.ts";
 import { conn, onLinkState } from "../src/conn.ts";
 const eq = (a: any, b: any, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw m + " " + JSON.stringify(a); };
 eq(linkView({ board: "lost", reason: "resuming" }), { text: "连接中断，正在重连…", tone: "neutral", portAttn: false }, "resuming 中性");
@@ -15,4 +15,5 @@ if (runState.get() !== "standby") throw "重连后应待机";
 if (!conn.get().board) throw "已连接";
 if (sent.length) throw "重连后不应自动发指令：" + sent; void rpc;
 runState.fromBoard({ run: "standby" }); if (runState.get() !== "standby") throw "板子上报待机";
+if (modeLabel({ board: "connected", mode: "tethered" }) !== "联机模式" || modeLabel({ mode: "standalone" }) !== "脱机模式" || modeLabel({ board: "connected" }) !== "") throw "mode";
 console.log("linkstate ok"); process.exit(0);

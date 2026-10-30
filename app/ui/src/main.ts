@@ -20,7 +20,7 @@ import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
 import { humanize, humanHtml } from "./errors";
 import { conn, onLinkState, linkStateActive } from "./conn";
-import { linkView, runState } from "./linkmsg";
+import { linkView, runState, modeLabel } from "./linkmsg";
 import { initPjAsk } from "./pjask";
 import { estopText } from "./estop";
 import { fetchProgress, render as renderProgress } from "./progress";
@@ -704,6 +704,7 @@ function showLink(m: any) {
   const v = linkView(m), b = $("lk-banner");
   b.hidden = !v.text; b.textContent = v.text; b.className = "lk-banner" + (v.tone ? " " + v.tone : "");
   $("port").classList.toggle("attn", v.portAttn);
+  const md = modeLabel(m); $("ro-mode").hidden = !md; $("ro-mode").textContent = md;
   renderAlerts();
 }
 const goStep = initSteps(() => !!S.status.connected);

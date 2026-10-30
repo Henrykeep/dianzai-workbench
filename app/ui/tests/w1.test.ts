@@ -16,4 +16,6 @@ const p2 = infer({ ...base, current: "项目", visited: new Set(["项目", "调�
 const h2 = pageHead(p2);
 if (h2.goto !== "project" || !h2.label.startsWith("前往")) throw "已完成页指向 next";
 if (pageHead(infer({ ...base, current: "项目", visited: new Set(["项目"]) as any })).label !== "新建工程") throw "读题页主按钮";
+const e2 = parseUsage({ type: "agent_usage", usage: { elapsed_ms: 900 } });
+if (!e2 || elapsedOf(e2, 5) !== 900 || e2.tokens_in !== undefined) throw "agent_usage 事件 usage";
 console.log("w1 ok");

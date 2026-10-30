@@ -342,7 +342,7 @@ export function initAgent(call: Call) {
 
   // ---------------------------------------------------------------- 对话
   let tools: HTMLElement | null = null, mode: HTMLElement | null = null;
-  let turnUsage: Usage | null = null;
+  let turnUsage: Usage | null = null, timeEl: HTMLElement | null = null;
   // 示例问题：点一下直接问（第一次打开时最省事的入口）
   feed.addEventListener("click", e => {
     const q = (e.target as HTMLElement).closest<HTMLElement>(".chip")?.dataset.q;
@@ -354,7 +354,7 @@ export function initAgent(call: Call) {
     if (!text) return;
     inp.value = ""; $<HTMLButtonElement>("ag-send").disabled = true;
     const me = add(esc(text), "msg me");
-    const t0 = performance.now(); turnUsage = null;
+    const t0 = performance.now(); turnUsage = null; timeEl = null;
     const w = add(`<span class="lbl">思考中…</span><div class="tools"></div><div class="lbl mode"></div>`, "msg bot");
     tools = w.querySelector(".tools"); mode = w.querySelector(".mode"); planEl = null; live = w; streamed = "";
     try {
@@ -363,7 +363,7 @@ export function initAgent(call: Call) {
       if (txt.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
       else w.firstElementChild!.outerHTML = `<div>${esc(txt).replace(/\n/g, "<br>")}</div>`;
       const u = parseUsage(r); if (u) { usageLog.push(u); turnUsage = u; }
-      if (w.isConnected) { const t = document.createElement("div"); t.className = "lbl ag-time"; t.textContent = fmtElapsed(elapsedOf(turnUsage, performance.now() - t0)); w.append(t); }
+      if (w.isConnected) { const t = document.createElement("div"); t.className = "lbl ag-time"; timeEl = t; t.textContent = fmtElapsed(elapsedOf(turnUsage, performance.now() - t0)); w.append(t); }
       // 步数用完：给「继续执行」。侧车返回 continue 操作时用它，否则发一条「继续」
       if (/步数用完/.test(txt) || r?.continue) {
         const c = add(`<div class="act"><button class="btn pri">继续执行</button></div>`, "card cont-card");
@@ -537,7 +537,7 @@ export function initAgent(call: Call) {
       mode.classList.toggle("local", m.mode === "local");
       badge(m.mode === "local" ? "local" : "cloud");
     }
-    if (m.type === "agent_usage") { const u = parseUsage(m); if (u) { usageLog.push(u); turnUsage = u; } }   // 只存，不显示 token
+    if (m.type === "agent_usage") { const u = parseUsage(m); if (u) { usageLog.push(u); turnUsage = u; if (timeEl && u.elapsed_ms != null) timeEl.textContent = fmtElapsed(u.elapsed_ms); } }   // agent_usage 事件（llm-ua e697b86）可能晚于回复到达：到了就用 elapsed_ms 改写本轮耗时   // 只存，不显示 token
     if (m.type === "agent_retry") mode.dataset.use = ` · 服务忙，第 ${m.attempt} 次重试…`;
     if (m.type === "agent_toolmode") mode.dataset.use = ` · ${m.model} 不支持原生工具调用，已改 JSON 兜底`;
     mode.textContent = (mode.dataset.base ?? "") + (mode.dataset.use ?? "");
