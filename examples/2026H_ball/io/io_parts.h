@@ -7,6 +7,7 @@
 shared_state_t *io_state(void);
 coord_t *io_coord(void);
 void io_link_init(void);
+void io_link_boot(void);   /* coord 建好后：flash 参数 + 自检 + 运行模式（dz_runtime.h） */
 void io_link_read(void);
 void io_link_write(uint32_t now);
 void io_imu_init(void);

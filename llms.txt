@@ -27,14 +27,14 @@
 
 ## 工作台
 - [桌面工作台](docs/17-桌面工作台.md)（第三方板子：自定义帧结构 app/sidecar/dzbench/framedef.py，VOFA JustFloat/FireWater 预设）
-- 仿真 PID 搜索：app/sidecar/dzbench/tuning/search.py（PSO/分阶段，PID_Helper 移植在 third_party/vendored/pid_helper/pid_helper_pso.py，PSO 仅限仿真）
+- 仿真 PID 搜索：app/sidecar/dzbench/tuning/search.py（PSO/分阶段，PSO 仅限仿真；原 GPL 移植已删除）
 - 调试后端：pyOCD / OpenOCD / J-Link / probe-rs（app/sidecar/dzbench/probes.py，flash.tool；ST-Link、DAPLink 都支持）；界面 Agent 菜单“调试探针…”选后端/探针/序列号（存 ~/.dzbench/machine.json）
 - 串口线控：DTR/RTS 实时开关、ESP32/STM32 复位与进下载脉冲、卡死检测重连（app/sidecar/dzbench/session.py serial_*）
 - 日志导入导出：app/sidecar/dzbench/logio.py（CSV / VOFA+ FireWater → .dzlog）、export.py（csv / plotjuggler / vofa）；曲线布局 分格/按单位/叠加（app/ui/src/plot.ts）
 - 协处理器 SSH 部署：app/sidecar/dzbench/deploy.py（MaixCAM / K230 / Jetson / 树莓派 / RDK；推脚本、启停、看 dz.log；只走密钥）
 - 串口 IMU：firmware/drivers/wit_imu（WIT 协议 JY61P / JY901 / HWT101）
-- 磁编码器：firmware/drivers/as5600（I2C 12 位绝对角、多圈、速度）
-- 无刷 FOC：firmware/algo/foc（电压型 SVPWM、开环、角度闭环、位置→速度串级、上电对齐；输出走 pal_pwm3_set）
+- 磁编码器：firmware/drivers/as5600【已停用为桩 2.0.0，待净室重写】
+- 无刷 FOC：firmware/algo/foc【已停用为桩 2.0.0，待净室重写】
 - [内置 Agent](docs/18-内置Agent.md)（含调参前问答：对象/执行器/安全限/超调上限，只收紧护栏）
 - [Agent 触发知识说明](docs/agent-knowledge/README.md)
 - [知识：堵转](docs/agent-knowledge/stall.md)
@@ -82,6 +82,7 @@
 - [参考工程与参数来源](docs/12-参考工程与参数来源.md)
 - [硬件路线图](docs/硬件路线图.md)
 - [参考来源](docs/参考来源.md)
+- [第三方署名](docs/ATTRIBUTION.md)
 - [待确认问题](docs/dev/QUESTIONS.md)
 - [入口规则表](docs/dev/entrypoints.yaml)：每个用户动作的唯一入口，tools/check_entrypoints.py 检查
 - 界面按时间线 8 步分页：app/ui/src/steps.ts；标定向导 app/ui/src/calwiz.ts（docs/17 “标定向导”）；按症状排障 app/ui/src/symptoms.ts；项目页引导流程 app/ui/src/projflow.ts + app/sidecar/dzbench/projflow.py（docs/17 “项目页引导流程”，确认后自动跑下一步、题号/板名/.uvprojx 自动填，第 ⑤ 步按 tools/catalog/subsys_catalog.yaml 起稿 project.yaml；第 ③ 步没工程时从零新建：alloc + tools/gen_ioc.py 生成 .ioc + tools/gen_core.py 合成 Core 自动导入；MSPM0 用 tools/gen_syscfg.py 经 SysConfig CLI 出板目录；第 ⑤ 步确认后自动 make 并出 EIDE（tools/gen_eide.py）/ CCS / Keil（tools/gen_m0_keil.py））；评分页 app/ui/src/score.ts + app/sidecar/dzbench/scoring.py（docs/17 “评分页”）

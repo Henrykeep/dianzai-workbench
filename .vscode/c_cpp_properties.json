@@ -47,7 +47,7 @@
         "${workspaceFolder}/firmware/**", "${workspaceFolder}/apps/include", "${workspaceFolder}/ports/stm32f4-hal",
         "${workspaceFolder}/build/stm32f407-skystar/gen",
         "${workspaceFolder}/third_party/stm32f4xx-hal-driver/Inc", "${workspaceFolder}/third_party/cmsis-device-f4/Include",
-        "${workspaceFolder}/third_party/CMSIS_5/CMSIS/Core/Include", "${workspaceFolder}/boards/stm32f407-skystar-cubemx/cubemx/Core/Inc"
+        "${workspaceFolder}/third_party/CMSIS_6/CMSIS/Core/Include", "${workspaceFolder}/boards/stm32f407-skystar-cubemx/cubemx/Core/Inc"
       ],
       "defines": ["STM32F407xx", "USE_HAL_DRIVER"],
       "compilerPath": "arm-none-eabi-gcc",

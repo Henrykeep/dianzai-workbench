@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.11.0"
+#define DZCTL_VERSION "0.12.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
@@ -103,6 +103,17 @@ typedef enum {
     DZCTL_ST_SENSOR = 4,   /**< 传感器（编码器/视觉/IMU）无数据 */
     DZCTL_ST_POWER  = 5    /**< 电池/电源电压不在范围 */
 } dzctl_selftest_item_t;
+/** 0.12.0 自检注册表：应用只注册自己的项（code = dzctl_selftest_item_t 或应用自定义 6..32），返回 true = 通过。
+ *  同一 (code, fn) 重复注册只算一次；满了（DZCTL_ST_MAX）返回 -1。dzctl_selftest_run 逐项跑、合并 extra_fail_mask 后上报并返回失败 mask。 */
+#define DZCTL_ST_MAX 8u
+typedef bool (*dzctl_selftest_fn)(void);
+int dzctl_selftest_register(uint8_t code, dzctl_selftest_fn fn);
+uint32_t dzctl_selftest_run(uint32_t t_ms, uint32_t extra_fail_mask);
+uint32_t dzctl_selftest_mask(void);
+/** 0.12.0 'H' 重跑自检：上位机 DATA DZCTL_ID_CMD len=1 {'H'}；板回 len=5 {'H', u32 fail_mask}（同时更新心跳里的自检字段）。
+ *  （不用 'S'：'S' 已被应用用作“停止”，如 2026H。） */
+#define DZCTL_CMD_SELFTEST 'H'
+void dzctl_selftest_reply(uint32_t fail_mask, dzframe_t *out);
 /** 上电自检结果：mask 的 bit (code−1) = 该项没过；done = 自检已跑（心跳里 t_ms 非 0 才算有结果）。 */
 void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms);
 /** RAM 参数指纹（dzctl_hash32 of 参数结构）；应用在加载/存/改参数后更新。 */

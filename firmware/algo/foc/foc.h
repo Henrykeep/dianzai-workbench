@@ -4,14 +4,14 @@
  *
  * 纯 C、无硬件依赖：输入机械角（rad，多圈连续，例如 as5600_angle_multi），输出三相占空比 0..1，
  * 调用方自己写 PWM（pal_pwm_set 等）。全部非阻塞，按固定周期 dt 调用。
- * 参考：SimpleFOC (Arduino-FOC) BLDCMotor::setPhaseVoltage / alignSensor 思路；pid_helper 例程 foc_dev.c（对齐重试、电角度计算）。
+ * 【2.0.0 已停用】实现已移除（原实现参照过 GPL 代码，见 foc.c 文件头），全部函数返回 DZ_ENOTSUP / 零输出。
  * 版本：FOC_VERSION
  */
 #ifndef FOC_H
 #define FOC_H
 #include <stdint.h>
 #include "dz_err.h"
-#define FOC_VERSION "1.1.0"
+#define FOC_VERSION "2.0.0"
 
 void foc_clarke(float ia, float ib, float *alpha, float *beta);          /**< 两相电流（ic = -ia-ib） */
 void foc_park(float alpha, float beta, float th_e, float *d, float *q);

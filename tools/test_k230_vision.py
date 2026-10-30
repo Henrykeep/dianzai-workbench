@@ -15,6 +15,11 @@ K = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(K)
 
 
+# 这些通道原来由 k230_edc_skill 的脚本发；该目录因上游无许可证已删除（2026-10-31），脚本待重写。
+# 在这里明列、打印出来，不是静默跳过；有脚本重新发这些通道时，这里必须删掉对应项（否则报错）。
+NO_SCRIPT_YET = {1: "target（25E 激光/目标点）", 2: "ball（2026 钢球 YOLO + Kalman）"}
+
+
 def main():
     board = boardlib.load_board(ROOT / "boards/k230-vision/board.yaml")
     chans = {c["id"]: c for c in board["coprocessor"]["channels"]}
@@ -33,8 +38,12 @@ def main():
             seen.add(ch)
             if "DZ_FRAME = True" not in src:
                 errs.append(f"{f.name}: 有 _dz.send 但没有 DZ_FRAME 开关")
-    if seen != set(chans):
-        errs.append(f"board.yaml 通道 {sorted(set(chans) - seen)} 没有任何脚本在发")
+    for ch in sorted(set(NO_SCRIPT_YET) & seen):
+        errs.append(f"通道 {ch} 已有脚本在发，从 NO_SCRIPT_YET 删掉")
+    for ch in sorted(set(NO_SCRIPT_YET) - seen):
+        print(f"! 通道 {ch} {NO_SCRIPT_YET[ch]}：暂无脚本（原脚本无许可证已删除，待重写）")
+    if seen | set(NO_SCRIPT_YET) != set(chans):
+        errs.append(f"board.yaml 通道 {sorted(set(chans) - seen - set(NO_SCRIPT_YET))} 没有任何脚本在发")
     for ch, c in chans.items():                                   # dzsend 编出来的帧 == dzlink 参考实现
         vals = {x["name"]: (1 if x["type"].startswith("u") else -5) for x in c["fields"]}
         out = []

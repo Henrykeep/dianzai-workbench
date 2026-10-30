@@ -450,6 +450,8 @@ class Session:
                 self.mode_ack = payload[1]
             elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
                 self.save_ack = payload[1]
+            elif kind == DATA and id_ == ID_CMD and len(payload) == 5 and payload[0] == ord("H"):
+                self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
                 self.relay_ack = payload[0]
             else:
@@ -804,6 +806,23 @@ class Session:
         self.mark("param", ("运行模式 → " + ("脱机" if mode == "standalone" else "联机") + "：" if a == 0 else "运行模式没切：") + msg)
         return {"ok": a == 0, "result": a, "message_zh": msg}
 
+    def run_selftest(self, wait_s: float = 1.5) -> dict:
+        """dzctl 0.12.0：让板子重跑全部自检（'H'），等回执 {'H', u32 fail_mask}。旧固件不回执 → ok=None。"""
+        self._check_tx()
+        self.selftest_ack = None
+        if not self._send(DATA, ID_CMD, b"H"):
+            raise LinkError("not_connected", "没连板子", "")
+        t_end = time.monotonic() + wait_s
+        while time.monotonic() < t_end and getattr(self, "selftest_ack", None) is None:
+            time.sleep(0.01)
+        m = getattr(self, "selftest_ack", None)
+        if m is None:
+            return {"ok": None, "mask": None, "failed_items": [], "message_zh": "板子没回执（固件早于 dzctl 0.12.0？）"}
+        d = selftest_dict(m, 1)
+        msg = "自检全部通过" if d["pass"] else "自检没通过：" + "；".join(i["message_zh"] for i in d["failed_items"])
+        self.mark("param", msg)
+        return {"ok": d["pass"], "mask": m, "failed_items": d["failed_items"], "message_zh": msg}
+
     RELAY_STATUS = {0: "ok", 1: "参数非法或板上没有这个 PID 回路", 2: "板子急停中"}
 
     def relay(self, loop: int, amp: float, hyst: float, timeout_s: float, wait_s: float = 0.5) -> dict:
@@ -1082,7 +1101,7 @@ RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门
 HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存"}
 
 
-# dzctl 0.10.0 dzctl_selftest_item_t：心跳 selftest_mask 的 bit (code−1)
+# dzctl 0.11.0 dzctl_selftest_item_t（0.12.0 起应用可注册 6..32 的自定义项）：心跳 selftest_mask 的 bit (code−1)
 SELFTEST_ITEMS = {1: ("subsys", "子系统自检没通过（某个子系统的 selftest 返回失败）"),
                   2: ("params", "参数越界或非法（已按默认值运行前请检查参数表）"),
                   3: ("nvm", "flash 存储区不可用：参数存不下，掉电后恢复默认"),
