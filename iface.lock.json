@@ -452,6 +452,32 @@
   "hash": "7b47b7573925b91a",
   "version": "1.1.0"
  },
+ "firmware/algo/wavemeas": {
+  "decls": [
+   "wavemeas.h: #define WM_MIN_P2P_RAW 8u",
+   "wavemeas.h: typedef enum { WM_UNKNOWN = 0, WM_DC, WM_SINE, WM_SQUARE, WM_TRIANGLE, WM_SAWTOOTH, WM_HARMONIC } wm_type_t;",
+   "wavemeas.h: typedef struct { uint16_t min_raw, max_raw, avg_raw;",
+   "wavemeas.h: uint32_t high_count, low_rail_count, high_rail_count;",
+   "wavemeas.h: uint32_t peak_dev, max_step;",
+   "wavemeas.h: uint64_t sum_sq, sum_abs_step, sum_sq_step, sum_abs_d2;",
+   "wavemeas.h: } wm_feat_t;",
+   "wavemeas.h: enum { WM_V_LEVEL = 1u << 0, WM_V_FREQ = 1u << 1, WM_V_DUTY = 1u << 2, WM_V_TYPE = 1u << 3 };",
+   "wavemeas.h: typedef struct { float min_v, max_v, pp_v, avg_v, rms_ac_v;",
+   "wavemeas.h: float freq_hz, period_s;",
+   "wavemeas.h: float duty;",
+   "wavemeas.h: uint16_t edges;",
+   "wavemeas.h: wm_type_t type;",
+   "wavemeas.h: uint8_t valid;",
+   "wavemeas.h: } wm_result_t;",
+   "wavemeas.h: dz_err_t wm_features(const uint16_t *x, uint32_t n, wm_feat_t *f);",
+   "wavemeas.h: wm_type_t wm_classify(const wm_feat_t *f, uint32_t n, const spec_result_t *spec);",
+   "wavemeas.h: dz_err_t wm_measure(const uint16_t *x, uint32_t n, float fs_hz, float lsb_v, const spec_result_t *spec, wm_result_t *r);",
+   "wavemeas.h: float wm_phase_deg(const uint16_t *a, const uint16_t *b, uint32_t n, float fs_hz, float freq_hz);",
+   "wavemeas.h: dz_err_t wavemeas_selftest(void);"
+  ],
+  "hash": "cc8e641a4215a515",
+  "version": "1.0.0"
+ },
  "firmware/drivers/battery": {
   "decls": [
    "battery.h: typedef enum { BAT_NONE = 0, BAT_OK, BAT_LOW, BAT_CRIT } battery_state_t;",

@@ -96,3 +96,4 @@
 4. 最好一轮自动记录 + 一键回滚 + max_step_ratio → service._save_best_snapshot（快照“自动-最好一轮”）、Agent 菜单“回到最好一轮”（tune_best / tune_rollback_best）、config `tune.max_step_ratio` → TuneGuard.profile（只收紧）。[仿真]
 5. K230 视觉脚本库 → `third_party/vendored/k230_edc_skill/`、`k230_mspm0g_contest/`（上游原样 + `DZ_FRAME` 补丁）+ `boards/k230-vision/board.yaml` + `tools/test_k230_vision.py`；说明见 docs/08“K230 视觉脚本库”。[编译]；没在 K230 上跑过；EDC-Skill 无许可证，公开前要作者许可；钢球 kmodel 不在仓库。
 6. 视觉知识包 → `docs/agent-knowledge/vision-{k230,color,tuning}.md`（触发词按需加载，knowledge.py 不用改）+ app/sidecar/tests/test_knowledge_vision.py。[仿真]；没做真实对话里的效果评测。
+7. 波形测量 → `firmware/algo/wavemeas`（移植 firework 时域特征 + 分类，自写过零测频/占空比/DFT 相位）+ `dzbench/wavemeas.py` + op `wave_measure`（频谱视图参数行、相位参考下拉）。[仿真]；未上板；原版分类对非 50% 占空比方波不判 SQUARE（照原版）。阈值触发、任意波形输出没做。

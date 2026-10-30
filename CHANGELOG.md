@@ -5,6 +5,7 @@
 时间为 Asia/Shanghai。仓库整体版本见 git 附注标签；各模块另有自己的 VERSION（见 docs/03、docs/13）。
 
 ## [未发布]
+- [仿真] 波形参数测量（缺口清单第 7 项）：新模块 `firmware/algo/wavemeas` v1.0.0——一块 ADC 码 → 最小/最大/峰峰/均值/交流有效值、频率/周期（施密特过零 + 插值）、整周期占空比、波形类型（直流/正弦/方波/三角/锯齿/谐波，时域特征与定点阈值直接移植自 firework waveform_measurement.c）、双路同步采样相位差（单频 DFT）。上位机同算法 `dzbench/wavemeas.py` + 侧车 op `wave_measure`；频谱视图下方显示参数行，可选“相位参考”字段。tests/host test_signal.c 两例、app/sidecar/tests/test_wavemeas.py 三例。[未测] 上板、M0+ 耗时
 - [仿真] Agent 视觉知识包（缺口清单第 6 项）：`docs/agent-knowledge/vision-k230.md`（本仓库 K230 脚本、通道、gen_coproc）、`vision-color.md`（颜色识别流程、HSV 红色双段、几何门）、`vision-tuning.md`（现场调参顺序、FPS 低/抖/丢目标/模糊/串口对症）。按触发词经 knowledge.py 按需附加。内容摘要改写自 Electronics-Design-Competition-Skill references。tests/test_knowledge_vision.py（加载、触发、引用路径存在、篇幅上限）
 - [编译] K230 视觉脚本库（缺口清单第 5 项）：直接复用参考仓库代码——`third_party/vendored/k230_edc_skill/`（Electronics-Design-Competition-Skill@cd46b72：2026 钢球 YOLO11+Kalman、2025E 激光三版）和 `third_party/vendored/k230_mspm0g_contest/`（mspm0g-contest-skill@cc7b2bd：矩形追踪→云台、矩形/形状/三角形检测、传感器诊断）。发送函数加可关的 `DZ_FRAME` 补丁走 host/k230/dzsend.py；新板描述 `boards/k230-vision/board.yaml`（通道 target/ball/gimbal），gen_coproc 生成主控解码。`tools/test_k230_vision.py` 进 make check（通道/字段与 board.yaml 一致、编码与 dzlink 相同）。[未测] K230 实机；EDC-Skill 上游未声明许可证，仅私有仓库自用
 - [仿真] 最好一轮落盘 + 一键回滚 + max_step_ratio（缺口清单第 4 项）：护栏的“最好一轮”一变就存成快照“自动-最好一轮”（侧车重启/护栏重置后仍可在快照页恢复）；Agent 菜单新增“回到最好一轮”（op `tune_best` 只读 + 确认框 → `tune_rollback_best`）；新配置 `tune.max_step_ratio`（单步 ±ratio，只会比档位默认更严）。tests/test_guard.py 两例。思路参考 llm-pid-tuner（history.py best 行、max_step 限幅、rollback_to_best），代码自写。[未测] 真板

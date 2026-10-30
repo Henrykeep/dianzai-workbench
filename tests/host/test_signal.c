@@ -1,4 +1,4 @@
-/* 信号类模块（移植自 LP-MSPM0G3507_freertos_firework，MIT）：spectrum / sigfilt / dds / capfreq / menu / keypad4x4。
+/* 信号类模块（移植自 LP-MSPM0G3507_freertos_firework，MIT）：spectrum / sigfilt / dds / capfreq / wavemeas / menu / keypad4x4。
  * 期望值都按解析式手算，不拿实现自己的输出当期望。 */
 #include <string.h>
 #include "tt.h"
@@ -6,6 +6,7 @@
 #include "sigfilt.h"
 #include "dds.h"
 #include "capfreq.h"
+#include "wavemeas.h"
 #include "menu.h"
 #include "keypad4x4.h"
 #include "host_sim.h"
@@ -257,10 +258,71 @@ TEST(keypad_scan_debounce)
     CHECK(keypad4x4_selftest() == DZ_OK);
 }
 
+static uint16_t U[1024], V[1024];
+
+static wm_type_t wm_type_of(const uint16_t *x, uint32_t n, float fs, wm_result_t *r)
+{
+    static float F[1024];
+    spec_result_t sp;
+    for (uint32_t i = 0; i < n; i++) F[i] = x[i];
+    CHECK(spec_analyze(&W, F, (uint16_t)n, fs, SPEC_WIN_HANN, true, &sp) == DZ_OK);
+    CHECK(wm_measure(x, n, fs, 3.3f / 4095.0f, &sp, r) == DZ_OK);
+    return r->type;
+}
+
+TEST(wavemeas_levels_freq_type)
+{
+    wm_result_t r;
+    const float fs = 10000.0f;                                     /* 123.4 Hz，非整周期 */
+    for (int i = 0; i < 1024; i++) U[i] = (uint16_t)lround(2048 + 1000 * sin(2 * M_PI * 123.4 * i / fs));
+    CHECK(wm_type_of(U, 1024, fs, &r) == WM_SINE);
+    CHECK_NEAR(r.freq_hz, 123.4, 0.6);
+    CHECK_NEAR(r.pp_v, 2000 * 3.3 / 4095, 0.01);
+    CHECK_NEAR(r.avg_v, 2048 * 3.3 / 4095, 0.02);
+    CHECK_NEAR(r.rms_ac_v, 1000 / sqrt(2.0) * 3.3 / 4095, 0.01);  /* 正弦有效值 = A/√2 */
+    CHECK_NEAR(r.duty, 0.5, 0.02);
+    for (int i = 0; i < 1024; i++) U[i] = (i % 80) < 20 ? 3500 : 500;   /* 125 Hz、占空比 25% 方波 */
+    wm_type_of(U, 1024, fs, &r);                                   /* 原版分类按均值算峰值因数，非 50% 方波不归 SQUARE（照原版） */
+    CHECK_NEAR(r.freq_hz, 125.0, 0.3); CHECK_NEAR(r.duty, 0.25, 0.005); CHECK(r.edges == 12);
+    for (int i = 0; i < 1024; i++) U[i] = (i % 80) < 40 ? 3500 : 500;   /* 50% 方波 */
+    CHECK(wm_type_of(U, 1024, fs, &r) == WM_SQUARE);
+    CHECK_NEAR(r.duty, 0.5, 0.005);
+    for (int i = 0; i < 1024; i++) { int k = i % 100; U[i] = (uint16_t)(500 + (k < 50 ? k : 100 - k) * 60); }  /* 三角 100 Hz */
+    CHECK(wm_type_of(U, 1024, fs, &r) == WM_TRIANGLE);
+    CHECK_NEAR(r.freq_hz, 100.0, 0.5);
+    for (int i = 0; i < 1024; i++) U[i] = (uint16_t)(500 + (i % 100) * 30);   /* 锯齿 100 Hz */
+    CHECK(wm_type_of(U, 1024, fs, &r) == WM_SAWTOOTH);
+    CHECK_NEAR(r.freq_hz, 100.0, 0.5);
+    for (int i = 0; i < 1024; i++) U[i] = (uint16_t)(1500 + (i & 3));          /* 峰峰 3 码 = 直流 */
+    CHECK(wm_measure(U, 1024, fs, 0.0f, NULL, &r) == DZ_OK);
+    CHECK(r.type == WM_DC && !(r.valid & WM_V_FREQ) && r.freq_hz == 0.0f);
+    CHECK(wm_measure(U, 1, fs, 0.0f, NULL, &r) == DZ_EINVAL);
+    CHECK(wm_measure(U, 1024, 0.0f, 0.0f, NULL, &r) == DZ_EINVAL);
+    CHECK(wm_measure(NULL, 1024, fs, 0.0f, NULL, &r) == DZ_EINVAL);
+    CHECK(wavemeas_selftest() == DZ_OK);
+}
+
+TEST(wavemeas_phase)
+{
+    const float fs = 20000.0f, f = 317.0f;                          /* 不落在 bin 上 */
+    for (int i = 0; i < 512; i++) {
+        double ph = 2 * M_PI * f * i / fs;
+        U[i] = (uint16_t)lround(2000 + 800 * sin(ph));
+        V[i] = (uint16_t)lround(1000 + 300 * sin(ph - 45.0 * M_PI / 180.0));    /* b 滞后 45° */
+    }
+    CHECK_NEAR(wm_phase_deg(U, V, 512, fs, f), -45.0, 1.0);
+    CHECK_NEAR(wm_phase_deg(V, U, 512, fs, f), 45.0, 1.0);
+    for (int i = 0; i < 512; i++) V[i] = 1234;
+    CHECK(isnan(wm_phase_deg(U, V, 512, fs, f)));
+    CHECK(isnan(wm_phase_deg(U, U, 512, fs, 0.0f)));
+    CHECK(isnan(wm_phase_deg(U, U, 512, fs, 15000.0f)));
+}
+
 void suite_signal(void)
 {
     printf("[signal]\n");
     RUN(spectrum_tone_and_interp); RUN(spectrum_components_sorted); RUN(spectrum_phase_and_thd); RUN(spectrum_rejects);
     RUN(sigfilt_median_and_kalman); RUN(dds_freq_and_spectrum); RUN(capfreq_wrap_duty_timeout);
+    RUN(wavemeas_levels_freq_type); RUN(wavemeas_phase);
     RUN(menu_nav_scroll_edit); RUN(keypad_scan_debounce);
 }

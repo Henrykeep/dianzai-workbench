@@ -9,12 +9,18 @@ export function initFFT(rpc: (op: string, a?: Record<string, unknown>) => Promis
   });
   $("fft-log").onchange = () => draw();
   $("fft-ch").onchange = () => tick();
+  $("fft-ref").onchange = () => tick();
+  const num = (v: number | null | undefined, d = 3) => v == null ? "—" : (+v).toPrecision(d);
 
   async function tick() {
     const ch = $<HTMLSelectElement>("fft-ch").value;
     if (!on || !ch) return;
     last = await rpc("fft", { field: ch, seconds: secs }).catch(e => ({ ok: false, reason: e.message }));
     draw();
+    const ref = $<HTMLSelectElement>("fft-ref").value;            // 波形参数（侧车 wavemeas，与固件 algo/wavemeas 同算法）
+    const m = await rpc("wave_measure", { field: ch, seconds: secs, ...(ref && ref !== ch ? { ref } : {}) }).catch(() => null);
+    $("fft-meas").textContent = m?.ok ? `${m.type} · 频率 ${m.freq ? num(m.freq, 4) + " Hz" : "—"} · 峰峰 ${num(m.pp)} · 均值 ${num(m.avg)} · 有效值(交流) ${num(m.rms_ac)}` +
+      ` · 占空比 ${m.duty == null ? "—" : (m.duty * 100).toFixed(1) + "%"}` + (m.phase_deg != null ? ` · 相位(相对 ${ref}) ${m.phase_deg.toFixed(1)}°` : "") : "";
   }
   function draw() {
     const r = last, css = getComputedStyle(document.documentElement);
@@ -44,6 +50,8 @@ export function initFFT(rpc: (op: string, a?: Record<string, unknown>) => Promis
     setFields(names: string[]) {
       const cur = $<HTMLSelectElement>("fft-ch").value;
       $("fft-ch").innerHTML = names.map(n => `<option ${n === cur ? "selected" : ""}>${n}</option>`).join("");
+      const rc = $<HTMLSelectElement>("fft-ref").value;
+      $("fft-ref").innerHTML = `<option value="">相位参考：无</option>` + names.map(n => `<option ${n === rc ? "selected" : ""}>${n}</option>`).join("");
     },
   };
 }

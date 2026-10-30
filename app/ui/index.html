@@ -83,7 +83,9 @@
           <div class="rawbar"><select id="fft-ch" class="in"></select>
             <div class="seg" id="fft-win"><span data-s="5">5s</span><span data-s="10" class="on">10s</span><span data-s="30">30s</span></div>
             <label class="lbl"><input type="checkbox" id="fft-log"> 对数</label>
+            <select id="fft-ref" class="in" title="相位参考通道（同一遥测帧里的另一个字段）"><option value="">相位参考：无</option></select>
             <div class="sp"></div><span class="lbl" id="fft-info"></span></div>
+          <div class="lbl" id="fft-meas"></div>
           <div id="fft-warn" class="fftwarn" hidden></div>
           <canvas id="fft-cv" class="fftcv"></canvas>
         </div></div>

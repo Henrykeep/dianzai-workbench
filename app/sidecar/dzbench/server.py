@@ -27,6 +27,7 @@ from .logfile import read_header
 from .ports import list_ports
 from .sender import Sender
 from .spectrum import spectrum
+from .wavemeas import measure_window
 from .export import ExportError, dzlog_to_csv
 from .session import LinkError, Session
 
@@ -190,6 +191,17 @@ class Server:
             sch = self.session.schema
             per = (sch.d["telemetry"].get("period_ms") or 0) / 1000 if sch else 0
             return await run(None, lambda: spectrum(t, y, per or None) | {"field": name})
+        if op == "wave_measure":
+            name, secs = m["field"], float(m.get("seconds", 10))
+            t, y = self.session.window_field(name, secs)
+            ref = None
+            if m.get("ref"):
+                tr, ref = self.session.window_field(m["ref"], secs)
+                k = min(len(y), len(ref))                   # 同一遥测帧里的两个字段 = 同批采样
+                t, y, ref = t[-k:], y[-k:], ref[-k:]
+            sch = self.session.schema
+            per = (sch.d["telemetry"].get("period_ms") or 0) / 1000 if sch else 0
+            return await run(None, lambda: measure_window(t, y, per or None, ref) | {"field": name, "ref": m.get("ref")})
         if op == "send_raw":
             data = bytes.fromhex(m["hex"]) if "hex" in m else m["text"].encode("utf-8")
             return self.session.send_raw(data)
