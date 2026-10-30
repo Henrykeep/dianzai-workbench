@@ -49,4 +49,25 @@ fail += not ok
 ok = keil_inject.rel(ROOT / "a/b.c", ROOT / "x") == "..\\a\\b.c"
 print(("✓" if ok else "✗"), "同盘仍写相对路径（反斜杠）")
 fail += not ok
+# Windows 路径回归：gcc -MM 吐反斜杠头文件路径、模块键不能变成 firmware\\proto\\dzframe（Windows CI 曾因此 ✗）
+import subprocess as _sp, types as _ty  # noqa: E402
+_vars = "SRCS=apps/car_2wd/app_main.c firmware/proto/dzframe/dzframe.c firmware/algo/pid/pid.c firmware/proto/dzrtt/dzrtt.c ports/stm32-cubemx/port.c\nINC=apps/include firmware/proto/dzframe\nDEFS=-DDZ_X=1\n"
+_deps = {"apps/car_2wd/app_main.c": "app_main.o: apps\\car_2wd\\app_main.c \\\n .\\firmware\\proto\\dzframe\\dzframe.h\n",
+         "firmware/proto/dzframe/dzframe.c": "dzframe.o: firmware\\proto\\dzframe\\dzframe.c firmware\\algo\\pid\\pid.h\n"}
+def _fake_run(cmd, **k):
+    if "vars" in cmd:
+        return _ty.SimpleNamespace(returncode=0, stdout=_vars, stderr="")
+    if "-MM" in cmd:
+        return _ty.SimpleNamespace(returncode=0, stdout="".join(_deps.get(c, "") for c in cmd), stderr="")
+    return _ty.SimpleNamespace(returncode=0, stdout="", stderr="")
+_orun = _sp.run
+_sp.run = _fake_run
+try:
+    wm, _, _, wd = keil_inject.from_build(ROOT, "b", "a")
+finally:
+    _sp.run = _orun
+ok = wm == ["firmware/algo/pid", "firmware/proto/dzframe", "ports/stm32-cubemx"] and wd == ["DZ_X=1"] \
+    and keil_inject.mod_dir("firmware\\proto\\dzframe\\dzframe.h") == "firmware/proto/dzframe"
+print(("✓" if ok else "✗"), "Windows 反斜杠依赖路径下自动挑模块：", wm)
+fail += not ok
 sys.exit(1 if fail else 0)

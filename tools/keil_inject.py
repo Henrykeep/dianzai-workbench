@@ -127,6 +127,13 @@ def plan(uv: pathlib.Path, root: pathlib.Path, modules: list[str], extra_src: li
     return groups, incs
 
 
+def mod_dir(f: str) -> str:
+    """模块目录键：一律正斜杠。Windows 上 str(Path(f).parent) 会变成 firmware\\proto\\dzframe，
+    gcc -MM 也可能吐反斜杠，和 make vars 的正斜杠对不上（CI 上 --board/--app 自动挑模块因此失败）。"""
+    import posixpath
+    return posixpath.dirname(posixpath.normpath(f.replace("\\", "/")))
+
+
 def from_build(root: pathlib.Path, board: str, app: str) -> tuple[list[str], list[str], list[str], list[str]]:
     """--board/--app：不用手列模块。先 make gen，再按 make vars 的源文件做头文件依赖闭包，只挑真正用到的模块。
     返回 (modules, extra_src, extra_inc, defines)。"""
@@ -140,7 +147,7 @@ def from_build(root: pathlib.Path, board: str, app: str) -> tuple[list[str], lis
     v = dict(l.split("=", 1) for l in subprocess.run(mk + ["vars"], capture_output=True, text=True, check=True).stdout.splitlines() if "=" in l)
     srcs, incs = v["SRCS"].split(), v["INC"].split()
     defs = [d[2:] for d in v.get("DEFS", "").split() if d.startswith("-DDZ_")]   # 芯片宏（STM32F103xB 等）Keil 工程里本来就有
-    mod_of = lambda f: str(pathlib.Path(f).parent) if re.match(r"(firmware|ports)/", f) else None
+    mod_of = lambda f: mod_dir(f) if re.match(r"(firmware|ports)/", f.replace("\\", "/")) else None
     lib = {}
     for f in srcs:
         if (m := mod_of(f)):
@@ -155,7 +162,7 @@ def from_build(root: pathlib.Path, board: str, app: str) -> tuple[list[str], lis
         out = subprocess.run([cc, "-MM", "-MG", *[f"-I{i}" for i in incs], *v.get("DEFS", "").split(), *batch],
                              cwd=root, capture_output=True, text=True).stdout
         for h in re.findall(r"(\S+\.h)\b", out.replace("\\\n", " ")):
-            m = str(pathlib.Path(h).parent)
+            m = mod_dir(h)
             if m in lib and m not in need:
                 need.add(m); todo += lib[m]
     extra_src = [f for f in srcs if not mod_of(f)]
