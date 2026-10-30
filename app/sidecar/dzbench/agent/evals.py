@@ -13,7 +13,7 @@ def load() -> list[dict]:
     return json.loads(CASES.read_text(encoding="utf-8"))["cases"]
 
 
-STYLE_BAD = re.compile("[\U0001F300-\U0001FAFF\u2600-\u27BF]|！|!{2,}|哈哈|嘿嘿|呀|啦|哦~|哟|亲[，,]|宝子|～(?!\\s*[0-9])")
+STYLE_BAD = re.compile("[\U0001F300-\U0001FAFF\u2600-\u2712\u2715\u2716\u2719-\u27BF]|！|!{2,}|哈哈|嘿嘿|呀|啦|哦~|哟|亲[，,]|宝子|～(?!\\s*[-−+]?[0-9])")
 CATEGORIES = {"state": "状态感知", "act": "动手执行", "data": "数据研判", "read": "题目研判"}
 
 

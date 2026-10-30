@@ -102,6 +102,7 @@ def test_style_range_tilde_and_agent_error_shape():
     from dzbench.agent.evals import style_issues
     from dzbench.agent.evals import turn_mode
     assert style_issues("Io 在 0.2A～2.0A 间变化") == [] and style_issues("好的～") == ["～"]
+    assert style_issues("增益 -23.70 ～ -45.44 dB；①读题 ✓ ⑤生成 ✗") == [] and style_issues("搞定啦🎉") != []
     err = {"type": "agent_error", "code": "internal", "message": "x", "detail": "KeyError", "fix_action": None, "retryable": True}
     assert turn_mode([{"type": "agent_mode", "mode": "llm"}, err]) == "error"
     assert turn_mode([{"type": "agent_mode", "mode": "llm"}]) == "llm"
