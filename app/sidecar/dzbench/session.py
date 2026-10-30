@@ -105,6 +105,7 @@ class Session:
         self.flash_saved_writes = -1         # 黑匣子报“参数已存进 flash / 上电读了 flash”时的 param_writes；-1 = 没见过
         self.run_mode: str | None = None     # 板子运行模式 tethered / standalone；固件上报后才有，否则 None
         self.tx_locked = False               # 急停后锁住侧车的一切主动发送；只有人点“解除急停 R”才解（重连/侧车重启都不解，见 latch.py）
+        self.estop_requested_at: float | None = None
         self.estop_source: str | None = None  # 当前锁存的来源：ui / agent / heartbeat_lost / firmware:<cause> / selftest / latch_restored
 
     # ------------------------------------------------------------------ 连接
@@ -432,6 +433,11 @@ class Session:
                                 src = "selftest" if es["cause"] == "selftest" else "firmware:" + es["cause"]
                                 es["source"] = src
                                 self.emit({"type": "estop_cause", **es})
+                                if self.estop_requested_at is not None:    # 人/Agent 发的急停：固件锁存确认
+                                    self.emit({"type": "estop", "state": "latched", "source": self.estop_source or src,
+                                               "cause": es["cause"], "message_zh": es["message_zh"],
+                                               "latency_ms": round((time.monotonic() - self.estop_requested_at) * 1000)})
+                                    self.estop_requested_at = None
                                 if not self.tx_locked:           # 板子自己急停（看门狗/堵转/欠压…）：侧车也锁存并持久化
                                     self.tx_locked = True
                                     self.estop_source = src
@@ -621,7 +627,8 @@ class Session:
         self.emit({"type": "tx_locked", "on": True, "source": self.estop_source})
         if isinstance(self.tr, ReplayTransport):
             return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
-        return {"type": "estop", "sent": ok, "src": src, "source": self.estop_source,
+        self.estop_requested_at = time.monotonic()
+        return {"type": "estop", "state": "requested", "sent": ok, "src": src, "source": self.estop_source,
                 "message": f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池"}
 
     def send_data(self, id_: int, payload: bytes) -> bool:

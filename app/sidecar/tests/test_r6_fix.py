@@ -157,3 +157,35 @@ def test_estop_sources_never_unknown():
     assert m and m[2].startswith("firmware:")
     e = Timeline().add("watchdog", "x", None, None, "heartbeat_lost")
     assert e["source"] == "heartbeat_lost" and e["detail"] == "x"
+
+
+# ---------------------------------------------------------------- #25 急停延迟（安全 P0）
+@pytest.mark.needs_sim
+@pytest.mark.parametrize("busy", ["idle", "slow_llm", "slow_op"])
+def test_estop_latency_under_200ms(home, busy):
+    import json
+    st = ServerThread()
+    ui = UI(st.port)
+    s = st.srv.session
+    st.srv.svc.ask = lambda text: (time.sleep(10), "x")[1]
+    st.srv.svc.run_sweep_test = lambda: (time.sleep(10), {})[1]
+    try:
+        ui.ok("connect", port="sim:car_2wd")
+        _wait_status(ui, lambda e: e.get("alive"))
+        time.sleep(0.6)
+        if busy == "slow_llm":
+            ui.ws.send(json.dumps({"op": "agent_ask", "rid": 900, "text": "慢"}))
+        elif busy == "slow_op":                          # 同一连接上一个 10 s 的长操作还没回复
+            ui.ws.send(json.dumps({"op": "tune_sweep_test", "rid": 901}))
+        time.sleep(0.5)
+        m = ui.mark()
+        t0 = time.monotonic()
+        ui.ws.send(json.dumps({"op": "estop", "rid": 902, "src": "急停按钮"}))
+        e = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
+        dt = time.monotonic() - t0
+        assert dt <= 0.2, f"急停事件 {dt * 1000:.0f} ms"
+        assert e["source"] == "ui" and e["sent"] is True and s.tx_locked
+        la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
+        assert la["source"] == "ui" and la["cause"] == "manual"
+    finally:
+        ui.close(); st.stop()

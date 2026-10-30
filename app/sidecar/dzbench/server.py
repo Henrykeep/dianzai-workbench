@@ -474,30 +474,46 @@ class Server:
                     m = json.loads(raw)
                 except ValueError:
                     continue
-                rid = m.get("rid")
                 if m.get("op") == "agent_ask":       # 不 await：Agent 长调用期间同一连接上的急停/其他操作照常处理
                     await self._agent_submit(ws, m)
                     continue
-                try:
-                    data = await self._op(m)
-                    ev = events.from_reply(m.get("op"), data)
-                    if ev:
-                        self.session.mark(*ev)
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": True, "data": data}
-                except (LinkError, GatewayError) as e:
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False, "error": e.as_dict()}
-                except (FlashError, GuardError, ElfError, ConfigError) as e:
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
-                           "error": {"type": "error", "code": getattr(e, "code", type(e).__name__),
-                                     "message": getattr(e, "message", str(e)), "fix": getattr(e, "fix", "")}}
-                except Exception as e:  # noqa: BLE001
-                    traceback.print_exc()          # 侧车日志里留完整堆栈，toast 只给一行
-                    rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
-                           "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",
-                                     "fix": "请把这条信息和日志文件发给维护者"}}
-                await ws.send(json.dumps(rep, ensure_ascii=False, default=str))
+                if m.get("op") == "estop":           # 安全 P0：急停最高优先级，不排在本连接任何操作（烧录/调参/实验）后面
+                    await self._reply(ws, m)
+                    continue
+                # 其他操作按收到的顺序串行执行，但放进后台任务：读消息的循环不被长操作卡住（急停随时能进来）
+                prev = getattr(ws, "_dz_chain", None)
+                ws._dz_chain = asyncio.ensure_future(self._chained(prev, ws, m))
         finally:
             self.clients.discard(ws)
+
+    async def _chained(self, prev, ws, m: dict) -> None:
+        if prev is not None:
+            try:
+                await prev
+            except Exception:  # noqa: BLE001
+                pass
+        await self._reply(ws, m)
+
+    async def _reply(self, ws, m: dict) -> None:
+        rid = m.get("rid")
+        try:
+            data = await self._op(m)
+            ev = events.from_reply(m.get("op"), data)
+            if ev:
+                self.session.mark(*ev)
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": True, "data": data}
+        except (LinkError, GatewayError) as e:
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False, "error": e.as_dict()}
+        except (FlashError, GuardError, ElfError, ConfigError) as e:
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
+                   "error": {"type": "error", "code": getattr(e, "code", type(e).__name__),
+                             "message": getattr(e, "message", str(e)), "fix": getattr(e, "fix", "")}}
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()          # 侧车日志里留完整堆栈，toast 只给一行
+            rep = {"type": "reply", "rid": rid, "op": m.get("op"), "ok": False,
+                   "error": {"type": "error", "code": "internal", "message": f"{type(e).__name__}: {e}",
+                             "fix": "请把这条信息和日志文件发给维护者"}}
+        await self._send(ws, rep)
 
     async def serve(self, host: str, port: int, ui_dir: pathlib.Path | None = None) -> None:
         self.loop = asyncio.get_running_loop()
