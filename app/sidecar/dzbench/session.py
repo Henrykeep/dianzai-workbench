@@ -57,6 +57,9 @@ class Session:
         self.on_sample: Callable[[dict], None] | None = None   # 触发发送用
         self.raw_on = False                  # 原始监视器（文本/HEX）开着才收集，省内存
         self.link = LinkState()              # 跨连接保留：since / seq 连续
+        self.down_reason = ""                # board=disconnected 时的原因（如 port_not_found）；connect/disconnect 清掉
+        self.resuming = False                # 侧车重启后正在自动连回上次的板子
+        self._uid_marked = False
         self._reset()
 
     def _reset(self) -> None:
@@ -94,6 +97,7 @@ class Session:
         self._raw_bytes = 0
         self.raw_dropped = 0
         self.kv = KvParser()
+        self._uid_marked = False
         self.tx_locked = False               # 急停后锁住侧车的一切主动发送（预设/定时/触发/原始），R 或重新连接才解
 
     # ------------------------------------------------------------------ 连接
@@ -116,7 +120,8 @@ class Session:
             what, fix = explain_open_error(port, e)
             raise LinkError("open_failed", what, fix) from e
         self.ident = identity(port) if not port.startswith((SIM_PREFIX, "replay:")) else None
-        lastsession.mark(port, baud or 0)
+        lastsession.mark(port, baud or 0, self.ident)
+        self.down_reason = ""
         self.health.reset()
         with self.lock:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
@@ -214,7 +219,8 @@ class Session:
         return {"pulse": name, "steps": len(seq), **self.serial_modem()}
 
     def disconnect(self) -> None:
-        lastsession.clear()                   # 用户主动断开 = 正常结束（侧车崩了不会走到这里）
+        lastsession.clear()                   # 用户主动断开 = 正常结束（侧车崩了不会走到这里）；也取消重启后的自动重连
+        self.down_reason = ""
         with self.lock:
             self._gen += 1                    # 主动断开：取消自动重连
             tr, log = self.tr, self.log
@@ -305,6 +311,53 @@ class Session:
                     pass
             return
 
+    RESUME_TRIES = (0.0, 0.3, 0.6, 1.0)      # 侧车重启后重开原口的间隔（总共约 2 s，留余量给 3 s 内连上）
+
+    def resume(self, rec: dict) -> dict:
+        """侧车重启后自动连回上次的板子：先试原口；打不开就按记下的 USB 身份/板 ID 重扫端口；
+        都不行 → board=disconnected、reason=port_not_found，记录放回去（下次重启再试，用户点“断开”才放弃）。
+        只恢复链路，不解除急停。用户在这期间点了连接/断开（_gen 变了）就让位。"""
+        port, baud = str(rec.get("port") or ""), int(rec.get("baud") or 0) or None
+        with self.lock:
+            gen0 = self._gen
+            self.resuming = True
+        try:
+            for delay in self.RESUME_TRIES:
+                time.sleep(delay)
+                if self._gen != gen0:
+                    return {"resumed": False, "reason": "user_action"}
+                try:
+                    r = self.connect(port, baud)
+                    self.emit({"type": "resumed", "port": port, "message": f"侧车重启后已自动连回 {port}（急停仍锁着，确认安全后按 R）"})
+                    return {"resumed": True, **r}
+                except LinkError:
+                    with self.lock:
+                        gen0 = self._gen             # connect() 里的 disconnect() 会 +1：这是我们自己的那一次
+                    continue
+            ident = tuple(rec["ident"]) if rec.get("ident") else None
+            moved, why = (None, "none")
+            if ident and self._gen == gen0:
+                moved, why = _ports.pick_moved(port, ident, rec.get("board_uid"), rec.get("schema_hash"), baud or 0)
+            if moved and self._gen == gen0:
+                try:
+                    r = self.connect(moved, baud)
+                    self.emit({"type": "port_moved", "old": port, "new": moved,
+                               "message": f"侧车重启后在 {moved} 找回了原来那块板（之前是 {port}），已经连上"})
+                    return {"resumed": True, **r}
+                except LinkError:
+                    with self.lock:
+                        gen0 = self._gen
+            if self._gen != gen0:
+                return {"resumed": False, "reason": "user_action"}
+            self.down_reason = "port_ambiguous" if why == "ambiguous" else "port_not_found"
+            lastsession.restore(rec)
+            self.emit(LinkError(self.down_reason, f"侧车重启后没能自动连回上次的板子（{port} 不在了，也没在别的口找到它）",
+                                "检查 USB 线，插好后在端口列表里选一下再点“连接”").as_dict())
+            return {"resumed": False, "reason": self.down_reason}
+        finally:
+            with self.lock:
+                self.resuming = False
+
     # ------------------------------------------------------------------ 收
     def _on_bytes(self, data: bytes) -> None:
         now = time.monotonic()
@@ -329,6 +382,9 @@ class Session:
                     h = struct.unpack_from("<I", payload)[0]
                     if len(payload) >= 8:
                         self.board_uid = struct.unpack_from("<I", payload, 4)[0] or None
+                    if not self._uid_marked:
+                        self._uid_marked = True
+                        lastsession.mark_board(self.port, self.board_uid, h)
                     if len(payload) >= 12:
                         self.fw_rev = struct.unpack_from("<I", payload, 8)[0] or None
                     if len(payload) >= 16:
@@ -700,8 +756,9 @@ class Session:
         now = time.monotonic() if now is None else now
         with self.lock:
             return self.link.update(now, port=self.port, port_open=self.tr is not None,
-                                    reconnecting=self.reconnecting, t_connect=self._t_tr,
-                                    last_frame=self.last_frame)
+                                    reconnecting=self.reconnecting or (self.resuming and self.tr is None), t_connect=self._t_tr,
+                                    last_frame=self.last_frame,
+                                    reason="resuming" if self.resuming and self.tr is None else self.down_reason)
 
     def status(self) -> dict:
         now = time.monotonic()

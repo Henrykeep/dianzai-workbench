@@ -1,10 +1,12 @@
 """唯一的连接状态源：侧车按固定节拍推送 `link.state`，横幅、状态栏和 Agent 都只读它。
 
 board 状态机（只看侧车自己的事实：串口是否打开、是否在重连、最近一帧合法帧的时间）：
-  disconnected  没有打开任何端口（含主动断开）
+  disconnected  没有打开任何端口（含主动断开）；reason 可为 port_not_found / port_ambiguous
+                （侧车重启后自动连回失败），主动断开时为 null
   connecting    端口已打开，但本次连接还没收到合法帧
   connected     最近 LOST_AFTER_S 内收到过合法帧（心跳或遥测都算）
-  lost          收到过帧后静默超过 LOST_AFTER_S，或传输层断开正在自动重连
+  lost          收到过帧后静默超过 LOST_AFTER_S，或传输层断开正在自动重连（reason=transport_closed），
+                或侧车重启后正在自动连回上次的板子（reason=resuming）
 
 判定用“任一合法帧”而不是只看心跳：板子心跳 500 ms 一帧，偶发 CRC 坏帧或 USB 突发延迟
 就可能连丢 3 个心跳；遥测还在来就说明板子活着，不应报断开。
@@ -46,7 +48,7 @@ class LinkState:
         board = board_state(now, port_open, reconnecting, t_connect, last_frame)
         if board == "lost" and not reason:
             reason = "transport_closed" if reconnecting else "no_frames"
-        if board != "lost":
+        if board not in ("lost", "disconnected"):
             reason = ""
         key = (board, port if board != "disconnected" else "", reason)
         changed = key != self._key

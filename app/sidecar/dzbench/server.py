@@ -394,6 +394,10 @@ class Server:
     async def serve(self, host: str, port: int, ui_dir: pathlib.Path | None = None) -> None:
         self.loop = asyncio.get_running_loop()
         ticker = asyncio.ensure_future(self._ticker())
+        if self.recovered and self.session.auto_reconnect:            # 上次崩了：自动连回那块板
+            rec = dict(self.recovered)
+            self.session.resuming = True                                # 第一条 link.state 就是 lost/resuming
+            asyncio.get_running_loop().run_in_executor(None, self.session.resume, rec)
         try:
             async with websockets.serve(self.handler, host, port, max_size=2**22):
                 print(f"dzbench sidecar ws://{host}:{port}", flush=True)
