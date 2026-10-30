@@ -1,5 +1,5 @@
 {
- "_doc": "make bench 用例集。一条用例 = 一个工程规格（不限赛题，普通嵌入式工程也能当用例）：\n  id/title/kind（contest|project）；runner = 运行器（默认 sim_step，见 bench.py RUNNERS）；app = host-sim 应用名，源码目录 src（默认 apps/<app> 或 examples/<app>）；\n  experiment = dzbench.json step_tests 里的哪一项（默认 = app）；tune = relay|none；accept = accept.py 验收口径；\n  plant_files = 仿真被控对象模型（不算工程代码）；na = 本用例不适用的阶段 {阶段: 原因}（阶段表见 journey.yaml）。\n只放数据，不放用例专用代码。题名/年份凭记忆整理，见 docs/dev/19-赛题覆盖矩阵.md。",
+ "_doc": "make bench 用例集。一条用例 = 一个工程规格（不限赛题，普通嵌入式工程也能当用例）：\n  id/title/kind（contest|project）；runner = 运行器（默认 sim_step，见 bench.py RUNNERS）；app = host-sim 应用名，源码目录 src（默认 apps/<app> 或 examples/<app>）；\n  experiment = dzbench.json step_tests 里的哪一项（默认 = app）；tune = relay|none；accept = accept.py 验收口径；\n  plant_files = 仿真被控对象模型（不算工程代码）；na = 本用例不适用的阶段 {阶段: 原因}（阶段表见 journey.yaml）。\n只放数据，不放用例专用代码。题名/年份凭记忆整理，见 docs/dev/19-赛题覆盖矩阵.md。\n读题开局（kind=kickoff，runner=kickoff）：输入 = 题目 PDF，标准答案 = tools/bench/kickoff/<id>.yaml（指标与评分项）；由 Agent 运行器打分，接入前报告“未运行”。",
  "cases": [
   {
    "id": "motor_pos",
@@ -64,6 +64,54 @@
     "tests"
    ],
    "source": "/workspace/nuedc/H题_车载平衡滚球运动控制系统.pdf 基本要求 3（13 分）：运行时间 ≤5 s，误差绝对值 ≤1 cm；仿真 600 px/m → 1 cm = 6 px（examples/2026H_ball/io/sim_setup.c）。题目是 +5→−5 cm 两段，这里先用单段阶跃近似"
+  },
+  {
+   "id": "kickoff-2026A",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026A.yaml"
+  },
+  {
+   "id": "kickoff-2026B",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026B.yaml"
+  },
+  {
+   "id": "kickoff-2026C",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026C.yaml"
+  },
+  {
+   "id": "kickoff-2026D",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026D.yaml"
+  },
+  {
+   "id": "kickoff-2026E",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026E.yaml"
+  },
+  {
+   "id": "kickoff-2026F",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026F.yaml"
+  },
+  {
+   "id": "kickoff-2026G",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026G.yaml"
+  },
+  {
+   "id": "kickoff-2026H",
+   "kind": "kickoff",
+   "runner": "kickoff",
+   "truth": "tools/bench/kickoff/2026H.yaml"
   }
  ]
 }

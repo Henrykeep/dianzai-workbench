@@ -183,7 +183,14 @@ def run_sim_step(p, cfg, journey, out_dir):
 # 用例运行器：cases.json 每条用例的 runner 字段选其一（默认 sim_step）。
 # 接口：runner(case, dzbench_cfg, journey, out_dir) -> dict，必须含 id/kind/app/score/parts/final{pass,why,...}/
 # automation/reuse/readiness/stages；评分表只读这些字段。Agent 任务用例（llm-eval 定义口径）以后注册为 RUNNERS["agent"]。
-RUNNERS = {"sim_step": run_sim_step}
+def run_kickoff(p, cfg, journey, out_dir):
+    """读题开局：Agent 读题目 PDF 输出指标/评分项，与标准答案对比打分。Agent 运行器接入前只校验标准答案并报告未运行。"""
+    truth = yaml.safe_load((ROOT / p["truth"]).read_text())
+    return {"id": p["id"], "kind": "kickoff", "title": truth["title"], "status": "not_run",
+            "why": f"Agent 运行器未接入；标准答案 {len(truth['scoring_items'])} 项、{truth['total_points']} 分"}
+
+
+RUNNERS = {"sim_step": run_sim_step, "kickoff": run_kickoff}
 
 
 def _f(x, fmt="{:.2f}"):
@@ -204,7 +211,7 @@ def advice(r):
     return "到位后误差超带：检查静差/量化，必要时放宽 accept.band 并写明依据"
 
 
-def table(res):
+def table(res, pending=()):
     rows = ["| 用例 | 类型 | 分数 | 验收 | 超调 % | 调节 s | AI 自动化 | 复用率 | 脱机就绪 | 说明 |", "|---|---|---:|---|---:|---:|---:|---:|---:|---|"]
     for r in res["problems"]:
         f, a, u = r["final"], r["automation"], r["reuse"]
@@ -223,6 +230,8 @@ def table(res):
     rows += ["", "脱机就绪缺项：" + "；".join(f"{r['id']}：" + ("、".join(x["item"] for x in r["readiness"]["items"] if not x["ok"]) or "无")
                                           for r in res["problems"]), ""]
     rows.append("复用率按仿真构建实际编译的源文件计（host-sim 会编进整个模块库，所以是上限）；仿真对象模型和生成代码不计入。")
+    if pending:
+        rows += ["", "## 未运行用例", ""] + [f"- {r['id']}（{r['title']}）：{r['why']}" for r in pending]
     bad = [r for r in res["problems"] if not r["final"].get("pass")]
     rows += ["", "## 未通过与建议", ""] + ([f"- **{r['id']}**：{r['final'].get('why') or '未通过'} → {advice(r)}" for r in bad] or ["- 无"])
     return "\n".join(rows)
@@ -243,17 +252,18 @@ def main():
     cfg = json.loads((ROOT / "dzbench.json").read_text())
     rev = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
     dirty = bool(subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True).stdout.strip())
-    res = {"commit": rev + ("-dirty" if dirty else ""), "time": time.strftime("%Y-%m-%d %H:%M:%S %z"), "problems": []}
+    res = {"commit": rev + ("-dirty" if dirty else ""), "time": time.strftime("%Y-%m-%d %H:%M:%S %z"), "problems": [], "pending": []}
     out = pathlib.Path(args.out); out.mkdir(parents=True, exist_ok=True)
     for p in probs:
-        print(f"… {p['id']} {p['title']}", flush=True)
-        res["problems"].append(RUNNERS[p.get("runner", "sim_step")](p, cfg, journey, out))
+        print(f"… {p['id']} {p.get('title', p.get('truth', ''))}", flush=True)
+        r = RUNNERS[p.get("runner", "sim_step")](p, cfg, journey, out)
+        (res["pending"] if r.get("status") == "not_run" else res["problems"]).append(r)
     res["total"] = round(sum(r["score"] for r in res["problems"]) / max(1, len(res["problems"])), 1)
     res["auto_ratio"] = round(sum(r["automation"]["ratio"] for r in res["problems"]) / max(1, len(res["problems"])), 3)
     rr = [r["reuse"]["ratio"] for r in res["problems"] if r["reuse"]["ratio"] is not None]
     res["reuse_ratio"] = round(sum(rr) / len(rr), 3) if rr else None
     res["passed"] = sum(bool(r["final"].get("pass")) for r in res["problems"])
-    md = f"# make bench @ {res['commit']}（{res['time']}）\n\n" + table(res) + "\n"
+    md = f"# make bench @ {res['commit']}（{res['time']}）\n\n" + table(res, res["pending"]) + "\n"
     if args.baseline and pathlib.Path(args.baseline).exists():
         b = {r["id"]: r["score"] for r in json.loads(pathlib.Path(args.baseline).read_text())["problems"]}
         md += "\n对比基线：" + "，".join(f"{r['id']} {r['score'] - b[r['id']]:+.1f}" for r in res["problems"] if r["id"] in b) + "\n"
