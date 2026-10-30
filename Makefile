@@ -209,6 +209,10 @@ test:
 # 推送前：干净克隆 + 空 HOME + 无器件包里跑 CI 同款步骤（tools/preflight.sh）
 # 许可扫描（make check 调用）：vendored/third_party 每目录 LICENSE、Python 依赖 pip-licenses、前端 npm 依赖。
 # 统一输出：✗ [licenses/<类>] 什么 · 原因：… · 处理：…；GPL/LGPL/AGPL、无许可、认不出即失败；CC-BY 登记 docs/ATTRIBUTION.md 即可。
+# 带负载回归：所有核占满时急停 点击→latched、解除→cleared 的 p95 / max ≤ 200 ms（≥50 次）。慢（约 1 min），不进 make test。
+estop-load:
+	$(PY) -m pytest -q -s -p no:cacheprovider app/sidecar/loadtests/test_estop_load.py
+
 licenses:
 	$(PY) tools/check_vendored.py
 	$(PY) tools/test_check_vendored.py
