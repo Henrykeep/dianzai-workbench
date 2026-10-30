@@ -85,5 +85,3 @@
 ## CubeMX 迁移（2026-10-29）
 56. **天空星 CubeMX 版缺电机 B** [待你在 CubeMX 补]：`stm32f407-skystar-cubemx` 的 .ioc 里没有电机 B（PWM、IN1/IN2、编码器 B），`make BOARD=stm32f407-skystar-cubemx APP=car_2wd` 报 [缺资源] gpio.MOTOR_B_IN1。引脚我不猜，请按你板子的实际接线在 CubeMX 里补上，标签用 MOTOR_B_PWM / MOTOR_B_IN1 / MOTOR_B_IN2 / ENC_B。补完 cross 才能改用 cubemx 版，旧的 ports/stm32f4-hal 才能删。RM C 型的 .ioc 要等 28（HSE）确认后再做。见 docs/notes/implemented/2026-10-29-cubemx-only.md。
 
-## 净室重写（2026-10-31）
-57. **foc / as5600 / biquad 净室重写** [P1，后端开发者]：foc 与 as5600 在 GPL 清理（3cad235）后为 2.0.0 停用桩，按 `docs/dev/cleanroom/spec-foc-as5600.md` 重写为 3.0.0，与 biquad（`spec-identify-search-biquad.md`）一起排期。问题池见 `docs/dev/cleanroom/README.md`。

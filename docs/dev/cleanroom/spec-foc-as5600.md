@@ -25,7 +25,7 @@
 
 ### 0.3 结构说明
 
-头文件中的结构体字段名保留（调用方可能直接读 `e->angle` 等，见内联函数），但**内部状态字段的含义和用法由实现者自行设计**（如 `phase/t/a0/a1/ol_angle/integ`）。如需增删内部字段，由统筹者重新生成 `iface.lock.json`（见第 4 节）。
+头文件中的结构体字段名保留（调用方可能直接读 `e->angle` 等，见内联函数），但**内部状态字段的含义和用法由实现者自行设计**（如 `phase/t/a0/a1/ol_angle/integ`）。如需增删内部字段，由实现者（后端开发者）实现完成后用工具重新生成 `iface.lock.json`（见第 4 节）。
 
 ### 0.4 公开参考文献（均非 GPL）
 
@@ -42,7 +42,10 @@
 - 纯 C99，单精度 `float`，无动态内存，无阻塞等待，不依赖 libm 以外的库；可在 Cortex-M0+（无 FPU）上编译通过。
 - 所有函数对 NULL 指针返回非 `DZ_OK` 错误码（`void` 函数直接返回，不写内存）。
 - 任何输出（占空比、角度、速度）必须是有限值；输入出现 NaN/Inf 时按各节规定处理，不得把 NaN 传播到 PWM。
-- **安全默认**：凡出错或状态不允许输出时，占空比输出三相均为 0.5（零电压矢量，三相等电位，电机不出力）。下文称“零矢量输出”。
+- **安全默认**：分两种情况（验收见 F-16）。
+  - **(a) 急停或故障**（`FOC_FAULT`、上层急停锁存、参数非法导致的出错）：**优先关闭栅极驱动使能**（EN 拉低，桥臂输出高阻，电机自由滑行）。仅当硬件没有 EN 引脚（未提供驱动使能钩子）时，才退回三相占空比均为 0.5。退回方案的局限须知：0.5 占空比时线电压为零，但桥臂仍在开关、驱动芯片仍处于使能状态；电机若仍在转，反电动势会经桥臂形成制动电流（相当于短路刹车）。
+  - **(b) 待机**（仅“状态不允许输出”，如未对齐时调用闭环函数、未启动）：三相 0.5 占空比可以保留，驱动使能状态保持不变。
+  - 下文“零矢量输出”指三相 0.5；“安全停机”指情况 (a) 的行为。
 - SPDX 许可证头与仓库一致；不得出现指向 `pid_helper` 的来源注释。
 
 ## 2. 组件一：电压型 FOC（`firmware/algo/foc`）
@@ -75,6 +78,13 @@
 闭环函数（angle/velocity/pos）在 state ≠ `FOC_READY` 时返回 `DZ_EBUSY`（未对齐）或 `DZ_EFAIL`（FAULT），并输出零矢量。所有闭环中电角度用 `foc_elec_angle(f, mech)`，Ud = 0。
 
 `foc_init` 默认值：v_limit ≤ 0 或 > vbus/√3 → 取 vbus/√3；v_align = 0 → v_limit/2；t_align_s = 0 → 0.5 s。
+
+**驱动使能钩子（向后兼容新增）**：现有函数签名一律不变。`foc_cfg_t` 末尾新增可选字段 `void (*driver_enable)(void *ctx, bool on)` 与 `void *driver_ctx`；新增函数 `void foc_safe_stop(foc_t *f, float duty[3])`（急停/故障入口）。规则：
+- `driver_enable == NULL`（旧代码零初始化 cfg 时即为此值）→ 视为无 EN 引脚，`foc_safe_stop` 输出零矢量。
+- 非 NULL → `foc_safe_stop` 调用 `driver_enable(ctx, false)`，duty 仍写 0.5（作为高阻失效时的兜底），此后在 `foc_set_calibration` 或显式重新使能前不得再调用 `driver_enable(ctx, true)`；进入 `FOC_FAULT` 时内部自动调用 `foc_safe_stop`。
+- 待机路径（情况 b）不调用 `driver_enable`。
+- `foc_init` 调用 `driver_enable(ctx, false)`；`foc_align_step` 开始输出前调用 `driver_enable(ctx, true)`。
+- 板级接线由板子的 pal 层把 EN 引脚包装成该回调；没有 EN 的板子不填。
 
 ### 2.3 SVPWM 算法 [F3]
 
@@ -136,6 +146,7 @@ vbus ≤ 0 或非有限、或 α/β 非有限 → 零矢量输出。
 | F-13 | `foc_pos_step` 目标 +4π（两圈） | 终值误差 ≤ 0.02 rad，超调 ≤ 10%，\|vel_target\| ≤ vel_limit |
 | F-14 | 开环：pp=7, vel_mech=2π rad/s, dt=1e-3, 1000 步 | ol_angle 累计电角度 = 14π（mod 2π）± 1e-3 |
 | F-15 | `foc_duty_to_pal` | {0, 0.5, 1, −0.1, 1.2, NaN} → {0, 5000, 10000, 0, 10000, 5000} |
+| F-16 | 安全默认两种行为：(1) 带 EN 的仿真驱动（回调记录 EN 电平，桥臂开关计数），运行中触发 `foc_safe_stop` 及 FAULT；(2) 同场景 `driver_enable = NULL`；(3) 未对齐时调用 `foc_velocity_step`（待机） | (1) EN 被拉低，此后开关计数不再增加，且直到重新校准前不会被重新拉高；(2) duty 三相 = 0.5 ± 1e-6；(3) duty 三相 = 0.5，EN 回调未被调用（电平不变）。实板测试记入使用者的实机测试清单 |
 
 ## 3. 组件二：AS5600 驱动（`firmware/drivers/as5600`）
 
@@ -206,13 +217,13 @@ raw = ((b0 & 0x0F) << 8) | b1；一次 2 字节连续读。1 LSB = 2π/4096 rad 
 ## 4. 版本与接口锁
 
 1. `FOC_VERSION`、`AS5600_VERSION` 及各自 `VERSION` 文件改为 **3.0.0**（主版本：2.0.0 是“停用桩”，3.0.0 为全新净室实现，行为与 1.x 不保证一致，例如错误码与零矢量安全输出）。
-2. **iface.lock 重新生成**：实现者不要手改 `iface.lock.json`；实现合入后由统筹者运行仓库的接口锁生成命令（`make` 中锁生成目标）重新生成 `firmware/algo/foc` 与 `firmware/drivers/as5600` 两个条目，并在提交说明中写明“主版本 3.0.0，接口锁重建”。函数原型与 2.0.0 一致，预期只有结构体内部字段（若实现者调整）和版本号变化。
+2. **iface.lock 重新生成**：实现者不要手改 `iface.lock.json`；实现完成后由实现者（后端开发者）运行仓库的接口锁生成命令（`make` 中锁生成目标）重新生成 `firmware/algo/foc` 与 `firmware/drivers/as5600` 两个条目，并在提交说明中写明“主版本 3.0.0，接口锁重建”。既有函数原型与 2.0.0 一致；预期变化为新增 `foc_safe_stop`、`foc_cfg_t` 末尾的驱动使能钩子字段、结构体内部字段（若实现者调整）和版本号。
 3. 模块 README 写明：净室实现、参考文献 [F1]–[F5]、[A1]，删除“已停用”说明。
 
 ## 5. 整体验收
 
 1. `make check` rc=0（含 `licenses`），`make test` 0 失败 **0 跳过**，`make cross` 全部目标通过且无新警告（含 M0+ 无 FPU 目标）。
-2. F-1…F-15、A-1…A-12 均有自动化宿主测试（`tests/host/`）并通过。现有 `tests/host/test_foc.c` 由实现者**按本规格重写**（实现者与规格作者都不打开旧文件内容；直接以新文件覆盖）。
+2. F-1…F-16、A-1…A-12 均有自动化宿主测试（`tests/host/`）并通过。现有 `tests/host/test_foc.c` 由实现者**按本规格重写**（实现者与规格作者都不打开旧文件内容；直接以新文件覆盖）。
 3. 引用 foc / as5600 的应用（如电机 FOC 类题目的 app）在 sim 下 `make test` 通过；实机验证由使用者按 F-8、F-12、A-9 在 AS5600 + 云台电机上复测。
 4. 新文件头 SPDX 标识与仓库一致，无指向 `pid_helper` 的来源注释。
 5. 实现者在 PR 说明中声明：实现期间未查看 0.2 所列文件，只参考了本规格和 0.4 文献。
