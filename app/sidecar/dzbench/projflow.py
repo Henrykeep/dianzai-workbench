@@ -119,6 +119,24 @@ def subsys_plan(repo: pathlib.Path, req: dict, scheme: dict) -> dict:
 IOC_FAMILIES = ("stm32f1", "stm32f4")   # tools/gen_ioc.py 能写 .ioc 的系列
 
 
+def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
+    """从零新建前查依赖：生成要用到、但不入库（.gitignore）的 third_party SDK 文件。返回缺的路径（相对仓库）。"""
+    if family == "mspm0":
+        sdk = pathlib.Path(os.environ.get("M0_SDK_ROOT") or repo / "third_party/mspm0-sdk")
+        need = [sdk / ".metadata/product.json"]
+    else:
+        s = (re.match(r"stm32([a-z]\d)", (mcu or "").lower()) or [None, ""])[1]
+        need = [repo / f"third_party/stm32{s}xx-hal-driver/Inc/stm32{s}xx_hal_conf_template.h"] if s else []
+    out = []
+    for f in need:
+        if not f.exists():
+            try:
+                out.append(f.relative_to(repo).as_posix())
+            except ValueError:
+                out.append(str(f))
+    return out
+
+
 def syscfg_cli() -> pathlib.Path:
     return pathlib.Path(os.environ.get("SYSCFG_CLI") or pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh")
 
@@ -296,6 +314,10 @@ class Flow:
                 raise FlowError("bad_mcu", f"没有这个选项：{m['mcu']} / {m.get('tpl')}")
             if not o["ok"]:
                 raise FlowError("no_ioc_gen", o["why"])
+            miss = missing_sdk(self.repo, m["mcu"], o["family"])
+            if miss:
+                raise FlowError("missing_sdk", "缺第三方 SDK：" + "、".join(miss) + "（不入库，新克隆 / worktree 里没有）",
+                                f"在仓库根目录运行 make fetch（{self.repo}），拉完再点生成")
             name = _safe(board_slug(m.get("name") or f"{code}-{m['mcu']}"))
             st = self.stage(code, "scratch")
             s2 = dict(sch, mcu=m["mcu"]); (st / "scheme.yaml").write_text(yaml.safe_dump(s2, allow_unicode=True, sort_keys=False), encoding="utf-8")
