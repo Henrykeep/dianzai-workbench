@@ -2,7 +2,6 @@
 
     python -m dzbench.agent.evalrun                 # 用 Agent 设置里的模型（或环境变量 DZBENCH_API_KEY）
     python -m dzbench.agent.evalrun --repeat 3 --ports sim:car_2wd,sim:2026H_ball
-    python -m dzbench.agent.evalrun --offline       # 只跑离线规则助手（对照组，不要 Key）
 
 退出码：0 全过；1 有失败；2 没配模型 / 中途退回离线（这次结果不算大模型成绩）。
 报告默认写到 ~/.dzbench/evals/<时间>/report.{json,md}；Key 不进报告。
@@ -32,7 +31,7 @@ def summarize(runs: list[dict], meta: dict) -> dict:
         cases.append({"id": cid, "passed": sum(r["ok"] for r in rs), "total": len(rs), "why": why})
     modes = sorted({r["mode"] for r in runs})
     n_ok = sum(r["ok"] for r in runs)
-    valid = meta.get("offline") or modes == ["llm"]
+    valid = modes == ["llm"]
     return {"meta": meta, "valid": bool(valid), "modes": modes, "passed": n_ok, "total": len(runs),
             "score": round(n_ok / len(runs), 3) if runs else 0.0, "cases": cases, "runs": runs}
 
@@ -40,7 +39,7 @@ def summarize(runs: list[dict], meta: dict) -> dict:
 def to_markdown(rep: dict) -> str:
     m = rep["meta"]
     L = [f"# Agent 评测报告 {m['started']}", "",
-         f"- 模型：{m['model']}（{m['provider']}）" if not m.get("offline") else "- 模型：离线规则助手（对照组）",
+         f"- 模型：{m['model']}（{m['provider']}）",
          f"- 板：{', '.join(m['ports'])}；每例重复 {m['repeat']} 次；用时 {m['seconds']:.0f} s",
          f"- **总分 {rep['passed']}/{rep['total']} = {rep['score']:.0%}**", ""]
     if not rep["valid"]:
@@ -58,7 +57,6 @@ def main(argv=None, llm=None, run_sim=None) -> int:
     ap.add_argument("--repeat", type=int, default=3)
     ap.add_argument("--only", default="", help="只跑这些用例 id，逗号分隔")
     ap.add_argument("--out", default="", help="报告目录（默认 ~/.dzbench/evals/<时间>）")
-    ap.add_argument("--offline", action="store_true", help="跑离线规则助手当对照组")
     a = ap.parse_args(argv)
     run_sim = run_sim or evals.run_sim
     if a.ports.strip() == "all":
@@ -66,15 +64,11 @@ def main(argv=None, llm=None, run_sim=None) -> int:
         a.ports = ",".join(f"sim:{n}" for n in ports_mod.sim_apps())
 
     cfg = llm_mod.load_config()
-    if a.offline:
-        from .offline import OfflineAssistant
-        llm = OfflineAssistant()
-    elif llm is None:
+    if llm is None:
         if not cfg.get("api_key") and cfg.get("provider") != "ollama":
-            print("没有配置大模型 Key：在工作台 Agent 设置里填，或 export DZBENCH_API_KEY=…（只在本机）。"
-                  "想先看对照组：加 --offline。", file=sys.stderr)
+            print("没有配置大模型 Key：在工作台 Agent 设置里填，或 export DZBENCH_API_KEY=…（只在本机）。", file=sys.stderr)
             return 2
-        llm = llm_mod.OpenAICompat(cfg)
+        llm = llm_mod.build(cfg)
 
     cases = evals.load()
     if a.only:
@@ -88,7 +82,7 @@ def main(argv=None, llm=None, run_sim=None) -> int:
             print(f"== {port} 第 {rep + 1}/{a.repeat} 轮")
             for r in run_sim(port, llm=llm, cases=cases):
                 runs.append({"port": port, "rep": rep} | r)
-    meta = {"started": started, "ports": ports, "repeat": a.repeat, "offline": a.offline,
+    meta = {"started": started, "ports": ports, "repeat": a.repeat,
             "provider": cfg.get("provider", ""), "model": getattr(llm, "name", "") or cfg.get("model", ""),
             "seconds": time.monotonic() - t0}
     rep = summarize(runs, meta)

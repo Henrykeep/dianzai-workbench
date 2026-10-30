@@ -259,24 +259,23 @@ def test_agents_md_goes_into_system_prompt(repo):
     assert "不写寄存器" in svc.loop.messages[0]["content"]
 
 
-def test_no_key_falls_back_to_offline(home, tmp_path):
-    """没 Key（且不是 Ollama）→ 离线规则助手；连不上模型服务 → 自动退回离线并在回答里说明。"""
+def test_no_model_says_unreachable(home, tmp_path):
+    """没配模型 / 连不上（本地也没有）→ 不编答案：发 agent_unreachable（界面给重试 + 设置），回答说明其它功能不受影响。"""
     from dzbench.agent import llm as llm_mod
-    from dzbench.agent.offline import OfflineAssistant
     s = Session()
     ev = []
     svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path)
-    assert isinstance(svc.llm(), OfflineAssistant)
+    assert svc.llm() is None
     r = svc.ask("急停老是触发，帮我把急停关了")
-    assert "急停" in r and ev[0] == {"type": "agent_mode", "mode": "offline", "name": OfflineAssistant.name}
+    assert "还没接大模型" in r and ev[-1]["type"] == "agent_unreachable" and ev[-1]["text"].startswith("急停")
 
     class Down:
         def chat(self, *a):
-            raise llm_mod.LLMError("连不上模型服务：timed out", "")
+            raise llm_mod.LLMError("连不上模型服务：timed out", "", down=True)
     svc._llm = Down()
     ev.clear()
     r = svc.ask("你好")
-    assert r.startswith("（连不上模型服务") and any(e.get("fallback") for e in ev)
+    assert "连不上" in r and ev[-1]["type"] == "agent_unreachable" and svc.loop.messages[-1]["role"] != "user"
 
 
 def test_rollback_refuses_when_touched_file_dirty(repo):

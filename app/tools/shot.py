@@ -35,7 +35,7 @@ llm = HTTPServer(("127.0.0.1", 0), FakeLLM)
 threading.Thread(target=llm.serve_forever, daemon=True).start()
 CFG = json.dumps({"provider": "custom", "base_url": f"http://127.0.0.1:{llm.server_port}/v1",
                                               "model": "mock", "api_key": "sk-mock-0000"})
-# 先不写 Key：第一次打开 → 问 Agent 走离线规则助手（app-agent-offline.png）；之后再写入假 LLM 配置
+# 先不写 Key：第一次打开 → 问 Agent 出“暂时用不了”卡（app-agent-unreachable.png）；之后再写入假 LLM 配置
 env = dict(os.environ, DZBENCH_HOME=str(HOME), DZBENCH_REPO=str(REPO), PYTHONPATH=str(APP / "sidecar"))
 srv = subprocess.Popen([sys.executable, "-m", "dzbench", "--port", "18901", "--ui", str(APP / "ui" / "dist")], env=env)
 time.sleep(1.0)
@@ -78,8 +78,8 @@ try:
         pg.evaluate("for (const d of document.querySelectorAll('#tune-more,#plot-more')) d.open = true"); pg.click("#ag-tune"); pg.wait_for_selector(".card .hd >> text=阶跃分析", timeout=5000); pg.wait_for_timeout(300)
         pg.screenshot(path=str(OUT / "app-tune.png"))
         pg.click(".chip[data-q^=超调]") if pg.locator(".chip").count() else (pg.fill("#ag-in", "超调好大，怎么办"), pg.click("#ag-send"))
-        pg.wait_for_selector(".msg.bot >> text=离线规则助手", timeout=15000); pg.wait_for_timeout(300)
-        pg.screenshot(path=str(OUT / "app-agent-offline.png"))
+        pg.wait_for_selector(".down-card >> text=Agent 暂时用不了", timeout=15000); pg.wait_for_timeout(300)
+        pg.screenshot(path=str(OUT / "app-agent-unreachable.png"))
         (HOME / "config.json").write_text(CFG, encoding="utf-8")
         pg.fill("#ag-in", "A 轮跟不上设定，帮我看看怎么调"); pg.click("#ag-send")
         pg.wait_for_selector(".msg.bot >> text=稳态", timeout=8000); pg.wait_for_timeout(300)

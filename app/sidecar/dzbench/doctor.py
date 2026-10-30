@@ -103,7 +103,7 @@ def run(repo: str | None = None, which=shutil.which, probes=None) -> list[dict]:
         has = bool(llm.load_config().get("api_key"))
     except Exception:  # noqa: BLE001
         has = False
-    out.append(_item("llm", "Agent 大模型 Key", "ok" if has else "warn", "已配置" if has else "没配：Agent 用离线规则助手",
+    out.append(_item("llm", "Agent 大模型 Key", "ok" if has else "warn", "已配置" if has else "没配：Agent 不可用（其它功能不受影响）",
                      "" if has else "在 ⚙ 里填 Key（只存在本机 ~/.dzbench/config.json）；不填也能用"))
     # 7 数据目录可写
     d = snapshots.base_dir()

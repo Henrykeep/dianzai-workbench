@@ -13,7 +13,6 @@ import pytest
 import yaml
 
 from agentfake import FakeLLM, call
-from dzbench.agent.offline import OfflineAssistant
 from dzbench.agent.service import AgentService
 from dzbench.agent_api import AgentTools
 from dzbench.session import Session
@@ -74,17 +73,6 @@ def test_scripted_model_drives_project_steps(repo, tmp_path):
     assert r2["next"]["next_step"] == "import"                               # 板子没导入：停在要工程路径
     # 项目页手动：读题 运行+确认、方案 运行+确认 = 4 下；Agent：1 句话 + 2 张卡 = 3 下，且方案这步不用再找按钮
     assert clicks == 3
-
-
-def test_offline_assistant_project_playbook(repo, tmp_path):
-    """没 Key：离线规则助手走同一套工具，认出新题号和题目路径，出确认卡；不编数字。"""
-    svc, ev = _svc(repo, OfflineAssistant())
-    out = svc.ask(f"推进项目 T2，题目 {tmp_path / 't.txt'}")
-    assert "T2" in out and "确认卡" in out, out
-    assert [c["tool"] for c in _cards(ev)] == ["project_apply"]
-    assert not (repo / "examples/T2").exists()
-    out = svc.ask("推进项目 T9")                                              # 缺题目：停下来要，不猜路径
-    assert "需要你给我" in out and "src" in out, out
 
 
 def test_project_state_counts_from_files(repo):
@@ -221,39 +209,5 @@ def test_sim_score_run_save_writeback(tmp_path, home):
         assert "evidence" in (d / "requirements.yaml").read_text(encoding="utf-8")
         # 评分页手动：跑 ×3 + 保存 + 回写预览 + 确认 = 6 下；Agent：问 + 保存卡 + 回写卡 = 3 下
         assert clicks == 3
-    finally:
-        s.disconnect()
-
-
-@pytest.mark.needs_sim
-def test_offline_autotune_and_score_playbooks(tmp_path, home):
-    """没 Key：离线助手一句话仿真自动调参（0 张卡）；一句话评分项跑 3 次 → 存证据卡 → 一句话回写卡。数字全来自工具结果。"""
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / "tools").symlink_to(REPO / "tools")
-    d = tmp_path / "examples/S2"; d.mkdir(parents=True)
-    (d / "requirements.yaml").write_text(yaml.safe_dump({"problem": {"code": "S2"}, "items": [
-        {"id": 1, "text": "速度阶跃误差 ≤ 0.3", "score": 10, "metrics": [{"name": "spd_err", "op": "<=", "value": 0.3}]}]},
-        allow_unicode=True), encoding="utf-8")
-    (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
-        "high": [0.4, 0], "hold_s": 1.2, "pre_s": 0.4, "y": "spd_a", "sp": "sp_a"}}), encoding="utf-8")
-    ev = []
-    s = Session(emit=ev.append); s.connect("sim:car_2wd", 115200, log=False)
-    try:
-        t0 = time.monotonic()
-        while (s.schema_hash is None or not s.params) and time.monotonic() - t0 < 10:
-            time.sleep(0.05)
-        svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path, llm=OfflineAssistant())
-        out = svc.ask("仿真里自动调好，最多 3 轮")
-        assert "仿真自动调参" in out and "第 1 轮" in out and not _cards(ev), out
-        out = svc.ask("评分项 1 跑三遍留证据")
-        assert "跑了 3 次" in out and "band=0.3" in out, out
-        if "→ pass" in out:
-            c = _cards(ev)[-1]; assert c["tool"] == "score_save"
-            assert c["preview"]["title"].startswith("保存评分项") and len(c["preview"]["steps"]) == 3
-            svc.action_decide(c["id"], True)
-            out = svc.ask("回写评分项 1")
-            c = _cards(ev)[-1]; assert c["tool"] == "score_writeback" and "evidence" in c["preview"]["steps"][0]["detail"], c["preview"]
-            svc.action_decide(c["id"], True)
-            assert "evidence" in (d / "requirements.yaml").read_text(encoding="utf-8")
     finally:
         s.disconnect()

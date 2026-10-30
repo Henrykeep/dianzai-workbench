@@ -75,7 +75,7 @@ def wait_step_in_window(s, st: dict, hold_s: float, timeout: float = 60.0) -> No
 def run_sim(port: str = "sim:car_2wd", llm=None, root=None, cases: list[dict] | None = None, log=print) -> list[dict]:
     """连仿真板，每个用例前给一次设定值阶跃（后台一直发，防断线停车），用 AgentService 真跑一轮对话再打分。
 
-    llm=None → 用 AgentService 的默认选择（没 Key 时就是离线规则助手）。用例里的 context.verdict 注入为“上一轮实验结果”。
+    llm=None → 用 AgentService 的默认选择（配置的大模型）。用例里的 context.verdict 注入为“上一轮实验结果”。
     """
     import struct
     import threading

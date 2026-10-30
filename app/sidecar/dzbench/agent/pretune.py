@@ -3,7 +3,7 @@
 思路与字段名取自 llm-pid-tuner（MIT，Copyright (c) 2026 Charles Liang）sim/pre_tuning_dialog.py、sim/prompt_context.py：
 用户偏好整理成结构化上下文（goal_priority / aggressiveness / hard_constraints / max_overshoot_percent / known_notes），
 “显式用户偏好优先于默认调参启发式”。区别：原版靠大模型把自由文本整理成 JSON；这里固定问题 + 规则解析，
-不依赖大模型（离线规则助手也能用），解析结果交给人在对话框里确认后才生效。
+不依赖大模型（没网也能用），解析结果交给人在对话框里确认后才生效。
 生效方式：①写进 Agent 上下文（工作台通知）；②护栏收紧——超调上限压低 good-enough、目标选打分权重、保守档单步上限 ≤20%。
 只会收紧护栏，不会放宽。"""
 from __future__ import annotations

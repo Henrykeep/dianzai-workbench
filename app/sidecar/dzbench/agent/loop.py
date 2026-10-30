@@ -177,7 +177,7 @@ class AgentLoop:
         self._rules, self._memory = project_rules, memory or (lambda: "")
         self.messages: list[dict] = [self._system()]
         self.mode = "general"
-        # 下面三项“护栏”（回答数字校验 / 重复提醒 / 空结果说明）只对真大模型开；离线规则助手是确定性的，不需要也读不懂
+        # 下面三项“护栏”（回答数字校验 / 重复提醒 / 空结果说明）只对真大模型开；测试里的脚本化模型按剧本走，不需要
         self.guards = False
         self.answer_checks: list[Callable[[str, list[dict]], str | None]] = [grounded]
 
