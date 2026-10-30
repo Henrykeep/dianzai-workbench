@@ -71,6 +71,9 @@ class Server:
                 raw = self.session.take_raw()
                 if raw:
                     await self._broadcast({"type": "raw", "c": [[round(t, 4), d, b.hex()] for t, d, b in raw]})
+            ls = self.session.link_state()
+            if ls:
+                await self._broadcast(ls)
             n += 1
             if n % (UI_HZ // 4) == 0:
                 await self._broadcast(self.session.status() | {"clients": len(self.clients)})
@@ -80,7 +83,7 @@ class Server:
         run = asyncio.get_running_loop().run_in_executor
         if op == "hello":
             return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients)},
-                    "recovered": self.recovered,
+                    "recovered": self.recovered, "link": s.link.last,
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
         if op == "list_ports":
