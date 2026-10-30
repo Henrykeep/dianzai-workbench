@@ -383,7 +383,7 @@ export function initAgent(call: Call) {
   async function openCfg(first = false) {
     const c = await call("agent_config").catch(() => null);
     if (!c) return;
-    provs = c.providers;
+    provs = c.providers; firstRun = first;
     $("cfg-title").textContent = first ? "接上大模型（第一次用）" : "大模型设置";
     $("cfg-provs").innerHTML = Object.entries(provs).map(([k, p]) =>
       `<button type="button" class="pv" role="radio" data-k="${esc(k)}"><b>${esc(p.name)}</b><span class="mono">${esc(p.model || "自己填")}</span></button>`).join("");
@@ -414,12 +414,27 @@ export function initAgent(call: Call) {
       ? `<b>通了</b> · ${esc(r.model)} · ${r.ms} ms${r.reply ? ` · 回复“${esc(r.reply)}”` : ""}`
       : `<b>没通</b> · ${esc(r.message)}${r.fix ? `<br><span class="fix">→ ${esc(r.fix)}</span>` : ""}`);
   };
-  $("cfg-list").onclick = async () => {
-    const ids: string[] = await call("agent_models", { form: form() }).catch(() => []);
+  // 模型列表：GET {base_url}/models。首次配置时填好地址和 Key 后自动拉取；接口不可用时回退手动填写，预设默认模型只作最后兜底。
+  type ModelList = { ok: boolean; models: string[]; reason?: "unsupported" | "error"; message?: string };
+  let firstRun = false;
+  async function listModels() {
+    cfgSt("busy", `<span class="spin"></span>正在获取可用模型…`);
+    const r: ModelList = await call<ModelList>("agent_models", { form: form() })
+      .catch((e: Error) => ({ ok: false, models: [], reason: "error" as const, message: String(e.message || e) }));
+    const model = $<HTMLInputElement>("cfg-model"), ids = r.models || [];
     $("cfg-models").innerHTML = ids.map(i => `<option value="${esc(i)}">`).join("");
-    cfgSt(ids.length ? "" : "bad", ids.length ? `这个服务有 ${ids.length} 个模型，点“模型”框挑一个` : "这个服务没开放模型列表，照服务商文档手填");
-    if (ids.length) $<HTMLInputElement>("cfg-model").focus();
-  };
+    if (r.ok && ids.length) {
+      if (!ids.includes(model.value.trim())) { model.value = ""; model.placeholder = "请从列表中选择模型"; }
+      cfgSt("", `已获取 ${ids.length} 个可用模型，请在“模型”中选择`);
+      model.focus();
+      return;
+    }
+    if (!model.value.trim() && provs[prov]?.model) model.value = provs[prov].model;   // 最后兜底：预设默认模型
+    model.placeholder = "请按服务商文档填写模型名";
+    cfgSt("bad", `${esc(r.message || "未获取到模型列表")}。请手动填写模型名${r.reason === "error" ? "，或检查地址与 Key 后重试" : ""}`);
+  }
+  $("cfg-list").onclick = () => listModels();
+  ["cfg-url", "cfg-key"].forEach(id => $(id).addEventListener("change", () => { if (firstRun && fv("cfg-url")) listModels(); }));
   $("cfg-ol").onclick = async () => {
     const b = $<HTMLButtonElement>("cfg-ol"), want = $<HTMLSelectElement>("cfg-local").value;
     b.disabled = true; olSt("busy", `<span class="spin"></span>检查本机 Ollama…`);

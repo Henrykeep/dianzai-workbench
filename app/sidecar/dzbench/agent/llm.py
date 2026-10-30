@@ -155,14 +155,37 @@ def _req(url: str, body: dict | None = None, key: str = "", timeout: float = 15)
     return urllib.request.urlopen(urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=h), timeout=timeout)
 
 
-def list_models(form: dict) -> list[str]:
-    """GET /models：设置里的“换模型”下拉。失败返回空表（有的服务不开放这个接口）。"""
+def discover_models(form: dict, timeout: float = 8) -> dict:
+    """首次配置：GET {base_url}/models（OpenAI 兼容）列出可选模型。
+
+    返回 {ok, models, reason?, message?}：reason = "unsupported"（服务未提供该接口：404/405/501 或非标准响应）
+    或 "error"（鉴权失败、网络不通等）。失败时界面回退到手动填写；预设默认模型只作最后兜底。
+    """
     cfg = load_config() | {k: v for k, v in form.items() if v}
+    url = (cfg.get("base_url") or "").rstrip("/")
+    if not url:
+        return {"ok": False, "models": [], "reason": "error", "message": "未填写服务地址"}
     try:
-        with _req(cfg["base_url"].rstrip("/") + "/models", key=cfg.get("api_key", ""), timeout=8) as r:
-            return sorted(m["id"] for m in json.loads(r.read()).get("data", []))
-    except (OSError, ValueError, KeyError, urllib.error.URLError):
-        return []
+        with _req(url + "/models", key=cfg.get("api_key", ""), timeout=timeout) as r:
+            data = json.loads(r.read())
+        ids = sorted({str(m["id"]) for m in data["data"] if isinstance(m, dict) and m.get("id")})
+    except urllib.error.HTTPError as e:
+        if e.code in (404, 405, 501):
+            return {"ok": False, "models": [], "reason": "unsupported", "message": f"该服务未提供模型列表接口（HTTP {e.code}）"}
+        hint = "，请检查 API Key" if e.code in (401, 403) else ""
+        return {"ok": False, "models": [], "reason": "error", "message": f"获取模型列表失败（HTTP {e.code}）{hint}"}
+    except (KeyError, TypeError, ValueError):
+        return {"ok": False, "models": [], "reason": "unsupported", "message": "该服务的模型列表响应不符合 OpenAI 格式"}
+    except (OSError, urllib.error.URLError) as e:
+        return {"ok": False, "models": [], "reason": "error", "message": f"无法连接服务：{getattr(e, 'reason', e)}"[:160]}
+    if not ids:
+        return {"ok": False, "models": [], "reason": "unsupported", "message": "该服务返回的模型列表为空"}
+    return {"ok": True, "models": ids}
+
+
+def list_models(form: dict) -> list[str]:
+    """兼容旧调用：只要模型 id 列表，失败返回空表。"""
+    return discover_models(form)["models"]
 
 
 def ollama(action: str, model: str = "", host: str = "") -> dict:
