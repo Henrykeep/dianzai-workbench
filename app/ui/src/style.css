@@ -99,7 +99,7 @@ select:disabled{opacity:.6}
 .rail{display:flex;align-items:stretch;gap:var(--sp3);height:var(--h-vh);flex:none;padding:0 var(--sp2) 0 var(--sp5)}
 .ri{position:relative;display:flex;align-items:center;white-space:nowrap;border:0;background:none;color:var(--muted);cursor:pointer;font:inherit;padding:0}
 .ri:hover{color:var(--ink)} .ri.on{color:var(--ink)} .ri.on:not(#doctor):not(#theme)::after{content:"";position:absolute;left:0;right:0;bottom:8px;height:2px;border-radius:1px;background:var(--ink)}
-#doctor,#theme{width:32px;justify-content:center;color:var(--dim)} #doctor:hover,#theme:hover{color:var(--ink)}
+.pop .field{padding:0 var(--sp2)}
 .pip{position:absolute;top:12px;right:-8px;width:6px;height:6px;border-radius:50%;background:var(--acc)}
 .side .pane>.vh .ttl{display:none}
 
@@ -338,3 +338,33 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .pre-sum{padding:6px 10px;border-radius:var(--r-xs);font:600 var(--t-sm) var(--f-sans);margin-bottom:8px}
 .pre-sum.ok{background:var(--ok-bg);color:var(--ok)}.pre-sum.warn{background:var(--warn-bg);color:var(--warn)}.pre-sum.fail{background:var(--crit-bg);color:var(--crit)}
 .hb-flag{color:var(--crit)}
+
+/* ── 时间线步骤栏 + 每步一页（steps.ts，LOGIC_AUDIT §3.1） ── */
+.steps{display:flex;gap:2px;align-self:center;margin:0 var(--sp3)}
+.steps button{height:28px;padding:0 var(--sp2);border:0;border-radius:var(--r-sm);background:none;color:var(--dim);font:inherit;cursor:pointer;white-space:nowrap;position:relative}
+.steps button:hover{background:var(--s-hover);color:var(--ink)}
+.steps button.on{background:var(--s-hover);color:var(--ink)}
+.steps button.next::after{content:"";position:absolute;left:8px;right:8px;bottom:2px;height:2px;border-radius:1px;background:var(--acc)}
+.step-hint{max-width:28em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.work{flex-direction:column;gap:var(--sp2)}
+.work>[hidden],.scope[hidden]{display:none!important}
+.page{flex:1;overflow:auto;background:var(--s2);border-radius:var(--r-lg);padding:var(--sp5);display:flex;flex-direction:column;gap:var(--sp3);align-items:flex-start}
+.page .act{display:flex;gap:var(--sp2);flex-wrap:wrap}
+.page>.btn{min-width:10em}
+.app.full .work{grid-column:1/4}
+.app.full .dock,.app.full .side{display:none}
+.app.nodock:not(.full) .work{grid-column:1/3}
+.app.nodock .dock{display:none}
+/* 调参页：曲线在左、参数在右、Agent 在最右；底部 实验 / 判定 / 回到… */
+.app[data-step="调参"]{grid-template-columns:minmax(0,1fr) var(--w-left) var(--w-side)}
+.app[data-step="调参"] .work{grid-column:1}
+.app[data-step="调参"] .dock{grid-column:2}
+.tunebar{display:none;align-items:center;gap:var(--sp5);padding:var(--sp2) var(--sp3);background:var(--s2);border-radius:var(--r-lg);flex-wrap:wrap}
+.app[data-step="调参"] .tunebar{display:flex}
+.tunebar .grp{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
+.tunebar .flow{margin:0}
+.tunebar #goback{margin-left:auto}
+.menu.up .pop{top:auto;bottom:calc(100% + 4px)}
+.pop.tb{min-width:300px}
+.pop .row{display:flex;gap:var(--sp1);flex-wrap:wrap;padding:0 var(--sp2)}
+.app:not([data-step="调参"]) #rail [data-side="agent"]{display:none}

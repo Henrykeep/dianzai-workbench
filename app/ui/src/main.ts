@@ -17,6 +17,7 @@ import { initHbStrip } from "./hbstrip";
 import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
+import { initSteps } from "./steps";
 
 type Field = { name: string; type: string; unit?: string; enum?: string[]; na?: number; pin?: string; pin_with?: string[]; ref_for?: string; cal?: Cal };
 type Schema = { hash: string; fields: Field[]; params: Param[]; period_ms?: number; accept?: AcceptSpec[]; loops?: Loop[]; protect_fixed?: Fixed[] };
@@ -603,3 +604,8 @@ $("doctor").onclick = async () => {
 
 createIcons({ icons: { Activity, Ellipsis, Eraser, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap } });
 initChrome();
+const goStep = initSteps(() => !!S.status.connected);
+// 跨页入口：回到… 菜单里的“某个快照 / 烧前固件”、工具箱“波形测量”
+$("gb-snap").onclick = () => { goStep("调参"); (document.querySelector('#dock-tabs [data-d="snaps"]') as HTMLElement)?.click(); };
+$("gb-fw").onclick = () => goStep("烧录");
+$("tb-meas").onclick = () => { goStep("联调"); (document.querySelector('#view [data-v="fft"]') as HTMLElement)?.click(); };

@@ -21,40 +21,83 @@
           <label class="field" title="ESP32、带一键下载电路的 CH340 板：选“不拉高”防止一连就复位/进 BOOT">DTR/RTS<select id="lines">
             <option value="default">按配置</option><option value="low">不拉高</option></select></label>
           <label class="check" title="线松了/板子复位后自动重开同一个口（不会自动解除急停）"><input type="checkbox" id="auto-rc" checked> 自动重连</label>
-          <button class="ib" id="lines-btn" title="连着时直接拨 DTR/RTS、一键复位 / 进 BOOT（ESP32 / STM32 一键下载电路）、看 CTS/DSR、串口卡死检测">线控…</button>
+        </div></details>
+    </div>
+
+    <nav class="steps" id="steps" title="比赛时间线：点一步切到那一页；高亮 = 当前页，下划线 = 建议的下一步">
+      <button data-step="项目">项目</button><button data-step="烧录">烧录</button><button data-step="模块">模块</button><button data-step="联调">联调</button><button data-step="标定">标定</button><button data-step="调参">调参</button><button data-step="评分">评分</button><button data-step="封箱">封箱</button>
+    </nav>
+    <span class="lbl step-hint" id="step-hint" title="当前步与下一步"></span>
+    <div class="pins" id="stats"></div>
+    <div class="sp"></div>
+
+    <details class="menu right" id="trouble-m"><summary class="btn" id="trouble" title="排障：自检、黑匣子、HardFault（Agent 工具）、链路告警；按症状排查页见后续提交"><i data-lucide="stethoscope"></i>排障</summary>
+      <div class="pop">
+        <button class="mi" id="doctor" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i>自检</button>
+        <button class="mi" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；板子有掉电保存区时急停那刻冻进 flash，下次上电还在）"><i data-lucide="history"></i>读黑匣子</button>
+        <span class="mh">HardFault：在调参页 Agent 里问“解一下 HardFault”（decode_hardfault 工具）</span>
+      </div></details>
+    <details class="menu right" id="toolbox-m"><summary class="btn" id="toolbox" title="工具箱：不属于时间线某一步的工具"><i data-lucide="sliders-horizontal"></i>工具箱</summary>
+      <div class="pop tb">
+        <span class="mh">测量</span>
+        <button class="mi" id="tb-meas" title="切到联调页的频谱视图：频率 / 幅值 / 占空比 / 相位等波形测量"><i data-lucide="ruler"></i>波形测量</button>
+        <span class="mh">串口</span>
+          <button class="mi" id="lines-btn" title="连着时直接拨 DTR/RTS、一键复位 / 进 BOOT（ESP32 / STM32 一键下载电路）、看 CTS/DSR、串口卡死检测">线控…</button>
+        <span class="mh">帧格式</span>
           <label class="field" title="不是工作台固件的板子怎么解析：key=value 文本、VOFA+ JustFloat / FireWater，或自定义帧结构（帧头/字段/校验/帧尾，JSON）">非工作台帧<select id="framedef">
             <option value="kv">key=value 文本</option><option value="justfloat">JustFloat</option><option value="firewater">FireWater</option><option value="custom">自定义…</option></select></label>
           <label class="field" title="JustFloat / FireWater 的通道数">通道<input id="framedef-n" type="number" min="1" max="32" value="4" style="width:4em"></label>
-        </div></details>
-    </div>
-    <nav class="flow" id="flow" title="一轮调参的进度：按当前状态自动点亮"><span data-s="conn">连接</span><span data-s="tune">调参</span><span data-s="step">阶跃</span><span data-s="read">判读</span><span data-s="save">定稿</span></nav>
-    <div class="pins" id="stats"></div>
-    <div class="sp"></div>
-    <button class="btn" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
-    <button class="btn" id="ag-search" title="开环给控制量一个台阶后点：辨识 FOPDT → 仿真里 PSO/分阶段搜索 → 列出 top-k；每个候选点“上板验证”才发提议卡，你确认后才写入">仿真搜索</button>
-    <button class="btn" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
-    <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button>
+        <span class="mh">记录</span><div class="row">
+    <select id="logs" title="回放以前记录的 .dzlog"></select>
+    <button class="ib" id="replay">回放</button>
+    <select id="exp-fmt" title="导出格式"><option value="excel">CSV（Excel）</option><option value="plotjuggler">CSV（PlotJuggler）</option><option value="vofa">VOFA+ 文本</option></select>
+    <button class="ib" id="export" title="把这份记录导出：CSV 带 UTF-8 BOM（Excel 直接打开）/ PlotJuggler（.pj.csv，时间列 time）/ VOFA+ FireWater（.vofa.txt，每行逗号分隔）；Shift+点击 = PlotJuggler">导出</button>
+    <button class="ib" id="import" title="导入别的工具录的曲线：CSV（第一行列名，可带 t_s/time 时间列）或 VOFA+ FireWater 文本；转成 .dzlog 后直接回放">导入…</button></div>
+        <span class="mh">协处理器</span>
+              <button class="mi" id="fw-coproc" title="协处理器（MaixCAM / K230 / Jetson / 树莓派 / RDK）：SSH 推脚本、启动 / 停止、看日志；只走密钥登录"><i data-lucide="play"></i>协处理器部署…</button>
+        <span class="mh">设置</span>
+              <button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置</button>
+        
+    <button id="theme" class="mi" title="切换主题：深色 → 浅色 → 高对比（户外强光下用浅色或高对比）"><i data-lucide="sun-moon"></i>切换主题</button>
+      </div></details>
     <span class="vsep"></span>
     <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停<kbd>Space</kbd></button>
+    <button class="btn sm" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除</button>
   </header>
   <div id="banner" class="banner" hidden></div>
     <aside class="dock">
       <div class="vh"><div class="tabs" id="dock-tabs"><span data-d="params" class="on">参数</span><span data-d="protect">保护</span><span data-d="snaps">快照</span><span data-d="board">板端</span></div>
         <div class="sp"></div>
         <button class="ib" id="p-read" title="读取：从板子重新读取全部参数" >读取</button>
-        <button class="ib" id="p-rb" title="回读：逐个问板子当前参数值，写 params.txt（带固件版本），可用 tools/params_diff.py 对比">回读</button>
-        <button class="ib" id="p-def" title="默认：把全部参数恢复成固件编译时的默认值" >默认</button>
       </div>
       <div class="dk" data-d="params"><input id="p-q" class="in pq" placeholder="筛选参数：pos_ ki*（/ 聚焦）" title="空格/逗号分隔，* 通配；按名字或说明匹配。参数多于 8 个时出现" hidden /><div id="plist" class="plist"></div></div>
       <div class="dk" data-d="protect" hidden><div id="ptab" class="ptab"></div></div>
       <div class="commit"><div class="pdiff mono" id="pend"></div><div class="btns"><button class="btn" id="p-revert" disabled>撤销</button><button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button></div></div>
       <div class="dk" data-d="snaps" hidden><div class="row pad"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><select id="snap-mode" class="in" title="环模式标签：速度环 / 位置环预设，切换时可平滑过渡"><option value="">—</option><option value="speed">速度环</option><option value="position">位置环</option></select><input id="snap-ramp" class="in" type="number" min="0" max="10" step="0.1" value="0.5" style="width:4.5em" title="恢复时平滑过渡秒数（0 = 一步写入）"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div><div id="snaps" class="pad"></div></div>
       <div class="dk pad" data-d="board" hidden>
-        <div class="row"><button class="btn" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除急停 R</button>
-          <span class="lbl">板端命令</span><input id="cmd-c" class="in w-xs" maxlength="1" placeholder="字符"><input id="cmd-n" class="in w-sm" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
+        <div class="row"><span class="lbl">板端命令</span><input id="cmd-c" class="in w-xs" maxlength="1" placeholder="字符"><input id="cmd-n" class="in w-sm" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
       </div>
     </aside>
   <main class="work">
+    <section class="page" data-page="项目" hidden><h3>① 读题 → ⑤ 工程生成</h3>
+      <p class="hint">这几步目前在终端里做（App 里还没有按钮，见 docs 00 快速上手）。按顺序：</p>
+      <ol class="doc mono"><li>python3 tools/req.py 题目.txt → requirements.yaml（读题 → 测试清单）</li><li>python3 tools/scheme.py requirements.yaml（方案选型）</li>
+      <li>python3 tools/alloc.py scheme.yaml -o alloc（资源分配）/ tools/ioc_import.py 导入已有 .ioc</li><li>mechanical/（机械：docs 09、21）</li><li>python3 tools/gen_project.py project.yaml（工程生成）</li></ol>
+      <p class="hint">做完点上面“烧录”。</p></section>
+    <section class="page" data-page="烧录" hidden><h3>编译与烧录</h3>
+              <p class="hint" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash。</p>
+              <button class="btn" id="fw-probe" title="选烧录/调试后端（pyOCD / OpenOCD / J-Link / probe-rs）、探针类型（ST-Link / DAPLink / J-Link）和序列号；存本机 ~/.dzbench/machine.json"><i data-lucide="settings"></i>调试探针…</button>
+              <button class="btn" id="fw-build"><i data-lucide="hammer"></i>编译</button>
+              <button class="btn" id="fw-flash"><i data-lucide="zap"></i>烧录…</button>
+              <button class="btn" id="fw-rollback"><i data-lucide="history"></i>回滚固件…</button>
+      <div class="fwst"><span class="lbl" id="fw-st"></span></div></section>
+    <section class="page" data-page="标定" hidden><h3>标定</h3><p class="hint">标定向导在后续提交里接上（极性、循迹黑白、视觉、FOC 对齐、IMU 零偏）。现在：app.yaml 里手写 cal 点。</p></section>
+    <section class="page" data-page="封箱" hidden><h3>封箱</h3>
+      <div class="act">
+    <button id="pre" class="btn pri" title="赛前全绿检查：自检 + 板子固件/参数/急停/告警/链路 + 仓库已提交；可导出封箱清单（只读）"><i data-lucide="list-checks"></i>赛前全绿检查</button>
+      <button class="btn" id="p-rb" title="回读：逐个问板子当前参数值，写 params.txt（带固件版本），可用 tools/params_diff.py 对比">回读参数文件</button>
+      <button class="btn" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交"><i data-lucide="file-pen"></i>写回 yaml</button></div>
+      <p class="hint">存参数到 flash 在“赛前全绿检查”对话框里。</p></section>
     <section class="scope">
       <div class="vh"><div class="tabs" id="view"><span data-v="plot" class="on">示波</span><span data-v="raw" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备">原始</span><span data-v="fft" title="频谱：按固件遥测周期做 FFT（去直流 + Hann 窗），找振荡频率">频谱</span></div>
         <span class="lbl mono" id="plot-sub"></span><span class="lbl mono po" id="xdiv"></span><div class="sp"></div>
@@ -93,6 +136,33 @@
         </div></div>
       <div id="tl" class="tl" hidden title="事件时间线：点一条跳到那一刻"></div>
     </section>
+
+    <section class="tunebar" data-page="调参">
+      <div class="grp"><span class="lbl">实验</span>
+    <button class="btn" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button>
+    <button class="btn" id="ag-search" title="开环给控制量一个台阶后点：辨识 FOPDT → 仿真里 PSO/分阶段搜索 → 列出 top-k；每个候选点“上板验证”才发提议卡，你确认后才写入">仿真搜索</button>
+    <button class="btn" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button>
+    <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button>
+              <button class="btn" id="ag-pre" title="调参前先回答几个问题：对象类型、执行器、安全限、能接受的超调……Agent 和护栏按这些出初值、打分（只收紧护栏）"><i data-lucide="list-checks"></i>调参前问答</button>
+              <button class="btn" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button></div>
+      <div class="grp verdict"><span class="lbl">判定</span>
+    <nav class="flow" id="flow" title="这一轮调参的进度：改参 → 阶跃 → 判读 → 定稿"><span data-s="conn">连接</span><span data-s="tune">调参</span><span data-s="step">阶跃</span><span data-s="read">判读</span><span data-s="save">定稿</span></nav><span class="lbl mono" id="verdict"></span></div>
+      <details class="menu up right" id="goback"><summary class="btn" title="所有“回到过去”的操作都在这里，每项写清楚回到哪里">回到… <i data-lucide="undo-2"></i></summary>
+        <div class="pop">
+          <span class="mh">参数（板上 RAM）</span>
+          
+              <button class="mi" id="ag-best" title="把参数一键恢复到本次调参护栏记录的最好一轮（先弹确认框）；侧车重启后可在快照页恢复“自动-最好一轮”"><i data-lucide="undo-2"></i>最好一轮（本次调参护栏记录）</button>
+          <button class="mi" id="gb-snap" title="打开快照列表，点一个快照恢复（可平滑过渡）"><i data-lucide="history"></i>某个快照…</button>
+          
+        <button class="mi" id="p-def" title="默认：把全部参数恢复成固件编译时的默认值" ><i data-lucide="rotate-ccw"></i>恢复固件默认</button>
+          
+              <button class="mi" id="ag-undo" disabled title="撤销 Agent 最近一次已落地的改动：参数改回原值，或 git revert 那次文件提交。可连点逐步往回撤"><i data-lucide="undo-2"></i>撤销 Agent 上一步（参数或文件提交）</button>
+          <span class="mh">固件</span>
+          <button class="mi" id="gb-fw" title="去烧录页：回滚到烧前备份的固件"><i data-lucide="zap"></i>烧前固件（去烧录页）</button>
+          <hr>
+              <button class="mi" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）"><i data-lucide="shield-off"></i>重置护栏</button>
+        </div></details>
+    </section>
   </main>
   <aside class="side">
   <nav class="rail" id="rail">
@@ -101,9 +171,6 @@
     <button class="ri" data-side="meas" title="测量：A/B 光标读数">测量<span class="pip" id="meas-pip" hidden></span></button>
     <button class="ri" data-side="hist" title="历史：每轮阶跃实验的曲线与参数">台账<span class="pip" id="hist-pip" hidden></span></button>
     <div class="sp"></div>
-    <button id="pre" class="ri" title="赛前全绿检查：自检 + 板子固件/参数/急停/告警/链路 + 仓库已提交；可导出封箱清单（只读）"><i data-lucide="list-checks"></i></button>
-    <button id="doctor" class="ri" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i></button>
-    <button id="theme" class="ri" title="切换主题：深色 → 浅色 → 高对比（户外强光下用浅色或高对比）"><i data-lucide="sun-moon"></i></button>
   </nav>
     <section class="pane" data-side="chans">
       <div class="vh"><span class="ttl">通道</span><div class="sp"></div><span class="lbl mono" id="chan-n"></span></div>
@@ -118,24 +185,7 @@
     <section class="pane agent" data-side="agent" hidden>
       <div class="vh"><span class="ttl">Agent</span><select id="ag-workmode" class="sel-q" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
             <option value="general">通用</option><option value="diagnose">诊断（只读）</option><option value="tune">调参</option>
-            <option value="edit">改代码</option><option value="review">审查</option></select><div class="sp"></div><details class="menu right" id="ag-more"><summary class="ib" title="更多：规则建议、撤销、写回 yaml、固件、设置"><i data-lucide="ellipsis"></i></summary>
-            <div class="pop">
-              <button class="mi" id="ag-pre" title="调参前先回答几个问题：对象类型、执行器、安全限、能接受的超调……Agent 和护栏按这些出初值、打分（只收紧护栏）"><i data-lucide="list-checks"></i>调参前问答</button>
-              <button class="mi" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button>
-              <button class="mi" id="ag-undo" disabled title="撤销 Agent 最近一次已落地的改动：参数改回原值，或 git revert 那次文件提交。可连点逐步往回撤"><i data-lucide="undo-2"></i>撤销 Agent</button>
-              <button class="mi" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交"><i data-lucide="file-pen"></i>写回 yaml</button>
-              <button class="mi" id="ag-new" title="清空和 Agent 的对话上下文"><i data-lucide="message-square-plus"></i>新对话</button>
-              <button class="mi" id="ag-best" title="把参数一键恢复到本次调参护栏记录的最好一轮（先弹确认框）；侧车重启后可在快照页恢复“自动-最好一轮”"><i data-lucide="undo-2"></i>回到最好一轮</button>
-              <button class="mi" id="ag-guard" title="清空调参护栏的历史（换了车/换了负载后用；之前的“最好一轮”作废）"><i data-lucide="shield-off"></i>重置护栏</button>
-              <hr><span class="mh" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">固件</span>
-              <button class="mi" id="fw-probe" title="选烧录/调试后端（pyOCD / OpenOCD / J-Link / probe-rs）、探针类型（ST-Link / DAPLink / J-Link）和序列号；存本机 ~/.dzbench/machine.json"><i data-lucide="settings"></i>调试探针…</button>
-              <button class="mi" id="fw-coproc" title="协处理器（MaixCAM / K230 / Jetson / 树莓派 / RDK）：SSH 推脚本、启动 / 停止、看日志；只走密钥登录"><i data-lucide="play"></i>协处理器部署…</button>
-              <button class="mi" id="fw-build"><i data-lucide="hammer"></i>编译</button>
-              <button class="mi" id="fw-flash"><i data-lucide="zap"></i>烧录…</button>
-              <button class="mi" id="fw-rollback"><i data-lucide="history"></i>回滚固件…</button>
-              <hr><button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置</button>
-            </div></details></div>
-      <div class="fwst"><span class="lbl" id="fw-st"></span></div>
+            <option value="edit">改代码</option><option value="review">审查</option></select><div class="sp"></div><button class="ib" id="ag-new" title="新对话：清空和 Agent 的对话上下文"><i data-lucide="message-square-plus"></i></button></div>
       <div id="props" class="feed"></div>
       <form id="ag-form" class="ask"><input id="ag-in" class="in" placeholder="问 Agent：如“A 轮响应太慢，帮我看看”" autocomplete="off"><button class="btn" id="ag-send">发送</button></form>
     </section>
@@ -150,7 +200,7 @@
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
       <dialog id="predlg" class="dlg"><form method="dialog"><h3>赛前检查</h3><div id="pre-sum" class="pre-sum"></div><ul id="pre-list" class="doc"></ul><ul id="pre-bb" class="doc" hidden></ul>
         <p class="hint">板上参数要等于固件默认值：调好的值先“定稿”重烧，不然一复位就丢。人工项（电池、螺丝、线束…）在导出的清单里打勾。</p>
-        <div class="act"><label class="hint" title="勾上：板上固件必须就是仓库 HEAD；不勾：烧录之后只改了文档/上位机也算一致"><input type="checkbox" id="pre-strict"> 严格</label><button class="btn" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；板子有掉电保存区时急停那刻冻进 flash，下次上电还在）">读黑匣子</button><button class="btn" type="button" id="pre-save" title="把板上当前参数存进 flash（board.yaml mcu.nvm_kb；只在停车/急停时写），下次上电自动用">存参数</button><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
+        <div class="act"><label class="hint" title="勾上：板上固件必须就是仓库 HEAD；不勾：烧录之后只改了文档/上位机也算一致"><input type="checkbox" id="pre-strict"> 严格</label><button class="btn" type="button" id="pre-save" title="把板上当前参数存进 flash（board.yaml mcu.nvm_kb；只在停车/急停时写），下次上电自动用">存参数</button><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
       <dialog id="probe-dlg" class="dlg">
         <form method="dialog" id="probe-form">
           <h3>调试探针</h3>
@@ -227,11 +277,6 @@
     <span id="rp" class="rp" hidden><button class="ib" id="rp-play">⏸</button>
       <input type="range" id="rp-pos" min="0" max="1000" value="0"><span id="rp-t">0.0 / 0.0 s</span>
       <select id="rp-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></span>
-    <select id="logs" title="回放以前记录的 .dzlog"></select>
-    <button class="ib" id="replay">回放</button>
-    <select id="exp-fmt" title="导出格式"><option value="excel">CSV（Excel）</option><option value="plotjuggler">CSV（PlotJuggler）</option><option value="vofa">VOFA+ 文本</option></select>
-    <button class="ib" id="export" title="把这份记录导出：CSV 带 UTF-8 BOM（Excel 直接打开）/ PlotJuggler（.pj.csv，时间列 time）/ VOFA+ FireWater（.vofa.txt，每行逗号分隔）；Shift+点击 = PlotJuggler">导出</button>
-    <button class="ib" id="import" title="导入别的工具录的曲线：CSV（第一行列名，可带 t_s/time 时间列）或 VOFA+ FireWater 文本；转成 .dzlog 后直接回放">导入…</button>
     <span id="st-ws">侧车 —</span>
   </footer>
   <div id="toasts" class="toasts"></div>

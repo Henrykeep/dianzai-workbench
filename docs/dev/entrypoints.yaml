@@ -55,8 +55,8 @@ actions:
   - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}
   - {id: yaml_wb,      label: 写回 yaml,        at: step:封箱,   ui: ag-yaml,    ops: [yaml_writeback]}
   # ── 工具箱 ──
-  - {id: wave_meas,    label: 波形测量,         at: toolbox:测量, ui: fft-meas,  ops: [wave_measure]}
-  - {id: cursors,      label: A/B 光标,         at: toolbox:测量, ui: meas,      ops: []}
+  - {id: wave_meas,    label: 波形测量,         at: toolbox:测量, ui: tb-meas,   ops: [wave_measure]}
+  - {id: cursors,      label: A/B 光标,         at: step:联调,   ui: meas,      ops: []}
   - {id: serial_ln,    label: 串口线控,         at: toolbox:串口, ui: lines-btn, ops: [serial_modem, serial_lines_set, serial_pulse, serial_stall]}
   - {id: log_replay,   label: 回放记录,         at: toolbox:记录, ui: replay,    ops: [log_list, replay, replay_ctl]}
   - {id: log_export,   label: 导出记录,         at: toolbox:记录, ui: export,    ops: [log_export]}

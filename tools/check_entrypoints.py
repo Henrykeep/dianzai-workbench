@@ -15,6 +15,64 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 APP = ROOT / "app"
 
 
+VOID = {"input", "br", "hr", "img", "meta", "link", "source", "wbr"}
+# 共用区域在哪些步可见（与 app/ui/src/steps.ts LAYOUT 一致）
+SHARED_AREAS = {"dock": {"模块", "调参"}, "side": {"模块", "联调", "调参", "评分"}, "scope": {"模块", "联调", "调参", "评分"}}
+
+
+def regions(html):
+    """元素 id → 所在区域：page:<步> / toolbox / trouble / header / footer / dialog / dock / side / scope。"""
+    from html.parser import HTMLParser
+    out, stack = {}, []
+
+    def where():
+        for tag, a in reversed(stack):
+            if a.get("data-page"):
+                return "page:" + a["data-page"]
+            if a.get("id") == "toolbox-m":
+                return "toolbox"
+            if a.get("id") == "trouble-m":
+                return "trouble"
+            if tag == "dialog":
+                return "dialog"
+            cls = (a.get("class") or "").split()
+            for k in ("dock", "side", "scope"):
+                if k in cls:
+                    return k
+            if tag in ("header", "footer"):
+                return tag
+        return "?"
+
+    class P(HTMLParser):
+        def handle_starttag(self, tag, attrs):
+            a = dict(attrs)
+            if tag not in VOID:
+                stack.append((tag, a))
+            if a.get("id"):
+                out[a["id"]] = where() if tag not in VOID else (stack.append((tag, a)), where(), stack.pop())[1]
+
+        def handle_endtag(self, tag):
+            if any(t == tag for t, _ in stack):      # 不配对的结束标签忽略
+                while stack and stack.pop()[0] != tag:
+                    pass
+    P().feed(html)
+    return out
+
+
+def placed(at, region):
+    """at 与元素实际所在区域是否一致。"""
+    kind, _, name = at.partition(":")
+    if region == "dialog":
+        return True                       # 对话框里的按钮跟着打开它的入口走
+    if kind == "toolbox":
+        return region == "toolbox"
+    if kind == "always":
+        return region == "trouble" if name == "排障" else region in ("header", "footer")
+    if region.startswith("page:"):
+        return region == "page:" + name
+    return name in SHARED_AREAS.get(region, set())
+
+
 def load_sources():
     ui_src = "\n".join(p.read_text(encoding="utf-8") for p in sorted((APP / "ui/src").glob("*.ts")))
     html = (APP / "ui/index.html").read_text(encoding="utf-8")
@@ -25,6 +83,7 @@ def load_sources():
         "server_ops": set(re.findall(r'op == "([a-z_0-9]+)"', server)),
         "ui_ops": set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_0-9]+)"', ui_src)),
         "html_ids": set(re.findall(r'\bid="([^"]+)"', html)),
+        "regions": regions(html),
         "agent_tools": set(re.findall(r'"name":\s*"([a-z_0-9]+)"', tools_blk)),
     }
 
@@ -45,6 +104,8 @@ def check(spec, src):
             err.append(f"{a['id']}: at={a.get('at')!r} 不是已登记的步 / 工具箱类 / 常驻件")
         if not a.get("dynamic") and a.get("ui") not in src["html_ids"]:
             err.append(f"{a['id']}: 界面元素 #{a.get('ui')} 在 index.html 里找不到")
+        elif not a.get("dynamic") and "regions" in src and not placed(a.get("at", ""), src["regions"].get(a["ui"], "?")):
+            err.append(f"{a['id']}: 表里写在 {a.get('at')}，界面上 #{a['ui']} 却在 {src['regions'].get(a['ui'], '?')}")
         for op in a.get("ops") or []:
             if op not in src["server_ops"]:
                 err.append(f"{a['id']}: op {op} 侧车不认")
@@ -99,7 +160,13 @@ def selftest():
         e = check(s, src)
         assert any(want in x for x in e), (name, e)
     assert any("界面调用了 z" in x for x in check(base, src))
-    print(f"check_entrypoints selftest: {len(cases) + 2} ok")
+    reg = regions('<header><button id="h"></button><details id="toolbox-m"><button id="t"></button></details></header>'
+                  '<main class="work"><section data-page="烧录"><button id="f"></button></section><section class="scope"><input id="i"></section></main>')
+    assert reg == {"h": "header", "toolbox-m": "toolbox", "t": "toolbox", "f": "page:烧录", "i": "scope"}, reg
+    assert placed("step:烧录", "page:烧录") and not placed("step:封箱", "page:烧录")
+    assert placed("toolbox:记录", "toolbox") and not placed("toolbox:记录", "header")
+    assert placed("always:急停", "header") and not placed("always:急停", "dock") and placed("step:调参", "dock") and not placed("step:烧录", "dock")
+    print(f"check_entrypoints selftest: {len(cases) + 6} ok")
 
 
 def main():
