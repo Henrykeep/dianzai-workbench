@@ -698,6 +698,11 @@ class Session:
             tr.write(frame)
         return True
 
+    # 急停事件约定（docs/dev/events.md）：必有键 + 可选键；测试断言键集合精确等于约定
+    ESTOP_EVENT_KEYS = {"requested": ({"type", "seq", "state", "source", "t", "ok", "message_zh"}, set()),
+                        "latched": ({"type", "seq", "state", "source", "t"}, {"cause", "message_zh", "latency_ms"}),
+                        "cleared": ({"type", "seq", "state", "source", "t"}, {"message_zh"})}
+
     def estop_ev(self, state: str, source: str | None, **kw) -> dict:
         """统一急停事件（与 link.state 同风格）：{type:"estop", seq, state: requested|latched|cleared, source, cause?, message_zh?, t}。"""
         return {"type": "estop", "seq": next(self._estop_seq), "state": state, "source": source or "ui",
@@ -749,8 +754,8 @@ class Session:
         if isinstance(self.tr, ReplayTransport):
             return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
         self.estop_requested_at = time.monotonic()
-        return self.estop_ev("requested", self.estop_source) | {"sent": ok, "src": src,
-                "message": f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池"}
+        return self.estop_ev("requested", self.estop_source, ok=ok,     # 键集合见 ESTOP_EVENT_KEYS（docs/dev/events.md）
+                             message_zh=f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池")
 
     def send_data(self, id_: int, payload: bytes) -> bool:
         """发任意 DATA 帧（应用自定义命令，如 car_2wd 的 id=1 轮速设定）。0x7E/0x7F 走专用接口。"""

@@ -86,7 +86,7 @@ def test_unplug_replug(board, side):
     board.unplug()
     e = ui.wait(lambda e: e.get("code") == "link_lost", start=m)
     assert han(e["message"]) and "重连" in e["fix"]
-    assert ui.ok("estop")["sent"] is False                       # 线拔了：老实说没发出去
+    assert (lambda r: r.get("ok", r.get("sent")) is False)(ui.ok("estop"))                       # 线拔了：老实说没发出去
     time.sleep(1.3)
     direct_go(board)
     time.sleep(0.3)

@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import time
+import pathlib
 
 import pytest
 
 from wsui import UI, ServerThread
+from dzbench.session import Session
 
 
 def _locked(ui):
@@ -184,9 +186,13 @@ def test_estop_latency_under_200ms(home, busy):
         e = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "requested", 2, m)
         dt = time.monotonic() - t0
         assert dt <= 0.2, f"急停事件 {dt * 1000:.0f} ms"
-        assert e["source"] == "ui" and e["sent"] is True and s.tx_locked
+        assert e["source"] == "ui" and e["ok"] is True and s.tx_locked
+        need, opt = Session.ESTOP_EVENT_KEYS["requested"]
+        assert set(e) - {"rid"} == need | opt, set(e)            # 精确等于约定：没有 sent / src / message
         la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
         assert la["source"] == "ui" and la["cause"] == "manual"
+        need, opt = Session.ESTOP_EVENT_KEYS["latched"]
+        assert need <= set(la) <= need | opt, set(la)            # latency_ms 可选诊断字段
     finally:
         ui.close(); st.stop()
 
@@ -251,7 +257,6 @@ def _hb(payload_w=None, cause=None):
 @pytest.mark.parametrize("how", ["bit10", "estop_cause"])
 def test_firmware_estop_latches_sidecar(home, how):
     from dzbench._dzlink import HEARTBEAT, encode
-    from dzbench.session import Session
     from dzbench import latch
     s = Session(emit=lambda m: None)
     s.port = "/dev/ttyFAKE0"
@@ -347,7 +352,6 @@ def test_estop_cause_single_source():
 def test_no_separate_estop_cause_event_cause_rides_latched(home, how):
     """不再推 type:"estop_cause"；cause / message_zh 随 estop state:"latched" 下发（人按 / 板子自己 / 急停位先到原因后到）。"""
     from dzbench._dzlink import HEARTBEAT, encode
-    from dzbench.session import Session
     out = []
     s = Session(emit=out.append)
     s.port = "/dev/ttyFAKE1"
@@ -362,3 +366,17 @@ def test_no_separate_estop_cause_event_cause_rides_latched(home, how):
     assert la and la[-1]["cause"] == "stall" and la[-1]["message_zh"], out
     assert la[-1]["source"] == ("ui" if how == "requested" else "firmware:stall")
     assert {"seq", "t"} <= la[-1].keys()
+
+
+def test_estop_event_keys_match_contract():
+    s = Session()
+    for st, kw in (("requested", {"ok": True, "message_zh": "x"}),
+                   ("latched", {"cause": "manual", "message_zh": "x", "latency_ms": 12}),
+                   ("latched", {}), ("cleared", {"message_zh": "x"})):
+        need, opt = Session.ESTOP_EVENT_KEYS[st]
+        e = s.estop_ev(st, "ui", **kw)
+        assert need <= set(e) <= need | opt and set(e) == need | set(kw), (st, set(e))
+    doc = (pathlib.Path(__file__).resolve().parents[3] / "docs/dev/events.md").read_text(encoding="utf-8")
+    for st, (need, opt) in Session.ESTOP_EVENT_KEYS.items():
+        for k in need | opt:
+            assert f"`{k}`" in doc, (st, k)                       # 约定文档与代码一致
