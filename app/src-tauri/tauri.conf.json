@@ -1,6 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "电赛工作台",
+  "mainBinaryName": "dianzai-workbench",
   "version": "0.11.0",
   "identifier": "com.dianzai.bench",
   "build": {
@@ -10,13 +11,31 @@
     "beforeBuildCommand": "npm --prefix ui run build"
   },
   "app": {
-    "windows": [{ "title": "电赛工作台", "width": 1440, "height": 900, "minWidth": 1100, "minHeight": 680, "backgroundColor": "#09090a" }],
-    "security": { "csp": "default-src 'self'; connect-src ws://127.0.0.1:8765; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:" }
+    "windows": [
+      {
+        "title": "电赛工作台",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1100,
+        "minHeight": 680,
+        "backgroundColor": "#09090a"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ws://127.0.0.1:8765; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:"
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "icon": ["icons/icon.png", "icons/icon.ico"],
-    "externalBin": ["binaries/dzbench"]
+    "targets": [
+      "nsis"
+    ],
+    "icon": [
+      "icons/icon.png",
+      "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/dzbench"
+    ]
   }
 }

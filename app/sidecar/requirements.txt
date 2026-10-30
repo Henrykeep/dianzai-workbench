@@ -3,3 +3,4 @@ websockets>=12
 pytest>=7
 pyyaml>=6
 jsonschema>=4  # 仿真板编译（tools/boardlib.py）
+pypdf>=4  # 读题 PDF（没有 pdftotext 时）

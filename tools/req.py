@@ -113,9 +113,16 @@ def read_text(src: pathlib.Path) -> str:
     if src.suffix.lower() == ".pdf":
         try:
             return subprocess.run(["pdftotext", "-layout", str(src), "-"], check=True,
-                                  capture_output=True, text=True).stdout
-        except (OSError, subprocess.CalledProcessError) as e:
-            sys.exit(f"✗ 读 PDF 失败（需要 poppler 的 pdftotext，或先另存为 .txt）：{e}")
+                                  capture_output=True, text=True, encoding="utf-8", errors="replace").stdout
+        except (OSError, subprocess.CalledProcessError):
+            pass
+        try:   # 没装 poppler（Windows 安装包）：退回 pypdf，版式保留差一点但数字/单位都在
+            import pypdf
+            return "\n".join((pg.extract_text(extraction_mode="layout") or "") for pg in pypdf.PdfReader(str(src)).pages)
+        except ImportError:
+            sys.exit("✗ 读 PDF 失败：需要 poppler 的 pdftotext 或 pip install pypdf，或先另存为 .txt")
+        except Exception as e:  # noqa: BLE001  PDF 坏了/加密
+            sys.exit(f"✗ 读 PDF 失败：{e}")
     return src.read_text(encoding="utf-8")
 
 
