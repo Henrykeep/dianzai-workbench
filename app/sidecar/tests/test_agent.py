@@ -326,3 +326,31 @@ def test_answer_check_asks_for_fact_tags():
     from dzbench.agent.loop import tagged
     res = [{"name": "read_telemetry", "ok": True, "result": {"x": 1}}]
     assert tagged("超调 30%", res) and tagged("【实测】超调 30%", res) is None and tagged("你好", []) is None
+
+
+def test_gateway_first_file_in_new_project_dir(repo):
+    """新建项目写第一个文件：目录还不存在，git status 会打 warning（r4 验收卡在这）→ 不算未提交改动，照常写入并提交。"""
+    class Warn(Runner):
+        def __call__(self, cmd, cwd):
+            rc, out = super().__call__(cmd, cwd)
+            if cmd[:2] == ["git", "status"]:
+                out = "warning: could not open directory 'apps/dc_motor_pid/': No such file or directory\n" + out
+            return rc, out
+    g = Gateway(repo, runner=Warn())
+    c = g.propose_edit("apps/dc_motor_pid/main.c", "", "int main(void){return 0;}\n", "新建项目第一个文件")
+    r = g.decide(c["id"], True)
+    assert r["status"] == "committed", r["log"]
+    assert (repo / "apps/dc_motor_pid/main.c").exists() and "apps/dc_motor_pid/main.c" in git(repo, "show", "--name-only", "--format=", "HEAD")
+    # 真正的手改仍然拦
+    (repo / "apps/x/main.c").write_text((repo / "apps/x/main.c").read_text(encoding="utf-8") + "// hand\n", encoding="utf-8")
+    c2 = g.propose_edit("apps/x/main.c", "// hand\n", "// hand2\n", "r")
+    r2 = g.decide(c2["id"], True)
+    assert r2["status"] == "failed" and "未提交的改动" in r2["log"] and "处理" in r2["log"]
+
+
+def test_git_errors_are_translated():
+    from dzbench.agent.gateway import git_hint
+    h = git_hint("fatal: not a git repository (or any of the parent directories): .git")
+    assert "不是 git 仓库" in h and "git init" in h
+    assert "index.lock" in git_hint("fatal: Unable to create '/r/.git/index.lock': File exists.")
+    assert "处理" in git_hint("something odd")
