@@ -6,7 +6,7 @@ import { acceptEval, worstOf, type AcceptSpec, type AcceptR } from "./accept";
 import type { Plot } from "./plot";
 type Call = <T = any>(op: string, a?: Record<string, unknown>) => Promise<T>;
 type Metric = { name: string; op?: string; value?: number; unit?: string; how?: string; accept?: string; test_id?: string };
-export type ScoreItem = { id: string; part?: string; score?: number; text: string; metrics: Metric[]; evidence: unknown[] };
+export type ScoreItem = { id: string; part?: string; score?: number; text: string; metrics: Metric[]; evidence: unknown[]; accept?: string; runs?: number };
 export type Run = { n: number; dur: number; r: AcceptR | null; csv: string; png?: string };
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const f2 = (x: number) => Number.isFinite(x) ? x.toFixed(2) : "—";
@@ -56,19 +56,19 @@ export function snapRun(rel: number[], ys: number[][], names: string[], units: s
 
 export function initScore(call: Call, plot: Plot, specs: () => AcceptSpec[], toast: (t: string, k?: "ok" | "warn") => void) {
   const root = document.getElementById("score"); if (!root) return { refresh() {} };
-  let items: ScoreItem[] = [], code = "", cur: ScoreItem | null = null;
-  const runs = new Map<string, Run[]>(), saved = new Map<string, string>();
+  let items: ScoreItem[] = [], code = "", reqPath = "", cur: ScoreItem | null = null;
+  const runs = new Map<string, Run[]>(), saved = new Map<string, string>(), last = new Map<string, { dir: string; layer: string; result: string; note: string }>();
   let arm: null | { t0: number | null; timer: number } = null;
   const $ = <T extends HTMLElement = HTMLInputElement>(id: string) => document.getElementById(id) as unknown as T;
 
   async function refresh(path?: string) {
     const r = await call<any>("score_items", path ? { path } : {}).catch(() => null);
     if (!r) { $("sc-mat").innerHTML = `<p class="hint">读不到评分项：先在项目页第 ① 步读题。</p>`; return; }
-    items = r.items; code = r.code; if (cur) cur = items.find(x => x.id === cur!.id) ?? null;
+    items = r.items; code = r.code; reqPath = r.path; if (cur) cur = items.find(x => x.id === cur!.id) ?? null;
     $<HTMLSelectElement>("sc-file").innerHTML = (r.candidates as string[]).map(c => `<option${c === r.path ? " selected" : ""}>${esc(c)}</option>`).join("") || `<option>${esc(r.path)}</option>`;
     if (cur && !arm) pick(cur.id); else drawMat();
   }
-  const specFor = (it: ScoreItem) => { const nm = it.metrics.find(m => m.accept)?.accept; return specs().find(s => s.name === nm) ?? null; };
+  const specFor = (it: ScoreItem) => { const nm = it.accept ?? it.metrics.find(m => m.accept)?.accept; return specs().find(s => s.name === nm) ?? null; };
   function drawMat() {
     const layer = $<HTMLSelectElement>("sc-layer").value;
     $("sc-mat").innerHTML = `<table class="pf-tab sc-mat"><tr><th>评分项</th><th>自动判定</th><th>人工 / 物理证据</th><th>当前结论</th></tr>${items.map(it => {
@@ -85,7 +85,7 @@ export function initScore(call: Call, plot: Plot, specs: () => AcceptSpec[], toa
     $("sc-title").textContent = `${cur.id}：${cur.text}`;
     const sp = specFor(cur), all = specs();
     $<HTMLSelectElement>("sc-spec").innerHTML = all.map(s => `<option${s === sp ? " selected" : ""}>${esc(s.name)}</option>`).join("") || `<option value="">（app.yaml 没有 accept 规格）</option>`;
-    $("sc-n").value = String(sp?.runs ?? 3);
+    $("sc-n").value = String(cur.runs ?? sp?.runs ?? 3);
     $("sc-dur").value = String(sp?.t_max_s ? Math.ceil(sp.t_max_s * 1.5) : 10);
     $<HTMLSelectElement>("sc-cf").innerHTML = plot.names.map(n => `<option>${esc(n)}</option>`).join("");
     drawRuns();
@@ -107,7 +107,7 @@ export function initScore(call: Call, plot: Plot, specs: () => AcceptSpec[], toa
     const rs = runs.get(cur.id) ?? [], need = +$("sc-n").value || 3, v = verdict(rs, need, $<HTMLSelectElement>("sc-layer").value);
     $("sc-runs").innerHTML = rs.length ? `<table class="pf-tab"><tr><th>#</th><th>时长 s</th><th>到位用时 s</th><th>到位后误差</th><th>判定</th></tr>${rs.map(r => `<tr><td>${r.n}</td><td>${f2(r.dur)}</td><td>${f2(r.r?.total ?? NaN)}</td><td>${f2(r.r?.worst_err ?? NaN)}</td><td class="${r.r?.pass ? "ok" : "bad"}">${r.r ? (r.r.pass ? "通过" : esc(r.r.why)) : "无法判定（没选规格或通道不在）"}</td></tr>`).join("")}</table>
       <p>最差 ${need} 轮：<b class="${v.cls}">${v.text}</b>${v.w ? `；最慢 ${f2(v.w.total)} s，最大误差 ${f2(v.w.err)}` : ""}</p>` : `<p class="hint">还没跑。</p>`;
-    $<HTMLButtonElement>("sc-save").disabled = !rs.length;
+    $<HTMLButtonElement>("sc-save").disabled = !rs.length; $<HTMLButtonElement>("sc-wb").disabled = !last.has(cur.id); $("sc-wbbox").hidden = true;
   }
   function stop() {
     if (!arm || !cur) return; clearInterval(arm.timer);
@@ -137,7 +137,18 @@ export function initScore(call: Call, plot: Plot, specs: () => AcceptSpec[], toa
       summary: { verdict: v.text, result: v.w?.all ? "PASS" : "FAIL", worst: v.w ? `用时 ${f2(v.w.total)} s，误差 ${f2(v.w.err)}` : "—", spec: spec()?.name },
       runs: rs.map(x => ({ n: x.n, csv: x.csv, png_b64: x.png, result: x.r ? { pass: x.r.pass, total: x.r.total, worst_err: x.r.worst_err, why: x.r.why } : null, dur: x.dur })) }).catch(() => null);
     if (!r) return;
-    saved.set(cur.id, r.dir); drawMat(); toast(`证据已存：${r.dir}（${r.files.length} 个文件）。requirements.yaml 的 evidence 可贴：${r.evidence}`, "ok");
+    saved.set(cur.id, r.dir); last.set(cur.id, { dir: r.dir, layer, result: v.w?.all ? "pass" : v.w && v.w.pass ? "partial" : "fail", note: `工作台评分页：${v.text}；${v.w ? `最慢 ${f2(v.w.total)} s，最大误差 ${f2(v.w.err)}` : ""}；规格 ${spec()?.name ?? "—"}` });
+    $<HTMLButtonElement>("sc-wb").disabled = false; drawMat(); toast(`证据已存：${r.dir}（${r.files.length} 个文件）。requirements.yaml 的 evidence 可贴：${r.evidence}`, "ok");
+  };
+  // 写回 requirements.yaml：先给 diff，确认才写（文件在预览后被改过就拒绝）
+  $("sc-wb").onclick = async () => {
+    if (!cur || !last.has(cur.id)) return; const a = { path: reqPath, item: cur.id, ...last.get(cur.id)! }, box = $("sc-wbbox");
+    const pv = await call<any>("score_writeback", a).catch(() => null); if (!pv) return;
+    box.hidden = false; box.innerHTML = `<p class="hint">将在 ${esc(pv.path)} 的 ${esc(cur.id)} 下加一条 evidence（只加这一行，注释和排版不动）：</p><pre class="mono pf-pre">${esc(pv.diff)}</pre>`;
+    const b = document.createElement("button"); b.className = "btn pri"; b.type = "button"; b.textContent = "确认写回";
+    b.onclick = async () => { b.disabled = true; const w = await call<any>("score_writeback", { ...a, confirm: true, sha: pv.sha }).catch(() => null);
+      if (w) { box.innerHTML = `<p class="hint">已写回 ${esc(w.path)}。</p>`; toast(`已写回 ${w.path}（${cur!.id}）`, "ok"); refresh(reqPath); } else b.disabled = false; };
+    box.append(b);
   };
   $("sc-file").onchange = () => refresh($<HTMLSelectElement>("sc-file").value);
   $("sc-layer").onchange = () => { drawMat(); drawRuns(); };

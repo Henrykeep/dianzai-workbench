@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { condOk, csvOf, verdict, lanesOf, type Run } from "../src/score.ts";
 import { acceptEval } from "../src/accept.ts";
 const html = readFileSync("index.html", "utf8");
-for (const id of ["score", "sc-file", "sc-layer", "sc-mat", "sc-spec", "sc-n", "sc-dur", "sc-trig", "sc-cf", "sc-cop", "sc-cv", "sc-go", "sc-save", "sc-runs"]) if (!html.includes(`id="${id}"`)) throw "缺 #" + id;
+for (const id of ["score", "sc-file", "sc-layer", "sc-mat", "sc-spec", "sc-n", "sc-dur", "sc-trig", "sc-cf", "sc-cop", "sc-cv", "sc-go", "sc-save", "sc-runs", "sc-wb", "sc-wbbox"]) if (!html.includes(`id="${id}"`)) throw "缺 #" + id;
 if (!condOk(1, ">", 0.5) || condOk(0.2, ">", 0.5) || condOk(NaN, "<", 1) || !condOk(2, "==", 2)) throw "condOk";
 const c = csvOf([0, 0.01], ["y", "r"], [[1, 2], [3, NaN]]);
 if (c !== "t_s,y,r\n0.0000,1,3\n0.0100,2,\n") throw "csv " + JSON.stringify(c);

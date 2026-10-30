@@ -172,10 +172,10 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix) from None
-        if op == "score_items" or op == "score_save":       # 评分页：评分项来自 requirements.yaml；证据按 docs/verify 规范存（dzbench/scoring.py）
+        if op == "score_items" or op == "score_save" or op == "score_writeback":       # 评分页：评分项来自 requirements.yaml；证据按 docs/verify 规范存（dzbench/scoring.py）
             from . import scoring
             try:
-                return await run(None, (scoring.items if op == "score_items" else scoring.save), self.svc, m)
+                return await run(None, {"score_items": scoring.items, "score_save": scoring.save, "score_writeback": scoring.writeback}[op], self.svc, m)
             except scoring.ScoreError as e:
                 raise LinkError(e.code, e.msg, e.fix) from None
         if op == "doctor":
