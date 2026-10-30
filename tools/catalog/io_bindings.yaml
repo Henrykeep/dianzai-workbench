@@ -1,0 +1,11 @@
+# io 层自动接线表（tools/subsys_kit.py 生成 io/io_auto.c 时读）：共享状态字段 → 驱动 + 板上逻辑资源。
+# 通用规则，不针对某一题。field 是正则，(?P<x>…) 捕获的字母/名字会代进资源名里的 {X}（转大写）。
+# dir: read = io 从硬件填这个字段（只对 owner: io 的段）；write = io 把子系统写的这个字段送到硬件。
+# 一个字段命中多条规则且板上资源都在 → 算“有歧义”，生成 TODO 让你选（删掉不要的那条规则或改资源名即可）。
+# driver 是生成器认识的驱动模板：motor_dc / encoder / qd4310_angle / servo_angle / imu_wit / imu_mpu6050。
+- { driver: motor_dc,     dir: write, field: '^cmd_(?P<x>[a-z])$',              res: { pwm: ['MOTOR_{X}'], gpio: ['MOTOR_{X}_IN1', 'MOTOR_{X}_IN2'] } }
+- { driver: encoder,      dir: read,  field: '^wheel_(?P<x>[a-z])_(mps|rps)$',  res: { encoder: ['MOTOR_{X}'] } }
+- { driver: qd4310_angle, dir: write, field: '^target_abs_deg$',                 res: { uart: [BEAM] } }
+- { driver: servo_angle,  dir: write, field: '^target_abs_deg$',                 res: { pwm: [SERVO] } }
+- { driver: imu_wit,      dir: read,  field: '^imu_(ax_mps2|ok|rx_ms)$',         res: { uart: [IMU] } }
+- { driver: imu_mpu6050,  dir: read,  field: '^imu_(ax_mps2|ok|rx_ms)$',         res: { i2c: [IMU] } }

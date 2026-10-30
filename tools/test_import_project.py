@@ -72,6 +72,29 @@ for proj, exp in BASE.items():
         ok(not lost, f"{proj}：main.c 里的用户代码一行没丢（丢了 {len(lost)} 行）")
         if lost:
             print("  ", lost[:5])
+        # 新题目装进 ball + chassis，板子就是刚导入的这块：io 层自动接线，剩多少 TODO/确认
+        io = exp.get("io")
+        if io:
+            sys.path.insert(0, str(ROOT / "tools"))
+            import subsys_kit
+            with tempfile.TemporaryDirectory() as t2:
+                pd = pathlib.Path(t2) / "io_try"
+                for sname in io["subsys"]:
+                    subsys_kit.add(ROOT / "examples" / "2026H_ball" / "subsys" / sname, pd, name)
+                r = dict(subsys_kit.LAST_IO)
+                ok(len(r["todo"]) <= io["todo"], f"{proj}：io 自动接线 {r['binds']} 个字段，TODO {len(r['todo'])} 处（基线 ≤ {io['todo']}）")
+                ok(len(r["confirm"]) <= io["confirm"], f"{proj}：io 确认 {len(r['confirm'])} 处（基线 ≤ {io['confirm']}）")
+                for x in r["todo"]:
+                    print("    TODO", x)
+                if has_arm:
+                    b = subprocess.run(["make", "-s", f"BOARD={name}", f"APP=io_try", f"APP_DIR={pd}", f"OUT={pd}/_build"],
+                                       cwd=ROOT, capture_output=True, text=True)
+                    if b.returncode and "找不到" in b.stdout + b.stderr:
+                        print("  （缺器件包，跳过 io_try 编译）")
+                    else:
+                        ok(b.returncode == 0, f"{proj}：自动生成 io 的新题目在这块板上编译通过")
+                        if b.returncode:
+                            print(b.stdout[-1500:], b.stderr[-1500:])
         if has_arm:
             for app in exp["build"]:
                 b = subprocess.run(["make", "-s", f"BOARD={name}", f"APP={app}"], cwd=ROOT, capture_output=True, text=True)

@@ -202,45 +202,166 @@ def add(src: pathlib.Path, dst: pathlib.Path, board: str) -> list[str]:
     py.write_text("\n".join(lines), encoding="utf-8")
     notes.append(f"subsystems：加 {name}")
 
-    # io 层：题目里没人提供 app_init 时，按声明生成一个
+    # io 层：题目里没人提供 app_init 时，按声明 + 板上资源 + 接线表生成
     has_app = any(re.search(r"\bapp_init\s*\(\s*void\s*\)\s*\{", f.read_text(encoding="utf-8", errors="replace"))
                   for f in dst.rglob("*.c") if "/tests/" not in str(f) and f.name != "io_auto.c")
-    if not has_app and not (dst / "io" / "io_auto.c").exists():
-        gen_io(dst)
-        notes.append("io/io_auto.c：按声明生成（调度 + 协调；io_read/io_write 是弱函数，按需在自己的 .c 里实现）")
+    if not has_app:
+        r = gen_io(dst)
+        LAST_IO.clear(); LAST_IO.update(r)
+        if r["written"]:
+            notes.append(f"io/io_auto.c：自动接线 {r['binds']} 个字段；TODO {len(r['todo'])} 处，确认 {len(r['confirm'])} 处")
+        else:
+            notes.append("io/io_auto.c 你改过了，没覆盖（删掉它再跑一次会重新生成）")
+        notes += [f"  TODO {t}" for t in r["todo"]] + [f"  确认 {c}" for c in r["confirm"]]
     if not (dst / "app.yaml").exists():
         (dst / "app.yaml").write_text(f"name: {dst.name}\nversion: 0.1.0\nrequires: {{}}\n", encoding="utf-8")
     return notes
 
 
-def gen_io(dst: pathlib.Path):
-    p = load(dst / "project.yaml")
-    io_blocks = [k for k, v in (p.get("state") or {}).items() if (v or {}).get("owner") == "io"]
-    out = dst / "io" / "io_auto.c"
-    out.parent.mkdir(exist_ok=True)
-    out.write_text(f"""/* 自动生成（tools/add_subsys.py），按 project.yaml 的声明：可以改，重跑 add_subsys 只在没有 app_init 时才生成。
- * io 写的段：{', '.join(io_blocks) or '无'}。在你自己的 .c 里实现 io_read()/io_write() 接硬件即可，不用改本文件。 */
-#include "project_gen.h"
-#include "app.h"
-#include "pal.h"
+LAST_IO: dict = {}
+BINDINGS = ROOT / "tools" / "catalog" / "io_bindings.yaml"
+AUTO_MARK = "/* dz-io-auto "
 
-__attribute__((weak)) void io_read(shared_state_t *st, uint32_t now_ms) {{ (void)st; (void)now_ms; }}
-__attribute__((weak)) void io_write(const shared_state_t *st, coord_state_t cs, uint32_t now_ms) {{ (void)st; (void)cs; (void)now_ms; }}
-__attribute__((weak)) const coord_hooks_t g_project_hooks = {{ 0, 0, 0 }};
 
+def board_res(name: str | None) -> dict[str, set]:
+    f = ROOT / "boards" / str(name) / "board.yaml"
+    if not name or not f.exists():
+        return {}
+    res = (load(f).get("resources") or {})
+    return {t: {r["name"] for r in (v or []) if isinstance(r, dict) and "name" in r} for t, v in res.items()}
+
+
+def plan_io(p: dict, res: dict[str, set], rules: list[dict]):
+    """每个需要 io 接的字段 → 唯一驱动绑定 / TODO（没规则、板上缺资源、有歧义）。"""
+    state = p.get("state") or {}
+    binds, groups = [], {}
+    for blk, d in state.items():
+        owner = (d or {}).get("owner")
+        if owner == "coord":
+            continue
+        direction = "read" if owner == "io" else "write"
+        for f in (d or {}).get("fields") or []:
+            fn = f["name"]
+            hits, missing = [], []
+            for r in rules:
+                if r["dir"] != direction:
+                    continue
+                m = re.match(r["field"], fn)
+                if not m:
+                    continue
+                x = (m.groupdict().get("x") or "").upper()
+                need = {t: [n.replace("{X}", x) for n in ns] for t, ns in (r.get("res") or {}).items()}
+                lack = [f"{t}.{n}" for t, ns in need.items() for n in ns if n not in res.get(t, set())]
+                (missing if lack else hits).append((r, need, x, lack))
+            if len(hits) == 1:
+                r, need, x, _ = hits[0]
+                binds.append({"block": blk, "field": fn, "driver": r["driver"], "res": need, "x": x})
+            elif len(hits) > 1:
+                why = "有歧义，板上同时有 " + " / ".join(
+                    f"{h[0]['driver']}({', '.join(n for ns in h[1].values() for n in ns)})" for h in hits) \
+                    + "：在 tools/catalog/io_bindings.yaml 或板子资源里留一个"
+                groups.setdefault((blk, why), []).append(fn)
+            elif missing:
+                why = "板上缺 " + "；".join(f"{h[0]['driver']} 要的 {', '.join(h[3])}" for h in missing)
+                groups.setdefault((blk, why), []).append(fn)
+            elif direction == "read":
+                groups.setdefault((blk, "没有接线规则：在 io_read() 里自己填，或给 io_bindings.yaml 加一条"), []).append(fn)
+    todo = [f"{blk}.{{{', '.join(fs)}}}：{why}" if len(fs) > 1 else f"{blk}.{fs[0]}：{why}" for (blk, why), fs in groups.items()]
+    return binds, todo
+
+
+def _c_io(p: dict, binds: list[dict], todo: list[str], board: str) -> tuple[str, list[str]]:
+    pn = {x["name"]: x for x in p.get("params") or []}
+    confirm = []
+    inc, decl, init, rd, wr = set(), [], [], [], []
+    by = {}
+    for b in binds:
+        by.setdefault((b["driver"], b["x"]), []).append(b)
+    for (drv, x), bs in by.items():
+        r = bs[0]["res"]
+        g = " && ".join(f"defined(RES_{t.upper()}_{n})" for t, ns in r.items() for n in ns)
+        def P(t, i=0):
+            return f"RES_{t.upper()}_{r[t][i]}"
+        lo = x.lower()
+        if drv == "motor_dc":
+            inc.add("motor_dc.h")
+            decl.append(f"#if {g}\nstatic motor_dc_t M_{x};\n#endif")
+            init.append(f"#if {g}\n    {{ motor_dc_cfg_t c = motor_dc_cfg_default(); c.pwm = {P('pwm')}; c.in1 = {P('gpio')}; c.in2 = {P('gpio', 1)}; c.max_duty = 0.9f;\n"
+                        f"      if ((e = motor_dc_init(&M_{x}, &c)) != DZ_OK) return e; }}\n#endif")
+            for b in bs:
+                wr.append(f"#if {g}\n    if (cs == COORD_RUNNING) motor_dc_set(&M_{x}, st->{b['block']}.{b['field']});\n"
+                          f"    else motor_dc_stop(&M_{x}, cs == COORD_ESTOP ? MOTOR_DC_BRAKE : MOTOR_DC_COAST);\n#endif")
+        elif drv == "encoder":
+            inc.add("encoder.h")
+            cpr = pn.get("counts_per_rev", {}).get("default")
+            circ = pn.get("wheel_circ_m", {}).get("default")
+            if cpr is None:
+                confirm.append("IO_COUNTS_PER_REV（编码器每圈计数，默认 1000：按实物标定）")
+            if circ is None and any(b["field"].endswith("_mps") for b in bs):
+                confirm.append("IO_WHEEL_CIRC_M（轮周长，默认 0.2 m：量一下）")
+            decl.append(f"#if {g}\nstatic encoder_t E_{x};\n#endif")
+            init.append(f"#if {g}\n    {{ encoder_cfg_t c = encoder_cfg_default(); c.enc = {P('encoder')}; c.counts_per_rev = IO_COUNTS_PER_REV; c.dt_s = 1e-3f; c.speed_lpf_hz = 30.0f;\n"
+                        f"      if ((e = encoder_init(&E_{x}, &c)) != DZ_OK) return e; }}\n#endif")
+            rd.append(f"#if {g}\n    (void)encoder_update(&E_{x});\n" + "".join(
+                f"    st->{b['block']}.{b['field']} = encoder_speed_rps(&E_{x})" + (" * IO_WHEEL_CIRC_M" if b["field"].endswith("_mps") else "") + ";\n"
+                for b in bs) + "#endif")
+        elif drv == "qd4310_angle":
+            inc.add("qd4310.h")
+            decl.append(f"#if {g}\nstatic qd4310_t BEAM_DRV;\n#endif")
+            init.append(f"#if {g}\n    if ((e = qd4310_init(&BEAM_DRV, {P('uart')}, 0u)) != DZ_OK) return e;\n    (void)qd4310_enable(&BEAM_DRV, true);\n#endif")
+            confirm.append("QD4310 电机 ID（生成时用 0）")
+            for b in bs:
+                wr.append(f"#if {g}\n    (void)qd4310_poll(&BEAM_DRV);\n    if (cs == COORD_RUNNING && now_ms % 10u == 0u) (void)qd4310_set_angle_deg(&BEAM_DRV, st->{b['block']}.{b['field']});\n#endif")
+        elif drv == "servo_angle":
+            inc.add("servo.h")
+            decl.append(f"#if {g}\nstatic servo_t SERVO_DRV;\n#endif")
+            init.append(f"#if {g}\n    {{ servo_cfg_t c = servo_cfg_default({P('pwm')}); if ((e = servo_init(&SERVO_DRV, &c)) != DZ_OK) return e; }}\n#endif")
+            for b in bs:
+                wr.append(f"#if {g}\n    if (cs == COORD_RUNNING) (void)servo_set_deg(&SERVO_DRV, st->{b['block']}.{b['field']});\n#endif")
+        elif drv in ("imu_wit", "imu_mpu6050"):
+            fl = {b["field"]: b["block"] for b in bs}
+            if drv == "imu_wit":
+                inc.add("wit_imu.h")
+                decl.append(f"#if {g}\nstatic wit_t IMU_DRV;\n#endif")
+                init.append(f"#if {g}\n    {{ wit_cfg_t c = {{ {P('uart')}, WIT_JY61P, 100u, 100u }}; if ((e = wit_init(&IMU_DRV, &c)) != DZ_OK) return e; }}\n#endif")
+                confirm.append("维特 IMU 型号（生成时按 JY61P）和安装方向（取 x 轴为前向）")
+                body = "    (void)wit_poll(&IMU_DRV, now_ms);\n"
+                vals = {"imu_ax_mps2": "wit_data(&IMU_DRV)->acc_g[0] * 9.80665f", "imu_ok": "wit_fresh(&IMU_DRV, now_ms)",
+                        "imu_rx_ms": "wit_data(&IMU_DRV)->t_angle_ms"}
+            else:
+                inc.add("mpu6050.h")
+                decl.append(f"#if {g}\nstatic mpu6050_t IMU_DRV;\n#endif")
+                init.append(f"#if {g}\n    {{ mpu6050_cfg_t c = mpu6050_cfg_default({P('i2c')}); if ((e = mpu6050_init(&IMU_DRV, &c)) != DZ_OK) return e; }}\n#endif")
+                confirm.append("MPU6050 安装方向（取 x 轴为前向）")
+                body = "    static mpu6050_data_t d; static bool ok; static uint32_t t;\n    if (now_ms % 10u == 0u) { ok = mpu6050_read(&IMU_DRV, &d) == DZ_OK; if (ok) t = now_ms; }\n"
+                vals = {"imu_ax_mps2": "d.acc[0]", "imu_ok": "ok", "imu_rx_ms": "t"}
+            rd.append(f"#if {g}\n    {{\n{body}" + "".join(f"    st->{blk}.{f} = {vals[f]};\n" for f, blk in fl.items()) + "    }\n#endif")
+    cpr = pn.get("counts_per_rev", {}).get("default", 1000)
+    circ = pn.get("wheel_circ_m", {}).get("default", 0.2)
+    head = (f"/* 自动生成（tools/subsys_kit.py，板 {board}），按 project.yaml 的读写声明 + tools/catalog/io_bindings.yaml 接线。\n"
+            " * 没改过就会被重新生成；改了就不再覆盖（生成器会提示）。io_read/io_write 是弱函数：想整个自己写就在别的 .c 里实现同名函数。\n"
+            + "".join(f" * TODO {t}\n" for t in todo) + "".join(f" * 确认 {c}\n" for c in confirm) + " */\n")
+    c = head + '#include "project_gen.h"\n#include "app.h"\n#include "pal.h"\n#include "board_gen.h"\n' + "".join(f'#include "{i}"\n' for i in sorted(inc))
+    c += f"\n#define IO_COUNTS_PER_REV {float(cpr)!r}f\n#define IO_WHEEL_CIRC_M   {float(circ)!r}f\n\n"
+    c += "\n".join(decl) + "\n\n__attribute__((weak)) const coord_hooks_t g_project_hooks = { 0, 0, 0 };\n\n"
+    c += "static dz_err_t io_auto_init(void)\n{\n    dz_err_t e = DZ_OK;\n" + "\n".join(init) + "\n    return e;\n}\n\n"
+    c += "__attribute__((weak)) void io_read(shared_state_t *st, uint32_t now_ms)\n{\n    (void)st; (void)now_ms;\n" + "\n".join(rd) + "\n}\n\n"
+    c += "__attribute__((weak)) void io_write(const shared_state_t *st, coord_state_t cs, uint32_t now_ms)\n{\n    (void)st; (void)cs; (void)now_ms;\n" + "\n".join(wr) + "\n}\n"
+    c += """
 static shared_state_t S;
 static subsys_sched_t SCHED;
 static coord_t COORD;
 
 dz_err_t app_init(void)
-{{
+{
     dz_err_t e;
+    if ((e = io_auto_init()) != DZ_OK) return e;
     if ((e = subsys_sched_init(&SCHED, g_project_subsys, PROJECT_N_SUBSYS, &S, &g_project_params[0])) != DZ_OK) return e;
     return coord_init(&COORD, &SCHED, g_project_tests, PROJECT_N_TESTS, g_project_profiles, PROJECT_N_PROFILES, &g_project_hooks);
-}}
+}
 
 void app_loop(void)
-{{
+{
     static uint32_t last = UINT32_MAX;
     uint32_t now = pal_millis();
     if (now == last) return;
@@ -248,8 +369,31 @@ void app_loop(void)
     io_read(&S, now);
     coord_poll(&COORD, now);
     io_write(&S, coord_state(&COORD), now);
-}}
-""", encoding="utf-8")
+}
+"""
+    return c, confirm
+
+
+def gen_io(dst: pathlib.Path, board: str | None = None) -> dict:
+    """生成/刷新 io/io_auto.c。返回 {todo:[…], confirm:[…], written:bool}。"""
+    import hashlib
+    p = load(dst / "project.yaml")
+    board = board or (p.get("boards") or {}).get("main")
+    rules = yaml.safe_load(BINDINGS.read_text(encoding="utf-8")) or []
+    binds, todo = plan_io(p, board_res(board), rules)
+    code, confirm = _c_io(p, binds, todo, str(board))
+    confirm = list(dict.fromkeys(confirm))
+    out = dst / "io" / "io_auto.c"
+    out.parent.mkdir(exist_ok=True)
+    if out.exists():
+        old = out.read_text(encoding="utf-8")
+        m = re.search(r"/\* dz-io-auto ([0-9a-f]{16}) \*/\n", old)
+        body = old[m.end():] if m else None
+        if not m or hashlib.sha256(body.encode()).hexdigest()[:16] != m.group(1):
+            return {"todo": todo, "confirm": confirm, "written": False, "binds": len(binds)}
+    h = hashlib.sha256(code.encode()).hexdigest()[:16]
+    out.write_text(f"{AUTO_MARK}{h} */\n" + code, encoding="utf-8")
+    return {"todo": todo, "confirm": confirm, "written": True, "binds": len(binds)}
 
 
 def remove(proj: pathlib.Path, name: str) -> list[str]:
