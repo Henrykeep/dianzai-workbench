@@ -259,16 +259,22 @@
           <div class="act"><button class="btn pri" value="save">确认</button><button class="btn" value="clear">清掉偏好</button><button class="btn" value="cancel">取消</button></div>
         </form>
       </dialog>
-      <dialog id="cfg" class="dlg">
+      <dialog id="cfg" class="dlg llm">
         <form method="dialog" id="cfg-form">
-          <h3>大模型设置</h3>
-          <p class="hint">任何 OpenAI 兼容接口都行。Key 只存在本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回传界面。没网时“分析阶跃”照样能用。</p>
-          <label>服务商<select id="cfg-prov" class="in"></select></label>
-          <label>接口地址<input id="cfg-url" class="in"></label>
-          <label>模型<input id="cfg-model" class="in"></label>
-          <label>工程仓库（Agent 改文件、跑 make check、git 提交的地方）<input id="cfg-repo" class="in" placeholder="D:\\dianzai\\my-project"></label>
-          <label>API Key<input id="cfg-key" class="in" type="password" autocomplete="off"></label>
-          <div class="act"><button class="btn pri" value="save">保存</button><button class="btn" value="cancel">取消</button></div>
+          <header class="lh"><span class="glyph"><i data-lucide="sparkles"></i></span><div>
+            <h3 id="cfg-title">接上大模型</h3>
+            <p class="hint">任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。不接也能用：离线规则助手照样会出卡、调参、评分。</p></div></header>
+          <div class="sec">1 · 服务商</div>
+          <div id="cfg-provs" class="provs" role="radiogroup"></div>
+          <div class="sec">2 · 接口</div>
+          <label>接口地址<input id="cfg-url" class="in mono" placeholder="https://…/v1" spellcheck="false"></label>
+          <div class="row2"><label>模型<input id="cfg-model" class="in mono" spellcheck="false"></label>
+            <label>API Key<span class="keyw"><input id="cfg-key" class="in mono" type="password" autocomplete="off" spellcheck="false"><button type="button" class="ib" id="cfg-eye" title="显示 / 隐藏"><i data-lucide="eye"></i></button></span></label></div>
+          <details class="adv"><summary>工程仓库（可选）</summary>
+            <label>Agent 改文件、跑 make check、git 提交的地方<input id="cfg-repo" class="in mono" placeholder="D:\dianzai\my-project"></label></details>
+          <div class="sec">3 · 试一下</div>
+          <div class="testrow"><button type="button" class="btn" id="cfg-test"><i data-lucide="plug-zap"></i>测试连接</button><div id="cfg-st" class="cst" aria-live="polite">还没测试</div></div>
+          <div class="act"><button class="btn" value="cancel" id="cfg-later">先用离线助手</button><button class="btn pri" value="save" id="cfg-save">保存</button></div>
         </form>
       </dialog>
 

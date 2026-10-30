@@ -67,7 +67,25 @@ def public_config(cfg: dict | None = None) -> dict:
     cfg = cfg or load_config()
     k = cfg.get("api_key", "")
     return {"provider": cfg["provider"], "base_url": cfg["base_url"], "model": cfg["model"],
-            "repo": cfg.get("repo", ""), "has_key": bool(k), "key_hint": ("…" + k[-4:]) if len(k) > 8 else "", "providers": PROVIDERS}
+            "repo": cfg.get("repo", ""), "has_key": bool(k), "key_hint": ("…" + k[-4:]) if len(k) > 8 else "", "providers": PROVIDERS,
+            "configured": config_path().exists() and bool(k or cfg["provider"] == "ollama")}
+
+
+def test_connection(form: dict, timeout: float = 15) -> dict:
+    """用表单里（还没保存）的地址/模型/Key 发一句最小的对话，回报通不通、多久、模型回了什么。不写配置。"""
+    import time
+    cfg = load_config()
+    for k in ("provider", "base_url", "model", "api_key"):
+        if form.get(k):
+            cfg[k] = form[k]
+    t0 = time.monotonic()
+    try:
+        m = OpenAICompat(cfg, timeout=timeout).chat([{"role": "user", "content": "只回复两个字：收到"}])
+    except LLMError as e:
+        return {"ok": False, "message": e.message, "fix": e.fix}
+    except (KeyError, IndexError, ValueError, TypeError) as e:
+        return {"ok": False, "message": f"接口回的不是 OpenAI 格式：{e!r}"[:200], "fix": "地址一般以 /v1 结尾；确认服务商支持 /chat/completions"}
+    return {"ok": True, "model": cfg["model"], "ms": round((time.monotonic() - t0) * 1000), "reply": str(m.get("content") or "")[:80]}
 
 
 class OpenAICompat:
@@ -93,6 +111,11 @@ class OpenAICompat:
                 return json.loads(r.read())["choices"][0]["message"]
         except urllib.error.HTTPError as e:
             txt = e.read().decode(errors="replace")[:300]
+            try:     # 多数服务回 {"error":{"message":…}}：只给人看那句话
+                err = json.loads(txt).get("error")
+                txt = (err.get("message") if isinstance(err, dict) else err) or txt
+            except (ValueError, AttributeError):
+                pass
             fix = {401: "Key 不对或过期", 402: "余额不足", 404: "模型名或地址不对", 429: "请求太频繁/额度用完，稍后再试"}.get(e.code, "")
             raise LLMError(f"模型服务返回 {e.code}：{txt}", fix) from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:

@@ -614,3 +614,36 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 .card.action .act .after{flex:1;font-size:var(--t-xs);color:var(--muted);line-height:1.4}
 /* 向导页（项目/烧录/标定/封箱）右栏就是主助手：加宽，卡片里的旧→新放得下 */
 .app[data-step="项目"],.app[data-step="烧录"],.app[data-step="标定"],.app[data-step="封箱"]{--w-side:420px}
+
+/* ---- 大模型设置 / 首次引导（v8） ---- */
+.dlg.llm{width:560px;max-height:calc(100vh - 96px);overflow:auto;padding:0;background:var(--s1);box-shadow:var(--sh-pop),inset 0 0 0 1px var(--line)}
+.dlg.llm form{gap:var(--sp2);padding:var(--sp5)}
+.dlg.llm .lh{display:flex;gap:var(--sp3);align-items:flex-start;margin-bottom:var(--sp2)}
+.dlg.llm .glyph{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:var(--r);background:var(--acc-bg);color:var(--acc)}
+.dlg.llm .glyph svg{width:18px;height:18px}
+.dlg.llm h3{font-size:var(--t-lg,var(--t-md));margin-bottom:var(--sp1)}
+.dlg.llm .hint{font-size:var(--t-sm);color:var(--muted);line-height:1.6}
+.dlg.llm .sec{margin-top:var(--sp3);font:500 var(--t-xs)/1 var(--f-sans);letter-spacing:.06em;color:var(--dim)}
+.dlg.llm .provs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:var(--sp2)}
+.dlg.llm .pv{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:var(--sp2) var(--sp3);border:0;border-radius:var(--r-sm);background:var(--s2);color:var(--text);text-align:left;cursor:pointer;box-shadow:inset 0 0 0 1px var(--line);transition:box-shadow .15s var(--ease),background .15s var(--ease)}
+.dlg.llm .pv:hover{background:var(--s3)}
+.dlg.llm .pv b{font-weight:500;font-size:var(--t-sm);color:var(--ink)}
+.dlg.llm .pv span{font-size:var(--t-xs);color:var(--dim)}
+.dlg.llm .pv[aria-checked=true]{background:var(--acc-bg);box-shadow:inset 0 0 0 1px var(--acc)}
+.dlg.llm .pv[aria-checked=true] span{color:var(--acc)}
+.dlg.llm .row2{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp3)}
+.dlg.llm .keyw{position:relative;display:block}
+.dlg.llm .keyw .in{width:100%;padding-right:32px}
+.dlg.llm .keyw .ib{position:absolute;right:4px;top:50%;transform:translateY(-50%)}
+.dlg.llm .adv summary{cursor:pointer;font-size:var(--t-sm);color:var(--muted)}
+.dlg.llm .adv label{margin-top:var(--sp2)}
+.dlg.llm .testrow{display:flex;gap:var(--sp3);align-items:center}
+.dlg.llm .testrow .btn{flex:none;display:inline-flex;gap:var(--sp1);align-items:center}
+.dlg.llm .testrow .btn svg{width:14px;height:14px}
+.dlg.llm .cst{flex:1;min-width:0;padding:var(--sp2) var(--sp3);border-radius:var(--r-sm);background:var(--s2);font-size:var(--t-sm);color:var(--muted);line-height:1.5;overflow-wrap:anywhere}
+.dlg.llm .cst.ok{background:var(--ok-bg);color:var(--ok)}
+.dlg.llm .cst.bad{background:var(--crit-bg);color:var(--crit)}
+.dlg.llm .cst .fix{color:var(--text)}
+.dlg.llm .cst .spin{display:inline-block;width:10px;height:10px;margin-right:var(--sp2);border-radius:50%;border:2px solid var(--line2);border-top-color:var(--acc);animation:cspin .8s linear infinite;vertical-align:-1px}
+@keyframes cspin{to{transform:rotate(360deg)}}
+.dlg.llm .act{margin-top:var(--sp3);padding-top:var(--sp3);border-top:1px solid var(--line)}

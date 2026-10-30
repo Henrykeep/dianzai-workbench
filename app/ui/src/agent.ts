@@ -354,21 +354,53 @@ export function initAgent(call: Call) {
   };
 
   // ---------------------------------------------------------------- 设置
-  let provs: Record<string, { base_url: string; model: string }> = {};
-  $("ag-cfg").onclick = async () => {
+  // 首次没配 Key 时自动弹一次；可随时从“大模型设置”再打开。表单没保存前“测试连接”用的是表单里的值。
+  type Prov = { base_url: string; model: string; name: string };
+  let provs: Record<string, Prov> = {}, prov = "deepseek";
+  const fv = (id: string) => $<HTMLInputElement>(id).value.trim();
+  const form = () => ({ provider: prov, base_url: fv("cfg-url"), model: fv("cfg-model"), api_key: fv("cfg-key") });
+  function cfgSt(cls: string, html: string) { const el = $("cfg-st"); el.className = "cst " + cls; el.innerHTML = html; }
+  function pickProv(k: string, fill: boolean) {
+    prov = k;
+    document.querySelectorAll<HTMLElement>("#cfg-provs .pv").forEach(b => b.setAttribute("aria-checked", String(b.dataset.k === k)));
+    if (fill && provs[k]) { $<HTMLInputElement>("cfg-url").value = provs[k].base_url; $<HTMLInputElement>("cfg-model").value = provs[k].model; }
+    cfgSt("", "还没测试");
+  }
+  async function openCfg(first = false) {
     const c = await call("agent_config").catch(() => null);
     if (!c) return;
     provs = c.providers;
-    $("cfg-prov").innerHTML = Object.keys(provs).map(k => `<option ${k === c.provider ? "selected" : ""}>${esc(k)}</option>`).join("");
+    $("cfg-title").textContent = first ? "接上大模型（第一次用）" : "大模型设置";
+    $("cfg-provs").innerHTML = Object.entries(provs).map(([k, p]) =>
+      `<button type="button" class="pv" role="radio" data-k="${esc(k)}"><b>${esc(p.name)}</b><span class="mono">${esc(p.model || "自己填")}</span></button>`).join("");
+    document.querySelectorAll<HTMLElement>("#cfg-provs .pv").forEach(b => b.onclick = () => pickProv(b.dataset.k!, true));
+    pickProv(c.provider, false);
     $<HTMLInputElement>("cfg-url").value = c.base_url; $<HTMLInputElement>("cfg-model").value = c.model; $<HTMLInputElement>("cfg-repo").value = c.repo ?? "";
-    const key = $<HTMLInputElement>("cfg-key"); key.value = ""; key.placeholder = c.has_key ? `已保存 ${c.key_hint}（留空 = 不改）` : "sk-…（Ollama 本地可留空）";
+    const key = $<HTMLInputElement>("cfg-key"); key.value = ""; key.type = "password";
+    key.placeholder = c.has_key ? `已保存 ${c.key_hint}（留空 = 不改）` : "sk-…（Ollama 本地可留空）";
+    cfgSt(c.configured ? "ok" : "", c.configured ? `已配置 · ${esc(c.model)}` : "还没测试");
     $<HTMLDialogElement>("cfg").show();   // 非模态：设置开着时急停按钮也必须点得到
+  }
+  $("ag-cfg").onclick = () => openCfg();
+  $("cfg-eye").onclick = () => { const k = $<HTMLInputElement>("cfg-key"); k.type = k.type === "password" ? "text" : "password"; };
+  ["cfg-url", "cfg-model", "cfg-key"].forEach(id => $(id).oninput = () => cfgSt("", "改过了，再测一次"));
+  $("cfg-test").onclick = async () => {
+    const b = $<HTMLButtonElement>("cfg-test"); b.disabled = true; cfgSt("busy", `<span class="spin"></span>正在连 ${esc(fv("cfg-url"))} …`);
+    const r = await call("agent_config_test", { form: form() }).catch((e: Error) => ({ ok: false, message: String(e.message || e), fix: "" }));
+    b.disabled = false;
+    cfgSt(r.ok ? "ok" : "bad", r.ok
+      ? `<b>通了</b> · ${esc(r.model)} · ${r.ms} ms${r.reply ? ` · 回复“${esc(r.reply)}”` : ""}`
+      : `<b>没通</b> · ${esc(r.message)}${r.fix ? `<br><span class="fix">→ ${esc(r.fix)}</span>` : ""}`);
   };
-  $("cfg-prov").onchange = () => { const p = provs[$<HTMLSelectElement>("cfg-prov").value]; if (p) { $<HTMLInputElement>("cfg-url").value = p.base_url; $<HTMLInputElement>("cfg-model").value = p.model; } };
   $<HTMLDialogElement>("cfg").onclose = () => {
+    sessionStorage.setItem("dz-cfg-seen", "1");
     if ($<HTMLDialogElement>("cfg").returnValue !== "save") return;
-    call("agent_config", { set: { provider: $<HTMLSelectElement>("cfg-prov").value, base_url: $<HTMLInputElement>("cfg-url").value, model: $<HTMLInputElement>("cfg-model").value, repo: $<HTMLInputElement>("cfg-repo").value, api_key: $<HTMLInputElement>("cfg-key").value } });
+    const done = add(`<span class="lbl">大模型</span>保存中…`, "msg bot");
+    call("agent_config", { set: { ...form(), repo: fv("cfg-repo") } })
+      .then(() => { done.innerHTML = `<span class="lbl">大模型</span>已保存：${esc(fv("cfg-model"))}。下一句话起用它回答。`; })
+      .catch(() => done.remove());
   };
+  call("agent_config").then(c => { if (c && !c.configured && !sessionStorage.getItem("dz-cfg-seen")) openCfg(true); }).catch(() => {});
 
   // ---------------------------------------------------------------- 计划 / 撤销
   let planEl: HTMLElement | null = null;
