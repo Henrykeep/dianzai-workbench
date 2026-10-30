@@ -817,3 +817,6 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .work [data-page] .btn.pri,.work .tunebar .btn.pri{background:var(--s3);color:var(--ink);box-shadow:none}
 /* 项目页：提交按钮由顶部主按钮代理（同一入口 pj-ask-go），表单内只留输入框和「打开示例」；回车也可提交 */
 #pj-ask-go{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
+.lk-banner{order:-3;padding:var(--sp2) var(--sp4);font-size:var(--t-sm);border-bottom:1px solid var(--line);background:var(--bg2);color:var(--ink)}
+.lk-banner.warn{background:var(--warn-bg);color:var(--warn)}
+#port.attn{box-shadow:0 0 0 2px var(--warn)}
