@@ -1,7 +1,8 @@
 """OpenAI 兼容 Chat Completions 客户端（只用标准库）。
 
 国内外主流服务都提供 OpenAI 兼容端点，所以一个客户端覆盖全部；换服务 = 换 base_url + model。
-密钥只存本机 ~/.dzbench/config.json（权限 0600），环境变量 DZBENCH_API_KEY 优先；永远不写进仓库/日志/界面回显。
+密钥只存本机 ~/.dzbench/config.json（权限 0600），环境变量 DZ_LLM_API_KEY / DZ_LLM_BASE_URL 优先
+（旧名 DZBENCH_API_KEY 兼容一个版本）；永远不写进仓库/日志/界面回显。
 
 可靠性：流式输出（逐字推给界面）、429/5xx/断网指数退避重试、token 用量上报（填了单价才算钱，不编价格）、
 不支持原生 tool_calls 的模型走 JSON 兜底（工具表写进提示词，模型回一段 JSON）、云端连不上自动切本地 Ollama。
@@ -16,6 +17,19 @@ import time
 import urllib.error
 import urllib.request
 from typing import Callable
+
+from .. import __version__
+
+USER_AGENT = f"dzbench/{__version__}"     # 有的网关（Cloudflare 1010）拒绝 urllib 默认 UA
+_warned: set[str] = set()
+
+
+def _deprecate(old: str, new: str) -> None:
+    """旧配置名提示一次（只说名字，不带值）。"""
+    if old not in _warned:
+        _warned.add(old)
+        import sys
+        print(f"[dzbench] {old} 已弃用，下个版本移除；请改用 {new}", file=sys.stderr)
 
 PROVIDERS = {
     "deepseek": {"base_url": "https://api.deepseek.com/v1", "model": "deepseek-chat", "name": "DeepSeek"},
@@ -57,13 +71,47 @@ def load_config() -> dict:
     cfg.setdefault("local_model", PROVIDERS["ollama"]["model"])
     cfg.setdefault("failover", True)
     cfg.setdefault("tool_mode", "auto")
-    if os.environ.get("DZBENCH_API_KEY"):          # 评测/CI 用：只在本机环境变量里，不落盘
+    if os.environ.get("DZ_LLM_API_KEY"):
+        cfg["api_key"] = os.environ["DZ_LLM_API_KEY"]
+    elif os.environ.get("DZBENCH_API_KEY"):          # 旧名：兼容一个版本
+        _deprecate("DZBENCH_API_KEY", "DZ_LLM_API_KEY")
         cfg["api_key"] = os.environ["DZBENCH_API_KEY"]
-    if os.environ.get("DZBENCH_BASE_URL"):
+    if os.environ.get("DZ_LLM_BASE_URL"):
+        cfg.update(provider="custom", base_url=os.environ["DZ_LLM_BASE_URL"])
+    elif os.environ.get("DZBENCH_BASE_URL"):
+        _deprecate("DZBENCH_BASE_URL", "DZ_LLM_BASE_URL")
         cfg.update(provider="custom", base_url=os.environ["DZBENCH_BASE_URL"])
     if os.environ.get("DZBENCH_MODEL"):
         cfg["model"] = os.environ["DZBENCH_MODEL"]
     return cfg
+
+
+def _redact(text: str, key: str) -> str:
+    text = text.replace(key, "***") if key and len(key) >= 4 else text
+    return re.sub(r"(sk-|Bearer\s+)[A-Za-z0-9_\-\.]{6,}", r"\1***", text)
+
+
+ENV_HINT = "检查 DZ_LLM_API_KEY / DZ_LLM_BASE_URL（或大模型设置里的 Key 和地址）"
+
+
+def http_error(code: int, detail: str, key: str = "") -> "LLMError":
+    """HTTP 错误 → “原因 + 怎么解决”。detail 是服务端原话（已去密钥），附在原因后面方便排查。"""
+    if code == 401:
+        why, fix = "密钥无效或已过期", f"Key 不对或过期：{ENV_HINT}"
+    elif code == 402:
+        why, fix = "账户余额不足", "到服务商控制台充值，或改用本地 Ollama"
+    elif code == 403:
+        why, fix = "网关拒绝请求，可能是密钥无效、没有该模型权限或被网关拦截", ENV_HINT + "；仍不行就换个服务地址或联系服务商"
+    elif code == 404:
+        why, fix = "地址或模型名不对", "地址一般以 /v1 结尾；检查 DZ_LLM_BASE_URL 和模型名"
+    elif code == 429:
+        why, fix = "请求太频繁或额度用完", "稍后再试，或到服务商控制台查看额度"
+    elif code >= 500:
+        why, fix = "模型服务暂时故障", "稍后重试；持续出错就换服务商或切本地 Ollama"
+    else:
+        why, fix = "请求被拒绝", "检查模型名和参数；" + ENV_HINT
+    detail = _redact(detail, key).strip()
+    return LLMError(f"模型服务返回 {code}：" + (f"{detail[:200]}（{why}）" if detail else why), fix)
 
 
 def save_config(update: dict) -> dict:
@@ -100,7 +148,7 @@ def local_config(cfg: dict) -> dict:
 
 def _req(url: str, body: dict | None = None, key: str = "", timeout: float = 15):
     # 带上自己的 User-Agent：不少中转站（Cloudflare 后面）直接 403 拦默认的 "Python-urllib"（error code 1010）
-    h = {"Content-Type": "application/json", "User-Agent": "dzbench-agent/1 (OpenAI-compatible client)", "Accept": "application/json, text/event-stream"} | ({"Authorization": f"Bearer {key}"} if key else {})
+    h = {"Content-Type": "application/json", "User-Agent": USER_AGENT, "Accept": "application/json, text/event-stream"} | ({"Authorization": f"Bearer {key}"} if key else {})
     return urllib.request.urlopen(urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=h), timeout=timeout)
 
 
@@ -250,6 +298,7 @@ class OpenAICompat:
                                                                "parameters": t["input_schema"]}} for t in tools]
         if self.stream:
             body |= {"stream": True, "stream_options": {"include_usage": True}}
+        t0 = time.monotonic()
         try:
             with _req(c["base_url"].rstrip("/") + "/chat/completions", body, c.get("api_key") or "ollama", self.timeout) as r:
                 if "text/event-stream" in (r.headers.get("Content-Type") or ""):
@@ -264,18 +313,18 @@ class OpenAICompat:
                 txt = (err.get("message") if isinstance(err, dict) else err) or txt
             except (ValueError, AttributeError):
                 pass
-            txt = str(txt)[:200]
-            fix = {401: "Key 不对或过期", 402: "余额不足", 404: "模型名或地址不对", 429: "请求太频繁/额度用完，稍后再试"}.get(e.code, "")
-            err = LLMError(f"模型服务返回 {e.code}：{txt}", fix)
+            err = http_error(e.code, str(txt), c.get("api_key") or "")
             err.retry, err.code = e.code in self.RETRY_CODES, e.code
             ra = (e.headers.get("Retry-After") or "") if e.headers else ""
             err.retry_after = float(ra) if ra.replace(".", "", 1).isdigit() else None
             raise err from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:
-            err = LLMError(f"连不上模型服务：{getattr(e, 'reason', e)}", "比赛现场可能没网：调参/示波/阶跃测试不受影响；要 Agent 就开本地 Ollama", down=True)
+            reason = getattr(e, "reason", e)
+            kind = "请求超时" if isinstance(reason, TimeoutError) or "timed out" in str(reason) else "网络不通或地址不对"
+            err = LLMError(f"连不上模型服务（{kind}）：{_redact(str(reason), c.get('api_key') or '')}", "检查网络和 DZ_LLM_BASE_URL；比赛现场可能没网：调参/示波/阶跃测试不受影响，要 Agent 就开本地 Ollama", down=True)
             err.retry = True
             raise err from e
-        self._account(usage)
+        self._account(usage, round((time.monotonic() - t0) * 1000))
         return m
 
     def _read_stream(self, r) -> tuple[dict, dict | None]:
@@ -310,15 +359,20 @@ class OpenAICompat:
             m["tool_calls"] = [calls[i] for i in sorted(calls)]
         return m, usage
 
-    def _account(self, usage: dict | None) -> None:
-        """累计 token；配置里填了每百万 token 单价（元）才算钱——价格各家常变，不内置。"""
+    def _account(self, usage: dict | None, elapsed_ms: int = 0) -> None:
+        """累计 token；配置里填了每百万 token 单价（元）才算钱——价格各家常变，不内置。
+        每次回复都发 agent_usage，带 usage={elapsed_ms[, tokens_in, tokens_out]}：服务没回 token 数时只有耗时。"""
+        u = {"elapsed_ms": elapsed_ms}
+        if usage:
+            u |= {"tokens_in": int(usage.get("prompt_tokens") or 0), "tokens_out": int(usage.get("completion_tokens") or 0)}
         if not usage:
+            self.emit({"type": "agent_usage", "model": self.name, **self.usage, "cost": None, "usage": u})
             return
         self.usage["prompt"] += int(usage.get("prompt_tokens") or 0)
         self.usage["completion"] += int(usage.get("completion_tokens") or 0)
         pi, po = self.cfg.get("price_in"), self.cfg.get("price_out")
         cost = (self.usage["prompt"] * float(pi) + self.usage["completion"] * float(po)) / 1e6 if pi not in (None, "") and po not in (None, "") else None
-        self.emit({"type": "agent_usage", "model": self.name, **self.usage, "cost": cost})
+        self.emit({"type": "agent_usage", "model": self.name, **self.usage, "cost": cost, "usage": u})
 
 
 class Failover:
