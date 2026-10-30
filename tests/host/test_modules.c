@@ -108,7 +108,7 @@ TEST(ssd1306_fb_text_flush)
 static ball_beam_cfg_t bb_cfg(void)
 {
     ball_beam_cfg_t c = { 0.55f, 0.20f, 0.07f, 0.72f, 320.0f, 0.016f, 0.055f, 55.0f, 2.5f, 0.5f,
-                          5.5f, 220.0f, 120u, 600u, 1.0f, 0u, 0.0f, 0u, 0.0f, 0.0f, 0.0f, 0u, {0}, {0} };
+                          5.5f, 220.0f, 120u, 600u, 1.0f, 0u, 0.0f, 0u, 0.0f, 0.0f, 0.0f, 0u, {0}, {0}, 0.0f, 0.0f };
     return c;
 }
 
