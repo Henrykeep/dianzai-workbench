@@ -16,6 +16,7 @@ jobs:
       - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
       - run: pip install -r app/sidecar/requirements.txt
+      - run: bash tools/fetch_third_party.sh f4 f1 mspm0   # 从零新建测试要 HAL 模板
       - run: make BOARD=host-sim APP=car_2wd && make BOARD=host-sim APP=2026H_ball
       - run: python -m pytest -q app/sidecar/tests   # e2e 需要 host-sim（make + cc，ubuntu 自带）
   win-repo:                   # repo\ + mingw 交叉编的仿真板（Windows runner 上没有现成 make + gcc 组合）
@@ -43,7 +44,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with: { name: dz-repo, path: app/dz-repo }
       - name: 单元测试（Windows 上自动跳过仿真 e2e）
+        shell: bash
         run: |
+          bash tools/fetch_third_party.sh f4 f1 mspm0
           pip install -r app/sidecar/requirements.txt pyinstaller
           python -m pytest -q app/sidecar/tests
       - name: 打包侧车
