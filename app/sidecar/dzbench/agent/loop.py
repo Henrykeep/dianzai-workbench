@@ -93,6 +93,8 @@ TOOLS = [
     {"name": "board_memory", "description": "这块板（按数据格式+芯片 ID 区分）跨会话的记忆：以前改过的参数、实验结论、撤销记录",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "read_symbol", "description": "查 ELF 里变量/函数的地址和大小", "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
+    {"name": "progress_get", "description": "项目进度（只读，与界面进度条同一接口 progress.get）：读题→工程→仿真→上板联调→调参→评分→封箱 各步状态、当前步骤、下一步动作和阻塞项（每项带 fix_action）",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "project_state", "description": "项目流程状态（只读）：不给 code 列出所有项目和板卡；给 code 返回 ①读题 ②方案 ③导入 ④分配 ⑤生成 哪步已完成、下一步和它需要的输入、评分项数与已有证据数",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string", "description": "题号，即 examples/ 下的目录名"}}}},
     {"name": "flow_preview", "description": "跑项目页某一步的预览（只写暂存区，不动仓库）：step=req|scheme|import|alloc|gen。req 要 src，import 要 project，gen 可带 board/app/uvprojx",
@@ -139,7 +141,7 @@ assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
 # 思路：Gemini CLI 的 plan 策略、Cline Plan/Act、OpenCode build/plan、firework 的分任务提示词；模式只“收窄”工具，
 # 审批分级（risk.py）照旧独立生效。没有“全自动”模式。
 _READ = {"read_telemetry", "list_params", "step_analysis", "tune_context", "board_memory", "repo_map", "list_files", "read_file",
-         "read_symbol", "decode_hardfault", "build_log", "update_plan", "observe", "project_state", "score_items",
+         "read_symbol", "decode_hardfault", "build_log", "update_plan", "observe", "project_state", "progress_get", "score_items",
          "polarity_check", "fft", "wave_measure"}
 MODES = {
     "general": {"name": "通用", "tools": None, "prompt": ""},

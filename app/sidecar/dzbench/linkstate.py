@@ -11,6 +11,8 @@ board 状态机（只看侧车自己的事实：串口是否打开、是否在�
 判定用“任一合法帧”而不是只看心跳：板子心跳 500 ms 一帧，偶发 CRC 坏帧或 USB 突发延迟
 就可能连丢 3 个心跳；遥测还在来就说明板子活着，不应报断开。
 
+mode 字段：板子运行模式 tethered（联机）/ standalone（脱机），只在固件上报时给出，否则为 null。
+
 sidecar 字段：侧车能发出这条事件就说明它活着，恒为 "ok"。UI 侧规则：WebSocket 断开，
 或超过 stale_after_ms 没收到新的 link.state，即视为 "unresponsive"，此时忽略 board 字段。
 """
@@ -20,7 +22,8 @@ import time
 
 LOST_AFTER_S = 2.0        # 4 个板子心跳周期
 PUSH_EVERY_S = 1.0        # 状态不变时的保活推送间隔
-STALE_AFTER_MS = 3000     # UI 超过这么久没收到 link.state = 侧车无响应
+STALE_AFTER_MS = 3000
+MODES = ("tethered", "standalone")   # 板子运行模式（联机 / 脱机），固件上报才有；没报 = mode: null     # UI 超过这么久没收到 link.state = 侧车无响应
 
 
 def board_state(now: float, port_open: bool, reconnecting: bool, t_connect: float, last_frame: float) -> str:
@@ -44,13 +47,15 @@ class LinkState:
         self.last: dict | None = None     # 最近一次推送的内容（hello 里给新连上的窗口）
 
     def update(self, now: float, *, port: str, port_open: bool, reconnecting: bool,
-               t_connect: float, last_frame: float, reason: str = "") -> dict | None:
+               t_connect: float, last_frame: float, reason: str = "", mode: str | None = None) -> dict | None:
         board = board_state(now, port_open, reconnecting, t_connect, last_frame)
         if board == "lost" and not reason:
             reason = "transport_closed" if reconnecting else "no_frames"
         if board not in ("lost", "disconnected"):
             reason = ""
-        key = (board, port if board != "disconnected" else "", reason)
+        if mode not in MODES:
+            mode = None
+        key = (board, port if board != "disconnected" else "", reason, mode)
         changed = key != self._key
         if changed:
             self._key, self._since_ms = key, int(time.time() * 1000)
@@ -62,5 +67,5 @@ class LinkState:
         self.last = {"type": "link.state", "seq": self._seq, "sidecar": "ok", "board": board,
                 "port": key[1] or None, "since": self._since_ms,
                 "last_rx_ms": int((now - last_frame) * 1000) if heard else None,
-                "reason": reason or None, "stale_after_ms": STALE_AFTER_MS}
+                "reason": reason or None, "mode": mode, "stale_after_ms": STALE_AFTER_MS}
         return self.last

@@ -10,14 +10,14 @@ import pytest
 
 APP = pathlib.Path(__file__).resolve().parents[2]
 UI_SRC = "\n".join(p.read_text(encoding="utf-8") for p in (APP / "ui/src").glob("*.ts"))
-SERVER_OPS = set(re.findall(r'op == "([a-z_]+)"', (APP / "sidecar/dzbench/server.py").read_text(encoding="utf-8")))
+SERVER_OPS = set(re.findall(r'op == "([a-z_.]+)"', (APP / "sidecar/dzbench/server.py").read_text(encoding="utf-8")))
 # 不在界面上、故意保留的 op（脚本 / 测试接口）：单一来源 = docs/dev/entrypoints.yaml script_ops
 import yaml  # noqa: E402
 SCRIPT_ONLY = yaml.safe_load((APP.parent / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["script_ops"]
 
 
 def ui_ops():
-    return set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_]+)"', UI_SRC))
+    return set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_.]+)"', UI_SRC))
 
 
 def test_every_ui_op_is_served():
