@@ -29,6 +29,8 @@ def regions(html):
         for tag, a in reversed(stack):
             if a.get("data-page"):
                 return "page:" + a["data-page"]
+            if tag == "aside" and "nav" in (a.get("class") or "").split():
+                return "nav"                  # 左侧导航（流程步骤 #steps、下一步提示）
             if a.get("id") == "toolbox-m":
                 return "toolbox"
             if a.get("id") == "trouble-m":
@@ -66,6 +68,8 @@ def placed(at, region):
         return True                       # 对话框里的按钮跟着打开它的入口走
     if kind == "toolbox":
         return region == "toolbox"
+    if kind == "nav":
+        return region == "nav"
     if kind == "always":
         return region == "trouble" if name == "排障" else region in ("header", "footer")
     if region.startswith("page:"):
@@ -90,7 +94,7 @@ def load_sources():
 
 def check(spec, src):
     err = []
-    places = {f"step:{s}" for s in spec["steps"]} | {f"toolbox:{t}" for t in spec["toolbox"]} | {f"always:{a}" for a in spec["always"]}
+    places = {f"step:{s}" for s in spec["steps"]} | {f"toolbox:{t}" for t in spec["toolbox"]} | {f"always:{a}" for a in spec["always"]} | {f"nav:{n}" for n in spec.get("nav") or []}
     shared, script = spec.get("shared_ops") or {}, spec.get("script_ops") or {}
     seen = {"id": {}, "label": {}, "ui": {}}
     claim = {}
@@ -165,8 +169,14 @@ def selftest():
     assert reg == {"h": "header", "toolbox-m": "toolbox", "t": "toolbox", "f": "page:烧录", "i": "scope"}, reg
     assert placed("step:烧录", "page:烧录") and not placed("step:封箱", "page:烧录")
     assert placed("toolbox:记录", "toolbox") and not placed("toolbox:记录", "header")
+    reg2 = regions('<aside class="nav" id="nav"><nav class="steps" id="steps"><button id="s1"></button></nav></aside><aside class="dock"><b id="d"></b></aside>')
+    assert reg2 == {"nav": "nav", "steps": "nav", "s1": "nav", "d": "dock"}, reg2
+    assert placed("nav:进度", "nav") and not placed("nav:进度", "header") and not placed("always:连接", "nav") and not placed("step:调参", "nav")
+    sn = copy.deepcopy(base); sn["nav"] = ["进度"]; sn["actions"][1].update(at="nav:进度")
+    assert any("界面上 #y 却在" in x for x in check(sn, {**src, "regions": {"x": "page:调参", "y": "header"}})), "nav 位置不符要报"
+    assert not [x for x in check(sn, {**src, "regions": {"x": "page:调参", "y": "nav"}}) if "z" not in x], "nav 位置相符不报"
     assert placed("always:急停", "header") and not placed("always:急停", "dock") and placed("step:调参", "dock") and not placed("step:烧录", "dock")
-    print(f"check_entrypoints selftest: {len(cases) + 6} ok")
+    print(f"check_entrypoints selftest: {len(cases) + 10} ok")
 
 
 def main():

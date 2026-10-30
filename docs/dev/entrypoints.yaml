@@ -2,12 +2,13 @@
 # tools/check_entrypoints.py 在 make check 里检查：动作/标签/界面元素不重复；侧车每个 op 有界面或 Agent 调用方
 # （或写进 script_ops 并说明为什么）；界面调用的每个 op 都在这里登记；Agent 工具都有归属步。
 # 依据：/workspace/walk/LOGIC_AUDIT.md §3.1（时间线导航）、§3.3（入口唯一 + op 无孤儿）。
-# at 写法：step:<步> | toolbox:<类> | always:<常驻件>。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
+# at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件>。ui = index.html 里的元素 id（dynamic: true = 由 ts 动态生成）。
 
 # 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（读题定方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
-always:    [急停, 连接, 排障, 进度]
+always:    [急停, 连接, 排障]
+nav:       [进度]   # 左侧导航 aside.nav：流程步骤 #steps 与下一步提示
 
 actions:
   # ── 常驻 ──
@@ -17,7 +18,7 @@ actions:
   - {id: auto_rc,      label: 自动重连,         at: always:连接, ui: auto-rc,    ops: [auto_reconnect]}
   - {id: link_health,  label: 链路心跳条,       at: always:连接, ui: hbstrip,    ops: [health, timeline]}
   - {id: alerts,       label: 告警确认,         at: always:连接, ui: al-ack, dynamic: true, ops: [alert_ack]}
-  - {id: progress,     label: 项目进度,         at: always:进度, ui: steps, dynamic: true, ops: [progress.get]}   # 左侧导航 #steps 各步状态 + 阻塞项与每页顶部 #pg-head 主按钮由 progress.ts 动态渲染（另订阅推送 progress.changed）；aside.nav 不在区域检查的识别范围内，故标 dynamic
+  - {id: progress,     label: 项目进度,         at: nav:进度,    ui: steps,      ops: [progress.get]}   # #steps 各步状态 + 阻塞项（progress.ts 渲染，另订阅推送 progress.changed）；每页顶部 #pg-head 主按钮同源
   - {id: symptoms,     label: 按症状排查,       at: always:排障, ui: sym-open,   ops: []}
   - {id: doctor,       label: 自检,             at: always:排障, ui: doctor,     ops: [doctor]}
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
