@@ -666,3 +666,8 @@ body{background:radial-gradient(1200px 600px at 50% -200px,var(--s0),var(--bg))}
 /* 对话框不超出视口：内容滚动，按钮行（主按钮/取消）始终可见 */
 .dlg{max-height:calc(100vh - 96px);overflow:auto}
 .dlg .act{position:sticky;bottom:calc(-1 * var(--sp5));margin:0 calc(-1 * var(--sp5)) calc(-1 * var(--sp5));padding:var(--sp3) var(--sp5);background:inherit;box-shadow:0 -1px 0 var(--hair)}
+/* Agent 未配置：空状态卡（代替首启弹窗） */
+.setup-card{padding:var(--sp4);border-radius:var(--r-lg);background:var(--s3);box-shadow:var(--hi),0 0 0 1px var(--hair)}
+.setup-card .ag-setup b{display:block;font:600 var(--t-md)/1.5 var(--f-sans);color:var(--ink)}
+.setup-card .ag-setup p{margin:var(--sp1) 0 0;font-size:var(--t-sm);line-height:1.6;color:var(--muted)}
+.setup-card .act{display:flex;margin-top:var(--sp3)}

@@ -440,7 +440,13 @@ export function initAgent(call: Call) {
       .then(() => { done.innerHTML = `<span class="lbl">大模型</span>已保存：${esc(fv("cfg-model"))}。下一句话起用它回答。`; })
       .catch(() => done.remove());
   };
-  call("agent_config").then(c => { if (c && !c.configured && !sessionStorage.getItem("dz-cfg-seen")) openCfg(true); }).catch(() => {});
+  // 首启不弹窗（会挡住项目/调参等不依赖 Agent 的功能）：在 Agent 栏放一张空状态卡，用户想用时再点设置
+  call("agent_config").then(c => {
+    if (!c || c.configured) return;
+    const card = add(`<div class="ag-setup"><b>Agent 还没接大模型</b><p>接上后它能读需求、写代码、给调参建议。不接也不影响：新建项目、烧录、示波、调参、评分、急停都照常可用。</p></div>
+      <div class="act"><button class="btn pri" data-r="cfg">接上大模型…</button></div>`, "card setup-card");
+    card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
+  }).catch(() => {});
 
   // ---------------------------------------------------------------- 计划 / 撤销
   let planEl: HTMLElement | null = null;
