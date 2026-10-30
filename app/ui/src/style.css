@@ -383,3 +383,13 @@ table.ledger{width:100%;border-collapse:collapse;font:400 var(--t-sm)/16px var(-
 .wz ul{margin:4px 0;padding-left:18px}.wz .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
 .wz .out{font-size:12px;opacity:.85;white-space:pre-wrap}
 .doc.sym{max-height:60vh;overflow:auto}.doc.sym li{margin:6px 0}.doc.sym .row{display:flex;gap:6px;margin-top:3px}
+
+/* 项目页引导流程 */
+.pflow{display:flex;flex-direction:column;gap:10px;align-self:stretch}
+.pf-card{border:1px solid var(--line,#333);border-radius:var(--r,6px);padding:8px 12px}
+.pf-card h4{margin:0 0 4px;display:flex;gap:8px}.pf-card .st{color:var(--ok,#6c6);font-weight:400}
+.pf-card .row,.page>.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:4px 0}
+.pf-drop{border:1px dashed var(--line,#555);border-radius:6px;padding:14px;text-align:center;cursor:pointer;opacity:.8}.pf-drop.over{border-color:var(--brass,#c9a24a);opacity:1}
+.pf-out,.pf-pre{max-height:14em;overflow:auto;font-size:12px;background:var(--s1,#111);padding:6px;border-radius:4px;white-space:pre-wrap}
+.pf-tab{border-collapse:collapse;width:100%;font-size:12px}.pf-tab td,.pf-tab th{border-bottom:1px solid var(--line,#333);padding:2px 4px;text-align:left;vertical-align:top}
+.pf-tab .in{width:100%}.pf-ta{width:100%}

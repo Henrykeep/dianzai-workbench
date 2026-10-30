@@ -165,6 +165,13 @@ class Server:
             if op == "precontest_export":
                 r["path"] = await run(None, lambda: precontest.export(r, s, repo, snapshots.base_dir()))
             return r
+        if op == "flow_preview" or op == "flow_accept":     # 项目页引导流程：先暂存区预览，确认才写（dzbench/projflow.py）
+            from .projflow import Flow, FlowError
+            fl = Flow(self.svc.gw.root)
+            try:
+                return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
+            except FlowError as e:
+                raise LinkError(e.code, e.msg, e.fix) from None
         if op == "doctor":
             from . import doctor
             # 没指定就查侧车实际在用的工程仓库（DZBENCH_REPO / 配置 repo），以前传 None 会误报“没有 dzbench.json”（docs/29 F12）

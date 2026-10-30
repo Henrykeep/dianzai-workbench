@@ -81,5 +81,5 @@
 - [参考来源](docs/参考来源.md)
 - [待确认问题](docs/QUESTIONS.md)
 - [入口规则表](docs/dev/entrypoints.yaml)：每个用户动作的唯一入口，tools/check_entrypoints.py 检查
-- 界面按时间线 8 步分页：app/ui/src/steps.ts；标定向导 app/ui/src/calwiz.ts（docs/17 “标定向导”）；按症状排障 app/ui/src/symptoms.ts
+- 界面按时间线 8 步分页：app/ui/src/steps.ts；标定向导 app/ui/src/calwiz.ts（docs/17 “标定向导”）；按症状排障 app/ui/src/symptoms.ts；项目页引导流程 app/ui/src/projflow.ts + app/sidecar/dzbench/projflow.py（docs/17 “项目页引导流程”）
 - [更新日志](CHANGELOG.md)

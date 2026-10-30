@@ -4,7 +4,7 @@
 export const STEPS = ["项目", "烧录", "模块", "联调", "标定", "调参", "评分", "封箱"] as const;
 export type Step = typeof STEPS[number];
 export const STEP_HINT: Record<Step, string> = {
-  项目: "读题、选型、资源分配、工程生成（终端命令）",
+  项目: "读题 → 选型 → 导入工程 → 资源分配 → 生成（每步确认才写）",
   烧录: "编译 → 烧录 → 心跳核对；选调试探针",
   模块: "单模块收发：原始字节、常用指令、板端命令、ELF 变量",
   联调: "示波 / 频谱 / 事件时间线，看子系统一起跑",

@@ -19,6 +19,8 @@ actions:
   - {id: symptoms,     label: 按症状排查,       at: always:排障, ui: sym-open,   ops: []}
   - {id: doctor,       label: 自检,             at: always:排障, ui: doctor,     ops: [doctor]}
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
+  # ── 项目 ──
+  - {id: project_flow, label: 读题到生成引导,   at: step:项目,   ui: pflow,      ops: [flow_preview, flow_accept]}
   # ── 烧录 ──
   - {id: build,        label: 编译,             at: step:烧录,   ui: fw-build,   ops: [build]}
   - {id: flash,        label: 烧录,             at: step:烧录,   ui: fw-flash,   ops: [flash]}
