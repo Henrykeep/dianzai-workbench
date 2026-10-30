@@ -72,6 +72,7 @@ dz_err_t app_init(void)
         dzctl_set_reset_cause((uint32_t)rc);
         if (io_safety_init((uint32_t)rc, pal_millis())) { dzctl_estop_note(DZCTL_ES_SAFE_BOOT, pal_millis(), (float)(uint32_t)rc); coord_event(&COORD, COORD_EV_ESTOP); }   /* 看门狗/锁死复位：等人按 R */
     }
+    io_link_boot();
     return DZ_OK;
 }
 

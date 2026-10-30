@@ -1,4 +1,4 @@
-"""PSO / 分阶段搜索（PID_Helper 移植）在 FOPDT 仿真上真的变好；PSO 实机门禁；固定种子可复现。"""
+"""PSO / 分阶段搜索（净室实现）在 FOPDT 仿真上真的变好；PSO 实机门禁；固定种子可复现。"""
 import pytest
 
 from dzbench.agent.experiment import GuardError
@@ -15,7 +15,7 @@ def ev(g):
 @pytest.mark.parametrize("strategy", ["pso", "staged"])
 def test_search_improves_over_seed(strategy):
     r = optimize(ev, SEED, strategy=strategy, sim=True, iterations=12, swarm=8, rng_seed=1)
-    assert r["best"]["score"] < 0.95, r["best"]   # PSO 原版边界窄（seed 附近），只要求比初值明显好
+    assert r["best"]["score"] < 0.95, r["best"]   
     assert r["best"]["metrics"]["itae"] < r["baseline"]["metrics"]["itae"]
     assert len(r["top"]) == 3 and r["top"][0]["score"] <= r["top"][-1]["score"]
 
@@ -30,7 +30,7 @@ def test_pso_reproducible_and_blocked_on_hardware():
 
 def test_unstable_gains_scored_badly_not_crash():
     import math
-    from pid_helper_pso import score
+    from dzbench.tuning.search import score
     m = simulate_fopdt({"kp": 50, "ki": 50, "kd": 0}, **PLANT, t_end=2.0)
     assert all(math.isfinite(v) for v in m.values())
     assert score(m, ev(SEED)) > 1.0 or m["control_ripple"] > 0.05

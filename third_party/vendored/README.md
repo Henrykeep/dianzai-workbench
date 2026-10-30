@@ -10,5 +10,4 @@
 4. 仓库其它代码通过很薄的适配层调用它（例如 `app/sidecar/dzbench/tuning/`），删掉本目录时只影响那一层。
 5. 在 `docs/参考来源.md` 登记。
 
-GPL 说明：GPL-3.0 代码与本仓库其它代码一起分发（例如打进 Windows 安装包的侧车）时，整个分发物须按 GPL-3.0 提供源码。
-本仓库是开源的，满足要求；若以后要闭源分发，先删掉本目录并换掉适配层。
+许可：只收 MIT / BSD / Apache-2.0 / zlib 等宽松许可；GPL / LGPL / AGPL 或没有许可证的代码一律不进本目录（`tools/check_vendored.py` 强制）。

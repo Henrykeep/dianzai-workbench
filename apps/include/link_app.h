@@ -10,6 +10,10 @@
  *   急停：L.estop 为 true 时应用必须让输出归零（控制中断里读）。
  *   黑匣子：L.bb = &my_bb（可选）后，上位机“导出黑匣子”（DATA 0x7D len=0）由这里统一回 BB 帧。
  *   设定值约定：上位机 DATA id=1 = 1..4 个 f32 设定值（工作台阶跃 / 扫频实验就发它），存到 L.sp[]，L.sp_ms 为收到时刻。
+ *   通用运行时（dz_runtime.h，dzctl 0.12.0）默认就有：上电从 flash 读参数（读到会调一次 on_params）、上电自检上报心跳
+ *   （自检不过 → 急停锁存，原因 SELFTEST）、'W' 存参、'M' 切联机/脱机、'H' 重跑自检。应用自己的自检项在 link_app_init 之前
+ *   dzctl_selftest_register 注册。L.still 可选（默认：急停或设定值全 0 时算停稳）。
+ *   脱机模式：不要求上位机心跳、不收上位机设定值（L.sp[] 保持 0）；link_app_running(&L) 告诉应用脱机是否已按键启动。
  */
 #ifndef LINK_APP_H
 #define LINK_APP_H
@@ -21,6 +25,7 @@
 #include "dz_compiler.h"
 #include "blackbox.h"
 #include "link_relay.h"
+#include "dz_runtime.h"
 
 typedef struct {
     dzframe_parser_t rx;
@@ -33,11 +38,23 @@ typedef struct {
     void (*on_params)(void);
     const bb_t *bb;                         /**< 可选：非 NULL 时响应黑匣子导出请求 */
     void (*on_cmd)(uint8_t c, uint8_t n);   /**< 'R' 以外的单字节命令；n = 第二字节（没有为 0） */
+    dzrt_t rt;                              /**< 通用运行时（自检 / 运行模式 / 存参） */
 } link_app_t;
+
+static link_app_t *s_link_app_self;
+static bool link_app_still_default(void)
+{
+    const link_app_t *L = s_link_app_self;
+    for (unsigned k = 0; L && k < 4u; k++) if (L->sp[k] != 0.0f) return false;
+    return true;
+}
 
 /* 仿真专用命令钩子：真板为空；host-sim 的 sim_setup.c 可覆盖（例如 'V' 让假相机停发、'U' 把摆扶正） */
 DZ_WEAK void link_app_sim_cmd(uint8_t c, uint8_t n);
 DZ_WEAK void link_app_sim_cmd(uint8_t c, uint8_t n) { (void)c; (void)n; }
+
+static inline void link_app_send(const dzframe_t *f);
+static void link_app_send_fwd(const dzframe_t *f) { link_app_send(f); }
 
 static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*on_cmd)(uint8_t, uint8_t))
 {
@@ -47,7 +64,15 @@ static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*
     L->seq = 0; L->estop = false; L->sp_ms = 0;
     for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
     L->on_params = on_params; L->on_cmd = on_cmd; L->bb = 0;
+    s_link_app_self = L;
+    dzctl_estop_clear();                    /* 上电：RAM 里的旧原因不算（仿真里 app_init 会重跑） */
+    if (dzrt_boot(&L->rt, &g_link_params, &g_link_params_default, link_app_still_default, link_app_send_fwd) == 0u && on_params) on_params();
+    if (dzrt_selftest(&L->rt, pal_millis()) != 0u) { L->estop = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); }
+    dzrt_start(&L->rt, !L->estop, false);
 }
+
+/** 脱机模式且已按键启动。 */
+static inline bool link_app_running(const link_app_t *L) { return dzrt_sa_running(&L->rt); }
 
 static inline void link_app_send(const dzframe_t *f)
 {
@@ -76,6 +101,8 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
                 }
             }
             else if (dzctl_handle(&t, &f, &ack)) { if (L->on_params) L->on_params(); link_app_send(&ack); }
+            else if (dzrt_cmd(&L->rt, &f)) { }
+            else if (f.kind == DZF_DATA && f.id == 1u && !dzrt_needs_host(&L->rt)) { }   /* 脱机：不收上位机设定值 */
             else if (f.kind == DZF_DATA && f.id == 1u && f.len >= 4u && f.len % 4u == 0u) {
                 for (unsigned k = 0; k < 4u && 4u * k < f.len; k++) L->sp[k] = dzframe_get_f32(&f, 4u * k);
                 L->sp_ms = now;
@@ -88,11 +115,18 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
             }
         }
     }
-    if (dzctl_wd_expired(&L->wd, now)) {   /* 上位机掉线：急停 */
+    if (dzrt_needs_host(&L->rt) && dzctl_wd_expired(&L->wd, now)) {   /* 上位机掉线：急停 */
         L->estop = true;
         dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - L->wd.last_ms));
     }
     link_relay_guard(L->estop);                           /* 急停中结束继电 */
+    L->rt.bb = (bb_t *)L->bb;
+    {
+        bool was_sa = !dzrt_needs_host(&L->rt);
+        dzrt_poll(&L->rt, now, L->estop, -1);
+        if (was_sa != !dzrt_needs_host(&L->rt)) dzctl_wd_init(&L->wd, 1000u);   /* 切模式：看门狗重新计 */
+    }
+    dzctl_set_flags(DZCTL_HB_ESTOP, L->estop);
     if (now - L->last_hb >= 500u) {
         L->last_hb = now;
         dzctl_heartbeat(&t, L->seq++, &f);
