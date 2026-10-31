@@ -6,12 +6,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import gen_link as G
 fail = 0; rows = []
-for y in sorted([*ROOT.glob("apps/*/app.yaml"), *ROOT.glob("examples/*/app.yaml")]):
+for y in sorted([*ROOT.glob("apps/*/app.yaml"), *ROOT.glob("examples/*/app.yaml"), *ROOT.glob("examples/*/project.yaml")]):
     spec, params, _ = G.load(y)
     if not spec.get("telemetry"):
         continue
     sch = G.schema(spec, params)
-    src = "".join(p.read_text(encoding="utf-8", errors="replace") for p in y.parent.glob("*.c"))
+    src = "".join(p.read_text(encoding="utf-8", errors="replace") for p in y.parent.rglob("*.c"))
     want = "timeout" if re.search(r"\bcmd_timeout", src) else "latched"
     for f, raw in zip(sch["telemetry"]["fields"], spec["telemetry"]["fields"]):
         if not (raw.get("ref_for") or raw.get("hold")):
@@ -29,6 +29,13 @@ base["telemetry"]["fields"][0]["hold"] = "latched"
 assert G.schema(base, [])["hash"] != s0["hash"], "hold 不在哈希里"
 base["telemetry"]["fields"][0]["hold"] = "forever"
 assert any("hold" in e for e in G.check(base, [])), "非法 hold 未拒"
+# link.step.phys：进 schema（上位机 % → 原生 → 题目单位），非法值被拒
+st = {"telemetry": {"fields": [{"name": "y", "type": "float"}]}, "step": [{"sp": 0, "y": "y", "range": 800, "abs_tol": 6, "phys": {"unit": "cm", "per_unit": 6}}]}
+assert not G.check(st, []) and G.schema(st, [])["step"][0]["phys"] == {"unit": "cm", "per_unit": 6.0}
+st["step"][0]["phys"] = {"unit": "cm", "per_unit": 0}
+assert any("phys" in e for e in G.check(st, [])), "非法 phys 未拒"
+spec2, prm2, _ = G.load(ROOT / "examples/2026H_ball/project.yaml")
+assert G.schema(spec2, prm2)["step"][0]["phys"] == {"unit": "cm", "per_unit": 6.0}, "2026H link.step.phys 缺失"
 if not rows:
     print("✗ [link/hold] 没找到设定值通道"); fail = 1
 if not fail:
