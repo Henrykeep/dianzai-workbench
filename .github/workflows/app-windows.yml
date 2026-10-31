@@ -153,6 +153,45 @@ jobs:
           if (-not (Test-Path "$proj\marker.txt")) { $fail += "(c) 测试工程丢了：$proj" }
           if ($fail) { $fail | ForEach-Object { Write-Host "::error::$_" }; exit 1 }
           Write-Host "安装冒烟通过：一个芯台快捷方式、旧目录已删、工程保留"
+      - name: 安装后检查：安装目录里 roles.json / reason_codes.json 齐全，自带 python 在仓库外读到 6 个角色
+        shell: bash
+        env: { PIP_NO_INDEX: "1", PYTHONUTF8: "1", PYTHONPATH: "" }
+        run: |
+          base=$(cygpath -u "$LOCALAPPDATA")
+          rj=$(find "$base" -path '*/repo/docs/dev/roles.json' 2>/dev/null | head -1)
+          [ -n "$rj" ] || { echo "::error::安装目录里找不到 repo/docs/dev/roles.json（安装包没带上角色表）"; exit 1; }
+          inst=$(dirname "$(dirname "$(dirname "$(dirname "$rj")")")")
+          echo "安装目录：$inst"
+          py="$inst/python/python.exe"
+          [ -f "$py" ] || { echo "::error::安装目录里没有自带 python：$py"; exit 1; }
+          fail=0
+          [ -f "$inst/repo/docs/dev/reason_codes.json" ] || { echo "::error::安装目录缺 repo/docs/dev/reason_codes.json（原因码表；后端 #123 合入后才有，缺了就是红）"; fail=1; }
+          cd "$RUNNER_TEMP"   # 仓库外跑：只能读到安装目录里的文件
+          "$py" - "$(cygpath -w "$inst")" <<'PY' || fail=1
+          import json, pathlib, sys
+          inst = pathlib.Path(sys.argv[1]).resolve()
+          f = inst / "repo" / "docs" / "dev" / "roles.json"
+          try:
+              d = json.loads(f.read_text(encoding="utf-8"))
+          except Exception as e:
+              sys.exit(f"角色表 {f} 读不出来：{e}")
+          if d.get("schema_version") != 1:
+              sys.exit(f"角色表 schema_version 应为 1，实际 {d.get('schema_version')!r}")
+          roles = d.get("roles") or []
+          codes = [r.get("code") for r in roles]
+          if codes != ["P", "I", "D", "FF", "LIM", "other"] or not all(r.get("zh") for r in roles):
+              sys.exit(f"角色表应是 6 个带中文名的角色 P/I/D/FF/LIM/other，实际 {roles}")
+          if "tools" in f.parts[len(inst.parts):-1] or not str(f).startswith(str(inst)):
+              sys.exit(f"读到的不是安装目录里的角色表：{f}")
+          rc = inst / "repo" / "docs" / "dev" / "reason_codes.json"
+          if rc.is_file():
+              try:
+                  json.loads(rc.read_text(encoding="utf-8"))
+              except Exception as e:
+                  sys.exit(f"原因码表 {rc} 读不出来：{e}")
+          print("✓ 安装目录角色表：", "、".join(f"{r['code']}={r['zh']}" for r in roles), "（", f, "）")
+          PY
+          exit $fail
       - uses: actions/upload-artifact@v4
         with:
           name: dzbench-windows
