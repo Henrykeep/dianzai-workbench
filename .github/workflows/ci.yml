@@ -6,6 +6,9 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+env:
+  TUNEGATE_SOURCE: randplant   # #78 随机对象门禁默认真 randplant；替身只给单元测试显式选用
+
 jobs:
   check-test:
     runs-on: ubuntu-latest

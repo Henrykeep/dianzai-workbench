@@ -8,6 +8,9 @@ on:
     tags: ["app-v*", "v*"]
 permissions:
   contents: write             # 草稿预发布
+env:
+  TUNEGATE_SOURCE: randplant   # #78 随机对象门禁默认真 randplant；替身只给单元测试显式选用
+
 jobs:
   sidecar-test:
     runs-on: ubuntu-latest
