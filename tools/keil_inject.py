@@ -25,17 +25,18 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import boardlib  # noqa: E402
 GROUP_PREFIX = "dz/"
 FILE_TYPE = {".c": 1, ".s": 2, ".h": 5}
 
 
 def rel(p: pathlib.Path, base: pathlib.Path) -> str:
-    """.uvprojx 里的路径：能相对就相对（反斜杠）；Windows 跨盘符（relpath 抛 ValueError）时退回绝对路径（Keil 接受 D:\\x\\y）。"""
+    """工程文件里写的路径：能相对就相对（Keil 习惯反斜杠）；Windows 上跨盘符（D: 工程、C: 仓库）没有相对路径，退回绝对路径（正斜杠，Keil 也认）。"""
     try:
-        r = os.path.relpath(p.resolve(), base.resolve())
+        return os.path.relpath(p.resolve(), base.resolve()).replace("/", "\\")
     except ValueError:
-        r = str(p.resolve())
-    return r.replace("/", "\\")
+        return p.resolve().as_posix()
 
 
 def group_xml(name: str, files: list[str], indent: str) -> str:
@@ -100,9 +101,9 @@ def inject_scatter(text: str, sct: str) -> str:
 def nvm_for_board(root: pathlib.Path, board: str) -> tuple[list[str], str | None]:
     """board.yaml mcu.nvm_kb > 0 → (DZ_NVM_KB/DZ_FLASH_KB 宏, 仓库里的 dz_nvm.sct)；没开 → ([], None)。"""
     import yaml
-    mcu = yaml.safe_load((root / "boards" / board / "board.yaml").read_text(encoding="utf-8")).get("mcu", {})
+    mcu = yaml.safe_load((boardlib.board_dir(board, root) / "board.yaml").read_text(encoding="utf-8")).get("mcu", {})
     n = int(mcu.get("nvm_kb", 0) or 0)
-    sct = root / "boards" / board / "keil" / "dz_nvm.sct"
+    sct = boardlib.board_dir(board, root) / "keil" / "dz_nvm.sct"
     if not n:
         return [], None
     if not sct.exists():
