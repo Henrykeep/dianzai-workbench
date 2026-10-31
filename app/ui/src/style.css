@@ -857,3 +857,5 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .st-seal .lbl{color:var(--muted)} .st-seal.warn{border-color:var(--warn)} .st-seal.warn #st-seal-why{color:var(--warn)}
 .pg-grp>*,.pg-extra>.lbl{white-space:nowrap}
 .pg-head .pg-grp,.pg-head .pg-grp>*,.pg-head .pg-extra>.lbl{flex:none;white-space:nowrap}
+/* #41：急停解除后的一行中性历史（不是红条、没有按钮） */
+.alerts.al-hist{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--line);font-weight:400}
