@@ -246,6 +246,7 @@ test:
 	@tools/require_fetch.sh   # 缺 third_party/CMSIS_6 → 「缺少 third_party/CMSIS_6，请先运行 make fetch」并退出非零
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
+	tools/test_fetch_retry.sh   # 第三方下载重试 + sha256（CI 41199129663 curl exit 56）
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩

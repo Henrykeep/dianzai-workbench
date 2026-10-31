@@ -74,6 +74,11 @@ jobs:
         continue-on-error: true
         env: { PYTHONUTF8: "1", CUBE_HAL: "" }
         run: python tools/test_keil_inject.py
+      - name: 缓存 MSPM0 器件包（key 绑定 fetch_third_party.sh 里锁定的 sha256；CI 41199129663 下载被断）
+        uses: actions/cache@v4
+        with:
+          path: third_party/packs
+          key: m0pack-DFP-1.3.1-071bd317fc0f152ded6b2ae594d79c6fc5eb9952370526b4c14ef5b3b9807860
       - name: 打包侧车
         shell: bash
         run: |
