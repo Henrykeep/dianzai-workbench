@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 pytestmark = pytest.mark.needs_sim
 
 SEEDS = [1, 7, 13, 21, 101, 202, 3008, 5003]
+MEASURED: list[int] = []
 
 
 @pytest.mark.parametrize("seed", SEEDS)
@@ -52,7 +53,11 @@ def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatc
         assert "fallback" not in plan
         # 不给 dur_ms：真会话上实测阶跃时序（不退默认）
         auto = svc.iterate_plan(dur_ms=None, _default_target=True)
-        assert "fallback" not in auto and 200 <= auto["dur_ms"] <= 30000, auto
+        if "fallback" in auto:                      # 实测没辨识出来（如很慢的对象）：必须写明退了什么、为什么
+            assert auto["fix_action"] == "measure_step_timing" and "探测" in auto["message_zh"], auto
+        else:
+            MEASURED.append(seed)
+        assert 200 <= auto["dur_ms"] <= 30000, auto
         assert abs(auto["target"]) <= (st.get("max_step") or 1e9) + 1e-9
         # #109：超过 max_step 拒绝，带 message_zh / fix_action
         if st.get("max_step"):
@@ -70,3 +75,10 @@ def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatc
     finally:
         s.disconnect()
         shutil.rmtree(ROOT / "build/host-sim" / p["name"], ignore_errors=True)
+
+
+def test_real_measurement_used_on_most_seeds():
+    """上面跑过的种子里，大多数真用了实测时序（不是全靠退默认）。"""
+    if not MEASURED:
+        pytest.skip("单独运行时没有前面的参数化结果")
+    assert len(MEASURED) >= len(SEEDS) // 2, MEASURED

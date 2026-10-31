@@ -524,7 +524,7 @@ class AgentService:
         steps = sch.step
         if not steps or not 0 <= int(ch) < len(steps):
             raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "固件升到 dzctl 0.13.0 并在 app.yaml 加 link.step")
-        names = list(params or self._tunable(sch))      # 不按名字猜：握手声明了 role 的去掉 LIM/other，没声明 = 全部可调参数
+        names = list(params or AgentService._tunable(sch))      # 不按名字猜：握手声明了 role 的去掉 LIM/other，没声明 = 全部可调参数
         bad = [n for n in names if n not in sch.param_index]
         if bad or not names:
             raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
@@ -538,6 +538,9 @@ class AgentService:
                 o = meas() if callable(meas) else {}
                 if not callable(meas):
                     why.append("这块板子的会话不支持实测阶跃时序")
+                elif not o:
+                    w = self.__dict__.get("_step_timing", {}).get(str(getattr(self.s, "port", "") or "") + "#why") or {}
+                    why.append(w.get("message_zh") or w.get("why_zh") or ("实机不自动探测（要人确认）" if not getattr(self, "sim", True) else "探测阶跃没辨识出时序（响应太慢或太小）"))
             except Exception as e:  # noqa: BLE001  实测失败不挡迭代：退默认 + 说明
                 o = {}
                 why.append(f"实测阶跃时序失败（{getattr(e, 'message', None) or e}）")
