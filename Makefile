@@ -119,7 +119,10 @@ obj_of = $(OUT)/obj/$(subst :,_,$(1)).o
 OBJS = $(foreach s,$(SRCS),$(call obj_of,$(s)))
 DRV_SRCS = $(foreach s,$(SRCS),$(if $(findstring :,$(s)),$(s)))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
-HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
+# 第三方源可能是 Windows 绝对路径（C:/...，如 Keil 注入时的工程目录）：目标名里的 ':' 换成 '_'，否则 make 报 multiple target patterns
+hal_obj_of = $(OUT)/hal/$(subst :,_,$(1)).o
+HAL_OBJS = $(foreach s,$(HAL_SRC) $(STARTUP),$(call hal_obj_of,$(s)))
+HAL_DRV_SRCS = $(foreach s,$(HAL_SRC) $(STARTUP),$(if $(findstring :,$(s)),$(s)))
 
 .PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview ui bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
@@ -169,6 +172,13 @@ $(OUT)/hal/%.s.o: %.s
 	@mkdir -p $(dir $@)
 	@echo "  AS  $<"
 	$(Q)$(CC) $(MCU) -c $< -o $@
+define HAL_DRV_OBJ_RULE
+$(call hal_obj_of,$(1)): $(1) $$(if $$(filter %.c,$(1)),$$(GEN)/board_gen.h)
+	@mkdir -p $$(dir $$@)
+	@echo "  CC  $$< (第三方，关闭警告)"
+	$$(Q)$$(CC) $$(if $$(filter %.c,$$<),$$(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$$(CFLAGS)) $$(INC) -w,$$(MCU)) -c $$< -o $$@
+endef
+$(foreach s,$(HAL_DRV_SRCS),$(eval $(call HAL_DRV_OBJ_RULE,$(s))))
 
 $(TARGET): $(OBJS) $(HAL_OBJS) $(LDSCRIPT)
 	@echo "  LD  $@"
@@ -232,6 +242,7 @@ test:
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
+	$(PY) tools/test_win_paths_mk.py   # Windows C:/ 源路径不进 make 目标名（Makefile:173 multiple target patterns）
 	$(PY) tools/test_link_hold.py   # link_schema 设定值通道 hold（latched/timeout）与固件行为一致
 	$(PY) tools/test_swd_pins.py   # #56 SWD 调试脚占用即报错
 	$(PY) tools/test_projgen_build.py   # #52 工程 build/gen 导出物不与 projgen 重复链接
