@@ -1,4 +1,4 @@
-import { SIM_ZH } from "./examples";
+import { simBoardZh } from "./examples";
 // r9 batch-1 纯逻辑（无 DOM）：连接标签、仿真/实机标签、迭代锁、param_reject 文案、首页三步引导
 export type LinkTag = { text: string; tone: "ok" | "off" | "busy" };
 // 连接状态只看 link.state：已连接 / 断开+原因 / 重连中（已等 X s，Y s 后再试）
@@ -53,10 +53,10 @@ export function lockWritesIn(root: ParentNode, on: boolean) {
 }
 // #71 写参数回执：只要带 reason（如 state），即便 ok:true 也算被拒，参数不算生效
 export const paramRejected = (r: any) => !!r && (r.ok === false || r.status === "rejected" || (r.reason != null && r.reason !== "" && r.status !== "clamped"));
-// r9p4 板子名：sim:<id> → 「仿真 · 中文名」（名表在 examples.ts），原 id 只进悬停
-export function boardName(port: string): string {
+// 板子名：sim:<id> → 「仿真 · 工程声明的板名」（没声明 → 仿真板），原 id 只进悬停
+export function boardName(port: string, declared?: string): string {
   if (!port) return "";
-  const m = /^sim:(.+)$/.exec(port); if (m) return `仿真 · ${SIM_ZH[m[1]] ?? "仿真板"}`;
+  const m = /^sim:(.+)$/.exec(port); if (m) return `仿真 · ${simBoardZh(declared)}`;
   if (/^replay:/.test(port)) return "回放";
   return /^(COM\d+|\/dev\/)/i.test(port) ? `串口 ${port.replace(/^\/dev\//, "")}` : "实物板";
 }

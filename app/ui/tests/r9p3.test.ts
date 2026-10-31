@@ -51,7 +51,7 @@ assert.ok(!/达标/.test(cv.title + cv.reason), cv.title + cv.reason);
 assert.equal((cv.verdict.text.match(/按默认 2% 判定/g) ?? []).length <= 1, true, cv.verdict.text);
 console.log("r9p3 card ok");
 import { boardName, SIDECAR_DOWN } from "../src/batch1";
-assert.equal(boardName("sim:motor_pos"), "仿真 · 电机位置环"); assert.ok(!/[a-z_]{3,}/.test(boardName("sim:zzz_unknown")));
+assert.equal(boardName("sim:motor_pos"), "仿真 · 仿真板"); assert.equal(boardName("sim:motor_pos", "电机位置环"), "仿真 · 电机位置环"); assert.ok(!/[a-z_]{3,}/.test(boardName("sim:zzz_unknown")));
 assert.ok(!/python|dzbench/.test(SIDECAR_DOWN.what + SIDECAR_DOWN.why + SIDECAR_DOWN.fix)); assert.match(SIDECAR_DOWN.raw, /python -m dzbench/);
 console.log("r9p4 ok");
 // r9p4 左栏勾只认接口 + 当前项目

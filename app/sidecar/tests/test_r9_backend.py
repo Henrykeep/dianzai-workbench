@@ -298,3 +298,48 @@ def test_return_to_start_coarse_clock_windows(monkeypatch, rep):
     o = _stub([25.0])
     r = S.AgentService._settle_at_low(o, ST, [0.0], [60.0], 0.1)
     assert r["settled"] is False and r["start_offset"] == pytest.approx(25.0)
+
+
+# ---------------------------------------------------------------- r10：探测阶跃幅度受声明约束；急停覆盖探测阶段
+def test_probe_amp_clamped_to_declared_range_or_minimal_with_reason():
+    from dzbench.agent import stepident as SI
+    a, why = SI.probe_amp(800.0)
+    assert a == pytest.approx(800.0 * SI.PROBE_FRAC) and a <= 800.0 and why is None
+    a, why = SI.probe_amp(None, sigma=0.0)
+    assert a == SI.MIN_ABS and "没声明物理量程" in why
+    assert SI.probe_amp(None, sigma=0.5)[0] == pytest.approx(SI.MIN_SNR * 0.5)
+    assert SI.saturated([0.1, 0.99], 1.0) and not SI.saturated([0.5], 1.0) and not SI.saturated([5.0], None)
+
+
+class ProbeS:
+    """板上阶跃探测的假板：step_start 之后第 2 次查询时急停。"""
+    def __init__(self, estop_at=2):
+        self.port, self.tx_locked, self.n, self.estop_at, self.stopped = "sim:x", False, 0, estop_at, False
+        self.schema = types.SimpleNamespace(step=[{"sp": 0, "y": "y", "u": "u", "u_max": 1.0, "range": 100.0}])
+        self.started = []
+
+    def window(self, sec):
+        return [(i * 0.01, {"y": 0.0, "u": 0.0}) for i in range(100)]
+
+    def step_start(self, *a):
+        self.started.append(a)
+
+    def step_wait(self, it, timeout):
+        self.n += 1
+        if self.n >= self.estop_at:
+            self.tx_locked = True
+        return None
+
+    def step_stop(self):
+        self.stopped = True
+        return True
+
+
+def test_probe_aborts_on_estop(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda d: None)
+    o = types.SimpleNamespace(s=ProbeS(), sim=True, PROBE_S=0.3, emit=lambda e: None)
+    o._probe_wait = lambda t: S.AgentService._probe_wait(o, t)
+    r = S.AgentService.measure_step_timing(o)
+    assert r == {} and o.s.stopped and len(o.s.started) == 1
+    assert o.s.started[0][2] == pytest.approx(100.0 * 0.05)          # 探测幅度 = 声明量程 × 5%
+    assert "急停" in o._step_timing["sim:x#why"]["message_zh"] and o._step_timing["sim:x#why"]["fix_action"] == "estop_clear"

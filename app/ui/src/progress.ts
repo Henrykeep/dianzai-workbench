@@ -22,7 +22,7 @@ export interface Progress {
   mode?: string | null;
 }
 // fix_action / next.action 都是 entrypoints.yaml 的动作 id；这里只记“去哪一步、点哪个已有元素”，不新增入口
-export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; jump?: boolean }> = {
+export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; jump?: boolean; when?: string }> = {
   // jump = 只跳到那一页并聚焦按钮，不替用户点（切换运行模式必须人确认；Agent 只给跳转）
   project_list: { step: "项目", ui: "pj-open", label: "打开项目" },   // project.open 失败的 fix_action：回空状态重新选
   set_run_mode: { step: "封箱", ui: "seal-mode", label: "前往封箱", jump: true },
@@ -33,6 +33,9 @@ export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; 
   tune_relay: { step: "调参", ui: "ag-relay", label: "自整定" }, step_test: { step: "调参", ui: "ag-step", label: "阶跃实验" }, params: { step: "调参", ui: "p-send", label: "下发参数" },
   params_flash: { step: "调参", ui: "tb-save", label: "保存参数" }, run_selftest: { step: "调参", ui: "seal-selftest", label: "读取自检" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
   fetch_deps: { ui: "doctor", label: "安装依赖" },   // missing_deps：自检对话框里按提示安装
+  // #91 后端 iter_busy / param_locked 回 fix_action:"stop_iteration"：点同一个迭代按钮，但只在它处于「停止」态时才点（避免误启动）
+  stop_iteration: { ui: "it-go", label: "停止迭代", step: "调参", when: "cancel" },
+  ask_user_commit: { ui: "ag-in", label: "回复 Agent 要不要提交", jump: true },   // #88 commit_declined：回到对话框让用户说清楚
 };
 // fix_action → 按钮：可执行 / 未就绪（置灰「等待固件支持」）/ 未登记（置灰写明原因）。不出现点了没反应的按钮
 export type Fix = { kind: "run" | "wait" | "none"; label: string; note?: string };
@@ -116,7 +119,7 @@ export function pageHead(p: Progress, view?: StepId, resident: string[] = []): {
 }
 const LABEL: Record<State, string> = { todo: "未开始", doing: "进行中", done: "已完成", blocked: "已阻塞" };
 export function runAction(a: string, go: (s: Step) => void) {
-  const t = ACTIONS[a]; if (!t || entry(a)?.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => { const el = document.getElementById(t.ui); if (t.jump) el?.focus(); else el?.click(); }, 0);
+  const t = ACTIONS[a]; if (!t || entry(a)?.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => { const el = document.getElementById(t.ui); if (t.when && el?.dataset.op !== t.when) return; if (t.jump) el?.focus(); else el?.click(); }, 0);
 }
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
 // r9p4：左栏的勾只认当前项目的进度接口（progress.get / progress.changed）；本地推断、没有项目 → 一个勾都不画
@@ -128,7 +131,7 @@ export function render(p: Progress, go: (s: Step) => void) {
     b.dataset.state = s.state;
     b.classList.toggle("done", s.state === "done" && tickable(p));
     b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
-    b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
+    b.title = `${s.title} · ${LABEL[s.state]}${s.detail ? "：" + s.detail : s.reason ? `（${s.reason}）` : ""}`;   // r9d：中文 detail 优先，原代码只在没 detail 时括注
   });
   // 每个 blocker 标到它 blocks 列出的那几步导航下：卡住原因 + fix_action 按钮（接口数据才有 blocks；推断数据不标）
   // 设计 v9：左栏只标一个小圆点（data-blocked），原因写进悬停提示；文字提示只在页头出现一次

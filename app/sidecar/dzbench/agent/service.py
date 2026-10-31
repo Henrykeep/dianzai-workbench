@@ -1229,6 +1229,20 @@ class AgentService:
         cache = getattr(self, "_step_timing", None) or {}
         return dict(cache.get(str(getattr(self.s, "port", "") or "")) or {})
 
+    def _probe_wait(self, timeout: float) -> bool:
+        """等探测阶跃结果；期间急停（tx_locked）→ 立刻 step_stop 并返回 False。"""
+        t_end = time.monotonic() + timeout
+        while time.monotonic() < t_end:
+            if getattr(self.s, "tx_locked", False):
+                try:
+                    self.s.step_stop()
+                except Exception:  # noqa: BLE001  急停锁可能拒发，固件急停自己会停
+                    pass
+                return False
+            if self.s.step_wait(0, 0.1) is not None:
+                return True
+        return not getattr(self.s, "tx_locked", False)
+
     def measure_step_timing(self) -> dict:
         """仿真板上做一次小幅探测阶跃（量程 × stepident.PROBE_FRAC），辨识 σ/K/L/T/速度 → 阶跃时序，按端口缓存。
         实机不自动探测（要人确认），返回 {}。"""
@@ -1244,15 +1258,38 @@ class AgentService:
             lst = (self.s.schema.step if self.s.schema else None) or []
             if lst:                                                     # 板上阶跃（0x7B）
                 c = lst[0]
-                rng = float(c.get("range") or 0.0) or None
-                amp = (rng or 1.0) * stepident.PROBE_FRAC
+                hs = getattr(self.s, "handshake", None) or {}           # 握手帧带 u_min/u_max/sat/range（工程声明；没声明为 null）
+                rng = float(c.get("range") or hs.get("range") or 0.0) or None
                 time.sleep(1.0)                                         # 起跳前 1 s 录噪声底 / 起点
                 w0 = self.s.window(1.0)
-                tb = w0[-1][0] if w0 else 0.0
-                dur = int(self.PROBE_S * 1000)
-                self.s.step_start(0, 0, amp, dur)
-                self.s.step_wait(0, self.PROBE_S + 3)
-                w = [x for x in w0 if c.get("y") in x[1]] + [x for x in self.s.window(self.PROBE_S + 2) if x[0] > tb and c.get("y") in x[1]]
+                pre = [float(x[1][c["y"]]) for x in w0 if c.get("y") in x[1]]
+                sig = float(__import__("statistics").pstdev(pre)) if len(pre) > 2 else 0.0
+                amp, why = stepident.probe_amp(rng, sig)
+                if why:
+                    self.emit({"type": "event", "kind": "probe_amp", "message_zh": why, "fix_action": "在 app.yaml link.step 写 range / u_max"})
+                umax = None
+                um = c.get("u_max") if c.get("u_max") is not None else hs.get("u_max")
+                if isinstance(um, (int, float)):
+                    umax = float(um)
+                elif um and w0 and um in w0[-1][1]:
+                    umax = float(w0[-1][1][um])
+                for _try in range(2):                                   # 执行器饱和 → 幅度减半重测一次
+                    tb = w0[-1][0] if w0 else 0.0
+                    dur = int(self.PROBE_S * 1000)
+                    self.s.step_start(0, 0, amp, dur)
+                    if not self._probe_wait(self.PROBE_S + 3):
+                        cache[port] = {}
+                        cache[port + "#why"] = {"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                        return {}
+                    w = [x for x in w0 if c.get("y") in x[1]] + [x for x in self.s.window(self.PROBE_S + 2) if x[0] > tb and c.get("y") in x[1]]
+                    us = [float(x[1][c["u"]]) for x in w if c.get("u") in x[1]]
+                    if not stepident.saturated(us, umax):
+                        break
+                    self.emit({"type": "event", "kind": "probe_saturated", "message_zh": f"探测阶跃时执行器顶到声明上限 {umax:g}，幅度减半到 {amp / 2:.4g} 重测",
+                               "fix_action": "无需操作"})
+                    amp /= 2
+                    time.sleep(1.0)
+                    w0 = self.s.window(1.0)
                 ts = tb
                 y = [float(x[1][c["y"]]) for x in w]
                 ident = stepident.identify([x[0] for x in w], y, ts, amp)
@@ -1261,13 +1298,20 @@ class AgentService:
                 if not st:
                     return {}
                 lo, hi = list(st["low"]), list(st["high"])
-                rng = abs(float(hi[0]) - float(lo[0])) * 4 or None
-                amp = (float(hi[0]) - float(lo[0])) * 0.25
+                rng = abs(float(hi[0]) - float(lo[0])) or None          # step_test 声明的 high−low 就是允许的最大阶跃
+                amp, why = stepident.probe_amp(rng)
+                amp = math.copysign(amp, float(hi[0]) - float(lo[0]) or 1.0)
+                if why:
+                    self.emit({"type": "event", "kind": "probe_amp", "message_zh": why, "fix_action": "在 dzbench.json step_test 写 high / low"})
                 pr = [lo[0] + amp] + list(lo[1:])
                 self._settle_at_low(st, lo, hi, float(st.get("pre_s", 0.6)))
                 ts = (self.s.window(0.05) or [(0.0, {})])[-1][0]
                 t_end = time.monotonic() + self.PROBE_S
                 while time.monotonic() < t_end:
+                    if getattr(self.s, "tx_locked", False):              # 急停：立刻停止探测
+                        cache[port] = {}
+                        cache[port + "#why"] = {"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                        return {}
                     self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *pr))
                     time.sleep(0.1)
                 w = [x for x in self.s.window(self.PROBE_S + 1) if st["y"] in x[1]]

@@ -67,7 +67,7 @@ actions:
   - {id: proposals,    label: 提议卡采纳,       at: step:调参,   ui: props,      ops: [proposal_decide, agent_action_decide, change_decide, rollback]}
   - {id: pretune,      label: 调参前问答,       at: step:调参,   ui: ag-pre,     ops: [pretune_get, pretune_set]}
   - {id: guard_reset,  label: 重置护栏,         at: step:调参,   ui: ag-guard,   ops: [tune_reset]}
-  - {id: agent_chat,   label: Agent 助手,       at: step:调参,   ui: ag-form,    ops: [agent_ask, agent_reset, agent_set_mode, agent_journal, agent_tune_finish]}
+  - {id: agent_chat,   label: Agent 助手,       at: step:调参,   ui: ag-form,    ops: [agent_ask, agent_reset, agent_set_mode, agent_journal, agent_tune_finish, commit_confirm]}   # commit_confirm：#88 提交确认卡（Agent 面板里）
   - {id: agent_undo,   label: 撤销 Agent,       at: step:调参,   ui: ag-undo,    ops: [agent_undo]}
   # ── 评分 ──
   - {id: score,        label: 评分项逐项验收,   at: step:评分,   ui: score,      ops: [score_items, score_save, score_writeback]}
@@ -105,7 +105,6 @@ script_ops:
   send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
-  commit_confirm: "#88 提交确认（commit_confirm_request）的批准/拒绝；前端卡片合入后从这里移走"
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
   project.migrate: 旧版写在仓库 examples/ 的用户工程复制到 $DZBENCH_HOME/projects/（#29，只复制、不删源）；不带 confirmed 只返回清单（needs_confirm），界面确认卡确认后 confirmed=true 才复制。确认卡由前端接（page:req），接上后移到 actions
