@@ -245,15 +245,18 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
 
 
 def slug(name: str) -> str:
-    """项目目录名：只用 ASCII 小写字母/数字/连字符（Windows 路径、Keil、make 都不怕）。中文名转不出字母时用 proj-<哈希>。"""
+    """项目目录名：只用 ASCII 小写字母/数字/连字符（Windows 路径、Keil、make 都不怕）。
+    中文转无声调拼音（pypinyin，MIT），全角先 NFKC 归一：2026H小球 → 2026h-xiaoqiu。转完为空才用 proj-<哈希>。"""
     import hashlib
     import re
     import unicodedata
-    a = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
-    a = re.sub(r"[^a-z0-9]+", "-", a.lower()).strip("-")
-    if not a or (not str(name).isascii() and len(a) < 2):
-        a = (a + "-" if a else "proj-") + hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
-    return a[:40].strip("-")
+    from pypinyin import lazy_pinyin
+    s = unicodedata.normalize("NFKC", str(name))
+    parts = ["".join(lazy_pinyin(seg)) if re.match(r"[\u3400-\u9fff]", seg) else seg
+             for seg in re.findall(r"[\u3400-\u9fff]+|[^\u3400-\u9fff]+", s)]
+    a = unicodedata.normalize("NFKD", "-".join(parts)).encode("ascii", "ignore").decode()
+    a = re.sub(r"[^a-z0-9]+", "-", a.lower()).strip("-")[:40].strip("-")
+    return a or "proj-" + hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
 
 
 def fresh_code(root, code: str) -> str:

@@ -347,20 +347,27 @@ def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monk
     ])
     svc, ev = _svc(repo, llm)
     try:
-        svc.ask(H_SENT)
+        reply = svc.ask(H_SENT)
         seen = json.dumps([m for m, _ in llm.seen], ensure_ascii=False)
         assert seen.count("example_readonly") >= 2, "例题必须只读：project_open / flow_accept 都要被拒"
         cs = _cards(ev)
-        assert [c["tool"] for c in cs] == ["project_fork"], cs
-        code = cs[0]["args"]["code"]
-        assert code != "2026H_ball" and cs[0]["preview"]["title"] == "以例题为模板新建项目"
-        out = svc.action_decide(cs[0]["id"], True)["result"]                     # 用户唯一一次点击（建项目）
+        assert "project_fork" not in [c["tool"] for c in cs], cs               # 开局自动选最近的例题建项目，不出卡
+        fk = next(e for e in ev if e.get("type") == "project_forked")
+        code, out = fk["project"], {"path": fk["path"], "sim": svc.s.port, "best_card": (svc.iter_result or {}).get("best_card")}
+        assert code != "2026H_ball" and fk["example"] == "2026H_ball" and code.isascii()
+        assert fk["message_zh"] == f"已基于 2026H_ball 新建 {code}，可更换"
+        assert reply.startswith(fk["message_zh"]), reply                      # 回复第一句说明基于哪个例题、可更换
         pd = _proj(tmp_path) / code
         assert pd.is_dir() and (pd / "requirements.yaml").exists() and out["path"] == str(pd)
         assert project_mod.current()["name"] == code
         assert out["sim"] == "sim:2026H_ball", out
         assert out.get("best_card"), out                                        # 有板上阶跃走 iterate，没有（2026H 例题固件）走 tune_autopilot，都出卡
         assert [c["tool"] for c in _cards(ev)][-1] == "iterate_apply_best"      # 以“采用最好参数”卡收尾
+        bc = _cards(ev)[-1]
+        se = bc["args"]["ss_err"]                                                 # 卡上：实测稳态误差 + 题目误差带出处 + 是否在带内
+        assert se["measured"] >= 0 and se["band"]["source"].startswith("题目 B") and se["band"]["unit"] == "cm"
+        assert se["inside"] is None and "标定" in se["note_zh"], se              # 实测 px、题目 cm：不硬判
+        assert bc["preview"]["ss_err"] == se
         mem = svc.memory()
         assert mem.project == project_slug(str(pd)) and mem.project != "_none" and mem.key, (mem.project, mem.key)
         rows = [r for r in mem.load() if r.get("kind") in ("iterate", "verdict")]
