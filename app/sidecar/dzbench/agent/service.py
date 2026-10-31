@@ -422,7 +422,9 @@ class AgentService:
         st = (self.s.schema.step if self.s.schema else None) or []
         if self.sim and st:
             rng = float(st[0].get("range") or 1.0)
-            out["iterate"] = self._iterate_start_agent(target=round(rng / 4, 4))
+            o = self.step_override()
+            out["iterate"] = self._iterate_start_agent(target=float(o.get("step_target", round(rng / 4, 4))),
+                                                       **({"dur_ms": int(o["step_dur_ms"])} if o.get("step_dur_ms") else {}))
         elif self.sim:                                                 # 例题固件没有板上阶跃（link.step 为空）→ iterate 入口走上位机阶跃，同样出 iterate.* 和最好参数卡
             out["iterate"] = self._iterate_start_agent()
         out["best_card"] = (self.iter_result or {}).get("best_card")
@@ -1145,7 +1147,9 @@ class AgentService:
 
     # 后端自管的阶跃时序覆盖（r9 #67）：不改 app.yaml link.step/hold、不改 dzbench.json pre_s/hold_s。键 = 仿真应用 / 板卡名。
     # hold_s 覆盖 step_test.hold_s；return_tol = 回起点容差（物理单位，没有 app.yaml link.step.abs_tol 时用）；return_timeout_s 回起点最多等多久。
-    STEP_OVERRIDES = {"2026H_ball": {"hold_s": 5.0, "return_tol": 6.0, "return_timeout_s": 8.0}}
+    STEP_OVERRIDES = {"2026H_ball": {"hold_s": 5.0, "return_tol": 6.0, "return_timeout_s": 8.0,
+                                      # 板上阶跃（link.step，fw-ball2 起）：钢珠约 70 px/s，量程/4 = 200 px 在 2 s 内到不了 → 无效轮
+                                      "step_target": 60.0, "step_dur_ms": 6000}}
 
     def step_override(self) -> dict:
         app = (getattr(self.s, "port", "") or "").split(":", 1)[-1].split("+")[0] if str(getattr(self.s, "port", "")).startswith("sim:") else ""
