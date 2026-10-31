@@ -57,20 +57,20 @@ assert.match(agentSrc, /loadPending\(ss\)/); assert.match(agentSrc, /dropPending
 // 急停横幅（定稿字段 reason / reason_zh / latched_at / restored / measured_ms / threshold_ms / fix_action）
 const t = new Date(2026, 9, 31, 9, 5).getTime();
 assert.equal(estopLine({ reason: "heartbeat_lost", latched_at: t, reason_zh: "心跳超时", measured_ms: 1601, threshold_ms: 1500 }, {}).line, "09:05 心跳超时 1601 ms（阈值 1500 ms），已锁存");
-assert.equal(estopLine({ reason: "heartbeat_lost", latched_at: t / 1000, reason_zh: "心跳超时", measured_ms: 1601, threshold_ms: null }, {}).line, "09:05 心跳超时 1601 ms（阈值后端未给），已锁存");   // 数和后端未给不混在一个槽
-assert.equal(estopLine({ reason: "watchdog", reason_zh: "心跳超时" }, {}).line, `${LATCH_AT_MISSING_ZH} 心跳超时 ${MISSING_ZH}（阈值${MISSING_ZH}），已锁存`);
+assert.equal(estopLine({ reason: "heartbeat_lost", latched_at: t / 1000, reason_zh: "心跳超时", measured_ms: 1601, threshold_ms: null }, {}).line, "09:05 心跳超时 1601 ms，已锁存");   // #132 缺阈值整段省略
+assert.equal(estopLine({ reason: "watchdog", reason_zh: "心跳超时" }, {}).line, "心跳超时（间隔未知），已锁存");
 assert.equal(estopLine({ reason: "heartbeat_lost", cause: { value: 999 }, reason_zh: "x" }, {}).line.includes("999"), false);   // cause.value 不读
 // #120 手动急停：只一行「HH:MM 手动急停，已锁存」，原因不重复，无间隔 / 阈值槽
 assert.equal(estopLine({ reason: "manual", latched_at: t, reason_zh: "手动急停：上位机发出急停指令" }, {}).line, "09:05 手动急停，已锁存");
 assert.equal(estopLine({ source: "ui", latched_at: t }, {}).line, "09:05 手动急停，已锁存");
 // #119 锁存时刻只认后端 latched_at；从上次恢复
-const mr = estopLine({ reason: "manual", restored: true }, {}); assert.equal(mr.line, `${LATCH_AT_MISSING_ZH} 手动急停，已锁存`); assert.ok(mr.restored);
+const mr = estopLine({ reason: "manual", restored: true }, {}); assert.equal(mr.line, "手动急停，已锁存"); assert.ok(mr.restored);
 assert.equal(estopLine({}, { estop: { reason: "manual", latched_at: new Date(t).toISOString(), restored: true, fix_action: "estop_clear" } }).fix, "estop_clear");
 assert.ok(estopLine({}, { estop: { reason: "manual", latched_at: t, restored: true } }).restored);
 assert.equal(latchTime("bad"), null);
 // 未知原因：只显示原因
 assert.equal(estopLine({ reason: "overcurrent", reason_zh: "过流", latched_at: t, measured_ms: 5 }, {}).line, "09:05 过流，已锁存");
-assert.equal(estopLine({}, {}).line, `${LATCH_AT_MISSING_ZH} ${MISSING_ZH}，已锁存`);
+assert.equal(estopLine({}, {}).line, "急停，已锁存");
 const mainSrc = readFileSync("src/main.ts", "utf8"); assert.doesNotMatch(mainSrc, /estopLine\(ev, S\.status, latchAt\)/);
 // 解除两步确认
 let s1 = clearStep("idle", "clear"); assert.deepEqual(s1, { state: "confirm", send: false });

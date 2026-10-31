@@ -1,6 +1,7 @@
 import { coarseTagHtml } from "./plant";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
-import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH } from "./fieldmap";
+import { ampLine, DOWNSCALE_ZH } from "./fieldmap";
+import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH, STOP_F, ABORT_ZH, NO_ROUND_ZH } from "./fieldmap";
 import { pickStr, RESULT_PORT_F, RESULT_CLEAR_EV } from "./fieldmap";
 import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
@@ -79,19 +80,34 @@ export function ledgerPick(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()
   const run = (r as any)[LEDGER_ROUND_F.runId] != null ? String((r as any)[LEDGER_ROUND_F.runId]) : LEDGER.run();
   if (r.best) {
     const hit = run ? inRun(rs, run).find(x => x.n === r.best!.iter) : undefined;   // 只认同一 run_id 的台账轮，别拿别次迭代的同号轮否决
-    if (hit && !hit.valid) return { best: null, unstable: true };
+    if (hit && !hit.valid) return { best: null, unstable: hit.state === "diverged" || saysDiverged(r) };   // #131 只有真发散才说发散
     return { best: r.best, unstable: false };
   }
   const lb = bestValid(rs, run);
   if (lb) return { best: { iter: lb.n, params: lb.params, metrics: lb.metrics }, unstable: false };
-  return { best: null, unstable: /diverg|unstable/.test(r.reason ?? "") };
+  const last = inRun(rs, run).at(-1);
+  return { best: null, unstable: saysDiverged(r) || last?.state === "diverged" };
+}
+const saysDiverged = (r: Stopped) => { const x: any = r; return x[STOP_F.diverged] === true || x[STOP_F.sat] === true || (STOP_F.divCodes as readonly string[]).includes(r.reason ?? ""); };
+// #131 停止原因：无效轮数用真实数；中止带后端原因
+export function stopReasonZh(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): string {
+  const x: any = r, why = STOP_F.why.map(k => typeof x[k] === "string" ? x[k].trim() : "").find(Boolean) ?? "";
+  if ((STOP_F.abortCodes as readonly string[]).includes(r.reason)) return `${ABORT_ZH}${why ? `（${why}）` : ""}`;
+  if ((STOP_F.invalidCodes as readonly string[]).includes(r.reason)) {
+    const run = x[LEDGER_ROUND_F.runId] != null ? String(x[LEDGER_ROUND_F.runId]) : LEDGER.run();
+    let k = Number.isFinite(+x[STOP_F.invalidN]) && x[STOP_F.invalidN] != null ? Math.round(+x[STOP_F.invalidN]) : 0;
+    if (!k) for (const q of [...inRun(rs, run)].reverse()) { if (q.valid) break; k++; }
+    return k > 1 ? `连续 ${k} 轮无效` : k === 1 ? "1 轮无效" : "无效";
+  }
+  return REASON_ZH[r.reason] ?? (r.reason ? `其他（${r.reason}）` : "未上报");
 }
 export function cardView(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): { verdict: { v: string; text: string }; title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
+  const part = !!r.verdict?.warn, amp = ampLine(r);   // #134 降幅：标题写幅度，不出「最好一组 / 达标」措辞
   const pk = ledgerPick(r, rs), b = pk.best, basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
   return {
     compare: r.compare && !r.compare.unchanged ? compareRaw(r.compare) : b && !zero ? compareRows(r.base, b.metrics) : [],
-    title: !b ? (pk.unstable ? NO_STABLE_ZH : "没有可用的一轮") : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
-    reason: `停止原因：${REASON_ZH[r.reason] ?? (r.reason ? `其他（${r.reason}）` : "未上报")}${r.message_zh ? `（${verdictLine(r.verdict, e, "").v === "pass" ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
+    title: part && b ? (amp || DOWNSCALE_ZH) : !b ? (pk.unstable ? NO_STABLE_ZH : NO_ROUND_ZH) : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
+    reason: `停止原因：${stopReasonZh(r, rs)}${r.message_zh && !part && !(STOP_F.abortCodes as readonly string[]).includes(r.reason) ? `（${verdictLine(r.verdict, e, "").v === "pass" && !part ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
     gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null || b.pass)] : [],
     verdict: verdictLine(r.verdict, e, basis),
@@ -172,13 +188,14 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   const key = v.compare.filter(x => CARD_KEYS.test(x[0])), cells = key.length ? key : v.compare.slice(0, 4);   // r9p6 别的题没有超调/调节/稳态时，照样列出它自己的指标
   const cmp = cells.length
     ? `<div class="rc-cmp">${cells.map(x => `<div class="rc-m"><span class="rc-k">${esc(x[0])}</span><span class="rc-v num">${esc(x[1])} → <b>${esc(x[2])}</b></span><span class="rc-d num ${x[4] ?? ""}">${esc(x[3])}</span></div>`).join("")}</div>`
-    : `<p class="rc-cur num">${esc(currentMetrics(r))}</p><p class="rc-same">${esc(v.title)}</p>`;
+    : `<p class="rc-cur num">${esc(currentMetrics(r))}</p>${r.verdict?.warn && v.title === ampLine(r) ? "" : `<p class="rc-same">${esc(v.title)}</p>`}`;
   const ps = `<div class="rc-ps">${v.params.map(([k, x]) => `<span class="mono"><i>${esc(k)}</i> ${esc(x)}</span>`).join("")}</div>`;
   const det = `<details class="rc-det"><summary>详情</summary>${[v.verdict.text, ...v.gaps, v.reason, v.next].filter(Boolean).map(t => `<p>${esc(t)}</p>`).join("")}</details>`;
   const btn = o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"'}>采用这组参数</wa-button>` : "";
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";
-  return `<wa-card class="itc rc"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  const amp = r.verdict?.warn ? ampLine(r) : "";   // #134 不管有没有对比表都给幅度行
+  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${amp ? `<p class="rc-amp num">${esc(amp)}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
 }
 
 // r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头
