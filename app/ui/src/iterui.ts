@@ -1,6 +1,6 @@
 import { coarseTagHtml } from "./plant";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
-import { ampLine, DOWNSCALE_ZH } from "./fieldmap";
+import { ampLine, ampText, MC_F, DOWNSCALE_ZH } from "./fieldmap";
 import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH, STOP_F, ABORT_ZH, NO_ROUND_ZH } from "./fieldmap";
 import { pickStr, RESULT_PORT_F, RESULT_CLEAR_EV } from "./fieldmap";
 import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
@@ -31,6 +31,8 @@ export const REASON_ZH: Record<string, string> = {
   unstable_zero: "对象有不稳定零点（非最小相位），单靠 PID 达不到指标", nonmin_phase: "对象有不稳定零点（非最小相位），单靠 PID 达不到指标",
   infeasible: "按现在的硬件和指标，这组目标达不到", no_signal: "反馈信号没变化，检查传感器或接线",
   invalid: "连续 3 轮无效", no_improve: "连续 3 轮没有改进", unstable: "出现发散", blocked: "各方向都被挡住", error: "出错",
+  // #139 发散 / 中止类代码也要有中文，不许漏英文
+  diverged: "出现发散（响应越来越大）", aborted: "已中止", abort: "已中止", invalid_streak: "连续多轮无效",
 };
 const GAP_ZH: Record<string, string> = { overshoot: "超调", ss_err: "稳态误差", settle: "调节时间", rise: "上升时间" };
 const n = (v: number) => v == null || !Number.isFinite(+v) ? "—" : String(+(+v).toPrecision(4));
@@ -182,6 +184,9 @@ export class IterModel {
 export const iterTarget = (sp: { v: number } | null | undefined): number | null => sp && Number.isFinite(sp.v) && sp.v !== 0 ? sp.v : null;
 // r9p4 结果卡：标题 = 结论（verdict_zh，不带依据）；一行对比 超调 / 调节时间 / 稳态误差（初值 → 最好）；
 // 参数一行横排；判定依据 / 单位不一致 / 停止原因收进「详情」；唯一主按钮「采用这组参数」
+export const isAmpReduced = (r: any) => r?.[MC_F.ampReduced] === true || !!r?.verdict?.warn;
+export const partialConfirmZh = (r: any) => `只在 ${ampText(r?.[MC_F.ampTested], r)} 幅度上验证过，未验题面幅度。仍要采用吗？（不会记为已验证档）`;
+export const ampSpecValue = (r: any): number | null => { const a = r?.[MC_F.ampSpec], v = a && typeof a === "object" ? a[MC_F.value] : a; return typeof v === "number" && Number.isFinite(v) ? v : null; };
 export const CARD_KEYS = /超调|调节|稳态/;
 export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean }): string {
   const v = cardView(r), head = r.verdict?.warn ? r.verdict.warn : verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");   // 降幅警告原文照抄
@@ -191,7 +196,10 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
     : `<p class="rc-cur num">${esc(currentMetrics(r))}</p>${r.verdict?.warn && v.title === ampLine(r) ? "" : `<p class="rc-same">${esc(v.title)}</p>`}`;
   const ps = `<div class="rc-ps">${v.params.map(([k, x]) => `<span class="mono"><i>${esc(k)}</i> ${esc(x)}</span>`).join("")}</div>`;
   const det = `<details class="rc-det"><summary>详情</summary>${[v.verdict.text, ...v.gaps, v.reason, v.next].filter(Boolean).map(t => `<p>${esc(t)}</p>`).join("")}</details>`;
-  const btn = o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"'}>采用这组参数</wa-button>` : "";
+  // #141 降幅测试：主按钮是「按题面幅度复测」，采用退成次要按钮且要先确认
+  const part = isAmpReduced(r), dis = o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"';
+  const btn = part ? `<wa-button variant="brand" size="small" id="it-rerun">按题面幅度复测</wa-button>` + (o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-partial="1"${dis}>仍采用这组参数</wa-button>` : "")
+    : o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${dis}>采用这组参数</wa-button>` : "";
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";
   const amp = r.verdict?.warn ? ampLine(r) : "";   // #134 不管有没有对比表都给幅度行

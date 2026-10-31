@@ -111,7 +111,7 @@ export type MetricsCard = { kind: TaskKind; kindBasis: string; items: McItem[] }
 const strList = (v: unknown): string[] => Array.isArray(v) ? v.map(y => typeof y === "string" ? y : "").filter(Boolean) : typeof v === "string" && v ? [v] : [];
 // 幅度：数 / {value, unit} / 字符串；数没带单位时借 target / measured 的单位
 export function ampText(a: unknown, x: any): string {
-  const un = str(a && typeof a === "object" ? (a as any)[MC_F.unit] : "") || str(x?.[MC_F.ampUnit]) || str(x?.[MC_F.target]?.[MC_F.unit]) || str(x?.[MC_F.measured]?.[MC_F.unit]);
+  const un = str(a && typeof a === "object" ? (a as any)[MC_F.unit] : "") || str(x?.[MC_F.ampUnit]);   // #140 只认 amp_unit（暂定名）或幅度自带单位，不猜
   const v = a && typeof a === "object" ? (a as any)[MC_F.value] : a;
   if (typeof v === "number" && Number.isFinite(v)) return `${+v.toPrecision(5)}${un ? " " + un : ""}`;
   return typeof v === "string" && v.trim() ? v.trim() : MISSING_ZH;
