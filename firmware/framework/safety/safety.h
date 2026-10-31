@@ -2,7 +2,7 @@
  * @file safety.h
  * @brief 通用安全监视（纯逻辑，不碰硬件、不依赖 pal/dzctl）：多路堵转 + 异常复位安全态 + 写黑匣子，统一一个“锁存”。
  *
- * 应用接法（car_2wd、2026H_ball 是范例）：
+ * 应用接法（examples/、apps/ 里的控制类应用都按这个接）：
  *   app_init:   safety_init(&S, &stall_cfg, 通道数, &bb); safety_boot(&S, pal_reset_cause(), PAL_RESET_IS_FAULT(rc), now)
  *               → 返回 true = 上次是看门狗/锁死复位，应用锁急停
  *   控制周期:   每路 if (safety_update(&S, ch, 负载, 转速, now)) 这路输出归零/刹车

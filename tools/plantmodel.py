@@ -113,12 +113,14 @@ def discretize(g, dt: float) -> dict:
 
 
 def sim_c(ss: dict, *, dt: float, sat: tuple[float, float], deadzone: float = 0.0, noise_std: float = 0.0,
-          delay_n: int = 0, y0: float = 0.0, seed: int = 1, tag: str = "plant") -> str:
+          delay_n: int = 0, y0: float = 0.0, seed: int = 1, tag: str = "plant", y_clip: float | None = None) -> str:
     """离散状态空间 → host-sim C：float sim_plant_step(float u)（每个采样周期调一次，返回带噪声的测量值）。"""
     n = len(ss["B"])
     fl = lambda xs: ", ".join(f"{float(x):.9e}f" for x in xs)
     A = ",\n    ".join("{ " + fl(row) + " }" for row in ss["A"])
     lo, hi = sat
+    clip = (f"    if (y > {float(y_clip):.9e}f) y = {float(y_clip):.9e}f;   /* 传感器量程 */\n"
+            f"    if (y < {-float(y_clip):.9e}f) y = {-float(y_clip):.9e}f;\n" if y_clip else "")
     dl = (f"static float s_dl[{delay_n}];\nstatic unsigned s_di;\n" if delay_n else "")
     dstep = (f"    {{ float w = s_dl[s_di]; s_dl[s_di] = u; s_di = (s_di + 1u) % {delay_n}u; u = w; }}\n" if delay_n else "")
     return f"""/* 由 tools/plantmodel.py 生成（{tag}）：离散 ZOH 被控对象，dt = {dt} s，仅 host-sim 编译。不要手改。 */
@@ -153,7 +155,7 @@ float sim_plant_step(float u)
     for (int i = 0; i < SP_N; i++) y += C[i] * x[i];
     for (int i = 0; i < SP_N; i++) {{ xn[i] = B[i] * u; for (int j = 0; j < SP_N; j++) xn[i] += A[i][j] * x[j]; }}
     for (int i = 0; i < SP_N; i++) x[i] = xn[i];
-    return {float(y0):.9e}f + y + {float(noise_std):.9e}f * gauss();
+{clip}    return {float(y0):.9e}f + y + {float(noise_std):.9e}f * gauss();
 }}
 
 __attribute__((weak)) void host_sim_app_setup(void) {{ }}
@@ -230,12 +232,14 @@ void app_loop(void)
 """ % ctrl_period_us
 
 
-def link_yaml(unit: str, ranges: dict, init: dict, step: dict | None = None, u_max_hi: float = 1.0) -> str:
+def link_yaml(unit: str, ranges: dict, init: dict, step: dict | None = None, u_max_hi: float = 1.0,
+              sat: tuple[float, float] | None = None) -> str:
     """通用 link: 段（sp/y/u 遥测、kp/ki/kd/u_max 参数、一个阶跃通道）。step 只写给了的键（物理上限等）。"""
     md = lambda k: _r((ranges[k][1] - ranges[k][0]) * 0.25, 3)
     st = ", ".join(f"{k}: {v}" for k, v in (step or {}).items())
+    act = f"  actuator: {{ u_min: {sat[0]}, u_max: {sat[1]} }}\n" if sat else ""
     return f"""link:
-  telemetry:
+{act}  telemetry:
     id: 2
     period_ms: 10
     fields:
@@ -275,12 +279,12 @@ def static_gain(g) -> tuple[float, bool]:
 
 
 def step_limits(d: dict) -> dict:
-    """阶跃通道的物理量级（gen_link 目前要求 range/abs_tol）：range = 执行器满幅下对象能走到的幅度
-    （积分对象取 1 s 行程），abs_tol = 1% range 与 3σ 噪声取大。仅由声明推出，阶跃幅度/容差由后端实测再定。"""
+    """阶跃通道只写物理上限（gen_link 只要求这两项）：sensor_range = ±执行器满幅下对象能走到的幅度
+    （积分对象取 1 s 行程），max_step = 该幅度。阶跃幅度 range / 回位容差 abs_tol 由后端探测阶跃实测，不写。"""
     k, _ = static_gain(continuous(d))
     span = abs(k) * max(abs(x) for x in sat_limits(d))
     span = _r(max(span, 1e-3), 3)
-    return {"range": span, "abs_tol": _r(max(0.01 * span, 3 * float(d.get("noise_std", 0.0)), 1e-4), 3)}
+    return {"sensor_range": _r(2 * span, 3), "max_step": span}
 
 
 def scaffold(app_yaml: pathlib.Path, out: pathlib.Path) -> None:
@@ -296,7 +300,8 @@ def scaffold(app_yaml: pathlib.Path, out: pathlib.Path) -> None:
         txt += "requires:\n  uart: [LINK]\n  timer: [CTRL]\n"
     if "link" not in doc:
         r, i = param_ranges(d)
-        txt += link_yaml(d["unit"], r, i, step=step_limits(d), u_max_hi=_r(max(abs(x) for x in sat_limits(d)), 4))
+        txt += link_yaml(d["unit"], r, i, step=step_limits(d), u_max_hi=_r(max(abs(x) for x in sat_limits(d)), 4),
+                         sat=tuple(_r(float(x), 4) for x in sat_limits(d)))
     (out / "app.yaml").write_text(txt, encoding="utf-8")
     if not any(out.glob("*.c")):
         (out / "app_main.c").write_text(generic_app(int(round(float(d.get("sample_s", 0.001)) * 1e6))), encoding="utf-8")

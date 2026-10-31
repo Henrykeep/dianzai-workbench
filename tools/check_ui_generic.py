@@ -2,7 +2,9 @@
 """界面不写死某道题 / 某块板：app/ui/src 和 index.html 里不许出现例题专用名（例题名表只放 src/examples.ts）。
 用法：check_ui_generic.py [--selftest]"""
 import pathlib, re, sys
+# dz-banned-words: begin
 BANNED = re.compile(r"2026H|小球|球环|motor_pos|car_2wd|ball_(?:kp|ki|kd|sp|beam)\b|pos_k\b")
+# dz-banned-words: end
 ALLOW = {"examples.ts"}
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "app" / "ui"
 
@@ -21,8 +23,10 @@ def main():
     if "--selftest" in sys.argv:
         import tempfile
         d = pathlib.Path(tempfile.mkdtemp())
+        # dz-banned-words: begin   自测夹具里的禁词
         (d / "a.ts").write_text('const x = "小球";\n', encoding="utf-8")
         (d / "examples.ts").write_text('const x = "2026H_ball";\n', encoding="utf-8")
+        # dz-banned-words: end
         (d / "b.ts").write_text('const y = "rpm";\n', encoding="utf-8")
         r = scan(sorted(d.iterdir()))
         assert len(r) == 1 and "a.ts" in r[0], r

@@ -245,7 +245,7 @@ static dz_err_t r_read(void *c, uint32_t off, void *p, uint32_t n) { ram_t *r = 
 dz_err_t persist_selftest(void)
 {
     static ram_t r;
-    persist_flash_t f = { r_erase, r_write, r_read, &r, 0u, 2048u, 512u };
+    persist_flash_t f = { r_erase, r_write, r_read, &r, 0u, 2048, 512u };
     persist_kv_t kv;
     uint32_t v = 0, i;
     uint16_t n;

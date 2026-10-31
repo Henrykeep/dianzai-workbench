@@ -6,7 +6,7 @@
     telemetry: { id: 2, period_ms: 20, fields: [ { name: t_ms, type: uint32, unit: ms }, ... ] }
     params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, max_delta: 0.5, unit: "", desc: "" } ]   # 仅 app.yaml
                max_delta（dzctl 0.13.0）= 上位机单次写入最大改动量，超了板子拒绝（param_reject reason=step）；不写 = max − min
-    step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, range: 720, abs_tol: 0.5 } ]   # 可选：#38 阶跃实验通道
+    step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, sensor_range: 720, max_step: 90 } ]   # 可选：#38 阶跃实验通道
                sp = 设定值槽位（DATA id=1 第几个 f32）；y / u = 遥测字段（u 可省）；u_max = 数或参数名；
                range = 该量量程，abs_tol = 绝对容差（物理单位，|阶跃幅度| < max(1% 量程, abs_tol) 时改用绝对口径）
                phys（可选）= { unit: cm, per_unit: 6 }：per_unit 个原生单位 = 1 个 unit（上位机把 step_result 换成题目单位）
@@ -99,8 +99,17 @@ def check(spec: dict, params: list) -> list[str]:
                 errs.append(f"step[{k}].{key}={st.get(key)} 不是数值遥测字段")
         if st.get("y") is None:
             errs.append(f"step[{k}] 缺 y")
-        if not (float(st.get("range", 0)) > 0 and float(st.get("abs_tol", 0)) > 0):
-            errs.append(f"step[{k}]: range、abs_tol 须 > 0（物理单位）")
+        if st.get("sensor_range") is not None or st.get("max_step") is not None:
+            # 只声明物理上限（传感器量程 / 执行器能承受的最大阶跃）：阶跃幅度和回位容差由上位机实测决定，不写死
+            if not float(st.get("sensor_range") or 0) > 0:
+                errs.append(f"step[{k}].sensor_range 须 > 0（传感器量程，物理单位）")
+            if st.get("max_step") is not None and not float(st["max_step"]) > 0:
+                errs.append(f"step[{k}].max_step 须 > 0（单次阶跃上限，物理单位）")
+            for key in ("range", "abs_tol"):
+                if st.get(key) is not None and not float(st[key]) > 0:
+                    errs.append(f"step[{k}].{key} 须 > 0")
+        elif not (float(st.get("range", 0)) > 0 and float(st.get("abs_tol", 0)) > 0):
+            errs.append(f"step[{k}]: range、abs_tol 须 > 0（物理单位）；或只写物理上限 sensor_range / max_step")
         ph = st.get("phys")
         if ph is not None and not (isinstance(ph, dict) and set(ph) == {"unit", "per_unit"} and isinstance(ph["unit"], str)
                                    and ph["unit"] and isinstance(ph["per_unit"], (int, float)) and ph["per_unit"] > 0):
@@ -108,6 +117,14 @@ def check(spec: dict, params: list) -> list[str]:
         um = st.get("u_max", 0)
         if isinstance(um, str) and um not in pnames:
             errs.append(f"step[{k}].u_max={um} 不是参数名")
+    act = spec.get("actuator")
+    if act is not None:
+        if not isinstance(act, dict) or set(act) - {"u_min", "u_max", "sat"} or not all(isinstance(v, (int, float)) for v in act.values()):
+            errs.append("actuator 只能写 {u_min, u_max, sat} 数值（执行器物理限值，进握手帧）")
+        elif act.get("u_min") is not None and act.get("u_max") is not None and not act["u_min"] < act["u_max"]:
+            errs.append("actuator.u_min 须 < u_max")
+    if spec.get("relay", True) not in (True, False, "on", "off"):
+        errs.append("relay 只能是 on / off（默认 on：模板带 0x7C 继电输出接管）")
     if len(spec.get("step") or []) > 4:
         errs.append("step 通道最多 4 个")
     for p in params:
@@ -139,7 +156,11 @@ def schema(spec: dict, params: list) -> dict:
                      "max_delta": max_delta(p), "unit": p.get("unit", "")} for p in params]}
     if spec.get("step"):                     # #38：烧进固件的阶跃通道配置，进哈希
         s["step"] = [{"sp": int(st["sp"]), "y": st["y"], "u": st.get("u"), "u_max": st.get("u_max", 0),
-                      "range": float(st["range"]), "abs_tol": float(st["abs_tol"]),
+                      **({"range": float(st["range"])} if st.get("range") is not None else {}),
+                      **({"abs_tol": float(st["abs_tol"])} if st.get("abs_tol") is not None else {}),
+                      # 物理上限（只声明能承受多少，不写阶跃幅度/容差——那由上位机实测）
+                      **({"sensor_range": float(st["sensor_range"])} if st.get("sensor_range") is not None else {}),
+                      **({"max_step": float(st["max_step"])} if st.get("max_step") is not None else {}),
                       **({"phys": {"unit": str(st["phys"]["unit"]), "per_unit": float(st["phys"]["per_unit"])}} if st.get("phys") else {})}
                      for st in spec["step"]]
     s["hash"] = fnv1a(json.dumps(s, sort_keys=True, separators=(",", ":")).encode())
@@ -152,6 +173,13 @@ def schema(spec: dict, params: list) -> dict:
     for f, src in zip(s["telemetry"]["fields"], tel.get("fields", [])):
         if src.get("cal"):
             f["cal"] = src["cal"]
+    # 握手帧（心跳 schema_hash 绑定的这份表）带上声明的物理限值：未声明一律 null，上位机不猜
+    act = spec.get("actuator") or {}
+    st0 = (spec.get("step") or [{}])[0]
+    num = lambda v: None if v is None else float(v)
+    rng = st0.get("range") if st0.get("range") is not None else st0.get("sensor_range")
+    s["limits"] = {"u_min": num(act.get("u_min")), "u_max": num(act.get("u_max")), "sat": num(act.get("sat")), "range": num(rng)}
+    s["relay"] = spec.get("relay", True) not in (False, "off")
     for k in ("accept", "loops", "protect_fixed"):
         if spec.get(k):
             s[k] = spec[k]
@@ -182,7 +210,8 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
     if not own:
         h.append('#include "project_gen.h"')
     h += ["", f"#define LINK_SCHEMA_HASH 0x{sch['hash']:08X}u", f"#define LINK_TELEM_ID {sch['telemetry']['id']}u",
-          f"#define LINK_TELEM_PERIOD_MS {sch['telemetry']['period_ms']}u", f"#define LINK_N_PARAMS {len(params)}u", "",
+          f"#define LINK_TELEM_PERIOD_MS {sch['telemetry']['period_ms']}u", f"#define LINK_N_PARAMS {len(params)}u",
+          f"#define LINK_RELAY_EN {1 if sch['relay'] else 0}   /* link.yaml relay: off → 0x7C 不接管输出 */", "",
           "typedef struct {"]
     h += [f"    {C_TYPES[f['type']][0]} {f['name']};  /**< {f.get('unit', '')} */" for f in fields] or ["    uint8_t unused_;"]
     h += ["} link_telem_t;", ""]
@@ -212,9 +241,10 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
           f'{cnum(p["min"], "float")}, {cnum(p["max"], "float")}, {cnum(max_delta(p), "float")} }},' for p in params] or ['    { "", 0, 0, 0.0f, 0.0f, 0.0f }']
     pidx = {p["name"]: i for i, p in enumerate(params)}
     c += ["};", "", "const dzstep_ch_t g_link_step[] = {"]
-    c += [f'    {{ {int(st["sp"])}u, {cnum(st["range"], "float")}, {cnum(st["abs_tol"], "float")}, '
+    c += [f'    {{ {int(st["sp"])}u, {cnum(step_range(st), "float")}, {cnum(step_tol(st), "float")}, '
           f'{cnum(0 if isinstance(st.get("u_max", 0), str) else st.get("u_max", 0), "float")}, '
-          f'{pidx[st["u_max"]] if isinstance(st.get("u_max"), str) else -1} }},' for st in steps] or ["    { 0u, 1.0f, 1.0f, 0.0f, -1 }"]
+          f'{pidx[st["u_max"]] if isinstance(st.get("u_max"), str) else -1}, {cnum(st.get("max_step") or 0, "float")} }},' for st in steps] \
+        or ["    { 0u, 1.0f, 1.0f, 0.0f, -1, 0.0f }"]
     c += ["};", "", "float link_step_y(const link_telem_t *t, uint8_t ch)", "{", "    switch (ch) {"]
     c += [f"    case {k}: return (float)t->{st['y']};" for k, st in enumerate(steps)]
     c += ["    default: (void)t; return 0.0f;", "    }", "}", "", "float link_step_u(const link_telem_t *t, uint8_t ch)", "{", "    switch (ch) {"]
@@ -233,6 +263,16 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
           f"    dzctl_table_t t = {{ base, g_link_param_desc, (uint8_t)LINK_N_PARAMS, LINK_SCHEMA_HASH }};",
           "    return t;", "}", ""]
     return "\n".join(h), "\n".join(c)
+
+
+def step_range(st: dict) -> float:
+    """板上口径用的量程：写了 range 用 range，否则用传感器量程 sensor_range。"""
+    return float(st.get("range") or st["sensor_range"])
+
+
+def step_tol(st: dict) -> float:
+    """板上 abs 口径门槛：写了 abs_tol 用它；只声明物理上限时取量程的 1%（只决定板上 2%/abs 口径，真正的回位容差由上位机实测）。"""
+    return float(st.get("abs_tol") or 0.01 * step_range(st))
 
 
 def load(path: pathlib.Path) -> tuple[dict, list, str | None]:

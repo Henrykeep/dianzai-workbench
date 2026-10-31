@@ -107,7 +107,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
     dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_link_params);
     link_step_io_t sio = { .latched = L->latched, .offline = !dzrt_needs_host(&L->rt), .strict_params = true, .now = now,
-                           .tbl = &t, .seq = &L->seq, .send = link_app_send, .on_target = link_app_on_target, .on_params = L->on_params, .ctx = L };
+                           .tbl = &t, .seq = &L->seq, .send = link_app_send, .on_target = link_app_on_target, .on_params = L->on_params, .ctx = L, .sp_now = L->sp };
     L->now = now;
     if (link_read(buf, sizeof buf, &got) == DZ_OK) {
         for (uint16_t i = 0; i < got; i++) {

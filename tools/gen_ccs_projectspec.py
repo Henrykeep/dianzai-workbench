@@ -6,7 +6,7 @@
 【未验证】未在 CCS 里导入/编译过。
 
 用法：
-    gen_ccs_projectspec.py --board mspm0g3507-tianmengxing --app car_2wd          写 boards/<板>/ccs/<板>_<应用>.projectspec
+    gen_ccs_projectspec.py --board mspm0g3507-tianmengxing --app <应用>            写 boards/<板>/ccs/<板>_<应用>.projectspec
     gen_ccs_projectspec.py ... --check                                            只比对，不一致返回 1（make check 用）
 """
 from __future__ import annotations
