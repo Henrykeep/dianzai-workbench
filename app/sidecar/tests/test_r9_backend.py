@@ -26,7 +26,7 @@ def test_step_invalid(m, why):
 def test_invalid_step_verdict_never_says_pass():
     for m in ({}, {"ok": True, "rise_s": None, "settling_s": 2.0, "overshoot_pct": 0.0}, {"ok": True, "rise_s": 0.5, "settling_s": 0.0}):
         v, zh = S.AgentService._verdict({"inside": True, "pass_basis": "按默认 2% 判定达标"}, {"reason": "pass"}, m)
-        assert v == "invalid" and "达标" not in zh
+        assert v == "unknown" and "达标" not in zh
     v, zh = S.AgentService._verdict({"inside": None, "pass_basis": "按默认 2% 判定达标"}, {"reason": "pass"}, {"ok": True, "rise_s": 0.5, "settling_s": 1.0})
     assert v == "unknown" and "达标" not in zh
 
@@ -59,6 +59,8 @@ def test_board_round_without_rise_is_invalid_not_pass():
     out = I.Iterator(NoRiseIO(), PLAN, True, emit=ev.append).run()
     rs = [e for e in ev if e["type"] == "iterate.round"]
     assert rs and all(not r["valid"] and r["why_invalid"] in ("no_rise", "settle_zero") for r in rs)
+    for r in rs:                                    # 验收：无效轮指标是 null 不是 0，判定 unknown
+        assert r["overshoot_pct"] is None and r["settle_ms"] is None and r["ss_err_pct"] is None and r["verdict"] == "unknown", r
     assert out["reason"] != "pass"
 
 
@@ -152,7 +154,7 @@ class WinS:
 
 
 def _stub(ys, port="sim:2026H_ball", timeout=0.6):
-    o = types.SimpleNamespace(s=WinS(ys), PRE_TOL=0.1, RETURN_TIMEOUT_S=timeout)
+    o = types.SimpleNamespace(s=WinS(ys), PRE_TOL=0.1, RETURN_TIMEOUT_S=timeout, SETTLE_DT=S.AgentService.SETTLE_DT)
     o.s.port = port
     o.step_override = lambda: S.AgentService.step_override(o) | {"return_timeout_s": timeout}
     o._return_tol = lambda st, span: S.AgentService._return_tol(o, st, span)
@@ -183,22 +185,83 @@ def test_2026h_hold_override_is_backend_owned():
     assert S.AgentService.step_override(o2) == {}
 
 
-# ---------------------------------------------------------------- 相对口径 ss_err % → px → cm（板子声明 cal：600 px ↔ 100 cm）
-def test_ss_band_relative_pct_converts_via_board_cal(tmp_path):
-    f = {"name": "cam_x_px", "unit": "px", "cal": {"unit": "cm", "pts": [[0, 0], [600, 100]]}}
-    o = types.SimpleNamespace(s=types.SimpleNamespace(schema=types.SimpleNamespace(fields=[f]), port="hw:COM3"), sim=False)
-    o.step_cfg = lambda: {"y": "cam_x_px", "low": [0], "high": [60]}
+# ---------------------------------------------------------------- 相对口径 ss_err % → px → cm；换算来源 phys / sim_nominal / 实机标定
+def _ss_obj(tmp_path, sim, phys=None, nominal=None):
+    f = {"name": "cam_x_px", "unit": "px"}
+    step = [{"sp": 0, "y": "cam_x_px", "range": 800, "abs_tol": 6} | ({"phys": phys} if phys else {})]
+    o = types.SimpleNamespace(s=types.SimpleNamespace(schema=types.SimpleNamespace(fields=[f], step=step), port="sim:2026H_ball" if sim else "hw:COM3"), sim=sim)
+    o.step_cfg = lambda: {"y": "cam_x_px", "low": [0], "high": [60]} | ({"sim_nominal": nominal} if nominal else {})
     proj = tmp_path / "p"
-    proj.mkdir()
+    proj.mkdir(exist_ok=True)
     (proj / "requirements.yaml").write_text("items:\n  - id: '1'\n    metrics:\n      - {name: 稳态误差, op: '<=', value: 1, unit: cm}\n", "utf-8")
     o._project_path = lambda: str(proj)
-    o._step_amp = lambda m: S.AgentService._step_amp(o, m)
-    o._unit_per = lambda *a: S.AgentService._unit_per(o, *a)
+    for n in ("_step_amp", "_unit_per", "_phys_per", "_sim_nominal_per", "_calibration_per"):
+        setattr(o, n, (lambda f: lambda *a: f(o, *a))(getattr(S.AgentService, n)))
     o._pass_basis = S.AgentService._pass_basis
-    # 5% × |60 − 0| = 3 px = 0.5 cm ≤ 1 cm
-    r = S.AgentService._ss_band(o, {"ss_err_pct": 5.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})
-    assert r["inside"] is True and r["unit"] == "px" and r["measured"] == pytest.approx(3.0)
-    # 20% × 60 = 12 px = 2 cm > 1 cm
-    assert S.AgentService._ss_band(o, {"ss_err_pct": 20.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})["inside"] is False
-    f.pop("cal")                                    # 板子没声明换算 → 不硬判
-    assert S.AgentService._ss_band(o, {"ss_err_pct": 5.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})["inside"] is None
+    return o, proj
+
+
+M5 = {"ss_err_pct": 5.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0}       # 5% × 60 px = 3 px = 0.5 cm
+M20 = dict(M5, ss_err_pct=20.0)                                                       # 12 px = 2 cm
+
+
+def test_ss_band_sim_uses_phys_first(tmp_path):
+    o, _ = _ss_obj(tmp_path, True, phys={"unit": "cm", "per_unit": 6}, nominal={"from": "px", "to": "cm", "per": 0.5})
+    r = S.AgentService._ss_band(o, M5)
+    assert r["inside"] is True and r["conv_source"] == "phys" and r["converted"]["value"] == pytest.approx(0.5)
+    assert "仿真标称" in r["note_zh"] and S.AgentService._ss_band(o, M20)["inside"] is False
+
+
+def test_ss_band_sim_falls_back_to_sim_nominal(tmp_path):
+    o, _ = _ss_obj(tmp_path, True, nominal={"from": "px", "to": "cm", "per": 1 / 6, "source": "sim_setup.c"})
+    r = S.AgentService._ss_band(o, M5)
+    assert r["inside"] is True and r["conv_source"] == "sim_nominal" and "仿真标称" in r["note_zh"]
+
+
+def test_ss_band_hw_phys_is_not_a_calibration(tmp_path):
+    o, proj = _ss_obj(tmp_path, False, phys={"unit": "cm", "per_unit": 6}, nominal={"from": "px", "to": "cm", "per": 1 / 6})
+    r = S.AgentService._ss_band(o, M5)
+    assert r["inside"] is None and r["conv_source"] is None and "待标定" in r["note_zh"]
+    assert r["calib_initial_guess"]["per"] == pytest.approx(1 / 6)                  # phys 只当标定初值
+    assert S.AgentService._verdict(r, {"reason": "pass"}, {"ok": True, "rise_s": 0.5, "settling_s": 1.0})[0] == "unknown"
+    (proj / ".dz" / "calib").mkdir(parents=True)                                      # 有 #51 标定结果才判
+    (proj / ".dz" / "calib" / "cam_x_px.json").write_text('{"from": "px", "to": "cm", "per": 0.2, "source": "O/±5 cm 实测"}', "utf-8")
+    r = S.AgentService._ss_band(o, M5)
+    assert r["inside"] is True and r["conv_source"] == "calibration"
+
+
+def test_pass_basis_is_one_sentence_without_parentheses():
+    P = S.AgentService._pass_basis
+    outs = [P(None, None), P({"limit": 2, "unit": "%"}, True), P({"item": "B3", "source": "题目 B3：误差（绝对值） ≤ 1cm"}, None),
+            P({"item": "B3", "source": "题目 B3：误差（绝对值） ≤ 1cm"}, True), P({"item": "B3", "source": "题目 B3：误差 ≤ 1cm"}, False)]
+    assert outs[0] == "题目未给误差带，按默认 2% 判定"
+    for t in outs:
+        assert not any(c in t for c in "()（）"), t
+
+
+class CoarseClock:
+    """Windows 样的时钟：读数按 15.625 ms 量化，sleep 向上取整到 tick 再多一 tick（虚拟时间，不真睡）。"""
+    TICK = 0.015625
+
+    def __init__(self):
+        self.t = 0.0
+
+    def monotonic(self):
+        return (self.t // self.TICK) * self.TICK
+
+    def sleep(self, d):
+        import math
+        self.t += (math.ceil(d / self.TICK) + 1) * self.TICK
+
+
+@pytest.mark.parametrize("rep", range(50))
+def test_return_to_start_coarse_clock_windows(monkeypatch, rep):
+    """Windows CI 复现：墙钟判“持续 0.3 s”+ 超时 → sleep 偏长时 settled=False。按拍数计时就与时钟无关。"""
+    c = CoarseClock()
+    monkeypatch.setattr(S, "time", types.SimpleNamespace(monotonic=c.monotonic, sleep=c.sleep, time=c.monotonic))
+    o = _stub([30.0] * 3 + [1.0] * 100)
+    r = S.AgentService._settle_at_low(o, ST, [0.0], [60.0], 0.1)
+    assert r["settled"] is True and "start_offset" not in r, r
+    o = _stub([25.0])
+    r = S.AgentService._settle_at_low(o, ST, [0.0], [60.0], 0.1)
+    assert r["settled"] is False and r["start_offset"] == pytest.approx(25.0)

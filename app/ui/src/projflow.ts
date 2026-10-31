@@ -19,7 +19,7 @@ export function editItems(items: ReqItem[], rows: { id: string; part: string; sc
 }
 export const STEPS_FLOW = ["req", "scheme", "import", "alloc", "gen"] as const;
 
-// 题号默认从 PDF 文件名猜：“H题_xxx.pdf” → 当年 + H（2026H）；猜不出就留空让人填。
+// 题号默认从 PDF 文件名猜：“H题_xxx.pdf” → 当年 + H（如 2026 年 H 题）；猜不出就留空让人填。
 export function codeFromName(fn: string, year = new Date().getFullYear()): string {
   const m = /(?:^|[^A-Za-z])([A-Za-z])\s*题/.exec(fn) || /^(\d{4}[A-Za-z])/.exec(fn);
   return m ? (m[1].length === 1 ? `${year}${m[1].toUpperCase()}` : m[1].toUpperCase()) : "";
@@ -46,7 +46,8 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   const confirmBtn = (k: string, label: string, fn: () => Promise<void>) => {
     const b = document.createElement("button"); b.className = "btn pri"; b.type = "button"; b.textContent = label;
     b.onclick = async () => { b.disabled = true; try { await fn(); } catch { b.disabled = false; } };
-    res(k).append(b);
+    const n = document.createElement("p"); n.className = "hint"; n.textContent = "只授权写入文件，不会提交（git 提交另有确认卡）";
+    res(k).append(b, n);
   };
   const inp = (id: string) => document.getElementById(id) as HTMLInputElement;
   // 确认一步后自动跑下一步的预览（预览只写暂存区，不算替人做决定）；下一步缺输入就只把光标放过去。

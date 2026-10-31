@@ -4,6 +4,7 @@ export type Ev = { i: number; kind: string; text: string; log_t: number | null; 
 export const KIND: Record<string, [string, string]> = {   // kind → [短名, 颜色变量]
   connect: ["连接", "--muted"], estop_clear: ["解除", "--muted"], param: ["参数", "--acc-t"], estop: ["急停", "--crit"], watchdog: ["看门狗", "--crit"],
   crc: ["CRC", "--warn"], step: ["阶跃", "--ok"], agent: ["Agent", "--acc-t"],
+  iterate: ["迭代", "--acc-t"], iter_start: ["迭代开始", "--acc-t"], iter_stop: ["迭代结束", "--muted"], flash: ["烧录", "--muted"], reset: ["复位", "--warn"],
 };
 export const kindOf = (k: string): [string, string] => KIND[k] || [k, "--muted"];
 export function mergeEv(have: Ev[], add: Ev[], keep = 2000): Ev[] {
