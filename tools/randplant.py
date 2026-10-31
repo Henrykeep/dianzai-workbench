@@ -433,8 +433,8 @@ def _spec(p: dict, rng, bad: str, ref: dict) -> dict:
 def app_yaml(p: dict) -> str:
     u = p["unit"]; r = p["ranges"]; i = p["init"]; md = p["max_delta"]
     lim = p["roles"].get("LIM")
-    params = "\n".join(f"    - {{ name: {nm}, type: float, default: {i[nm]}, min: {r[nm][0]}, max: {r[nm][1]}, max_delta: {md[nm]} }}"
-                       for nm in p["roles"].values())
+    params = "\n".join(f"    - {{ name: {nm}, type: float, default: {i[nm]}, min: {r[nm][0]}, max: {r[nm][1]}, max_delta: {md[nm]}, role: {ro} }}"
+                       for ro, nm in p["roles"].items())
     return f"""# 由 tools/randplant.py --seed {p['seed']} 生成：随机被控对象（只在 host-sim 上跑）。不要手改，重新生成。
 name: {p['name']}
 version: 1.0.0

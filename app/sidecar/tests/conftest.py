@@ -136,3 +136,27 @@ def _no_real_llm_env(monkeypatch):
     import os
     for k in [k for k in os.environ if k.startswith(("DZ_LLM_", "DZBENCH_API_KEY", "DZBENCH_BASE_URL", "DZBENCH_MODEL"))]:
         monkeypatch.delenv(k, raising=False)
+
+
+def wd_timeout_ms(src) -> int:
+    """固件链路看门狗超时（ms）：读 link_schema.json 的 wd_timeout_ms（fw-wd 起有）；旧固件没有该字段时按 1000。
+    src 可以是侧车的 schema 事件、schema.summary() 字典、Schema 对象（有 .d/.path）或 link_schema.json 路径。"""
+    import json
+    d = None
+    if isinstance(src, dict):
+        src = src.get("schema", src)
+        if isinstance(src, dict):
+            if src.get("wd_timeout_ms"):
+                return int(src["wd_timeout_ms"])
+            src = src.get("path")
+    elif getattr(src, "d", None) is not None:
+        d = src.d
+    if d is None and src:
+        try:
+            with open(str(src), encoding="utf-8") as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            d = None
+    d = d or {}
+    v = d.get("wd_timeout_ms") or (d.get("link") or {}).get("wd_timeout_ms")
+    return int(v) if v else 1000
