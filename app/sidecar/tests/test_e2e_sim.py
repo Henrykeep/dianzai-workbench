@@ -126,15 +126,18 @@ def test_websocket_server(home):
             except OSError:
                 await asyncio.sleep(0.05)
         async with websockets.connect(f"ws://127.0.0.1:{port}", open_timeout=30) as ws:
+            seen: set = set()               # rpc 等回包时顺手收到的推送类型（schema 只推一次，可能早于 connect 的回包到）
+
             async def rpc(**m):
                 await ws.send(json.dumps(m | {"rid": m["op"]}))
                 while True:
                     x = json.loads(await ws.recv())
+                    seen.add(x.get("type"))
                     if x.get("type") == "reply" and x["rid"] == m["op"]:
                         return x
             assert any(p["port"] == "sim:car_2wd" for p in (await rpc(op="hello"))["data"]["ports"])
             assert (await rpc(op="connect", port="sim:car_2wd"))["ok"]
-            got = set()
+            got = set(seen)
             t0 = time.monotonic()
             while not {"telem", "status", "schema"} <= got and time.monotonic() - t0 < 6:
                 got.add(json.loads(await ws.recv())["type"])
