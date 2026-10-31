@@ -1,6 +1,6 @@
 """op setpoint_set：只下发目标、不跑阶跃；急停中 / 阶跃中 / hold=timeout 通道一律拒绝且什么都不发；按 link_schema 校验；
 成功后清 sp_before_latch。设定值通道 hold（latched | timeout，缺省 timeout）原样透传到 schema 摘要和 status。
-固件还没带 hold 字段：hold=latched 的路径用夹具 schema 测。"""
+真实 app.yaml（fw-runtime 4e24d91 起带 hold）经 gen_link 生成的 schema 也测：car_2wd=timeout、line_car=latched。"""
 from __future__ import annotations
 
 import struct
@@ -129,3 +129,29 @@ def test_car_2wd_without_hold_is_timeout_and_freezes_sp(home, monkeypatch):
         assert s.status()["sp_before_latch"] > 0.0, "解除后保留，给「恢复急停前目标」"
     finally:
         s.disconnect()
+
+
+def _real_schema(app: str) -> Schema:
+    import pathlib, sys
+    root = pathlib.Path(__file__).resolve().parents[3]
+    sys.path.insert(0, str(root / "tools"))
+    import gen_link as G
+    spec, params, _ = G.load(root / "apps" / app / "app.yaml")
+    return Schema(G.schema(spec, params))
+
+
+@pytest.mark.parametrize("app,hold", [("car_2wd", "timeout"), ("line_car", "latched")])
+def test_real_app_yaml_hold(app, hold, monkeypatch):
+    sc = _real_schema(app)
+    sps = sc.setpoints()
+    assert sps and {c["hold"] for c in sps} == {hold}
+    s = Session(); s.schema = sc; sent = []
+    monkeypatch.setattr(s, "send_data", lambda i, p: sent.append((i, p)) or True)
+    assert [c["hold"] for c in s.status()["setpoints"]] == [hold] * len(sps)
+    name = sps[0]["name"]
+    if hold == "timeout":
+        with pytest.raises(LinkError) as e:
+            s.setpoint_set(name, 0.1)
+        assert e.value.code == "hold_timeout" and e.value.fix_action == "restart_experiment" and sent == []
+    else:
+        assert s.setpoint_set(name, 0.1)["slot"] == 0 and len(sent) == 1
