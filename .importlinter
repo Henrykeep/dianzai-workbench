@@ -1,0 +1,21 @@
+# 真值隔离（用户要求总表第 3 条；make check 跑 lint-imports --config .importlinter）
+# 诊断 / 整定代码（dzbench）不许 import 判卷 / 出题模块；真值只许 tools/tunegate_grade.py 与测试读。
+# 文本扫描（plant.json 字符串、reason_category / feasibility 等取键）由 tools/check_no_truth_leak.py 负责，两道一起跑。
+[importlinter]
+root_packages =
+    dzbench
+include_external_packages = True
+
+[importlinter:contract:truth-isolation]
+name = 诊断代码不许 import 判卷/出题模块（真值只许判卷模块与测试读）
+type = forbidden
+source_modules =
+    dzbench
+forbidden_modules =
+    tunegate_grade
+    tunegate_plant
+    randplant
+    randplant_standin
+    feascheck
+    tools
+allow_indirect_imports = False

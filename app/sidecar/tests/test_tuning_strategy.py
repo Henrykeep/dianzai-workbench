@@ -34,7 +34,11 @@ def test_spec_cost_follows_spec_and_gain_floor():
     assert AT.spec_cost(ok, SP) < AT.spec_cost(bad, SP)          # 低 IAE 但超题面不算更好
     decl = [{"role": "kp", "min": 0.0, "max": 10.0}, {"role": "ki", "min": 0.0, "max": 10.0}, {"role": "kd", "min": 0.0, "max": 1.0}]
     fl = AT.gain_floor(decl, [{"kp": 1.0, "ki": 2.0, "kd": 0.1}, {"kp": 5.0, "ki": 0.0, "kd": 0.0}])
-    assert fl["kp"] >= 0.2 and fl["ki"] >= 0.4 and "kd" not in fl
+    # 下限 = max(声明 min, FLOOR_FRAC×候选最大, FLOOR_INIT×初值)；kd 不设下限
+    assert fl["kp"] == max(AT.FLOOR_FRAC * 5.0, AT.FLOOR_INIT * 1.0) > 0
+    assert fl["ki"] == max(AT.FLOOR_FRAC * 2.0, AT.FLOOR_INIT * 2.0) > 0 and "kd" not in fl
+    hi = AT.gain_floor([dict(decl[0], min=0.5)], [{"kp": 1.0}])
+    assert hi["kp"] == 0.5                                       # 声明 min 更高时取声明 min
     for d in decl:
         d["init"] = 0.0
     assert AT._clip_floor({"kp": 1e-9, "ki": 1e-9, "kd": 0.0}, decl, fl)["kp"] == fl["kp"]

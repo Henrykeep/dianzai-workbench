@@ -15,4 +15,5 @@
 | Web Awesome（@awesome.me/webawesome 3.14.0） | MIT | Fonticons, Inc.（原 Shoelace）；界面按钮 / 滑条 / 标签 / 卡片 / 骨架组件，本地打包进 `app/ui`，主题由 `app/ui/src/wa-theme.css` 从 tokens 映射；默认图标库已改为空（不访问 Font Awesome CDN）；传递依赖 lit（BSD-3-Clause）、@floating-ui（MIT）等均为宽松许可 | https://github.com/shoelace-style/webawesome |
 | python-control（control ≥ 0.10） | BSD-3-Clause | The Python Control Systems Library developers（Richard M. Murray 等）；`tools/randplant.py` 用 `control.rss` 生成随机稳定系统、`control.pade` 近似纯滞后、`control.c2d` 离散化；侧车 `app/sidecar/dzbench/tuning/autotune.py` 用于模型仿真与 PID 初值；传递依赖 numpy、scipy（BSD-3-Clause） | https://github.com/python-control/python-control |
 | SysIdentPy | BSD-3-Clause | Wilson Rocha Lacerda Junior 等 | https://github.com/wilsonrljr/sysidentpy ；侧车依赖：`autotune.identify()` 用 FROLS 从阶跃录波辨识 ARX 模型 |
+| import-linter | BSD-2-Clause | David Seddon 等 | https://github.com/seddonym/import-linter ；开发依赖：`make check` 按 `.importlinter` 的 forbidden 契约检查诊断代码（dzbench）不 import 判卷 / 出题模块 |
 | Tesseract OCR（命令行，含 chi_sim 语言包） | Apache-2.0 | Google / tesseract-ocr 社区；`tools/req.py ocr_image()` 只调外部命令把题目截图转文字（#86），不打包、不链接；没装时提示改粘贴文字 | https://github.com/tesseract-ocr/tesseract |
