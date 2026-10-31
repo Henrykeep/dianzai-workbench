@@ -33,6 +33,13 @@ echo "== 2/5 侧车 dzbench.exe（wine + PyInstaller）"
   --hidden-import serial.tools.list_ports --collect-submodules pypdf --collect-data pypinyin "$(zpath "$ROOT/app/sidecar/dzbench_entry.py")")
 cp "$WORK/pyi/dzbench.exe" "$STAGE/dzbench.exe"
 
+echo "== 3/5 离线依赖 wheelhouse（tools/wheelhouse.txt，钉版本；安装时不联网）"
+mkdir -p "$STAGE/wheelhouse"
+grep -v '^\s*#' "$ROOT/tools/wheelhouse.txt" | sed 's/\s*#.*//' | sed '/^\s*$/d' > "$STAGE/wheelhouse/requirements.txt"
+python3 -m pip download --only-binary=:all: --platform win_amd64 --python-version 3.12 --implementation cp \
+  -d "$STAGE/wheelhouse" -r "$STAGE/wheelhouse/requirements.txt" >/dev/null
+printf '@echo off\r\nrem 离线安装 Python 依赖（不联网）：python-control/scipy/numpy/sysidentpy/uncertainties\r\npython -m pip install --no-index --find-links "%%~dp0wheelhouse" -r "%%~dp0wheelhouse\\requirements.txt"\r\n' > "$STAGE/安装离线依赖.bat"
+
 echo "== 4/5 Tauri 外壳（x86_64-pc-windows-gnu）"
 mkdir -p "$ROOT/app/src-tauri/binaries" && cp "$STAGE/dzbench.exe" "$ROOT/app/src-tauri/binaries/dzbench-x86_64-pc-windows-gnu.exe"
 (cd "$ROOT/app/src-tauri" && npx --yes @tauri-apps/cli@2 build --target x86_64-pc-windows-gnu --no-bundle >/dev/null)   # CLI 会开 custom-protocol 并先编前端；裸 cargo build 会去连 devUrl

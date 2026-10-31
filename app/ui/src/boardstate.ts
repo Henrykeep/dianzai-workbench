@@ -2,7 +2,7 @@
 // 文案以侧车给的 message_zh / label_zh 为准，前端不拼原因；这里只决定显示什么、按钮能不能点。
 export type RunMode = { mode: string; started?: boolean; label_zh: string };
 export type Selftest = { pass: boolean; failed_items: { code: string; key: string; message_zh: string }[]; t?: number } | null;
-export type EstopCause = { cause: string; cause_id?: number; message_zh: string; value?: unknown; t?: number; run_mode?: string };
+export type EstopCause = { cause: string; cause_id?: number; message_zh: string; t?: number; run_mode?: string };
 export type BoardStatus = { run_mode?: RunMode; selftest?: Selftest; params_saved?: boolean | null; params_hash?: string; estop_cause?: EstopCause | null };
 type Rpc = (op: string, a?: any) => Promise<any>;
 const missing = (e: any) => /bad_op|未知操作|unknown op/i.test(`${e?.code ?? ""} ${e?.message ?? ""}`);

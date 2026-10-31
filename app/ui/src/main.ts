@@ -1,3 +1,5 @@
+import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, type RoleReq } from "./roles";
+import { ROLE_F, ROLE_CONFIRM_OP } from "./fieldmap";
 import { applyBrand } from "./brand";
 import { lastRound } from "./round";
 import "./tokens.css";
@@ -122,8 +124,8 @@ function renderAlerts() {
   const v = estopView(ev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs);
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
-  if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? (ev ? v.head : latchHead((S.status as any).estop_cause ?? latchedCause())) : "已解除（之前：" + v.head + "）")}</b></span>`;
-  if (latched) { const el2 = estopLine(ev, S.status, latchAt); head += `<span class="al-t al-at">${esc(el2.line)}</span>` + (el2.restored ? `<span class="al-t al-rest">从上次恢复</span>` : ""); }
+  if (!latched && ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc("已解除（之前：" + v.head + "）")}</b></span>`;   // #120 锁存时只一行，原因不重复
+  if (latched) { const el2 = estopLine(ev, S.status); head += `<span class="al-t al-at" title="${esc(v.detail)}"><b class="al-h">${esc(el2.line)}</b></span>` + (el2.restored ? `<span class="al-t al-rest">从上次恢复</span>` : ""); }
   const fh = bannerHint(latched, ev); if (fh) head += `<span class="al-t al-fix">${esc(fh)}</span>`;
   const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
@@ -411,14 +413,30 @@ function pending() {
   return pendingOf(S.schema?.params ?? [], S.edit, S.applied);
 }
 const pos = (p: Param, v: number) => p.max > p.min ? String(Math.min(Math.max((v - p.min) / (p.max - p.min), 0), 1)) : "0";
+let ROLE_REQ: RoleReq | null = null, roleSent = false;
+function renderRoleCard() {
+  const el = document.getElementById("role-host"); if (!el) return;
+  el.innerHTML = roleCardHtml(ROLE_REQ, roleSent);
+  const ok = document.getElementById("role-ok"), rt = document.getElementById("role-retry");
+  if (ok) ok.onclick = async () => {
+    const picked: Record<string, string> = {};
+    document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { if (x.value) picked[x.dataset.roleN!] = x.value; });
+    const roles = ROLE_REQ && collectRoles(ROLE_REQ, picked);
+    if (!roles) return toast({ code: "", message: "还有参数没选角色", fix: "每个高亮的参数都选一个角色" });
+    const r = await call(ROLE_CONFIRM_OP, { roles }).catch(() => null);
+    if (r) { roleSent = true; renderRoleCard(); }
+  };
+  if (rt) rt.onclick = () => { ROLE_REQ = null; roleSent = false; renderParams(); $("it-go").click(); };
+}
 function renderParams() {
+  queueMicrotask(renderRoleCard);   // 角色卡挂在 plist 里，等 innerHTML 换完再画
   const ps = S.schema?.params ?? [];
   // 参数（docs/26 §6）：名字 + 数值同一行；下面一把刻度尺：板上值（实线）、默认值（○）、草稿（黄铜，连一段改动范围）、量程两端。
   // 全部来自 schema 的 params（名字 / 量程 / 单位 / 说明），界面不认任何题目的参数名。
   // 设计 v9：每行只显示名字、数值、刻度尺；说明 / 单位 / 量程收进悬停提示（title）
   const tip = (p: Param) => [p.desc, `量程 ${fmt(p.min, p)} … ${fmt(p.max, p)}${p.unit ? " " + p.unit : ""}`, `默认 ${fmt(p.default, p)}`].filter(Boolean).join("\n");
-  $("plist").innerHTML = ps.length ? `<div class="p-lock" id="p-lock" hidden>${ITER_LOCK_ZH} · 参数暂不可改，结束或停止迭代后再调</div>` + `<div class="p-unread" id="p-unread" hidden><span>灰色为固件默认值，尚未从板子读取</span><button class="btn sm ghost" type="button" id="p-unread-go">从板子读取参数</button></div>` + ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(tip(p))}">
-    <div class="pr"><span class="kk"><span class="k" title="${esc(p.name)}">${esc(p.name)}</span>${paramDesc(p) ? `<span class="pdesc">${esc(paramDesc(p))}</span>` : ""}</span><span class="bv" id="pb-${p.name}"></span>
+  $("plist").innerHTML = ps.length ? `<div id="role-host"></div>` + `<div class="p-lock" id="p-lock" hidden>${ITER_LOCK_ZH} · 参数暂不可改，结束或停止迭代后再调</div>` + `<div class="p-unread" id="p-unread" hidden><span>灰色为固件默认值，尚未从板子读取</span><button class="btn sm ghost" type="button" id="p-unread-go">从板子读取参数</button></div>` + ps.map(p => `<div class="prow${ROLE_REQ?.missing.includes(p.name) ? " role-miss" : ""}" id="row-${p.name}" title="${esc(tip(p))}">
+    <div class="pr"><span class="kk"><span class="k" title="${esc(p.name)}">${esc(p.name)}</span>${roleCellHtml(p.name, ROLE_REQ, (p as any)[ROLE_F.paramRole])}${paramDesc(p) ? `<span class="pdesc">${esc(paramDesc(p))}</span>` : ""}</span><span class="bv" id="pb-${p.name}"></span>
       <span class="pv"><input class="in num" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off" aria-label="${esc(p.name)}${p.unit ? "（" + esc(p.unit) + "）" : ""}">${p.unit ? `<span class="u">${esc(p.unit)}</span>` : ""}</span></div>
     <wa-slider class="psl" id="sl-${p.name}" data-n="${p.name}" min="${p.min}" max="${p.max}" step="${p.max > p.min ? (p.max - p.min) / 200 : 1}" value="${p.default}" size="small" aria-label="${esc(p.name)}"></wa-slider>
     <div class="rng" aria-hidden="true"><span>${fmt(p.min, p)}</span><span>${fmt(p.max, p)}</span></div><div class="p-rej" id="rej-${p.name}" hidden></div></div>`).join("")
@@ -830,6 +848,7 @@ function onBoardForIter(port: string | null | undefined) { if (iterPort !== unde
 setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
   { const pv = toPlant((m as any)?.[PLANT_F.obj]); if (pv) paintPlant(pv); }
+  { const rq = toRoleReq(m); if (rq) { ROLE_REQ = rq; roleSent = false; renderParams(); } }
   if (IT.onEvent(m, performance.now())) { if (m.type === "iterate.round") FN.onUserChange(); renderIter(); }
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   if (m.metrics_card && !String(m.type).startsWith("iterate")) { const h = metricCardHtml(m), e = $("mc-card"); e.innerHTML = h; e.hidden = !h; }   // r9p6 测量 / 电源题：独立推送的指标卡

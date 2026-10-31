@@ -1163,3 +1163,14 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
    #tb-saved / #hist-n / .pf-n / 等宽输入框在 1366 掉回 14px。审计：fe-shots/numaudit.py 按同一选择器查 */
 .mono,.num,.lbl.mono,.pf-n.mono,.in.mono,[class*=val]:where(.mono,.num){font-size:max(16px,var(--t-sm))}
 .gd li .n,.ag-guide .n{font-size:16px;width:24px;height:24px}
+/* #114 r9g：按“文字含数字”审计（不按 class）漏掉的 12–14px：阶跃读数差值 / 时间线条目 / 参数说明 / 验收汇总 / 台账轮号 / t0 按钮 */
+.dt,.tl-e,.tl-e *,.pdesc,.kk>span.pdesc,.rc-det>p,.acc-sum,.ledger td.hn,#t0-mark{font-size:16px !important}
+/* 参数角色确认：待确认行高亮；下拉 + 「建议，待确认」；握手 role 只读 */
+.prow.role-miss{outline:2px solid var(--warn);outline-offset:2px;border-radius:4px;background:color-mix(in srgb,var(--warn) 8%,transparent)}
+.role-pick{display:inline-flex;gap:8px;align-items:center;margin-left:8px}.role-sel{font-size:16px}
+.role-sg{font-size:14px;color:var(--warn)}.role-ro{margin-left:8px;font-size:14px;opacity:.75}
+.role-card{margin:0 0 12px;padding:12px;border:1px solid var(--warn);border-radius:8px}.role-card p{margin:8px 0}
+.role-lim{margin-left:8px;font-size:14px;opacity:.75}
+.it-verdict.warn{color:var(--warn)}   /* 降幅测试：警告色，不当通过 */
+.mc-it.partial{border-color:var(--warn)} .mc-v.partial{color:var(--warn)} .mc-warn.partial{color:var(--warn)}   /* #129 降幅测试：琥珀色，不当达标 */
+.mc-amp{margin:4px 0 0;font-size:16px}

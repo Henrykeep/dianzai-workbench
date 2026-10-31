@@ -1,5 +1,6 @@
 import { coarseTagHtml } from "./plant";
-import { LEDGER, bestValid, fromRoundEvent, type LedgerRound } from "./ledgerbus";
+import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
+import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH } from "./fieldmap";
 import { pickStr, RESULT_PORT_F, RESULT_CLEAR_EV } from "./fieldmap";
 import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
@@ -60,8 +61,9 @@ export function compareRows(base: Record<string, number> | null | undefined, bes
   });
 }
 export function verdictLine(v: Verdict | undefined, e: SsErr | null, basis: string): { v: string; text: string } {
+  if (v?.warn) return { v: "warn", text: v.warn };   // 降幅测试：原文警告，不当通过
   const x: Verdict = !v || e?.inside === null ? { v: "unknown", zh: v?.v === "unknown" && v.zh ? v.zh : "未判定" } : v;
-  return { v: x.v, text: `${x.zh}${basis && !x.zh.includes(basis) ? `（${basis}）` : ""}` };
+  return { v: x.v, text: `${x.zh || VERDICT_ZH[x.v]}${basis && !x.zh.includes(basis) ? `（${basis}）` : ""}` };
 }
 // events.md compare：round0 / best 各是 [{key,value,unit}]，按 key 对齐
 export function compareRaw(c: CompareRaw): string[][] {
@@ -71,15 +73,24 @@ export function compareRaw(c: CompareRaw): string[][] {
   });
 }
 // #101 r9f：stopped 没带 best 时用台账里最好的有效一轮（同一份数据，卡片不和台账矛盾）
-export function ledgerBest(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): Best | null {
-  if (r.best) return r.best;
-  const lb = bestValid(rs); return lb ? { iter: lb.n, params: lb.params, metrics: lb.metrics } : null;
+// #115 只看同一 run_id；#116 后端 best 指向台账里无效 / 发散的一轮 → 不给（unstable=true）
+export function ledgerBest(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): Best | null { return ledgerPick(r, rs).best; }
+export function ledgerPick(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): { best: Best | null; unstable: boolean } {
+  const run = (r as any)[LEDGER_ROUND_F.runId] != null ? String((r as any)[LEDGER_ROUND_F.runId]) : LEDGER.run();
+  if (r.best) {
+    const hit = run ? inRun(rs, run).find(x => x.n === r.best!.iter) : undefined;   // 只认同一 run_id 的台账轮，别拿别次迭代的同号轮否决
+    if (hit && !hit.valid) return { best: null, unstable: true };
+    return { best: r.best, unstable: false };
+  }
+  const lb = bestValid(rs, run);
+  if (lb) return { best: { iter: lb.n, params: lb.params, metrics: lb.metrics }, unstable: false };
+  return { best: null, unstable: /diverg|unstable/.test(r.reason ?? "") };
 }
 export function cardView(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): { verdict: { v: string; text: string }; title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
-  const b = ledgerBest(r, rs), basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
+  const pk = ledgerPick(r, rs), b = pk.best, basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
   return {
     compare: r.compare && !r.compare.unchanged ? compareRaw(r.compare) : b && !zero ? compareRows(r.base, b.metrics) : [],
-    title: !b ? "没有可用的一轮" : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
+    title: !b ? (pk.unstable ? NO_STABLE_ZH : "没有可用的一轮") : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
     reason: `停止原因：${REASON_ZH[r.reason] ?? (r.reason ? `其他（${r.reason}）` : "未上报")}${r.message_zh ? `（${verdictLine(r.verdict, e, "").v === "pass" ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
     gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null || b.pass)] : [],
@@ -102,6 +113,7 @@ export class IterModel {
   onEvent(m: any, now: number): boolean {
     if ((RESULT_CLEAR_EV as readonly string[]).includes(m?.type)) { this.reset(); LEDGER.reset(); return true; }
     if (m?.type === "iterate.round") { const lr = fromRoundEvent(m); if (lr) LEDGER.push(lr); }
+    if (m?.type === "iterate.started") { LEDGER.setRun(m[LEDGER_ROUND_F.runId]); }
     if (m?.type === "iterate.started") { const l = m.limits?.rounds ? { time_s: m.limits.time_s, rounds: m.limits.rounds } : this.s.limits; this.base = null; this.s = { phase: "running", limits: l, t0: now, iter: 0 }; return true; }
     if (m?.type === "iterate.round" && +m.iter === 0) this.base = roundMetrics(m);
     if (m?.type === "iterate.round") { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; (this.s as any).iter = Math.max((this.s as any).iter, +m.iter || 0); return true; }
@@ -156,7 +168,7 @@ export const iterTarget = (sp: { v: number } | null | undefined): number | null 
 // 参数一行横排；判定依据 / 单位不一致 / 停止原因收进「详情」；唯一主按钮「采用这组参数」
 export const CARD_KEYS = /超调|调节|稳态/;
 export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean }): string {
-  const v = cardView(r), head = verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");
+  const v = cardView(r), head = r.verdict?.warn ? r.verdict.warn : verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");   // 降幅警告原文照抄
   const key = v.compare.filter(x => CARD_KEYS.test(x[0])), cells = key.length ? key : v.compare.slice(0, 4);   // r9p6 别的题没有超调/调节/稳态时，照样列出它自己的指标
   const cmp = cells.length
     ? `<div class="rc-cmp">${cells.map(x => `<div class="rc-m"><span class="rc-k">${esc(x[0])}</span><span class="rc-v num">${esc(x[1])} → <b>${esc(x[2])}</b></span><span class="rc-d num ${x[4] ?? ""}">${esc(x[3])}</span></div>`).join("")}</div>`

@@ -42,11 +42,11 @@ def check_truth(p: dict) -> str:
         return "link.step 不许写 range / abs_tol"
     if not (p["spec_text"].startswith("阶跃幅度") and "稳态误差不超过" in p["spec_text"]):
         return "spec_text 不是题面式一句话"
-    if p["feasible"] == bool(p["reason_category"]) or (not p["feasible"] and not p["reason"]):
+    if (p["feasible"] is True) == bool(p["reason_category"]) or (p["feasible"] is not True and not p["reason"]):
         return "feasible / reason_category 不一致"
     if not p["items"] or any(not {"name", "clause", "target", "verdict_expected"} <= set(it) for it in p["items"]):
         return "items 缺字段"
-    if p["feasible"]:
+    if p["feasible"] is True:
         b = p["reference"]["best"]
         vals = {"稳态误差": b["ss_err"], "超调量": b["overshoot_pct"], "调节时间": b["settle_s"]}
         if any(vals[it["name"]] > it["target"]["value"] for it in p["items"]):

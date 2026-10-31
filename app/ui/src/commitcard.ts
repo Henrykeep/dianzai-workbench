@@ -1,5 +1,5 @@
-// #88 git 提交确认卡（通用）：commit_confirm_request → 卡片「确认提交 / 取消」→ op commit_confirm；拒绝 / 超时 → commit_declined。字段名只在 fieldmap
-import { COMMIT_F, COMMIT_OP, COMMIT_DECL_F, NO_REASON_ZH, COMMIT_REASON_KEYS, COMMIT_REASON_HOSTS, COMMIT_USER_F, USER_DECLINED_ZH } from "./fieldmap";
+// #88 git 提交确认卡（通用）：commit_confirm_request → 卡片「保存到工程版本 / 取消」→ op commit_confirm；拒绝 / 超时 → commit_declined。字段名只在 fieldmap
+import { COMMIT_F, COMMIT_OP, COMMIT_DECL_F, NO_REASON_ZH, COMMIT_BTN_ZH, COMMIT_REASON_KEYS, COMMIT_REASON_HOSTS, COMMIT_USER_F, USER_DECLINED_ZH } from "./fieldmap";
 export type CommitReq = { id: string; branch: string; files: { path: string; status: string }[]; message: string; messageZh: string };
 const s = (v: unknown) => typeof v === "string" ? v : "";
 export function toCommitReq(raw: any): CommitReq {
@@ -16,9 +16,9 @@ export function commitCardHtml(c: CommitReq, esc: (s: string) => string): string
   const files = c.files.length ? `<ul class="cc-files mono">${c.files.map(f => `<li>${f.status ? `<span class="cc-st">${esc(ST[f.status] ?? f.status)}</span> ` : ""}${esc(f.path)}</li>`).join("")}</ul>` : `<p class="hint">后端没有列出文件</p>`;
   const msg = c.message ? `<pre class="mono cc-msg">${esc(c.message)}</pre>` : `<p class="hint">后端没有给提交说明</p>`;
   const ok = c.files.length && c.id;
-  return `<div class="card cc" data-cc-id="${esc(c.id)}"><b>确认 git 提交（${c.files.length} 个文件）</b>` +
+  return `<div class="card cc" data-cc-id="${esc(c.id)}"><b>保存到工程版本（${c.files.length} 个文件）</b>` +
     `<div class="lbl">分支 <span class="mono cc-br">${c.branch ? esc(c.branch) : "—"}</span></div>${c.messageZh ? `<p class="cc-zh">${esc(c.messageZh)}</p>` : ""}${files}<div class="lbl">提交说明</div>${msg}` +
-    `<div class="act"><button class="btn pri" data-cc="ok"${ok ? "" : " disabled"}>确认提交</button><button class="btn" data-cc="cancel"${c.id ? "" : " disabled"}>取消</button><span class="lbl cc-res"></span></div></div>`;
+    `<div class="act"><button class="btn pri" data-cc="ok"${ok ? "" : " disabled"}>${COMMIT_BTN_ZH}</button><button class="btn" data-cc="cancel"${c.id ? "" : " disabled"}>取消</button><span class="lbl cc-res"></span></div></div>`;
 }
 // 点击 → op 参数
 export const commitOpArgs = (id: string, approve: boolean) => ({ op: COMMIT_OP.name, args: { [COMMIT_OP.id]: id, [COMMIT_OP.approve]: approve } });

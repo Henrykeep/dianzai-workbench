@@ -55,7 +55,7 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
     if (sm?.ok) r.m = { Mp: sm.overshoot_pct ?? NaN, tr: sm.rise_s ?? NaN, ts: sm.settling_s ?? NaN, ess: sm.sse_pct ?? NaN, settled: sm.settling_s != null, t0: NaN };
     runs.unshift(r); runs.length = Math.min(runs.length, MAX_RUNS);
     { const mt: Record<string, number> = {}; if (r.m && Number.isFinite(r.m.Mp)) mt[LEDGER_ROUND_F.overshoot] = r.m.Mp; if (r.m && Number.isFinite(r.m.ts)) mt[LEDGER_ROUND_F.settle] = Math.round(r.m.ts * 1000);
-      LEDGER.push({ n: r.n, params: { ...r.params }, metrics: mt, valid: verdict !== "invalid" && Object.keys(mt).length > 0 }); }
+      LEDGER.push({ n: r.n, params: { ...r.params }, metrics: mt, valid: verdict !== "invalid" && Object.keys(mt).length > 0, kind: LEDGER_ROUND_F.manual }); }
     open = false;
     plot.ghost = runs[1]?.data ?? null;
     annotate(r);

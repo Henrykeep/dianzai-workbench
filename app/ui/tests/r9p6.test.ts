@@ -180,7 +180,7 @@ import { toCommitReq, commitCardHtml } from "../src/commitcard";
 {
   const e = (s: string) => s.replace(/</g, "&lt;");
   const h = commitCardHtml(toCommitReq({ files: [{ path: "src/a.c", status: "M" }, "b.yaml"], message: "调参：kp 0.5→0.8", request_id: "r1", branch: "main" }), e);
-  for (const t of ["src/a.c", "b.yaml", "修改", "调参：kp 0.5→0.8", "确认提交", "取消", "2 个文件"]) if (!h.includes(t)) throw new Error("commit card " + t);
+  for (const t of ["src/a.c", "b.yaml", "修改", "调参：kp 0.5→0.8", "保存到工程版本", "取消", "2 个文件"]) if (!h.includes(t)) throw new Error("commit card " + t);
   const z = commitCardHtml(toCommitReq({}), e);
   if (!z.includes("disabled") || !z.includes("后端没有给提交说明")) throw new Error("empty commit card");
   if (!require("fs").readFileSync("src/projflow.ts", "utf8").includes("writeScopeNote(preview)")) throw new Error("write card note");   // r9p6c：按 scope 显示
