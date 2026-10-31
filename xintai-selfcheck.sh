@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# 芯台自检（Linux / macOS 源码运行）。选 Python 的顺序：$PYTHON → .venv/bin/python → python3 → python
+# 芯台自检（Linux / macOS 源码运行）。选 Python 的顺序：$PYTHON → .venv/bin/python → python3.12 → python3 → python
 # 先跑依赖自检：缺包 / 版本不对就打印中文原因和办法，退出码非 0，不往下跑。
 cd "$(dirname "$0")" || exit 1
 PY=${PYTHON:-}
 if [ -z "$PY" ]; then
-  for c in .venv/bin/python python3 python; do
+  for c in .venv/bin/python python3.12 python3 python; do
     if command -v "$c" >/dev/null 2>&1; then PY=$c; break; fi
   done
 fi
