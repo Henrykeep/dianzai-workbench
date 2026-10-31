@@ -14,11 +14,11 @@ link:
     period_ms: 10
     fields:
       - { name: t_ms,      type: uint32, unit: ms }
-      - { name: line_sp_mm, type: float, unit: mm, ref_for: line_mm }
+      - { name: line_sp_mm, type: float, unit: mm, ref_for: line_mm, hold: latched }
       - { name: line_mm,   type: float, unit: mm }
-      - { name: sp_a,      type: float, unit: rps, ref_for: spd_a }
+      - { name: sp_a,      type: float, unit: rps, ref_for: spd_a, hold: latched }
       - { name: spd_a,     type: float, unit: rps }
-      - { name: sp_b,      type: float, unit: rps, ref_for: spd_b }
+      - { name: sp_b,      type: float, unit: rps, ref_for: spd_b, hold: latched }
       - { name: spd_b,     type: float, unit: rps }
       - { name: mode,      type: uint8, enum: [LOST, RUNNING, ESTOP, SEARCH], pin: 循线 }
   # 串级分层（内环在前）：界面台账“层”下拉按这个切，读数/台账/参数筛选跟着换。调法见 docs/30

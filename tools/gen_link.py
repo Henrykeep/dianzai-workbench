@@ -65,6 +65,9 @@ def check(spec: dict, params: list) -> list[str]:
         if r and (r not in names or r == f.get("name")):
             errs.append(f"telemetry.{f.get('name')}: ref_for 指向不存在的字段 {r}")
     for f in tel.get("fields", []):
+        if f.get("hold") is not None and f["hold"] not in ("latched", "timeout"):
+            errs.append(f"telemetry.{f.get('name')}: hold 只能是 latched / timeout")
+    for f in tel.get("fields", []):
         c = f.get("cal")
         if c is not None:
             pts = c.get("pts") if isinstance(c, dict) else None
@@ -122,7 +125,10 @@ def schema(spec: dict, params: list) -> dict:
                                    # pin：顶栏状态块的标签（任何题目通用，界面不认具体字段名）；pin_with：块里附带显示的数值字段
                                    **({"pin": str(f["pin"]), "pin_with": list(f.get("pin_with") or [])} if f.get("pin") else {}),
                                    # ref_for：本字段是哪个字段的设定值——界面把它画成那条曲线上的虚线（显式声明，不按名字猜）
-                                   **({"ref_for": str(f["ref_for"])} if f.get("ref_for") else {})}    # 这个值表示“无数据”，界面显示 —
+                                   **({"ref_for": str(f["ref_for"])} if f.get("ref_for") else {}),
+                                   # hold：设定值通道（有 ref_for 或显式写 hold）上位机不再发时固件怎么办——latched=保持到改为止，
+                                   # timeout=命令超时（cmd_timeout）后目标归零；不写默认 timeout。进哈希（是固件行为）
+                                   **({"hold": str(f.get("hold", "timeout"))} if f.get("ref_for") or f.get("hold") else {})}    # 这个值表示“无数据”，界面显示 —
                                   for f in tel.get("fields", [])]},
          "params": [{"name": p["name"], "type": WIRE[p["type"]], "min": p["min"], "max": p["max"],
                      "max_delta": max_delta(p), "unit": p.get("unit", "")} for p in params]}

@@ -13,7 +13,7 @@ link:
     period_ms: 20
     fields:
       - { name: t_ms,      type: uint32, unit: ms }
-      - { name: aim_x_px,  type: float, unit: px }
+      - { name: aim_x_px,  type: float, unit: px, hold: latched }
       - { name: tgt_x_px,  type: float, unit: px }
       - { name: tgt_y_px,  type: float, unit: px }
       - { name: pan_deg,   type: float, unit: deg }

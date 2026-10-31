@@ -16,9 +16,9 @@ link:
     period_ms: 20
     fields:
       - { name: t_ms,     type: uint32, unit: ms }
-      - { name: sp_a,     type: float, unit: rps, ref_for: spd_a }
+      - { name: sp_a,     type: float, unit: rps, ref_for: spd_a, hold: timeout }
       - { name: spd_a,    type: float, unit: rps, cal: { unit: cm/s, pts: [[0, 0], [1, 20.42]] } }   # 轮径 0.065 m（app_main.c s_params）→ π·6.5 cm/圈；sp_a 自动继承
-      - { name: sp_b,     type: float, unit: rps, ref_for: spd_b }
+      - { name: sp_b,     type: float, unit: rps, ref_for: spd_b, hold: timeout }
       - { name: spd_b,    type: float, unit: rps, cal: { unit: cm/s, pts: [[0, 0], [1, 20.42]] } }
       - { name: ctrl_err, type: uint32 }
   # 验收规格（上位机判“到位”，不进 schema 哈希）。单位 = 标定后的 cm/s。示例阈值，不是任何题目的要求——按题目改

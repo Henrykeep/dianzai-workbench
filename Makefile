@@ -231,6 +231,7 @@ test:
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
+	$(PY) tools/test_link_hold.py   # link_schema 设定值通道 hold（latched/timeout）与固件行为一致
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	tools/test_estop_sp.sh   # 急停 / 'R' 后设定值归零、不自动恢复（60 相位 × 5 应用）
 	python3 tools/test_step_result.py   # #38 阶跃 step_result 对拍 / param_reject / 心跳 bit17（5 应用）
