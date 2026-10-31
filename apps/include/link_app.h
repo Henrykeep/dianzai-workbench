@@ -43,6 +43,14 @@ typedef struct {
     dzrt_t rt;                              /**< 通用运行时（自检 / 运行模式 / 存参） */
 } link_app_t;
 
+/** 进锁存：输出禁止 + 设定值清零（锁存期间遥测里的设定值就是 0，上位机批量转发的旧样本也不会再报旧值）。 */
+static inline void link_app_latch(link_app_t *L)
+{
+    L->estop = L->latched = true;
+    for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
+}
+
+
 static link_app_t *s_link_app_self;
 static bool link_app_still_default(void)
 {
@@ -69,7 +77,7 @@ static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*
     s_link_app_self = L;
     dzctl_estop_clear();                    /* 上电：RAM 里的旧原因不算（仿真里 app_init 会重跑） */
     if (dzrt_boot(&L->rt, &g_link_params, &g_link_params_default, link_app_still_default, link_app_send_fwd) == 0u && on_params) on_params();
-    if (dzrt_selftest(&L->rt, pal_millis()) != 0u) { L->estop = L->latched = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); }
+    if (dzrt_selftest(&L->rt, pal_millis()) != 0u) { link_app_latch(L); dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); }
     dzrt_start(&L->rt, !L->estop, false);
 }
 
@@ -93,7 +101,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         for (uint16_t i = 0; i < got; i++) {
             if (!dzframe_feed(&L->rx, buf[i], &f)) continue;
             dzctl_wd_feed(&L->wd, &f, now);
-            if (dzctl_is_estop(&f)) { L->estop = L->latched = true; dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
+            if (dzctl_is_estop(&f)) { link_app_latch(L); dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
             else if (link_relay_frame(&f, L->latched, &L->seq, &ack)) { if (!L->latched) L->estop = false; link_app_send(&ack); }   /* 继电实验 = 显式新指令，解除后可开始 */
             else if (dzctl_is_bb_request(&f)) {
                 for (uint16_t k = 0; L->bb && k < bb_count(L->bb); k++) {
@@ -105,6 +113,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
             else if (dzctl_handle(&t, &f, &ack)) { if (L->on_params) L->on_params(); link_app_send(&ack); }
             else if (dzrt_cmd(&L->rt, &f)) { }
             else if (f.kind == DZF_DATA && f.id == 1u && !dzrt_needs_host(&L->rt)) { }   /* 脱机：不收上位机设定值 */
+            else if (f.kind == DZF_DATA && f.id == 1u && L->latched) { }   /* 锁存中：设定值整帧丢弃（急停后仍在路上的阶跃/扫频帧），'R' 后要重新给 */
             else if (f.kind == DZF_DATA && f.id == 1u && f.len >= 4u && f.len % 4u == 0u) {
                 for (unsigned k = 0; k < 4u && 4u * k < f.len; k++) L->sp[k] = dzframe_get_f32(&f, 4u * k);
                 L->sp_ms = now;
@@ -123,7 +132,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         }
     }
     if (dzrt_needs_host(&L->rt) && dzctl_wd_expired(&L->wd, now)) {   /* 上位机掉线：急停 */
-        L->estop = L->latched = true;
+        link_app_latch(L);
         dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - L->wd.last_ms));
     }
     link_relay_guard(L->estop);                           /* 急停中结束继电 */

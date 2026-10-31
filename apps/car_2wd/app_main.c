@@ -308,6 +308,7 @@ void app_loop(void)
     s_state.cmd_v_mps = car_aux_limit_v(s_state.cmd_v_mps);
     subsys_sched_poll(&s_sched, now);
     uint32_t st = pal_irq_save();
+    if (s_estop) s_state.sp_a_rps = s_state.sp_b_rps = 0.0f;   /* 急停：轮速目标（含斜坡）立即归零，'R' 后从 0 起，遥测不报旧目标 */
     s_sp[0] = s_state.sp_a_rps; s_sp[1] = s_state.sp_b_rps;
     pal_irq_restore(st);
 
