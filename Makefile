@@ -267,6 +267,7 @@ test:
 	TUNEGATE_SOURCE=randplant $(PY) tools/tunegate.py --seeds $(TUNEGATE_SEEDS) --n 0   # #78/#113 硬门禁：固定种子上假达标必须 0；通过率只警告
 	$(PY) tests/randplant/test_clip_relay.py   # #103 对象量程钳位（bit18 SENSOR_SAT）+ 随机对象 0x7C 继电接管
 	$(PY) tests/randplant/test_feasible.py   # #124/#125 可行性标签：独立搜索达标 ⇒ 不许 feasible:false；原因类别对结构分类器
+	$(PY) tests/randplant/test_roles_json.py   # docs/dev/roles.json == gen_link ROLES，且进安装包（git 跟踪）
 	$(PY) tests/randplant/test_role.py   # 参数角色 role：gen_link 校验 / null / randplant 角色一致 / host-sim 心跳绑定的表带 role
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
@@ -306,6 +307,7 @@ check:
 	$(PY) tools/check_entrypoints.py
 	$(PY) tools/check_ascii_paths.py --selftest
 	$(PY) tools/check_ascii_paths.py
+	@t=$$(mktemp) && $(PY) tools/gen_link.py --emit-roles $$t && cmp -s $$t docs/dev/roles.json || { rm -f $$t; echo "docs/dev/roles.json 与 gen_link ROLES 不一致：请运行 python3 tools/gen_link.py --emit-roles docs/dev/roles.json"; exit 1; }; rm -f $$t
 	$(PY) tools/check_ui_layout.py --selftest
 	$(PY) tools/check_ui_layout.py
 	$(PY) tools/check_ui_generic.py --selftest
