@@ -1,12 +1,12 @@
 #include <math.h>
-/* 新模块：spsc、key、qd4310、ssd1306、ball_beam。 */
+/* 新模块：spsc、key、qd4310、ssd1306、cascade_pos。 */
 #include <string.h>
 #include "tt.h"
 #include "spsc.h"
 #include "key.h"
 #include "qd4310.h"
 #include "ssd1306.h"
-#include "ball_beam.h"
+#include "cascade_pos.h"
 #include "dzctl.h"
 #include "dzstep.h"
 
@@ -106,62 +106,62 @@ TEST(ssd1306_fb_text_flush)
     CHECK(d.buf[0] == 0xFF && d.buf[511] == 0xFF);
 }
 
-static ball_beam_cfg_t bb_cfg(void)
+static cascade_pos_cfg_t bb_cfg(void)
 {
-    ball_beam_cfg_t c = { 0.55f, 0.20f, 0.07f, 0.72f, 320.0f, 0.016f, 0.055f, 55.0f, 2.5f, 0.5f,
+    cascade_pos_cfg_t c = { 0.55f, 0.20f, 0.07f, 0.72f, 320.0f, 0.016f, 0.055f, 55.0f, 2.5f, 0.5f,
                           5.5f, 220.0f, 120u, 600u, 1.0f, 0u, 0.0f, 0u, 0.0f, 0.0f, 0.0f, 0u, {0}, {0}, 0.0f, 0.0f };
     return c;
 }
 
-TEST(ball_beam_estimator_and_limits)
+TEST(cascade_pos_estimator_and_limits)
 {
-    ball_beam_t b;
-    ball_beam_cfg_t c = bb_cfg();
+    cascade_pos_t b;
+    cascade_pos_cfg_t c = bb_cfg();
     uint32_t t;
     float a = 0;
-    CHECK(ball_beam_selftest() == DZ_OK);
-    c.beta = 3.0f; CHECK(ball_beam_init(&b, &c) == DZ_EINVAL);    /* 超出 α-β 稳定域 */
-    c = bb_cfg(); c.dir = 0.5f; CHECK(ball_beam_init(&b, &c) == DZ_EINVAL);
+    CHECK(cascade_pos_selftest() == DZ_OK);
+    c.beta = 3.0f; CHECK(cascade_pos_init(&b, &c) == DZ_EINVAL);    /* 超出 α-β 稳定域 */
+    c = bb_cfg(); c.dir = 0.5f; CHECK(cascade_pos_init(&b, &c) == DZ_EINVAL);
     c = bb_cfg(); c.rate_max = 0; c.ki = 0;
-    CHECK(ball_beam_init(&b, &c) == DZ_OK);
-    for (t = 0; t <= 2000; t += 40) ball_beam_sample(&b, 50.0f + 0.1f * (float)t, t);   /* 100 px/s 匀速 */
+    CHECK(cascade_pos_init(&b, &c) == DZ_OK);
+    for (t = 0; t <= 2000; t += 40) cascade_pos_sample(&b, 50.0f + 0.1f * (float)t, t);   /* 100 px/s 匀速 */
     CHECK_NEAR(b.v, 100.0, 1.0);
     CHECK_NEAR(b.x, 250.0, 1.0);
-    a = ball_beam_update(&b, 250.0f, 0, 2000, 0.01f);
+    a = cascade_pos_update(&b, 250.0f, 0, 2000, 0.01f);
     /* e = 250 − (250 + 100·0.07) = −7 → v_des = −5.04；θ = 0.016·(−5.04−100) */
     CHECK_NEAR(a, -1.68, 0.03);
-    ball_beam_sample(&b, 0, 2000);                   /* 重复时间戳：丢弃 */
+    cascade_pos_sample(&b, 0, 2000);                   /* 重复时间戳：丢弃 */
     CHECK_NEAR(b.x, 250.0, 1.0);
     /* 斜率限制 */
-    c = bb_cfg(); c.ki = 0; ball_beam_init(&b, &c);
-    ball_beam_sample(&b, -1000, 0);
-    a = ball_beam_update(&b, 0, 0, 0, 0.01f);
+    c = bb_cfg(); c.ki = 0; cascade_pos_init(&b, &c);
+    cascade_pos_sample(&b, -1000, 0);
+    a = cascade_pos_update(&b, 0, 0, 0, 0.01f);
     CHECK_NEAR(a, 2.2, 1e-4);                         /* 220°/s × 10 ms */
-    for (t = 10; t <= 100; t += 10) a = ball_beam_update(&b, 0, 0, t, 0.01f);
+    for (t = 10; t <= 100; t += 10) a = cascade_pos_update(&b, 0, 0, t, 0.01f);
     CHECK_NEAR(a, 5.12, 0.01);                        /* vel_max 320 × 0.016 */
-    for (; t <= 200; t += 10) a = ball_beam_update(&b, 0, 0, t, 0.01f);
-    CHECK(ball_beam_state(&b) == BB_HOLD);            /* 超过 hold 120 ms：保持 */
+    for (; t <= 200; t += 10) a = cascade_pos_update(&b, 0, 0, t, 0.01f);
+    CHECK(cascade_pos_state(&b) == CPOS_HOLD);            /* 超过 hold 120 ms：保持 */
     CHECK_NEAR(a, 5.12, 0.01);
-    for (; t <= 800; t += 10) a = ball_beam_update(&b, 0, 0, t, 0.01f);
-    CHECK(ball_beam_state(&b) == BB_LOST && a == 0.0f);
-    ball_beam_sample(&b, 10, t);
-    CHECK(ball_beam_state(&b) == BB_TRACK && b.v == 0.0f);
+    for (; t <= 800; t += 10) a = cascade_pos_update(&b, 0, 0, t, 0.01f);
+    CHECK(cascade_pos_state(&b) == CPOS_LOST && a == 0.0f);
+    cascade_pos_sample(&b, 10, t);
+    CHECK(cascade_pos_state(&b) == CPOS_TRACK && b.v == 0.0f);
 }
 
-TEST(ball_beam_integral)
+TEST(cascade_pos_integral)
 {
-    ball_beam_t b;
-    ball_beam_cfg_t c = bb_cfg();
+    cascade_pos_t b;
+    cascade_pos_cfg_t c = bb_cfg();
     uint32_t t;
     c.pos_k = 0; c.lead_s = 0; c.rate_max = 0;
-    ball_beam_init(&b, &c);
-    for (t = 0; t <= 20000; t += 10) { if (t % 40 == 0) ball_beam_sample(&b, -30, t); ball_beam_update(&b, 0, 0, t, 0.01f); }
+    cascade_pos_init(&b, &c);
+    for (t = 0; t <= 20000; t += 10) { if (t % 40 == 0) cascade_pos_sample(&b, -30, t); cascade_pos_update(&b, 0, 0, t, 0.01f); }
     CHECK_NEAR(b.integ, 2.5, 1e-4);                   /* 钳到 i_max */
-    ball_beam_sample(&b, 30, t);
-    ball_beam_update(&b, 0, 0, t, 0.01f);
+    cascade_pos_sample(&b, 30, t);
+    cascade_pos_update(&b, 0, 0, t, 0.01f);
     CHECK(b.integ < 1.26f && b.integ > 1.2f);         /* 变号衰减 ×0.5 后再积一步 */
-    ball_beam_init(&b, &c);
-    for (t = 0; t <= 1000; t += 10) { if (t % 40 == 0) ball_beam_sample(&b, -80, t); ball_beam_update(&b, 0, 0, t, 0.01f); }
+    cascade_pos_init(&b, &c);
+    for (t = 0; t <= 1000; t += 10) { if (t % 40 == 0) cascade_pos_sample(&b, -80, t); cascade_pos_update(&b, 0, 0, t, 0.01f); }
     CHECK(b.integ == 0.0f);                           /* 积分区外不积 */
 }
 
@@ -222,20 +222,20 @@ TEST(dzctl_param_and_estop)
 
 
 /* 1.1.0 A/B 选项：每个 B 选项单独开，对比 A 的输出 */
-static float bb_run(ball_beam_cfg_t c, float x_px, int steps)
+static float bb_run(cascade_pos_cfg_t c, float x_px, int steps)
 {
-    ball_beam_t b; float a = 0;
-    if (ball_beam_init(&b, &c) != DZ_OK) return NAN;
-    for (int k = 0; k < steps; k++) { ball_beam_sample(&b, x_px, (uint32_t)(k * 10)); a = ball_beam_update(&b, 0, 0, (uint32_t)(k * 10), 0.01f); }
+    cascade_pos_t b; float a = 0;
+    if (cascade_pos_init(&b, &c) != DZ_OK) return NAN;
+    for (int k = 0; k < steps; k++) { cascade_pos_sample(&b, x_px, (uint32_t)(k * 10)); a = cascade_pos_update(&b, 0, 0, (uint32_t)(k * 10), 0.01f); }
     return a;
 }
 
-TEST(ball_beam_ab_options)
+TEST(cascade_pos_ab_options)
 {
-    ball_beam_cfg_t c = bb_cfg(); c.ki = 0; c.rate_max = 0;
+    cascade_pos_cfg_t c = bb_cfg(); c.ki = 0; c.rate_max = 0;
     float a = bb_run(c, -30.0f, 20);
     CHECK_NEAR(a, 0.016 * 0.72 * 30, 1e-3);                  /* A：静止球，θ = vel_k·pos_k·e */
-    ball_beam_cfg_t d = c; d.est_mode = BB_EST_DIFF_LPF;    /* B 估计器：静止球结果相同 */
+    cascade_pos_cfg_t d = c; d.est_mode = BB_EST_DIFF_LPF;    /* B 估计器：静止球结果相同 */
     CHECK_NEAR(bb_run(d, -30.0f, 20), a, 1e-3);
     d = c; d.vel_max = 10.0f;                                /* 串级 v_des 被限住 */
     float cas = bb_run(d, -30.0f, 20);
@@ -246,18 +246,18 @@ TEST(ball_beam_ab_options)
     CHECK_NEAR(bb_run(d, -5.0f, 20), 0.016 * 0.72 * 5, 1e-3);/* |e|<stic_e 不加 */
     d = c; d.bal_n = 3; d.bal_x[0] = -100; d.bal_x[1] = 0; d.bal_x[2] = 100;
     d.bal_deg[0] = 1.0f; d.bal_deg[1] = 0.0f; d.bal_deg[2] = -0.5f;
-    CHECK_NEAR(ball_beam_bal_ff(&d, -50), 0.5, 1e-5);
-    CHECK_NEAR(ball_beam_bal_ff(&d, 200), -0.5, 1e-5);
+    CHECK_NEAR(cascade_pos_bal_ff(&d, -50), 0.5, 1e-5);
+    CHECK_NEAR(cascade_pos_bal_ff(&d, 200), -0.5, 1e-5);
     CHECK_NEAR(bb_run(d, -30.0f, 20), a + 0.3, 1e-2);        /* x_now 含超前外推，静止球即 −30 */
-    ball_beam_t b;
-    d.bal_x[2] = -200; CHECK(ball_beam_init(&b, &d) == DZ_EINVAL);
-    d = c; d.est_mode = 2; CHECK(ball_beam_init(&b, &d) == DZ_EINVAL);
+    cascade_pos_t b;
+    d.bal_x[2] = -200; CHECK(cascade_pos_init(&b, &d) == DZ_EINVAL);
+    d = c; d.est_mode = 2; CHECK(cascade_pos_init(&b, &d) == DZ_EINVAL);
 }
 
 void suite_modules(void)
 {
     RUN(spsc_basic_and_wrap); RUN(key_events); RUN(qd4310_codec_and_resync);
-    RUN(ssd1306_fb_text_flush); RUN(ball_beam_estimator_and_limits); RUN(ball_beam_integral); RUN(ball_beam_ab_options);
+    RUN(ssd1306_fb_text_flush); RUN(cascade_pos_estimator_and_limits); RUN(cascade_pos_integral); RUN(cascade_pos_ab_options);
     RUN(dzstep_checked_write_and_crc);
     RUN(dzctl_param_and_estop);
 }

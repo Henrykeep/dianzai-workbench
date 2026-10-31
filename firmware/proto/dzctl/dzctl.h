@@ -113,7 +113,7 @@ int dzctl_selftest_register(uint8_t code, dzctl_selftest_fn fn);
 uint32_t dzctl_selftest_run(uint32_t t_ms, uint32_t extra_fail_mask);
 uint32_t dzctl_selftest_mask(void);
 /** 0.12.0 'H' 重跑自检：上位机 DATA DZCTL_ID_CMD len=1 {'H'}；板回 len=5 {'H', u32 fail_mask}（同时更新心跳里的自检字段）。
- *  （不用 'S'：'S' 已被应用用作“停止”，如 2026H。） */
+ *  （不用 'S'：'S' 常被应用用作“停止”。） */
 #define DZCTL_CMD_SELFTEST 'H'
 void dzctl_selftest_reply(uint32_t fail_mask, dzframe_t *out);
 /** 上电自检结果：mask 的 bit (code−1) = 该项没过；done = 自检已跑（心跳里 t_ms 非 0 才算有结果）。 */

@@ -55,7 +55,7 @@ state:
     fields:
       - { name: angle_deg,  type: float, unit: °, desc: 相对水平的摆杆角 }
       - { name: target_abs_deg, type: float, unit: °, desc: 下发给 QD4310 的绝对角（零点+角度，已硬限位） }
-      - { name: state, type: uint8, desc: ball_beam_state_t }
+      - { name: state, type: uint8, desc: cascade_pos_state_t }
       - { name: ff_deg, type: float, unit: °, desc: 实际使用的加速度前馈（含死区/失效保护后） }
 
 subsystems:

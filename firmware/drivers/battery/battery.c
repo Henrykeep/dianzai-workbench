@@ -2,7 +2,7 @@
 
 battery_cfg_t battery_cfg_default(pal_id_t adc)
 {
-    battery_cfg_t c = { adc, 0u, 0u, 2u, 7000u, 6600u, 150u, 2000u, 1000u, 0.5f };
+    battery_cfg_t c = { adc, 0u, 0u, 2u, 7000u, 6600u, 150u, 2000, 1000u, 0.5f };
     return c;
 }
 
