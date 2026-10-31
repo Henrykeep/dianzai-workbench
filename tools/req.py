@@ -58,6 +58,20 @@ def _name_before(text: str, i: int) -> str:
     return (pre[-10:].strip() or "待填")
 
 
+_SI = {"n": 1e-9, "u": 1e-6, "μ": 1e-6, "m": 1e-3, "k": 1e3, "K": 1e3, "M": 1e6, "G": 1e9}
+
+
+def _prefix_ratio(a: str | None, b: str | None) -> float:
+    """同一基本单位、只差 SI 前缀（Hz / kHz、mV / V）→ a 换到 b 的倍数；不是这种关系 = 1。"""
+    if not a or not b or a == b:
+        return 1.0
+    for x, y in ((a, b),):
+        bx, by = (x[1:] if x[:1] in _SI and len(x) > 1 else x), (y[1:] if y[:1] in _SI and len(y) > 1 else y)
+        if bx == by:
+            return (_SI.get(x[0], 1.0) if x != bx else 1.0) / (_SI.get(y[0], 1.0) if y != by else 1.0)
+    return 1.0
+
+
 def extract_metrics(text: str) -> list[dict]:
     """原文里每个 数值+单位（范围、±公差、比较、设定值），按出现顺序；名字从前文猜，必须人工核对。"""
     used = [False] * len(text)
@@ -73,8 +87,9 @@ def extract_metrics(text: str) -> list[dict]:
     for m in _M_RANGE.finditer(text):
         if take(m):
             u = m.group(4) or m.group(2)
+            lo = float(m.group(1)) * _prefix_ratio(m.group(2), u)       # 10Hz~100kHz：下限换到上限的单位
             found.append((m.start(), {"name": _name_before(text, m.start()), "op": "in",
-                                      "value": [float(m.group(1)), float(m.group(3))], "unit": u}))
+                                      "value": [round(lo, 9), float(m.group(3))], "unit": u}))
     for m in _M_TOL.finditer(text):
         if take(m):
             v, t = float(m.group(1)), float(m.group(3))
@@ -109,7 +124,27 @@ def suggest_needs(text: str, kw: dict[str, list[str]]) -> list[str]:
 _RULE = re.compile(r"不得|不能|禁止|只能|必须|不允许|不大于|不超过|封存|不予测试|视为|即认为")
 
 
+IMAGE_SUFFIX = (".png", ".jpg", ".jpeg", ".bmp", ".webp", ".tif", ".tiff")
+
+
+def ocr_image(src: pathlib.Path) -> str:
+    """#86 题目截图 / 照片 → 文本：调 Tesseract OCR 命令行（Apache-2.0，见 ATTRIBUTION），chi_sim+eng。没装就明确说怎么办。"""
+    import shutil
+    exe = shutil.which("tesseract")
+    if not exe:
+        sys.exit("✗ 读图片需要 Tesseract OCR（含 chi_sim 语言包）；没装就把题目文字直接粘贴进来")
+    langs = subprocess.run([exe, "--list-langs"], capture_output=True, text=True).stdout.split()
+    lang = "+".join(x for x in ("chi_sim", "eng") if x in langs) or "eng"
+    r = subprocess.run([exe, str(src), "-", "-l", lang, "--psm", "6"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    if r.returncode != 0:
+        sys.exit(f"✗ 图片 OCR 失败：{r.stderr.strip()[:200]}；可以把题目文字直接粘贴进来")
+    # 中文 OCR 常在汉字之间插空格：两边都是非 ASCII 才去掉
+    return re.sub(r"(?<=[^\x00-\x7f]) +(?=[^\x00-\x7f])", "", r.stdout)
+
+
 def read_text(src: pathlib.Path) -> str:
+    if src.suffix.lower() in IMAGE_SUFFIX:
+        return ocr_image(src)
     if src.suffix.lower() == ".pdf":
         try:
             return subprocess.run(["pdftotext", "-layout", str(src), "-"], check=True,
@@ -186,8 +221,45 @@ def init_skeleton(text: str, code: str, source: str, kw: dict | None = None) -> 
             for sent in re.split(r"(?<=[。；])", para):
                 if _RULE.search(sent) and len(sent.strip()) > 4:
                     rules.append({"id": f"R{len(rules) + 1}", "text": sent.strip(), "forbid": [], "confirmed_by": []})
+    if not items:                                    # #86 没有「一、任务 / 二、要求」版式（粘贴的一段话、截图）：按条款 / 句子起稿
+        items = free_items(text, kw)
+    for it in items:
+        it.setdefault("clause", f"要求({it['id']})")
+        if not it.get("metrics"):
+            it["manual_entry"] = True
+            it.setdefault("notes", "没抽出阈值 / 单位：请对照原文手填指标")
     return {"schema_version": 1, "problem": {"code": code, "title": "待填", "source": source, "confirmed_by": []},
-            "constraints": rules, "items": items or [{"id": "B1", "part": "basic", "text": "待填（没认出评分项编号，手动拆）"}]}
+            "constraints": rules, "items": items or [{"id": "B1", "part": "basic", "text": "待填（没认出要求，手动拆）", "metrics": [],
+                                                      "clause": "要求(B1)", "manual_entry": True, "notes": "没认出任何要求：请手动拆"}]}
+
+
+_CLAUSE = re.compile(r"[（(]\s*\d{1,2}\s*[)）]|[①②③④⑤⑥⑦⑧⑨⑩]|(?:^|\n)\s*\d{1,2}\s*[.．、](?!\d)")
+
+
+def free_items(text: str, kw: dict) -> list[dict]:
+    """自由文本 → 评分项草稿：有 (1) ① 1. 这类条款号按条款切，否则按句切；只留像要求的句子（带数值或要求类词）。"""
+    t = re.sub(r"[ \t]+", " ", text or "").strip()
+    marks = [m.start() for m in _CLAUSE.finditer(t)]
+    if marks:
+        parts = [t[a:b] for a, b in zip(marks, marks[1:] + [len(t)])]
+    else:
+        parts = re.split(r"(?<=[。；;!！\n])", t)
+    out = []
+    for p in parts:
+        body = _CLAUSE.sub("", p, count=1).strip(" \n。；;")
+        body = re.sub(r"\s*\n\s*", "", body) if re.search(r"[^\x00-\x7f]", body) else re.sub(r"\s+", " ", body)
+        if len(body) < 4:
+            continue
+        ms = extract_metrics(body)
+        if not marks and not ms and not re.search(r"要求|能够|实现|设计|制作|不大于|不小于|不超过|误差|精度|测量|控制|显示", body):
+            continue
+        sm = _SCORE.search(body)
+        it = {"id": f"B{len(out) + 1}", "part": "basic", "text": body[:sm.start()].rstrip("。 ") if sm else body,
+              "subsystems": [], "needs": suggest_needs(body, kw), "metrics": ms}
+        if sm:
+            it["score"] = float(sm.group(1))
+        out.append(it)
+    return out
 
 
 # ── check ────────────────────────────────────────────────────────

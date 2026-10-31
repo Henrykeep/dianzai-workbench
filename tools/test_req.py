@@ -156,6 +156,42 @@ def test_init_metrics_and_needs():
     assert kw and all(isinstance(v, list) for v in kw.values()), "tools/catalog/needs_keywords.yaml 读不出来"
 
 
+def test_free_text_items_manual_entry():
+    """#86：没有「一、任务 / 二、要求」版式的一段话也能起稿；按条款号切，抽不出指标的给 manual_entry，不报错。
+    范围两端单位只差 SI 前缀（10Hz~100kHz）时下限换算到上限单位。"""
+    txt = "设计一个简易频率计。要求：(1) 测量频率范围 10Hz~100kHz，误差不大于 0.1%；(2) 能显示被测信号幅值；(3) 外观美观。"
+    d = req.init_skeleton(txt, "X", "paste", kw={})
+    its = d["items"]
+    assert [i["clause"] for i in its] == ["要求(B1)", "要求(B2)", "要求(B3)"], its
+    assert ("in", [0.01, 100.0], "kHz") in [(m["op"], m["value"], m["unit"]) for m in its[0]["metrics"]], its[0]
+    assert not its[0].get("manual_entry") and its[1]["manual_entry"] and its[2]["manual_entry"], its
+    nothing = req.init_skeleton("", "X", "paste", kw={})["items"]
+    assert len(nothing) == 1 and nothing[0]["manual_entry"], nothing
+    import jsonschema, json
+    jsonschema.validate(d, json.loads((pathlib.Path(req.__file__).resolve().parents[1] / "schema/requirements.schema.json").read_text(encoding="utf-8")))
+
+
+def test_image_ocr_or_clear_message():
+    """#86：题目截图走 Tesseract OCR；机器上没装 tesseract 时给明确的中文说明（改粘贴文字），不是崩溃。"""
+    import shutil, tempfile
+    from PIL import Image, ImageDraw, ImageFont
+    font = next((f for f in ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/opentype/noto/NotoSerifCJK-Regular.ttc",
+                             "C:/Windows/Fonts/msyh.ttc", "C:/Windows/Fonts/simsun.ttc") if pathlib.Path(f).exists()), None)
+    im = Image.new("RGB", (900, 80), "white")
+    ImageDraw.Draw(im).text((10, 20), "(1) 输出电压误差不大于 2%", fill="black", font=ImageFont.truetype(font, 36) if font else None)
+    with tempfile.TemporaryDirectory() as td:
+        f = pathlib.Path(td) / "q.png"; im.save(f)
+        if shutil.which("tesseract") and font:
+            txt = req.read_text(f)
+            ms = [(m["op"], m["value"]) for m in req.extract_metrics(txt)]
+            assert ("<=", 2.0) in ms, (txt, ms)
+        else:
+            try:
+                req.read_text(f) if not shutil.which("tesseract") else None
+            except SystemExit as e:
+                assert "粘贴" in str(e), e
+
+
 if __name__ == "__main__":
     n = 0
     for k, f in list(globals().items()):

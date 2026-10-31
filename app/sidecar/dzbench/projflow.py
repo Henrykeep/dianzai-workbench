@@ -368,13 +368,16 @@ class Flow:
         dst = self.target(code, m.get("dest"))          # 界面上显示的写入落点
         if step == "req":
             st = self.stage(code, "req")
-            if m.get("pdf_b64"):
+            if m.get("pdf_b64") or m.get("file_b64"):                 # PDF / 图片 / txt（#86）按文件名后缀读
                 src = st / ("题目" + (pathlib.Path(m.get("filename") or "x.pdf").suffix or ".pdf"))
-                src.write_bytes(base64.b64decode(m["pdf_b64"]))
+                src.write_bytes(base64.b64decode(m.get("pdf_b64") or m["file_b64"]))
             elif m.get("src"):
                 src = pathlib.Path(m["src"]).expanduser()
+            elif str(m.get("text") or "").strip():                     # #86 直接粘贴的题目文字
+                src = st / "题目.txt"
+                src.write_text(str(m["text"]), encoding="utf-8")
             else:
-                raise FlowError("no_src", "先拖入题目 PDF（或 .txt）")
+                raise FlowError("no_src", "先拖入题目 PDF / 图片，或直接粘贴题目文字")
             r = self._run(["tools/req.py", "init", src, "-o", st / "requirements.yaml", "--code", code])
             d = yaml.safe_load((st / "requirements.yaml").read_text(encoding="utf-8")) if (st / "requirements.yaml").exists() else {}
             return r | {"items": (d or {}).get("items") or [], "constraints": (d or {}).get("constraints") or [], "target": str(dst / "requirements.yaml")}

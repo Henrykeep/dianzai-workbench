@@ -310,3 +310,8 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - 非控制类：`spec.sim = null`、`kind = null`；确认卡照常出（①–⑤ 预览），确认后**不连仿真、不调参**，`task_kind` 写进工程 `project.yaml`，推 `{type:"metrics_card", task_kind, task_kind_reason, items[]}`（每项 `measured:null, verdict:"unknown", verdict_zh:"待测量"`；阈值抽不出 `target:null`），结果多 `next`。
 - 控制类但不是电机速度 / 位置环：报 `quick_kind`，fix 指向 `project_from_plant`。
 - 新 op / Agent 工具 `project_from_plant {plant, name?}`（风险档 log）：`plant` 为对象或 YAML 文本，按 `schema/plant.schema.json` 校验。不合规 → `{ok:false, reason:"plant_invalid", errors[], message_zh, fix_action:"edit_declaration"}`，不建目录；合规 → `$DZBENCH_HOME/projects/<slug>/app.yaml`（缺 link/requires 由 plantmodel scaffold 补），设为当前项目，推并返回 `{type:"project_created", via:"plant", project, path, sim_board:"sim:<目录名>", message_zh}`。
+
+## 读题不再要求刚性文件（#86）
+- `flow_preview step:"req"` 除 `src` / `pdf_b64` 外接受 `file_b64 + filename`（PDF / txt / png / jpg 等，按后缀读；图片走 Tesseract OCR chi_sim+eng，没装 → `✗ … 把题目文字直接粘贴进来`）和 `text`（直接粘贴的题目文字）。都没给 → `no_src`「先拖入题目 PDF / 图片，或直接粘贴题目文字」。
+- 没有「一、任务 / 二、要求」版式时按条款号（(1) ① 1.）切，再不行按句切。
+- `items[]` 每项新增 `clause`（如「要求(B2)」）；抽不出阈值 / 单位的项 `metrics:[]` + `manual_entry:true` + `notes`（「没抽出阈值 / 单位：请对照原文手填指标」），不报错。范围两端单位只差 SI 前缀（10Hz~100kHz）时下限换到上限单位。
