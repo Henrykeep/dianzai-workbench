@@ -1,0 +1,30 @@
+{
+ "roles": [
+  {
+   "code": "P",
+   "zh": "比例"
+  },
+  {
+   "code": "I",
+   "zh": "积分"
+  },
+  {
+   "code": "D",
+   "zh": "微分"
+  },
+  {
+   "code": "FF",
+   "zh": "前馈"
+  },
+  {
+   "code": "LIM",
+   "zh": "限幅"
+  },
+  {
+   "code": "other",
+   "zh": "其他"
+  }
+ ],
+ "schema_version": 1,
+ "source": "tools/gen_link.py ROLES"
+}

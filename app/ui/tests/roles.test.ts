@@ -23,6 +23,6 @@ assert.deepEqual(collectRoles(r, { b2: "FF" }), { a1: "P", b2: "FF" });
 assert.deepEqual(collectRoles(r, { a1: "D", b2: "other" }), { a1: "D", b2: "other" });
 assert.equal(typeof ROLE_CONFIRM_OP, "string");
 const main = readFileSync("src/main.ts", "utf8");
-assert.match(main, /call\(ROLE_CONFIRM_OP, \{ roles \}\)/); assert.match(main, /role-miss/);
+assert.match(main, /call\(ROLE_CONFIRM_OP, \{ roles: x \}\)/); assert.match(main, /role-miss/);
 assert.doesNotMatch(readFileSync("src/roles.ts", "utf8"), /"missing"|"suggested"|"confirm_roles"/);   // 字段名只在 fieldmap
 console.log("✓ roles：confirm_roles 角色确认");
