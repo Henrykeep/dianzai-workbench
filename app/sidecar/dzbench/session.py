@@ -49,6 +49,10 @@ class LinkError(Exception):
         return d
 
 
+REJECT_ZH = {"range": "超出允许范围", "type": "类型不对（整数参数给了小数等）", "state": "板子当前状态不允许改（迭代/实验进行中或急停）",
+             "step": "单步改动过大（超过 max_delta）", "busy": "自动迭代进行中，参数已锁定，结束或停止迭代后再改", "unknown": "板子拒绝了这次写入"}
+
+
 class Session:
     def __init__(self, emit: Callable[[dict], None] = lambda e: None, log_dir: pathlib.Path | None = None,
                  history_s: float = 120.0):
@@ -513,7 +517,7 @@ class Session:
                 r = dzstep.decode_param_reject(payload)
                 with self.step_cv:
                     self.last_reject = r
-                self.emit({"type": "param_reject", **r})
+                self.emit({"type": "param_reject", **r, "ok": False, "id": r.get("index"), "reason_zh": REJECT_ZH.get(str(r.get("reason")), "板子拒绝了这次写入")})
             else:
                 self._locked(lambda k=kind, i=id_, pl=payload, n=now: self._on_frame_locked(k, i, pl, n))
 
@@ -969,10 +973,29 @@ class Session:
     STEP_ACK_ZH = {"bad_arg": "开始帧参数不对（通道 / 时长 200–30000 ms）", "estop": "板子急停中", "busy": "板上已有阶跃实验在跑",
                    "unsupported": "这个应用没配阶跃通道（app.yaml link.step）", "offline": "板子在脱机模式"}
 
+    iter_owner: threading.Thread | None = None   # #70：整个自动迭代期间（含两轮之间）由跑迭代的线程持有
+
     def iter_busy(self) -> bool:
-        """心跳 bit17 DZCTL_HB_ITER_BUSY：板上阶跃实验进行中。"""
+        """心跳 bit17 DZCTL_HB_ITER_BUSY（板上阶跃实验进行中），或别的线程正在跑自动迭代（#70：bit17 只盖住一次阶跃，
+        两轮之间的空档也不许界面改设定值 / 参数）。跑迭代的线程自己不算 busy。"""
         w = self.hb_status
-        return bool(w is not None and w & HB_ITER_BUSY)
+        if w is not None and w & HB_ITER_BUSY:
+            return True
+        o = self.iter_owner
+        return bool(o is not None and o.is_alive() and o is not threading.current_thread())
+
+    def iter_hold(self):
+        """with s.iter_hold(): …  —— 迭代全程把 busy 交给当前线程。"""
+        import contextlib
+
+        @contextlib.contextmanager
+        def cm():
+            prev, self.iter_owner = self.iter_owner, threading.current_thread()
+            try:
+                yield
+            finally:
+                self.iter_owner = prev
+        return cm()
 
     def _on_step(self, payload: bytes) -> None:
         with self.step_cv:
@@ -1093,7 +1116,8 @@ class Session:
             raise LinkError("estop_locked", "急停中不下发目标", "确认安全后在界面点“解除急停”，再下发目标", "estop_clear", {"reason": "state"})
         if self.iter_busy():
             raise LinkError("iter_busy", "阶跃实验进行中，结束或停止后再设定目标", "等这一轮结束或点“停止迭代”", "stop_iteration",
-                            {"reason": "busy", "message_zh": "阶跃实验进行中，结束或停止后再设定目标"})
+                            {"ok": False, "reason": "busy", "message_zh": "阶跃实验进行中，结束或停止后再设定目标",
+                             "reason_zh": "自动迭代进行中，结束或停止后再设定目标"})
         names = self.setpoint_names()
         if name not in names:
             raise _invalid(name, f"不是设定值（可选：{'、'.join(names) or '无'}）", None, "name")
@@ -1167,21 +1191,25 @@ class Session:
         # #40/#38：按 link_schema.json 校验（范围、类型、单步 max_delta），不合法直接 invalid_param，从不钳位
         v = sch.check(name, value, self.params.get(name)) if sch else check_value(name, value)
         if self.tx_locked:
-            raise LinkError("param_locked", "急停中不写参数", "确认安全后点“解除急停”再改", None, {"reason": "state"})
-        if self.iter_busy():
-            raise LinkError("param_locked", "板上阶跃实验进行中（参数锁定）", "等这一轮结束或点“停止迭代”", None, {"reason": "state"})
+            raise LinkError("param_locked", "急停中不写参数", "确认安全后点“解除急停”再改", "estop_clear",
+                            {"ok": False, "name": name, "id": sch.param_index.get(name) if sch else None, "reason": "state", "reason_zh": "急停中，参数已锁定"})
+        pid = sch.param_index.get(name) if sch else None
+        if self.iter_busy():                      # #71：带 ok:false、reason、reason_zh、参数 id，界面标在对应参数行上
+            raise LinkError("param_locked", "自动迭代进行中，参数已锁定", "等迭代结束或点“停止迭代”", "stop_iteration",
+                            {"ok": False, "name": name, "id": pid, "reason": "busy", "reason_zh": REJECT_ZH["busy"]})
         with self.step_cv:
             self.last_reject = None
         applied, status = self._param_rpc(name, struct.pack("<f", v))
         self.param_writes += 1
-        out = {"name": name, "requested": v, "applied": applied, "status": status}
+        out = {"ok": status != "rejected", "name": name, "id": pid, "requested": v, "applied": applied, "status": status}
         if status == "rejected":                  # 板子拒绝（0.13.0）：PARAM_ACK 5 + param_reject 帧
             t_end = time.monotonic() + 0.1
             with self.step_cv:
                 while self.last_reject is None and time.monotonic() < t_end:
                     self.step_cv.wait(0.02)
                 rj = self.last_reject
-            out["reason"] = (rj or {}).get("reason")
+            out["reason"] = (rj or {}).get("reason") or "unknown"
+            out["reason_zh"] = REJECT_ZH.get(str(out["reason"]), "板子拒绝了这次写入")
             return out
         if verify:
             rb = self.read_param(name)

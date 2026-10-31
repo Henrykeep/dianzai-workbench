@@ -52,6 +52,25 @@ def guess_gain(params: list[str], kind: str) -> str | None:
     return None
 
 
+def step_invalid(m: dict | None) -> str | None:
+    """#68：阶跃本身无效（指标空、没测出上升时间、调节时间为 0）→ 这一轮不能判达标。返回原因码或 None。
+    同时认上位机口径（rise_s / settling_s）和板上 step_result 口径（rise_ms / settle_ms）。"""
+    if not m or not any(isinstance(v, (int, float)) and not isinstance(v, bool) for v in m.values()):
+        return "empty_metrics"
+    if m.get("ok") is False:
+        return "step_failed"
+    for k in ("rise_s", "rise_ms"):
+        if k in m and m[k] is None:
+            return "no_rise"
+    for k in ("settling_s", "settle_ms"):
+        if k in m and m[k] is not None and float(m[k]) == 0.0:
+            return "settle_zero"
+    return None
+
+
+INVALID_ZH = {"empty_metrics": "指标为空", "step_failed": "阶跃没做成", "no_rise": "没测出上升时间", "settle_zero": "调节时间为 0（窗口没对上）"}
+
+
 class AgentService:
     def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):
         # 工程仓库：DZBENCH_REPO > 配置 repo > 本仓库（开发模式）。安装版必须在 ⚙ 里指定（未在 Windows 实测）
@@ -580,7 +599,8 @@ class AgentService:
         n = int(args.get("rounds", 6))
         self.emit({"type": "iterate.started", "engine": "host_step", "start": self._gains(), "start_hash": self._local_hash(),
                    "limits": {"time_s": None, "rounds": n + 1}})
-        r = self.tune_autopilot(**args)
+        with self.s.iter_hold():
+            r = self.tune_autopilot(**args)
         for x in r.get("rounds") or []:
             if x.get("round") is not None:
                 self.emit({"type": "iterate.round", "engine": "host_step", "iter": x["round"], "action": x.get("action"),
@@ -597,6 +617,7 @@ class AgentService:
         if r0:
             res["round0"] = {"iter": r0["round"], "metrics": r0["metrics"], "passed": r0["passed"]}
         res["pass_basis"] = self._ss_band(b.get("metrics") or {})["pass_basis"]
+        self._restore_best(res)
         res["best_card"] = self._best_card(res)
         self.iter_result = res
         self._persist_last(res)
@@ -609,7 +630,7 @@ class AgentService:
         if not best:
             return None
         ss = self._ss_band(best.get("metrics") or {})
-        v, vzh = self._verdict(ss, res)
+        v, vzh = self._verdict(ss, res, best.get("metrics"))
         res["verdict"], res["verdict_zh"], res["ss_err"] = v, vzh, ss
         r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"],
                                              "ss_err": ss, "verdict": v, "verdict_zh": vzh,
@@ -619,11 +640,14 @@ class AgentService:
         return r.get("action_id")
 
     @staticmethod
-    def _verdict(ss: dict, res: dict) -> tuple[str, str]:
-        """卡片级结论 pass | fail | unknown。ss_err.inside 为 null（单位对不上、实机未标定）一律 unknown，
-        界面据此不说「各项指标均已达标」。"""
+    def _verdict(ss: dict, res: dict, metrics: dict | None = None) -> tuple[str, str]:
+        """卡片级结论 pass | fail | unknown | invalid（#68/#75：卡片、台账 tune_round、提议卡都用这一个）。
+        阶跃无效 → invalid；ss_err.inside 为 null（单位对不上、实机未标定）→ unknown。这两种文案里都不出现「达标」。"""
+        why = step_invalid(metrics) if metrics is not None else None
+        if why or res.get("reason") == "invalid":
+            return "invalid", "本轮阶跃无效（" + INVALID_ZH.get(why or "", "没有有效的一轮") + "），不能判定，先检查实验通道"
         if ss.get("inside") is None:
-            return "unknown", "暂无法判定是否满足题目误差带（" + (ss.get("pass_basis") or "误差带待标定") + "）"
+            return "unknown", "暂无法判定是否满足题目误差带（题目误差带待标定）"
         if ss["inside"] and res.get("reason") == "pass":
             return "pass", "各项指标均已达标（含题目误差带）"
         return "fail", "未达标：" + ("稳态误差超出题目误差带" if not ss["inside"] else "其他指标未达标")
@@ -720,9 +744,14 @@ class AgentService:
         def rows(m):                                                    # 每项单独的数值 + 单位字段，界面直接排表
             return [{"key": k, "value": round(m[k], 6), "unit": units[k]} for k in self.CMP_KEYS if k in m]
         same = r0.get("iter") == best.get("iter")
-        ok0 = bool(r0.get("passed", (r0.get("pass") or {}).get("all")))
+        ss0 = self._ss_band(r0.get("metrics") or {})
+        # #68：「初值已达标」只在第 0 轮阶跃有效、按默认口径过、且题目误差带判在带内（inside is True）时出现
+        ok0 = (bool(r0.get("passed", (r0.get("pass") or {}).get("all"))) and step_invalid(r0.get("metrics")) is None
+               and ss0.get("inside") is True)
         if same:
-            note = "初值已达标，未改参" if ok0 else "初值就是最好一轮，未改参（仍未达标，看差距最大的一项）"
+            note = ("初值已达标，未改参" if ok0 else
+                    "初值这一轮阶跃无效，不能判定" if step_invalid(r0.get("metrics")) else
+                    "初值就是最好一轮，未改参（还不能判定满足题目要求，看差距最大的一项）")
         else:
             ks = [k for k in a if k in b]
             note = f"第 {best.get('iter')} 轮比初值好：" + "，".join(f"{k} {a[k]:.4g} → {b[k]:.4g}{units[k]}" for k in ks[:3])
@@ -750,12 +779,41 @@ class AgentService:
                 e["pass_basis"] = "按默认 2% 判定，题目误差带待标定"
         self.emit(e)
 
+    def _restore_best(self, res: dict) -> dict | None:
+        """#69：迭代一结束（达标 / 预算 / 取消 / 轮数用完）就把最好一轮的参数写回板子并逐个回读核对，
+        板子不留在最后一轮的值上。急停锁存时不写（写不进去），记 skipped。结果放进 res["restored"]。"""
+        best = (res or {}).get("best") or {}
+        params = best.get("params") or {}
+        if not params:
+            return None
+        out = {"iter": best.get("iter"), "params": dict(params), "readback": {}, "ok": True}
+        if self.s.tx_locked:
+            out |= {"ok": False, "skipped": "estop", "message_zh": "急停中，没有写回最好一轮参数；解除急停后在卡上点“采用”"}
+        else:
+            for n, v in params.items():
+                try:
+                    r = self.s.set_param(n, float(v), verify=True)
+                    out["readback"][n] = r.get("readback")
+                    if r.get("status") == "rejected" or r.get("readback") is None or abs(float(r["readback"]) - float(v)) > 1e-5 * max(1.0, abs(float(v))):
+                        out["ok"] = False
+                except Exception as e:  # noqa: BLE001
+                    out["ok"], out.setdefault("errors", {})[n] = False, str(e)
+            out["message_zh"] = ("已把最好一轮（第 %s 轮）参数写回板子并回读核对" % best.get("iter")) if out["ok"] else "最好一轮参数写回/回读没对上，请在卡上点“采用”重试"
+        res["restored"] = out
+        self.emit({"type": "iterate.restored", **out})
+        return out
+
     def _iter_run(self, it) -> None:
-        try:
-            res = it.run()
-        except Exception as e:  # noqa: BLE001  后台线程不能把异常漏掉
-            res = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
-            self.emit(res)
+        with self.s.iter_hold():                     # #70：整次迭代（含两轮之间）界面改设定值/参数都回 iter_busy
+            try:
+                res = it.run()
+            except Exception as e:  # noqa: BLE001  后台线程不能把异常漏掉
+                res = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
+                self.emit(res)
+            try:
+                self._restore_best(res)
+            except Exception as e:  # noqa: BLE001
+                res["restored"] = {"ok": False, "message_zh": str(e)}
         try:
             res.setdefault("pass_basis", self._ss_band((res.get("best") or {}).get("metrics") or {})["pass_basis"])
             res["best_card"] = self._best_card(res)
@@ -798,15 +856,16 @@ class AgentService:
             v = self.run_step_test()["verdict"]
             log.append({"round": v.get("round"), "change": {name: p.get("value")}, "action": v.get("action"), "score": v.get("score")})
         g = self._guard()
-        b = g.best()
+        ok_rounds = [x for x in g.rounds if x.label != "unstable" and step_invalid(x.metrics) is None]   # #68：无效轮不当最好
+        b = min(ok_rounds, key=lambda x: x.score) if ok_rounds else None
         best = {"round": b.n, "gains": b.gains, "metrics": b.metrics, "score": round(b.score, 4)} if b else None
         r0 = g.rounds[0] if g.rounds else None
         round0 = {"round": r0.n, "metrics": r0.metrics, "score": round(r0.score, 4),
-                  "passed": log[0].get("action") == "done"} if r0 else None
+                  "passed": log[0].get("action") == "done" and step_invalid(r0.metrics) is None} if r0 else None
         if v.get("action") != "done" and g.rounds:
             self.rollback_best(_auto=True)
         return {"rounds": log, "final": v.get("action"), "best_round": best, "round0": round0, "gains_now": self._gains(),
-                "passed": v.get("action") == "done"}
+                "passed": v.get("action") == "done" and (best is None or step_invalid(best["metrics"]) is None)}
 
     def _flow_next(self, code: str) -> dict | None:
         """项目步写入后，顺手把下一步预览跑好并出确认卡（省一次“再问 Agent / 点运行”）。
@@ -915,12 +974,18 @@ class AgentService:
         return self._propose(name, value, reason, "agent")
 
     def _propose(self, name: str, value: float, reason: str, src: str) -> dict:
+        last = (getattr(self, "iter_result", None) or {}).get("best_card") or {}
+        if last.get("verdict") == "pass" and self.s.iter_owner is None:   # #75：卡片已判达标，提议卡不能反过来说“还要加 kp”
+            raise GatewayError("already_pass", "最近一次自动迭代已判定达标（与结果卡同一判定），不再提议改参",
+                               "要继续优化，先说明新目标再开一次迭代")
         g = self._guard()
         try:
             v, notes = g.check(name, self.s.params.get(name), value)
         except GuardError as e:
             raise GatewayError(e.code, e.message) from e
         r = self.tools.propose_param_change(name, v, reason + ("（护栏：" + "；".join(notes) + "）" if notes else ""), src)
+        if isinstance(r, dict) and last.get("verdict"):
+            r = r | {"verdict": last.get("verdict"), "verdict_zh": last.get("verdict_zh")}   # 提议卡带同一判定
         if self.sim and r.get("id") is not None:     # 仿真：采纳即自动验证阶跃（省一次点击）；实机仍由 run_step_test 出确认卡
             self.verify_groups = getattr(self, "verify_groups", {}) | {r["id"]: {r["id"]}}
             r = r | {"verify_step": "采纳后自动做一次验证阶跃"}
@@ -1041,13 +1106,60 @@ class AgentService:
             self.s.cmd(c[0], c[1] if len(c) > 1 else None)
             time.sleep(0.05)
 
+    PRE_TOL = 0.1          # 没有 app.yaml abs_tol / 后端覆盖时：阶跃前 y 离起点不超过 10% 阶跃幅度才起跳
+    RETURN_TIMEOUT_S = 8.0 # 回起点最多等这么久（pre_s 之后）；超时用实测起点当基线，标 start_offset
+
+    # 后端自管的阶跃时序覆盖（r9 #67）：不改 app.yaml link.step/hold、不改 dzbench.json pre_s/hold_s。键 = 仿真应用 / 板卡名。
+    # hold_s 覆盖 step_test.hold_s；return_tol = 回起点容差（物理单位，没有 app.yaml link.step.abs_tol 时用）；return_timeout_s 回起点最多等多久。
+    STEP_OVERRIDES = {"2026H_ball": {"hold_s": 5.0, "return_tol": 6.0, "return_timeout_s": 8.0}}
+
+    def step_override(self) -> dict:
+        app = (getattr(self.s, "port", "") or "").split(":", 1)[-1].split("+")[0] if str(getattr(self.s, "port", "")).startswith("sim:") else ""
+        return dict(AgentService.STEP_OVERRIDES.get(app) or {})
+
+    def _return_tol(self, st: dict, span: float) -> float:
+        """回起点容差：app.yaml link.step.abs_tol（同 y 通道）> 后端覆盖 return_tol > 10% 阶跃幅度。"""
+        for c in (self.s.schema.step if self.s.schema else []):
+            if c.get("y") == st.get("y") and c.get("abs_tol") is not None:
+                return float(c["abs_tol"])
+        o = self.step_override()
+        if o.get("return_tol") is not None:
+            return float(o["return_tol"])
+        return self.PRE_TOL * span
+
+    def _settle_at_low(self, st: dict, lo, hi, pre: float) -> dict:
+        """回起点（r9，上位机负责）：设定值停在 low 至少 pre_s，再等 |y − 起点| < tol 持续 0.3 s 才起跳，最多再等 8 s。
+        超时不硬跳也不丢这一轮：以实测位置为基线（step_metrics 的 y0 = 起跳前一刻的 y），返回 start_offset 标出来。"""
+        t0 = time.monotonic()
+        span = abs(float(hi[0]) - float(lo[0])) or 1.0
+        tol = self._return_tol(st, span)
+        tmo = float(self.step_override().get("return_timeout_s", self.RETURN_TIMEOUT_S))
+        off, ok_since = None, None
+        while True:
+            self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *lo))
+            time.sleep(0.1)
+            el = time.monotonic() - t0
+            w = self.s.window(0.15)
+            if not (w and st.get("y") and st.get("sp")):
+                if el >= pre:
+                    return {"settled": None, "wait_s": round(el, 2), "offset": None, "tol": tol}
+                continue
+            off = max(abs(float(v[st["y"]]) - float(lo[0])) for _, v in w)
+            ok_since = (ok_since or time.monotonic()) if off < tol else None
+            if el >= pre and ok_since and time.monotonic() - ok_since >= 0.3:
+                return {"settled": True, "wait_s": round(el, 2), "offset": round(off, 3), "tol": tol}
+            if el >= pre + tmo:
+                y = float(w[-1][1][st["y"]])
+                return {"settled": False, "wait_s": round(el, 2), "offset": round(off, 3), "tol": tol,
+                        "start_offset": round(y - float(lo[0]), 3), "start_y": round(y, 3)}
+
     def run_step_test(self) -> dict:
         """按 dzbench.json 的 step_test 通过链路做一次标准阶跃实验，交给护栏判定。实机是 human 级。"""
         st = self.step_cfg()
         if not st:
             raise LinkError("no_step_test", "没配置（或没有匹配当前遥测的）阶跃实验", '在 dzbench.json 写 step_test，如 {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}')
         self.step_start(st)
-        lo, hi, hold = st["low"], st["high"], float(st.get("hold_s", 1.5))
+        lo, hi, hold = st["low"], st["high"], float(self.step_override().get("hold_s", st.get("hold_s", 1.5)))
         pre = float(st.get("pre_s", 0.6))
         segs = None
         if int(st.get("segments", 1)) == 4:          # 四段正负阶跃：SP → SP−Δ → SP → SP+Δ → SP（SP = high）
@@ -1069,12 +1181,12 @@ class AgentService:
             g = self._guard()
             m = max(ok, key=g.score) if ok else StepMetrics(False, "四段实验没有有效段")   # 护栏按最差一段判
         else:
-            t_end = time.monotonic() + pre + hold
+            pre_info = self._settle_at_low(st, lo, hi, pre)
+            t_end = time.monotonic() + hold
             while time.monotonic() < t_end:
-                vals = lo if time.monotonic() < t_end - hold else hi
-                self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *vals))
+                self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *hi))
                 time.sleep(0.1)
-            w = self.s.window(hold + pre * 0.5)
+            w = self.s.window(hold + min(pre, 0.5))
             t = [a for a, _ in w]
             ys = [float(v[st["y"]]) for _, v in w]
             m = step_metrics(t, ys, [float(v[st["sp"]]) for _, v in w])
@@ -1085,6 +1197,17 @@ class AgentService:
                           span_ref=abs(spw[k] - spw[k - 1]) if k else None,
                           base_s=hold / 2 if segs is not None else None)   # 四段：基线 = 上一段后半（同 four_segment_metrics）
         verdict = g.record(m, self._gains(), w[-1][1] if w else {})
+        why = step_invalid(m.as_dict())
+        if why:                                           # #68：无效阶跃这一轮不算数，绝不当“达标”
+            verdict["valid"], verdict["why_invalid"] = False, why
+            if verdict.get("action") == "done":
+                verdict["action"] = "invalid"
+        else:
+            verdict["valid"] = True
+        if segs is None:
+            verdict["pre"] = pre_info
+            if pre_info.get("start_offset") is not None:     # 没回到起点：实测起点当基线，这一轮标出来
+                verdict["start_offset"] = pre_info["start_offset"]
         verdict["steady"] = ss
         if not ss["steady"] and ss["reason"] in ("still_drifting", "warming_up"):
             verdict["advice"] = "OBSERVE：实验结束时还没稳（%s），先加长 step_test.hold_s 再判断，不要据此改参数" % ss["text"]
@@ -1097,6 +1220,8 @@ class AgentService:
         self.memory().add("verdict", round=verdict.get("round"), action=verdict.get("action"), gains=self._gains(),
                           params_hash=self._local_hash(),                 # #39：每轮（含第 0 轮）都带本地算的参数 CRC32
                           overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
+        ssr = self._ss_band(m.as_dict())                 # #75：台账（tune_round）和卡片用同一个判定函数
+        verdict["verdict"], verdict["verdict_zh"] = self._verdict(ssr, {"reason": "pass" if verdict.get("action") == "done" else None}, m.as_dict())
         self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
         return {"verdict": verdict, "metrics": m.as_dict()}
 

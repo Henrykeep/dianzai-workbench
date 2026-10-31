@@ -217,7 +217,11 @@ class Server:
         if op == "setpoint_set":                   # 只下发目标值，不跑阶跃（界面「恢复急停前目标」等）
             return await run(None, s.setpoint_set, m.get("name", ""), m.get("value"))
         if op == "param_set":
-            return await run(None, s.set_param, m["name"], m.get("value"))   # 原样交给 set_param 校验（#40）
+            r = await run(None, s.set_param, m["name"], m.get("value"))      # 原样交给 set_param 校验（#40）
+            if isinstance(r, dict) and r.get("status") == "rejected":           # #71：板子拒绝 → 回复 ok:false（带 reason/reason_zh/id），不报 ok:true
+                raise LinkError("param_rejected", f"{r.get('name')}：{r.get('reason_zh')}", "按提示调整后再写", None,
+                                {k: r.get(k) for k in ("ok", "name", "id", "reason", "reason_zh", "requested", "applied")})
+            return r
         if op == "param_read_all":
             return await run(None, s.read_all_params)
         if op == "snapshot_save":
