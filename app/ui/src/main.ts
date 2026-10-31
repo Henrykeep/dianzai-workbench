@@ -26,7 +26,7 @@ import { initProject } from "./project";
 import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
-import { fireEstop, handleEstopMsg, latchedCause, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE, clearedOnce, CLEARED_NOTICE } from "./estopbtn";
+import { fireEstop, handleEstopMsg, latchedCause, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE, clearedOnce, CLEARED_NOTICE, markClearClick, markClearedShown } from "./estopbtn";
 import { fetchProgress, render as renderProgress, runAction } from "./progress";
 import type { Step } from "./steps";
 import { initSteps } from "./steps";
@@ -72,14 +72,16 @@ function renderAlerts() {
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
   if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? v.head : "已解除（之前：" + v.head + "）")}</b></span>`;
+  const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
   if (!head) head = `<b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
   el.innerHTML = `<span class="al-n">${Math.max(l.length, 1)}</span>${head}` +
     (l.length > 1 ? `<span class="al-more">${l.filter(e => !isE(e) && !isW(e)).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
     `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除急停</button>` : "") +
     (l.length ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
+  if (shownCleared) markClearedShown();
   el.querySelectorAll<HTMLElement>(".al-t").forEach(t => { if (last) t.onclick = () => jumpAt(last); });
-  const r = el.querySelector<HTMLElement>("#al-r"); if (r) r.onclick = async () => { await call("cmd", { c: "R" }); renderAlerts(); };
+  const r = el.querySelector<HTMLElement>("#al-r"); if (r) r.onclick = async () => { markClearClick(); await call("cmd", { c: "R" }); renderAlerts(); };
   const ak = el.querySelector<HTMLElement>("#al-ack"); if (ak) ak.onclick = async () => { const r = await call("alert_ack", { upto: AL.top() }); AL.ack(r.upto); renderAlerts(); };
 }
 const tl = initTimeline($("tl"), e => jumpAt({ log_t: e.log_t, plot_t: e.plot_t != null ? e.plot_t + 0.5 : null }),
@@ -127,7 +129,7 @@ const cleared = clearedOnce(() => onCleared((text, btn, go) => {
     d.innerHTML = `<b>${esc(text)}</b><span class="act"><button class="btn sm pri" data-r="retune">${esc(btn.label)}</button><button class="btn sm" data-r="x">知道了</button></span>`;
     d.querySelector<HTMLElement>("[data-r=retune]")!.onclick = () => { d.remove(); go(); };
     d.querySelector<HTMLElement>("[data-r=x]")!.onclick = () => d.remove();
-    $("toasts").prepend(d);
+    $("toasts").prepend(d); markClearedShown();   // 解除卡渲染后打点
   }, () => runAction(RETUNE.action, s => goStepRef(s))));
 function showCleared() { cleared.fire(); }
 function setEstopPhase(p: EstopPhase) {
@@ -491,7 +493,7 @@ async function saveSnap() {
 $("snap-save").onclick = saveSnap;
 
 // ---------------------------------------------------------------- 命令 / 回放 / 曲线控制
-$("cmd-r").onclick = () => call("cmd", { c: "R" });
+$("cmd-r").onclick = () => { markClearClick(); return call("cmd", { c: "R" }); };
 $("cmd-send").onclick = () => { const c = $<HTMLInputElement>("cmd-c").value, n = $<HTMLInputElement>("cmd-n").value; if (c) call("cmd", { c, n: n === "" ? null : +n }); };
 $("win").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => {
   $("win").querySelectorAll("span").forEach(x => x.classList.toggle("on", x === s)); plot.win = +s.dataset.w!; showXDiv(); plot.redraw();

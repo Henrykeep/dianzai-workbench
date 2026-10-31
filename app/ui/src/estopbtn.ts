@@ -1,8 +1,9 @@
 // 急停按钮（安全 P0）：点击 → 同步 ws.send，不排队、不防抖、不等任何 await（Agent 长调用进行中也一样）。
-// 打点：click / send / requested / latched，用 performance.now()，写进调试日志 window.__dzEstop。
+// 打点：click / send / requested / latched；解除：clear_click / cleared_shown / clear_to_cleared_ms，用 performance.now()，写进调试日志 window.__dzEstop。
 export type EstopPhase = "idle" | "pending" | "requested" | "latched";
 export const ESTOP_LABEL: Record<EstopPhase, string> = { idle: "急停", pending: "正在急停", requested: "已发送急停", latched: "急停已锁存" };
-export type Trace = { src: string; click: number; send?: number; requested?: number; latched?: number };
+export type Trace = { src: string; click: number; send?: number; requested?: number; latched?: number;
+  clear_click?: number; cleared_shown?: number; clear_to_cleared_ms?: number };
 export const traces: Trace[] = [];
 const now = () => performance.now();
 export function fireEstop(link: { fire(op: string, a: Record<string, unknown>): void }, src: string): Trace {
@@ -21,6 +22,22 @@ export function onEstopEvent(state: string): EstopPhase | null {
   const t = traces[traces.length - 1];
   if (t && t[state] == null) { t[state] = now(); log(`estop click→${state} ${(t[state]! - t.click).toFixed(1)} ms`); }
   return state;
+}
+// 点击「解除急停」：记到最近一次急停上（没有则新建一条 src="clear"）；再次解除会覆盖上一组解除时刻
+export function markClearClick(): Trace {
+  let t = traces[traces.length - 1];
+  if (!t) { t = { src: "clear", click: now() }; traces.push(t); }
+  t.clear_click = now(); t.cleared_shown = undefined; t.clear_to_cleared_ms = undefined;
+  log("estop clear_click");
+  return t;
+}
+// 解除卡 / 告警条渲染出 cleared 时调用（渲染之后）；只记第一次
+export function markClearedShown(): Trace | null {
+  const t = traces[traces.length - 1];
+  if (!t || t.clear_click == null || t.cleared_shown != null) return null;
+  t.cleared_shown = now(); t.clear_to_cleared_ms = +(t.cleared_shown - t.clear_click).toFixed(2);
+  log(`estop clear_click→cleared_shown ${t.clear_to_cleared_ms.toFixed(1)} ms`);
+  return t;
 }
 function log(s: string) {
   try { console.debug("[dz-estop]", s); (globalThis as any).__dzEstop = traces; } catch { /* 调试日志失败不影响急停 */ }
