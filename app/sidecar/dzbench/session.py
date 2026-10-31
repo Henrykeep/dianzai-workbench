@@ -1046,6 +1046,10 @@ class Session:
         names = self.setpoint_names()
         if name not in names:
             raise _invalid(name, f"不是设定值（可选：{'、'.join(names) or '无'}）", None, "name")
+        hold = next(c["hold"] for c in self.schema.setpoints() if c["name"] == name)
+        if hold != "latched":
+            raise LinkError("hold_timeout", "这块板子的目标不会保持，重新开始实验即可", "重新开始实验（阶跃 / 迭代）", "restart_experiment",
+                            {"reason": "hold", "hold": hold, "message_zh": "这块板子的目标不会保持，重新开始实验即可"})
         v = check_value(name, raw, None)
         slot = names.index(name)
         rng = next((float(c["range"]) for c in (self.schema.step or []) if int(c.get("sp", -1)) == slot and c.get("range") is not None), None)
@@ -1293,6 +1297,7 @@ class Session:
             if self.tx_locked and not self._sp_frozen:
                 self._freeze_sp()
             st["sp_before_latch"] = self.sp_before_latch
+            st["setpoints"] = self.schema.setpoints() if self.schema else []   # [{name, slot, ref_for, hold}]，hold 原样透传，缺省 timeout
             st["run_mode"] = run_mode_dict(self.hb_status)
             st["selftest"] = self.selftest_snapshot()
             st["params_saved"] = None if self.params_hash is None or self.hb_status is None else not (self.hb_status & (1 << 16))

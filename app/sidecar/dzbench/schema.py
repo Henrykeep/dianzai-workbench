@@ -47,12 +47,22 @@ class Schema:
         """app.yaml link.step（#38 阶跃通道：sp / y / u / u_max / range / abs_tol），老 schema 为空。"""
         return list(self.d.get("step") or [])
 
+    def setpoints(self) -> list[dict]:
+        """设定值通道（DATA id=1 第 i 个 f32 = 遥测里第 i 个带 ref_for 的字段）。hold = latched | timeout 原样透传
+        （app.yaml link 设定值通道的 hold：先看 link.step 里 sp 同槽的条目，再看遥测字段本身）；缺省 = timeout。"""
+        out = []
+        for i, f in enumerate(x for x in self.fields if x.get("ref_for")):
+            st = next((c for c in self.step if int(c.get("sp", -1)) == i), {})
+            out.append({"name": f["name"], "slot": i, "ref_for": f["ref_for"], "hold": st.get("hold") or f.get("hold") or "timeout"})
+        return out
+
     def summary(self) -> dict:
         return {"hash": f"{self.hash:08X}", "path": self.path, "fields": self.fields, "params": self.params,
                 "period_ms": self.d["telemetry"].get("period_ms"),
                 # 只给界面：验收规格、串级分层（gen_link 从 yaml link: 段原样带过来；字段的 cal 在 fields 里）
                 "accept": self.d.get("accept") or [], "loops": self.d.get("loops") or [],
-                "protect_fixed": self.d.get("protect_fixed") or []}
+                "protect_fixed": self.d.get("protect_fixed") or [],
+                "step": self.step, "setpoints": self.setpoints()}
 
 
 def search_dirs() -> list[pathlib.Path]:
