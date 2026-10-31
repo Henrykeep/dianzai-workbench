@@ -533,6 +533,8 @@ def test_retest_blocked_by_agrees_with_iterate_start():
             rejected = False
         except S.GatewayError as e:
             assert e.code == "step_too_large", (e.code, e.message)
+            assert e.extra["reason"] == "step_too_large" and e.extra["message_zh"] and e.extra["max_step"] == ms   # #128 与 setpoint_set 同样带字段
+            assert e.extra["limit_name"] == "link.step[0].max_step"
             rejected = True
         assert rejected == (b is not None), (amp, ms, b)
         if b:
@@ -550,3 +552,65 @@ def test_link_roles_from_roles_json(tmp_path, monkeypatch):
     assert sv.link_roles() == ("P",)
     src = _p.Path(sv.__file__).read_text(encoding="utf-8")
     assert "gen_link.py" not in src.replace("gen_link ROLES", "")   # 运行时不加载 tools/gen_link.py
+
+
+def test_autotune_write_one_float32_and_retry():
+    """#126：目标正好差 max_delta 时，float32 舍入不再让板子拒写；被拒（单步）缩半步重试，不抛错中断整定。"""
+    import struct
+    from dzbench.tuning.autotune import write_one
+    f32 = lambda x: struct.unpack("<f", struct.pack("<f", x))[0]   # noqa: E731
+
+    class B:
+        def __init__(self, v, md, reject_first=0):
+            self.v, self.md, self.left, self.n = f32(v), md, reject_first, 0
+        def read_params(self):
+            return {"k": self.v}
+        def write_param(self, nm, x):
+            self.n += 1
+            nx = f32(x)
+            if self.left or abs(f32(nx - self.v)) > f32(self.md):          # 板上 float32 严格比较
+                self.left = max(0, self.left - 1)
+                return {"ok": False, "reason": "step"}
+            self.v = nx
+            return {"ok": True}
+    b = B(0.37, 6.13)
+    write_one(b, "k", 0.37 + 6.13, 6.13)
+    assert abs(b.v - f32(6.5)) < 1e-5, b.v
+    b = B(0.0, 1.0, reject_first=2)
+    write_one(b, "k", 1.0, 1.0)
+    assert abs(b.v - 1.0) < 1e-6 and b.n >= 3
+
+
+def test_f32_short_keeps_param_hash():
+    """#127：ACK 回来的 float32 存成最短可还原十进制；round(,6) 会改掉小数值的位，本地参数哈希和板上 CRC 对不上。"""
+    import struct
+    from dzbench.session import f32_short
+    for x in (0.1, 0.000123456789, 6.13, 1234.5678, -0.0007812345, 1e-7):
+        raw = struct.unpack("<f", struct.pack("<f", x))[0]
+        y = f32_short(raw)
+        assert struct.pack("<f", y) == struct.pack("<f", raw), (x, y)
+        assert len(repr(y)) <= len(repr(raw))
+    assert f32_short(struct.unpack("<f", struct.pack("<f", 0.1))[0]) == 0.1
+
+
+def test_iterate_stopped_has_verdict_zh_on_pass():
+    """#128：stopped=pass 时停止事件本身带 verdict_zh「通过」（#121）。"""
+    ev = []
+    o = types.SimpleNamespace(current_run_id=lambda: "r1", emit=ev.append, memory=lambda: types.SimpleNamespace(add=lambda *a, **k: None),
+                              _ss_band=lambda m: {"inside": True, "pass_basis": "同单位直接比较"})
+    o._verdict = S.AgentService._verdict
+    e = {"type": "iterate.stopped", "reason": "pass", "best": {"metrics": {"ss_err_pct": 0.5, "overshoot_pct": 1, "settle_ms": 100, "rise_ms": 20}}}
+    S.AgentService._iter_emit(o, e)
+    assert e["verdict"] == "pass" and e["verdict_zh"] == "通过", e
+    e2 = {"type": "iterate.stopped", "reason": "pass", "best": None}
+    S.AgentService._iter_emit(o, e2)
+    assert e2["verdict_zh"] == "通过"
+
+
+def test_risk_names_every_tool():
+    """autotune 等每个登记工具都有风险档和中文名；agent_tool / agent_action 事件带 tier / tier_zh / name_zh。"""
+    from dzbench.agent import risk
+    assert set(risk.RISK) <= set(risk.NAME_ZH), sorted(set(risk.RISK) - set(risk.NAME_ZH))
+    d = risk.describe("autotune", sim=False)
+    assert d == {"tier": "human", "tier_zh": "需人确认", "name_zh": "通用自动整定"}
+    assert risk.describe("autotune", sim=True)["tier"] == "log"

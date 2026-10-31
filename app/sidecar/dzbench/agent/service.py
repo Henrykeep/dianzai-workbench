@@ -145,6 +145,7 @@ class AgentService:
             "quick_start": lambda text: self.quick_start(text),
         }, emit, preload=self._preload, card_states=self._card_states, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
+        self.loop.is_sim = lambda: bool(self.sim)
         self._kn_seen: set[str] = set()
 
     def project_list(self) -> dict:
@@ -324,7 +325,7 @@ class AgentService:
             aid = next(self._aid)
             preview = cards.build(self, tool, args)          # 卡片内容：人话 + 旧→新，见 agent/cards.py
             self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run, "t": time.monotonic()}
-            self.emit({"type": "agent_action", "id": aid, "tool": tool, "args": args, "preview": preview, "sim": self.sim,
+            self.emit({"type": "agent_action", "id": aid, "tool": tool, "args": args, "preview": preview, "sim": self.sim, **risk.describe(tool, self.sim),
                        "as_hw": (self.s.port or "").endswith("+hw"),
                        "ttl_s": self.ARM_TTL_S if tool in self.EXPERIMENTS else None})
             risk.audit(tool, args, t, "pending_human")
@@ -629,9 +630,11 @@ class AgentService:
             raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {float(span):g} 的 1/4" if span else "按题面给的阶跃幅度")
         ms = st.get("max_step")
         from ..tuning.steplimit import step_block
-        if step_block(target, ms, ch):                                           # #109：超过执行器能承受的单次最大阶跃（与 #129 retest_blocked_by 同一判定）
+        blk = step_block(target, ms, ch, next((f.get("unit") or None for f in (getattr(sch, "fields", None) or []) if f["name"] == st.get("y")), None))
+        if blk:                                                                  # #109：超过执行器能承受的单次最大阶跃（与 #129 retest_blocked_by 同一判定）
             raise GatewayError("step_too_large", f"阶跃 {float(target):g} 超过工程声明的单次最大阶跃 max_step = {float(ms):g}",
-                               f"把阶跃目标改到 ±{float(ms):g} 以内，或核实后改 link.step.max_step", {"fix_action": "lower_step", "max_step": float(ms)})
+                               f"把阶跃目标改到 ±{float(ms):g} 以内，或核实后改 link.step.max_step",
+                               blk | {"fix_action": "lower_step", "max_step": float(ms), "target": float(target)})   # #128：与 setpoint_set 同样带 reason / message_zh
         tol = st.get("abs_tol")
         if tol is None:                                                          # 新声明只写物理上限：容差 = 传感器量程的 ABS_TOL_FRAC
             tol = float(span) * self.ABS_TOL_FRAC if span else None
@@ -1013,6 +1016,13 @@ class AgentService:
         if e.get("type") == "iterate.round" and e.get("valid"):
             self.memory().add("round", run_id=self.current_run_id(), iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
                               score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
+        if e.get("type") == "iterate.stopped" and "verdict_zh" not in e:     # #128：停止事件本身带结论（pass → 「通过」，#121）
+            b = e.get("best") or {}
+            try:
+                e["verdict"], e["verdict_zh"] = self._verdict(self._ss_band(b.get("metrics") or {}), e, b.get("metrics")) if b else \
+                    (("pass", "通过") if e.get("reason") == "pass" else ("unknown", "没有可用的一轮，不能判定"))
+            except Exception:  # noqa: BLE001
+                e["verdict"], e["verdict_zh"] = ("pass", "通过") if e.get("reason") == "pass" else ("unknown", "不能判定")
         if e.get("type") == "iterate.stopped" and "pass_basis" not in e:
             try:
                 e["pass_basis"] = self._ss_band((e.get("best") or {}).get("metrics") or {})["pass_basis"]
@@ -1104,7 +1114,17 @@ class AgentService:
         link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
         link["ch"] = int(ch)
         link["unit"] = next((f.get("unit") or None for f in sch.fields if f["name"] == st.get("y")), None)   # #140：被阶跃信号声明的单位，没写 = null
-        return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
+        board = SessionBoard(self.s, ch, dt)
+        res = at.autotune(board, {"params": decl}, link, spec_text, int(seed))
+        # #127：整定结束把最好一组写回板子（板上原来留的是最后试的一组），再从板上重读参数、刷新参数哈希 / 台账基准
+        md = {d["name"]: d.get("max_delta") for d in decl}
+        for nm, v in ((res.get("best") or {}).get("params") or {}).items():
+            at.write_one(board, nm, float(v), md.get(nm))
+        self.s.read_all_params()
+        h = self._local_hash()
+        res["applied_best"] = True
+        res["params_hash"] = h
+        return res
 
     def confirm_roles(self, roles: dict, app_dir: str | None = None) -> dict:
         """人确认过的参数角色写进 app.yaml link.params.<名>.role（只改这几行，不重排文件）。"""

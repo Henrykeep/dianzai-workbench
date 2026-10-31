@@ -46,8 +46,8 @@ class SessionBoard:
     def read_params(self) -> dict:
         return dict(self.s.params)
 
-    def write_param(self, name: str, v: float) -> None:
-        self.s.set_param(name, float(v))
+    def write_param(self, name: str, v: float) -> dict:
+        return self.s.set_param(name, float(v))
 
     def step(self, amp: float, n: int):
         st = self.s.schema.step[self.ch]

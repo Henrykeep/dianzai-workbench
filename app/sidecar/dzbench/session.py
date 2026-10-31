@@ -53,6 +53,16 @@ REJECT_ZH = {"range": "超出允许范围", "type": "类型不对（整数参数
              "step": "单步改动过大（超过 max_delta）", "busy": "自动迭代进行中，参数已锁定，结束或停止迭代后再改", "unknown": "板子拒绝了这次写入"}
 
 
+def f32_short(x: float) -> float:
+    """float32 值 → 最短的、打包回 float32 仍是同一组位的 Python float（0.1 还是 0.1，0.000123456789 不被截成 0.000123）。"""
+    b = struct.pack("<f", x)
+    for p in range(6, 10):
+        y = float(f"{x:.{p}g}")
+        if struct.pack("<f", y) == b:
+            return y
+    return float(x)
+
+
 class Session:
     def __init__(self, emit: Callable[[dict], None] = lambda e: None, log_dir: pathlib.Path | None = None,
                  history_s: float = 120.0):
@@ -697,7 +707,7 @@ class Session:
                 with self.lock:
                     if self.schema and id_ < len(self.schema.params):
                         name = self.schema.params[id_]["name"]
-                        val = float(round(val, 6))
+                        val = f32_short(val)            # #127：最短且能还原成同一个 float32 的十进制（round(,6) 会改掉小数值的位，参数哈希对不上）
                         self.params[name] = val
                         self.emit({"type": "param", "name": name, "value": val, "status": ACK_STATUS.get(st, str(st))})
                     w = self._acks.get(id_)

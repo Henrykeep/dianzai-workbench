@@ -214,6 +214,48 @@ from .steplimit import step_block  # noqa: E402
 AMP_WARN_ZH = "按降幅测试，未验题面幅度"
 
 
+F32_EPS = 2.0 ** -23
+DELTA_MARGIN = 1e-6                                              # #126：每步只走 max_delta×(1−1e-6)，避开 float32 舍入后“正好超一点”
+
+
+def _step_cap(md: float, a: float, b: float) -> float:
+    """单步上限：max_delta 留相对余量，再扣掉两端 float32 舍入（板上按 f32 比较）。"""
+    return max(md * (1 - DELTA_MARGIN) - 4 * F32_EPS * max(abs(a), abs(b), md), md * 0.5)
+
+
+def write_one(board, nm: str, tgt: float, max_delta=None, tries: int = 8) -> float:
+    """把参数 nm 分步写到 tgt：每步 ≤ max_delta（留余量）；被拒（单步超限）就把这一步缩半重试，不抛错中断整轮整定。
+    board.write_param 可以抛异常或返回 {ok:False, reason:"step"}；别的拒绝原因照常抛出。"""
+    v = float(board.read_params()[nm])
+    md = float(max_delta) if max_delta else math.inf
+    while abs(tgt - v) > 1e-12 * max(1.0, abs(tgt)):
+        cap = _step_cap(md, v, tgt) if math.isfinite(md) else math.inf
+        for _ in range(tries):
+            nv = v + max(min(tgt - v, cap), -cap)
+            try:
+                r = board.write_param(nm, nv)
+            except Exception as e:  # noqa: BLE001
+                if not _is_step_reject(e) or not math.isfinite(md):
+                    raise
+                cap *= 0.5
+                continue
+            if isinstance(r, dict) and r.get("ok") is False:
+                if r.get("reason") != "step":
+                    raise RuntimeError(f"写 {nm}={nv:g} 被拒：{r.get('reason_zh') or r.get('reason')}")
+                cap *= 0.5
+                continue
+            v = float(board.read_params().get(nm, nv))
+            break
+        else:
+            raise RuntimeError(f"写 {nm} 连续 {tries} 次被单步限幅拒绝（max_delta {md:g}）")
+    return v
+
+
+def _is_step_reject(e) -> bool:
+    ex = getattr(e, "extra", None) or {}
+    return getattr(e, "code", None) == "invalid_param" and (ex.get("reject") == "step" or ex.get("reason") == "step")
+
+
 def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: int = 12) -> dict:
     """board：read_params() / write_param(name, v)（受 max_delta，超了拒写）/ step(amp, n) → (t, r, y, u)。"""
     import control  # noqa: F401  python-control：模型仿真 / 设计
@@ -233,12 +275,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
 
     def write(p):
         for d in decl:
-            nm, tgt = d["name"], p[d["role"]]
-            v = float(board.read_params()[nm])
-            md = float(d.get("max_delta") or math.inf)
-            while abs(tgt - v) > 1e-12:
-                v = v + max(min(tgt - v, md), -md)
-                board.write_param(nm, v)
+            write_one(board, d["name"], p[d["role"]], d.get("max_delta"))
 
     def run(p, amp, n):
         write(p)

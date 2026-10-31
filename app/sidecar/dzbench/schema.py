@@ -41,7 +41,7 @@ class Schema:
         p = self.params[self.param_index[name]] if name in self.param_index else None
         v = check_value(name, raw, p)
         md = max_delta(p) if p else None
-        if md is not None and current is not None and abs(v - float(current)) > md + 1e-9 * max(1.0, md):
+        if md is not None and current is not None and abs(v - float(current)) > md * (1 + 1e-6) + 4 * 2.0 ** -23 * max(abs(v), abs(float(current)), md):   # #126 float32 舍入容差
             raise _invalid(name, f"单步改动 {abs(v - float(current)):g} 超过 max_delta {md:g}（当前 {float(current):g}）", p, "step")
         return v
 

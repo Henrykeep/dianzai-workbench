@@ -315,3 +315,9 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - `flow_preview step:"req"` 除 `src` / `pdf_b64` 外接受 `file_b64 + filename`（PDF / txt / png / jpg 等，按后缀读；图片走 Tesseract OCR chi_sim+eng，没装 → `✗ … 把题目文字直接粘贴进来`）和 `text`（直接粘贴的题目文字）。都没给 → `no_src`「先拖入题目 PDF / 图片，或直接粘贴题目文字」。
 - 没有「一、任务 / 二、要求」版式时按条款号（(1) ① 1.）切，再不行按句切。
 - `items[]` 每项新增 `clause`（如「要求(B2)」）；抽不出阈值 / 单位的项 `metrics:[]` + `manual_entry:true` + `notes`（「没抽出阈值 / 单位：请对照原文手填指标」），不报错。范围两端单位只差 SI 前缀（10Hz~100kHz）时下限换到上限单位。
+
+## 整定写参数、会话哈希、文案补齐（#126 #127 #128）与工具风险档
+- #126：autotune 每步只走 `max_delta×(1−1e-6)`（再扣两端 float32 舍入）；板子 / 侧车按单步拒写时把这一步缩半重试（最多 8 次），不再抛错中断整轮。侧车 `set_param` 的单步比较加相对容差（`1e-6` + float32 舍入）。
+- #127：`PARAM_ACK` 回来的 float32 存成最短且能还原同一 float32 的十进制（以前 `round(,6)` 会改掉小数值的位，本地参数哈希和板上 `step_result.params_hash` 对不上 → 连续 `hash_mismatch`）。`autotune` 结束把 `best.params` 写回板子并从板上重读参数；结果多 `applied_best: true`、`params_hash`（写回后本地算的 CRC32）。
+- #128：`iterate_start` / `iterate_plan` 的 `step_too_large` 带与 #129 同一份字段 `reason, limit, limit_unit, limit_name, message_zh`，外加 `max_step, target, fix_action:"lower_step"`。`iterate.stopped` 本身带 `verdict` / `verdict_zh`：`reason:"pass"` → 「通过」（#121），没有可用一轮 → `unknown`。
+- `agent_tool`、`agent_action` 事件新增 `tier`（auto/log/human/forbid，仿真按 SIM_RELAX 降档）、`tier_zh`、`name_zh`（`agent/risk.py NAME_ZH`，每个登记工具都有）。`autotune` = 「通用自动整定」，实机 human、仿真 log。

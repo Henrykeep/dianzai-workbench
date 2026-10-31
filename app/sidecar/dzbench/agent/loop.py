@@ -5,6 +5,7 @@ import json
 import re
 from typing import Callable
 
+from . import risk
 from .gateway import FORBIDDEN_TOOLS, GatewayError, human_only_error
 from .stuck import StuckDetector
 from .untrusted import wrap
@@ -226,6 +227,7 @@ class AgentLoop:
         self.card_states = card_states or (lambda: "")      # #99：每轮附改代码卡真实状态（只读）
         self.knowledge = knowledge or (lambda text: [])
         self.gate = gate or (lambda tool, args, run: run())
+        self.is_sim: Callable[[], bool] = lambda: False        # 服务装上后指向会话：agent_tool 事件带风险档（仿真降档）
         self._rules, self._memory = project_rules, memory or (lambda: "")
         self.messages: list[dict] = [self._system()]
         self.mode = "general"
@@ -357,7 +359,7 @@ class AgentLoop:
                 if self.guards and res["ok"] and res["result"] in (None, "", [], {}):
                     res["result"] = EMPTY   # SWE-agent：空输出也要明说
                 results.append({"name": name, "ok": res["ok"], "result": res.get("result")})
-                self.emit({"type": "agent_tool", "name": name, "args": args, "ok": res["ok"]})
+                self.emit({"type": "agent_tool", "name": name, "args": args, "ok": res["ok"], **risk.describe(name, bool(self.is_sim()))})
                 self.messages.append({"role": "tool", "tool_call_id": c.get("id", name), "content": wrap(name, tool_content(res))})
                 if self.guards and name != "update_plan" and (tip := det.nudge(self.messages)):
                     self.messages[-1]["content"] += f"\n[工作台提醒] {tip}"
