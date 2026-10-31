@@ -54,14 +54,21 @@ NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse
 
 
 
+ROLES_JSON = pathlib.Path(__file__).resolve().parents[4] / "docs" / "dev" / "roles.json"
+
+
+def load_roles(path=None) -> list:
+    """角色枚举只读 docs/dev/roles.json（随安装包分发；make check 保证它 == gen_link ROLES）。运行时不加载 tools/。"""
+    f = pathlib.Path(path or os.environ.get("DZBENCH_ROLES_JSON") or ROLES_JSON)
+    doc = json.loads(f.read_text(encoding="utf-8"))
+    rs = [r for r in doc.get("roles", []) if isinstance(r, dict) and r.get("code")]
+    if not rs:
+        raise ValueError(f"{f} 里没有 roles")
+    return rs
+
+
 def link_roles() -> tuple:
-    """#136：role 取值只认 tools/gen_link.py 的 ROLES（同一份枚举，生成器校验什么，提示就写什么）。"""
-    import importlib.util
-    import pathlib
-    f = pathlib.Path(__file__).resolve().parents[4] / "tools" / "gen_link.py"
-    spec = importlib.util.spec_from_file_location("dz_gen_link_roles", f)
-    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-    return tuple(mod.ROLES)
+    return tuple(r["code"] for r in load_roles())
 
 
 def role_hint_zh() -> str:

@@ -538,3 +538,15 @@ def test_retest_blocked_by_agrees_with_iterate_start():
         if b:
             assert set(b) == {"reason", "limit", "limit_unit", "limit_name", "message_zh", "fix_action"}
             assert b["limit_name"] == "link.step[0].max_step" and b["fix_action"] == "edit_declaration" and b["limit_unit"] == "rps"
+
+
+def test_link_roles_from_roles_json(tmp_path, monkeypatch):
+    import json as _j, pathlib as _p
+    from dzbench.agent import service as sv
+    doc = _j.loads(sv.ROLES_JSON.read_text(encoding="utf-8"))
+    assert sv.link_roles() == tuple(r["code"] for r in doc["roles"])
+    f = tmp_path / "roles.json"; f.write_text(_j.dumps({"roles": [{"code": "P", "zh": "比例"}]}), encoding="utf-8")
+    monkeypatch.setenv("DZBENCH_ROLES_JSON", str(f))
+    assert sv.link_roles() == ("P",)
+    src = _p.Path(sv.__file__).read_text(encoding="utf-8")
+    assert "gen_link.py" not in src.replace("gen_link ROLES", "")   # 运行时不加载 tools/gen_link.py
