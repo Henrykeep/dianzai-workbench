@@ -230,6 +230,7 @@ def _ss_obj(tmp_path, sim, phys=None, nominal=None):
     for n in ("_step_amp", "_unit_per", "_phys_per", "_sim_nominal_per", "_calibration_per"):
         setattr(o, n, (lambda f: lambda *a: f(o, *a))(getattr(S.AgentService, n)))
     o._pass_basis = S.AgentService._pass_basis
+    o._conv_zh = S.AgentService._conv_zh
     return o, proj
 
 
