@@ -241,7 +241,10 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         return t, r, y, u, metrics(t, r, y, amp)
 
     # 1) 小幅探测：量程 × PROBE_FRAC，时长先按采样周期给个够长的窗，阶跃时序再由 stepident 实测推出
-    probe = (rng_phys or 1.0) * stepident.PROBE_FRAC
+    lim = rng_phys                                              # #108：探测幅度 = 量程的分数，再受 max_step 夹住；没声明量程走最小可测幅度
+    if max_step:
+        lim = min(lim, max_step / stepident.PROBE_FRAC) if lim else max_step / stepident.PROBE_FRAC
+    probe, _why = stepident.probe_amp(lim)
     n_probe = 600
     p = dict(p0)
     for _ in range(6):                                          # 初值不稳定 → 减半增益直到不跑飞（声明范围内）

@@ -129,7 +129,7 @@ class AgentService:
             "score_items": lambda path=None: steptools.score_items(self, path),
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
-            "tune_autopilot": self._tune_autopilot_agent,
+            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run,
             "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
@@ -528,15 +528,35 @@ class AgentService:
         steps = sch.step
         if not steps or not 0 <= int(ch) < len(steps):
             raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "固件升到 dzctl 0.13.0 并在 app.yaml 加 link.step")
-        names = list(params or self._gains().keys())
+        names = list(params or [k for k in self._gains() if k in sch.param_index] or self._tunable(sch))
         bad = [n for n in names if n not in sch.param_index]
         if bad or not names:
             raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
         st = steps[int(ch)]
+        span = st.get("range") if st.get("range") is not None else st.get("sensor_range")
         if target is None:
-            raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {st['range']:g} 的 1/4")
-        return {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(st["abs_tol"]),
+            raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {float(span):g} 的 1/4" if span else "按题面给的阶跃幅度")
+        ms = st.get("max_step")
+        if ms is not None and abs(float(target)) > float(ms):                   # #109：超过执行器能承受的单次最大阶跃
+            raise GatewayError("step_too_large", f"阶跃 {float(target):g} 超过工程声明的单次最大阶跃 max_step = {float(ms):g}",
+                               f"把阶跃目标改到 ±{float(ms):g} 以内，或核实后改 link.step.max_step", {"fix_action": "lower_step", "max_step": float(ms)})
+        tol = st.get("abs_tol")
+        if tol is None:                                                          # 新声明只写物理上限：容差 = 传感器量程的 ABS_TOL_FRAC
+            tol = float(span) * self.ABS_TOL_FRAC if span else None
+        return {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(tol) if tol is not None else None,
                 "params": [dict(sch.params[sch.param_index[n]]) for n in names]}
+
+    ABS_TOL_FRAC = 0.01                                          # 没声明 abs_tol：稳态容差 = 传感器量程 × 1%
+
+    @staticmethod
+    def _tunable(sch) -> list[str]:
+        """握手参数表里声明了 [min, max] 的参数（名字随工程走，不认 kp/ki 这些字面名）。"""
+        out = []
+        for p in sch.params:
+            lo, hi = p.get("min"), p.get("max")
+            if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and hi > lo and str(p.get("type", "f32")) in ("f32", "f64", "float", "double"):
+                out.append(p["name"])
+        return out
 
     def iterate_card(self, args: dict) -> dict:
         from .iterate import Iterator, SessionIO
@@ -915,6 +935,28 @@ class AgentService:
         if th:
             th.join(5)
         return {"ok": True, "result": self.iter_result}
+
+    def autotune_run(self, spec_text: str = "", ch: int = 0, seed: int = 0) -> dict:
+        """通用整定（与 tools/tunegate.py 同一份 tuning.autotune）：参数名 / 范围 / max_delta / 量程 / max_step 全从握手读。"""
+        from ..tuning import autotune as at
+        from ..tuning.session_board import SessionBoard, roles
+        sch = self.s.schema
+        if not sch or not sch.step:
+            raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "在 app.yaml 加 link.step（sensor_range / max_step）")
+        if not self.sim:
+            raise GatewayError("hw_needs_human", "实机自动整定会连续写参数，要走批量确认", "用“自动迭代”（iterate_start）出确认卡")
+        rl = roles(sch, guess_gain)
+        if "kp" not in rl:
+            raise GatewayError("no_roles", "认不出哪个参数是比例增益", "在 app.yaml 参数上写 role: kp / ki / kd")
+        by = {p["name"]: p for p in sch.params}
+        decl = [{"role": r, "name": n, "min": float(by[n]["min"]), "max": float(by[n]["max"]), "max_delta": by[n].get("max_delta")}
+                for r, n in rl.items()]
+        st = sch.step[int(ch)]
+        um = st.get("u_max")
+        u_max = float(self.s.params.get(um, 1.0)) if isinstance(um, str) else float(um or (sch.d.get("limits") or {}).get("u_max") or 1.0)
+        dt = float(st.get("sample_s") or (sch.d.get("telemetry") or {}).get("period_ms", 10) / 1000)
+        link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
+        return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
 
     def tune_autopilot(self, rounds: int = 6) -> dict:
         """仅仿真：提议→采纳→阶跃→护栏判，直到护栏说 done/stop 或轮数用完；最后回到最好的一轮。实机每次写都要人点，不走这里。"""

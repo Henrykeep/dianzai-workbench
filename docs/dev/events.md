@@ -201,3 +201,9 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
   - 拒绝或超时：不提交，返回 `{ok:false, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit", ...请求字段}`；文件仍留在工作区。提交本身失败时 `reason:"commit_failed"`。
 - Agent 发起的任何 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit"}`，不执行。
 - `pending` 列表里同时包含待批的 `commit_confirm_request`。
+
+### autotune op / step_too_large（#107–#109）
+- `{"op":"autotune","spec_text":"…","ch":0,"seed":0}`：通用整定，和 `tools/tunegate.py` 用的是同一份 `tuning.autotune`。参数名、范围和 max_delta 来自握手参数表（参数的 `role`，或 link.step.u_max 指向的参数 → ulim，其余按名字猜）；量程和 max_step 来自 link.step。只在仿真里跑，实机返回 `hw_needs_human`。找不到比例增益时返回 `no_roles`。
+- `iterate_start` / `iterate_plan`：没传 params 时，用握手参数表里所有声明了 [min,max] 的浮点参数；没写 abs_tol 时，取 sensor_range × 1%。
+- `step_too_large`（message_zh + fix，fix_action=`lower_step`，带 `max_step`）：iterate 的阶跃目标、或一次设定值跳变超过 link.step.max_step 时返回。
+- 探测幅度 = 量程 × PROBE_FRAC，受 max_step 限制；没声明量程时用最小可测幅度（不再固定 0.05）。

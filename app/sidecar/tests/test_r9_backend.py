@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import struct
+import pathlib
 import threading
 import time
 import types
@@ -361,3 +362,76 @@ def test_relay_off_declared_refuses_relay_tune():
     with pytest.raises(S.GatewayError) as e:
         S.AgentService.run_relay_tune(o)
     assert e.value.code == "relay_off" and e.value.fix
+
+
+# ---------------------------------------------------------------- #107 / #109：随机对象的声明直接能起迭代（参数名、量程、容差全从握手 / 声明读）
+@pytest.mark.parametrize("seed", list(range(0, 40, 3)) + [101, 202, 3008, 3009, 3010])
+def test_iterate_plan_accepts_any_randplant_declaration(seed, tmp_path):
+    import sys as _sys
+    root = pathlib.Path(__file__).resolve().parents[3]
+    _sys.path.insert(0, str(root / "tools"))
+    import gen_link
+    import randplant
+    from dzbench.schema import Schema
+    from dzbench.agent.iterate import Iterator
+    p = randplant.gen(seed)
+    (tmp_path / "app.yaml").write_text(randplant.app_yaml(p), "utf-8")
+    spec, params, _ = gen_link.load(tmp_path / "app.yaml")
+    assert not gen_link.check(spec, params), gen_link.check(spec, params)
+    sch = Schema(gen_link.schema(spec, params))
+    o = types.SimpleNamespace(s=types.SimpleNamespace(schema=sch), _gains=lambda: {}, _tunable=S.AgentService._tunable,
+                              ABS_TOL_FRAC=S.AgentService.ABS_TOL_FRAC)
+    st = sch.step[0]
+    tgt = min(0.25 * float(st["sensor_range"]), float(st.get("max_step") or 1e9))
+    plan = S.AgentService.iterate_plan(o, target=tgt)
+    assert {q["name"] for q in plan["params"]} >= set(p["roles"].values()) - {None}
+    assert plan["abs_tol"] == pytest.approx(0.01 * float(st["sensor_range"]))
+    vals = {q["name"]: q.get("default", q.get("min", 0.0)) for q in sch.params}
+    card = Iterator.card(plan, vals, [q["name"] for q in sch.params], True)
+    assert card
+    if st.get("max_step"):
+        with pytest.raises(S.GatewayError) as e:
+            S.AgentService.iterate_plan(o, target=float(st["max_step"]) * 1.5)
+        assert e.value.code == "step_too_large" and "max_step" in e.value.message
+
+
+# ---------------------------------------------------------------- #108：界面 / Agent 的 autotune 走 tuning.autotune（与 tunegate 同一份代码）
+def test_autotune_run_uses_same_code_as_tunegate(monkeypatch):
+    import sys as _sys
+    root = pathlib.Path(__file__).resolve().parents[3]
+    _sys.path.insert(0, str(root / "tools"))
+    import tunegate_plant as TP
+    from dzbench.schema import Schema
+    from dzbench.tuning import autotune as AT
+    case = TP.make(3008)
+    board = TP.SimBoard(case["plant"], case["app"], 0)
+    sch = Schema({"hash": 1, "telemetry": {"id": 2, "fields": [{"name": "y", "type": "f32"}]}, "params": [{"name": d["name"], "role": d["role"], "type": "f32", "min": d["min"], "max": d["max"],
+                              "max_delta": d["max_delta"], "default": d["init"]} for d in case["app"]["params"]],
+                  "step": [{"sp": 0, "y": "y", "u": "u", "u_max": case["link"]["u_max"], "sample_s": case["link"]["sample_s"],
+                            "sensor_range": case["link"]["sensor_range"], "max_step": case["link"]["max_step"]}]})
+
+    class Sess:
+        schema, tx_locked, port = sch, False, "sim:randplant"
+        params = board.read_params()
+
+        def set_param(self, n, v):
+            board.write_param(n, v); self.params[n] = v
+
+        def step_start(self, ch, it, amp, dur_ms):
+            t, r, y, u = board.step(amp, int(round(dur_ms / 1000 / case["link"]["sample_s"])))
+            self.w = [(float(a), {"sp": float(b), "y": float(c), "u": float(d)}) for a, b, c, d in zip(t, r, y, u)]
+
+        def step_wait(self, it, to):
+            return {"iter": it}
+
+        def window(self, s):
+            return self.w
+
+    calls = []
+    real = AT.autotune
+    monkeypatch.setattr(AT, "autotune", lambda *a, **k: calls.append(1) or real(*a, **k))
+    o = S.AgentService.__new__(S.AgentService)
+    o.s = Sess()
+    r = o.autotune_run(case["spec"])
+    assert calls and r.get("verdict") in ("pass", "fail")
+    assert board.rejected == 0

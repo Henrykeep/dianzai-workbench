@@ -1131,6 +1131,13 @@ class Session:
                     if int(c.get("sp", -1)) == slot and (c.get("range") is not None or c.get("sensor_range") is not None)), None)   # range 可省，退到传感器量程
         if rng is not None and abs(v) > rng:
             raise _invalid(name, f"超出范围（|值| ≤ {rng:g}，link.step.range / sensor_range）", None, "range")
+        ms = next((float(c["max_step"]) for c in (self.schema.step or []) if int(c.get("sp", -1)) == slot and c.get("max_step") is not None), None)
+        with self.lock:
+            cur = float(self._sp_live.get(name, 0.0))
+        if ms is not None and abs(v - cur) > ms * (1 + 1e-9):                # #109：单次设定值跳变不超过执行器能承受的最大阶跃
+            raise LinkError("step_too_large", f"设定值一次跳 {abs(v - cur):g} 超过工程声明的单次最大阶跃 max_step = {ms:g}",
+                            f"分几步改，或每次不超过 {ms:g}", "lower_step",
+                            {"reason": "max_step", "max_step": ms, "message_zh": f"设定值一次跳 {abs(v - cur):g} 超过单次最大阶跃 {ms:g}"})
         with self.lock:
             vals = [float(self._sp_live.get(n, 0.0)) for n in names]
         vals[slot] = v

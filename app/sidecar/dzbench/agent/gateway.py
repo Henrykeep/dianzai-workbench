@@ -100,6 +100,7 @@ class GatewayError(Exception):
     def __init__(self, code: str, message: str, fix: str = "", extra: dict | None = None):
         super().__init__(message)
         self.code, self.message, self.fix, self.extra = code, message, fix, extra or {}
+        self.fix_action = self.extra.get("fix_action")
 
     def as_dict(self) -> dict:
         return {"type": "error", "code": self.code, "message": self.message, "fix": self.fix} | self.extra
