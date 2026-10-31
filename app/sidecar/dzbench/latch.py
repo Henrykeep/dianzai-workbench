@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+import datetime as _dt
 import time
 
 from . import snapshots
@@ -55,9 +56,12 @@ def set(port: str | None, uid: int | None, source: str, detail: str = "", cause:
     with _lk:
         d = _load()
         rec = {"source": source, "detail": detail, "t": time.time(),
-               "latched_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),          # 本机时间（ISO，带时区）
-               "reason": (cause or {}).get("cause") or source,
-               "gap_ms": (cause or {}).get("gap_ms"), "threshold_ms": (cause or {}).get("threshold_ms")}
+               "latched_at": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),   # 本机时间（ISO，带时区）
+               "reason": (cause or {}).get("reason") or (cause or {}).get("cause") or "manual",   # 人 / Agent 按的急停 = manual
+               "reason_zh": (cause or {}).get("reason_zh") or detail or source}
+        for k in ("measured_ms", "threshold_ms"):          # 手动急停没有这两个字段：省略，不写 null
+            if cause and k in cause:
+                rec[k] = cause[k]
         if cause:
             rec["cause"] = cause
         for k in ks:
@@ -74,9 +78,14 @@ def restored_view(rec: dict) -> dict:
         pass
     c = dict(rec.get("cause") or {})
     why = c.get("message_zh") or rec.get("detail") or rec.get("reason") or "急停"
-    c.update({"cause": c.get("cause") or rec.get("reason") or "latched", "restored": True, "fix_action": "estop_clear",
-              "latched_at": rec.get("latched_at"), "gap_ms": rec.get("gap_ms"), "threshold_ms": rec.get("threshold_ms"),
+    c.pop("gap_ms", None), c.pop("value", None)
+    reason = c.get("reason") or c.get("cause") or rec.get("reason") or "latched"
+    c.update({"cause": c.get("cause") or reason, "reason": reason, "reason_zh": c.get("reason_zh") or rec.get("reason_zh") or why,
+              "restored": True, "fix_action": "estop_clear", "latched_at": rec.get("latched_at"),
               "message_zh": f"{hm} {why}，已锁存".strip()})
+    for k in ("measured_ms", "threshold_ms"):
+        if k in rec:
+            c[k] = rec[k]
     return c
 
 

@@ -2,10 +2,12 @@
 from __future__ import annotations
 
 import itertools
+import uuid
 import os
 import re
 import pathlib
 import json
+import uuid
 import math
 import struct
 import time
@@ -656,7 +658,7 @@ class AgentService:
         if ss.get("inside") is None:
             return "unknown", "暂无法判定是否满足题目误差带（题目误差带待标定）"
         if ss["inside"] and res.get("reason") == "pass":
-            return "pass", "各项指标均已达标（含题目误差带，" + AgentService._conv_zh(ss.get("conv_source"), ss.get("unit"), (ss.get("band") or {}).get("unit")) + "）"
+            return "pass", "通过"                     # #121：pass 一律「通过」；依据见 pass_basis
         return "fail", "未达标：" + ("稳态误差超出题目误差带" if not ss["inside"] else "其他指标未达标")
 
     def _last_path(self) -> pathlib.Path | None:
@@ -687,11 +689,20 @@ class AgentService:
     RESULT_CLEARED_ZH = {"iterate_start": "开始新的迭代，上一次的结果已清空", "reconnect": "重新连接，上一次的结果已清空",
                          "board_change": "换了板子，上一次的结果已清空"}
 
+    def current_run_id(self) -> str:
+        """#115：一次自动迭代 = 一个 run_id；台账 / 最好参数只在当前 run 内算。"""
+        if not getattr(self, "run_id", None):
+            self.run_id = uuid.uuid4().hex[:12]
+        return self.run_id
+
     def clear_result(self, reason: str) -> dict:
-        """#101：迭代开始 / 重连 / 换板时清掉结果与判定，并推 result.cleared，前端据此清空结果卡。"""
+        """#101：迭代开始 / 重连 / 换板时清掉结果与判定，并推 result_reset，前端据此清空结果卡。迭代开始换新 run_id。"""
         self.iter_result = None
         self._result_cleared = True
-        ev = {"type": "result.cleared", "reason": reason, "message_zh": self.RESULT_CLEARED_ZH.get(reason, "结果已清空")}
+        if reason == "iterate_start":
+            self.run_id = None
+        ev = {"type": "result_reset", "run_id": self.current_run_id(), "reason": reason,
+              "message_zh": self.RESULT_CLEARED_ZH.get(reason, "结果已清空")}
         self.emit(ev)
         return ev
 
@@ -880,8 +891,10 @@ class AgentService:
         return f"按默认 2% 判定达标，另对照{src}：" + ("在带内" if inside else "超出") + (f"，{conv}" if conv else "")
 
     def _iter_emit(self, e: dict) -> None:
+        if str(e.get("type", "")).startswith("iterate."):
+            e.setdefault("run_id", self.current_run_id())
         if e.get("type") == "iterate.round" and e.get("valid"):
-            self.memory().add("iterate", iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
+            self.memory().add("round", run_id=self.current_run_id(), iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
                               score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
         if e.get("type") == "iterate.stopped" and "pass_basis" not in e:
             try:
@@ -1426,7 +1439,7 @@ class AgentService:
         if verdict["action"] == "rollback" and verdict.get("auto"):
             verdict["rolled_back"] = self.rollback_best(_auto=True)
         self.last_verdict = verdict
-        self.memory().add("verdict", round=verdict.get("round"), action=verdict.get("action"), gains=self._gains(),
+        self.memory().add("manual_step", run_id=getattr(self, "run_id", None), round=verdict.get("round"),   # #115：手动实验不算迭代轮 action=verdict.get("action"), gains=self._gains(),
                           params_hash=self._local_hash(),                 # #39：每轮（含第 0 轮）都带本地算的参数 CRC32
                           overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
         ssr = self._ss_band(m.as_dict())                 # #75：台账（tune_round）和卡片用同一个判定函数

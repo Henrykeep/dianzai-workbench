@@ -41,10 +41,10 @@ def sim_app_info() -> dict[str, dict]:
         has_link = any("link" in t for t in tops) and any(a.rglob("sim_setup.c"))
         has_plant = any("plant" in t for t in tops)
         if has_link or has_plant:
-            found[a.name] = {"name": next((t["name"] for t in tops if t.get("name")), "") or a.name}
+            found[a.name] = {"name": next((t["name"] for t in tops if t.get("name")), "") or a.name, "dir": str(a.resolve())}
     if not found:   # 安装包里没有源码树：只列已经编好的
         hs = sim_root() / "build" / "host-sim"
-        found = {p.name: {"name": p.name} for p in sorted(hs.iterdir()) if sim_elf(p.name).exists()} if hs.is_dir() else {}
+        found = {p.name: {"name": p.name, "dir": None} for p in sorted(hs.iterdir()) if sim_elf(p.name).exists()} if hs.is_dir() else {}
     return found
 
 
@@ -72,11 +72,11 @@ def list_ports() -> list[dict]:
     if can_sim:
         for a in SIM_APPS:
             nm = info[a]["name"]
-            out.append({"port": SIM_PREFIX + a, "app": a, "app_name": nm, "label": f"仿真 · {nm}",
+            out.append({"port": SIM_PREFIX + a, "app": a, "app_name": nm, "app_dir": info[a].get("dir"), "label": f"仿真 · {nm}",
                         "desc": f"仿真板 · {nm}（host-sim，无需硬件）", "kind": "sim", "likely": False})
         for a in SIM_APPS:
             nm = info[a]["name"]
-            out.append({"port": SIM_PREFIX + a + "+hw", "app": a, "app_name": nm, "label": f"仿真当实板 · {nm}",
+            out.append({"port": SIM_PREFIX + a + "+hw", "app": a, "app_name": nm, "app_dir": info[a].get("dir"), "label": f"仿真当实板 · {nm}",
                         "desc": f"仿真板当实板 · {nm}（测确认卡 / pre-arm，实验要人点执行）", "kind": "sim", "likely": False})
     out += rtt_ports()
     return out

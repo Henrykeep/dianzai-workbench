@@ -617,11 +617,14 @@ class Session:
                             es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
                         if es and self.estop_cause and self.estop_cause.get("restored") and es["cause"] == self.estop_cause.get("cause"):
                             es = self.estop_cause                # 恢复的锁存：保留「HH:MM 原因，已锁存」
-                        if es and self.tx_locked and not self._cause_announced and es == self.estop_cause:
+                        if es and self.tx_locked and not self._cause_announced and es == _sans_latched_at(self.estop_cause):
                             self.estop_cause = None          # 锁存恢复带回了同一个原因：也走下面的分支，把 cause 推给界面
                         if es is None and self.tx_locked and self.estop_cause is not None:
                             pass                     # 板子复位/重连后不再报原因：锁存期间保留已知原因，到人解除才清
-                        elif es != self.estop_cause:
+                        elif es != _sans_latched_at(self.estop_cause):
+                            prev = self.estop_cause or {}
+                            if es:
+                                es["latched_at"] = prev.get("latched_at") if prev.get("cause") == es["cause"] and prev.get("latched_at") else _iso_now()
                             self.estop_cause = es
                             if es:
                                 src = "selftest" if es["cause"] == "selftest" else "firmware:" + es["cause"]
@@ -1487,6 +1490,11 @@ SELFTEST_ITEMS = {1: ("subsys", "子系统自检没通过（某个子系统的 s
                   5: ("power", "电源电压不在允许范围")}
 
 
+def _sans_latched_at(d: dict | None) -> dict | None:
+    """比较急停原因是否变了：latched_at 是本地锁存时刻，不算原因的一部分。"""
+    return None if d is None else {k: v for k, v in d.items() if k != "latched_at"}
+
+
 def _iso_now() -> str:
     return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
@@ -1536,11 +1544,14 @@ def estop_cause_dict(cause: int, t_ms: int, value: float, threshold_ms: int | No
         return None
     key, tpl = ESTOP_CAUSES.get(cause, (f"unknown_{cause}", "未知急停原因 #{c}"))
     msg = tpl.format(v=value, c=cause, r=RESET_NAMES.get(int(value), f"#{int(value)}"))
-    thr = f"阈值 {threshold_ms} ms" if threshold_ms else "阈值未知（固件握手未上报）"
-    extra = {"fix_action": "estop_clear", "gap_ms": round(value), "threshold_ms": threshold_ms,
-             "detail_zh": f"上位机 {value:.0f} ms 未发送心跳（{thr}），板端看门狗已切断输出"} if key == "hb_timeout" else {}
-    return extra | {"cause": key, "cause_id": cause, "message_zh": msg, "cause_zh": msg,
-            "value": round(float(value), 4), "t": round(t_ms / 1000.0, 3), "board_t_ms": int(t_ms)}
+    base = {"cause": key, "cause_id": cause, "reason": key, "reason_zh": msg, "message_zh": msg, "cause_zh": msg,
+            "restored": False, "fix_action": "estop_clear",
+            "t": round(t_ms / 1000.0, 3), "board_t_ms": int(t_ms)}
+    if key == "hb_timeout":                       # #118：实测间隔只用 measured_ms（不再给 value / gap_ms）；阈值归固件握手 wd_timeout_ms
+        thr = f"阈值 {threshold_ms} ms" if threshold_ms else "阈值未知（固件握手未上报）"
+        base |= {"measured_ms": round(value), "threshold_ms": threshold_ms,
+                 "detail_zh": f"上位机 {value:.0f} ms 未发送心跳（{thr}），板端看门狗已切断输出"}
+    return base
 
 
 def hb_status_dict(w: int | None) -> dict:

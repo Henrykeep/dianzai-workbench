@@ -56,6 +56,7 @@ def _svc():
     svc = SimpleNamespace(emit=ev.append, iter_result={"best_card": 1}, iter_thread=None, iterate_last=lambda: {"result": {"old": 1}},
                           RESULT_CLEARED_ZH=S.AgentService.RESULT_CLEARED_ZH)
     svc.clear_result = lambda r: S.AgentService.clear_result(svc, r)
+    svc.current_run_id = lambda: S.AgentService.current_run_id(svc)
     return svc, ev
 
 
@@ -63,7 +64,7 @@ def test_reconnect_and_board_change_clear_result_and_emit():
     for prev, port, why in (("sim:p_a", "sim:p_a", "reconnect"), ("sim:p_a", "COM3", "board_change")):
         svc, ev = _svc()
         S.AgentService._on_connect(svc, port, prev)
-        assert ev == [{"type": "result.cleared", "reason": why, "message_zh": S.AgentService.RESULT_CLEARED_ZH[why]}]
+        assert ev == [{"type": "result_reset", "run_id": svc.run_id, "reason": why, "message_zh": S.AgentService.RESULT_CLEARED_ZH[why]}]
         st = S.AgentService.iterate_status(svc)
         assert st["result"] is None and st["last"] is None and st["cleared"] is True
 
@@ -71,7 +72,7 @@ def test_reconnect_and_board_change_clear_result_and_emit():
 def test_iterate_start_clears_result():
     svc, ev = _svc()
     S.AgentService.clear_result(svc, "iterate_start")
-    assert svc.iter_result is None and ev[0]["type"] == "result.cleared" and ev[0]["reason"] == "iterate_start"
+    assert svc.iter_result is None and ev[0]["type"] == "result_reset" and ev[0]["reason"] == "iterate_start"
 
 
 def test_session_connect_runs_hooks(monkeypatch):

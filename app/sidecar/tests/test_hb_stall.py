@@ -81,7 +81,7 @@ def test_latch_record_and_restored_message(tmp_path, monkeypatch):
     es = estop_cause_dict(2, 5000, 1001.0, threshold_ms=1000)
     latch.set("sim:x", None, "firmware:hb_timeout", es["message_zh"], cause=es)
     rec = latch.get("sim:x", None)
-    assert rec["reason"] == "hb_timeout" and rec["gap_ms"] == 1001 and rec["threshold_ms"] == 1000
+    assert rec["reason"] == "hb_timeout" and rec["measured_ms"] == 1001 and rec["threshold_ms"] == 1000
     assert time.strptime(rec["latched_at"][:19], "%Y-%m-%dT%H:%M:%S")
     v = latch.restored_view(rec)
     hm = time.strftime("%H:%M", time.localtime(rec["t"]))
@@ -89,3 +89,16 @@ def test_latch_record_and_restored_message(tmp_path, monkeypatch):
     b = progress.blockers({"link": {"board": "connected"}, "estop": True, "estop_cause": v, "estop_reason": v["message_zh"]})
     e = next(x for x in b if x["code"] == "estop")
     assert e["message_zh"] == v["message_zh"] and e["restored"] is True and e["fix_action"] == "estop_clear"
+
+
+def test_r9g_manual_estop_omits_ms_and_restored_fields(tmp_path, monkeypatch):
+    from dzbench import latch
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path))
+    latch.set("sim:m", None, "ui", "上位机发出急停指令")
+    rec = latch.get("sim:m", None)
+    assert rec["reason"] == "manual" and rec["reason_zh"] and "measured_ms" not in rec and "threshold_ms" not in rec
+    v = latch.restored_view(rec)
+    assert {"reason", "reason_zh", "latched_at", "restored", "fix_action"} <= v.keys() and v["restored"] is True
+    assert "measured_ms" not in v and "threshold_ms" not in v and "value" not in v and "gap_ms" not in v
+    es = estop_cause_dict(2, 1, 1700.0, threshold_ms=None)               # 握手没有 wd_timeout_ms → threshold_ms 为 null
+    assert es["measured_ms"] == 1700 and es["threshold_ms"] is None and es["restored"] is False
