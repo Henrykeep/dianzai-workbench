@@ -127,11 +127,11 @@ export const NO_REASON_ZH = "后端未给原因";
 export const errFixAction = (e: any): string => { for (const k of ERR_F.fix) { const v = e?.[k]; if (typeof v === "string" && v) return v; } return ""; };
 export const errWhy = (e: any): string => { for (const k of ERR_F.why) { const v = e?.[k]; if (typeof v === "string" && v && !/^[\x00-\x7f]*$/.test(v)) return v; } return ""; };
 // #88 提交确认卡（后端另出 git commit 确认，字段草案）
-export const COMMIT_F = { id: "request_id", branch: "branch", files: "files", msg: "message", msgZh: "message_zh", path: "path", status: "status" } as const;
+export const COMMIT_F = { id: "request_id", state: "status", branch: "branch", files: "files", msg: "message", msgZh: "message_zh", path: "path", status: "status" } as const;
 // #88 定稿（后端 docs/dev/events.md）：事件 commit_confirm_request → 回 op commit_confirm；拒绝 / 超时 → commit_declined
 export const COMMIT_EV = { request: "commit_confirm_request", declined: "commit_declined" } as const;
 export const COMMIT_OP = { name: "commit_confirm", id: "request_id", approve: "approve" } as const;
-export const COMMIT_DECL_F = { reason: "reason_zh", fix: "fix_action" } as const;
+export const COMMIT_DECL_F = { reason: "reason_zh", fix: "fix_action", code: "reason", ok: "ok", commit: "commit", declined: "commit_declined", failed: "commit_failed" } as const;
 // 写文件确认卡：scope = "write_only" 表示只授权写文件
 export const WRITE_F = { scope: "scope", writeOnly: "write_only" } as const;
 export const WRITE_ONLY_ZH = "只授权写入文件，不会提交（git 提交另有确认卡）";

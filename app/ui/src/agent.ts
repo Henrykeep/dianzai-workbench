@@ -10,8 +10,9 @@ import { Receipts, RECEIPT_LABEL, newMsgId, blockedCard, newBlockers, noticeView
 import { TurnGate, Watch, timeoutCard, errorCard, Card } from "./agentwatch";
 import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 import { modelLister, type El } from "./llmcfg";
-import { toCommitReq, commitCardHtml, mountCommitCard, toDeclined, showDeclined } from "./commitcard";
-import { COMMIT_EV, COMMIT_DECL_F, writeScopeNote } from "./fieldmap";
+import { toCommitReq, commitCardHtml, mountCommitCard, showDeclined, commitResult, committedHtml } from "./commitcard";
+import { errParts, partsHtml } from "./errors";
+import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, writeScopeNote } from "./fieldmap";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -118,7 +119,7 @@ export function initAgent(call: Call) {
     let d = cards.get(c.id);
     if (!d) { d = add(""); cards.set(c.id, d); }
     const diff = esc(c.diff).split("\n").map(l => `<span class="${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : ""}">${l}</span>`).join("\n");
-    const st: Record<string, string> = { pending: "待确认", applying: "门禁运行中…", committed: "已提交", failed: "未通过，已还原", rejected: "已拒绝", reverted: "已回滚" };
+    const st: Record<string, string> = { pending: "待确认", applying: "门禁运行中…", written: "已写入，待确认提交", committed: "已提交", failed: "未通过，已还原", rejected: "已拒绝", reverted: "已回滚" };
     d.className = "card change " + c.status;
     if (c.status === "committed" && (c.files || []).some((f: string) => /\.ya?ml$/.test(f)))   // 流程条“定稿”只认真正提交了参数 yaml
       window.dispatchEvent(new CustomEvent("dz-final", { detail: c.commit }));
@@ -165,15 +166,29 @@ export function initAgent(call: Call) {
   const commitCards = new Map<string, HTMLElement>();
   const goFix = (a: string) => runAction(a, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
   function renderCommit(m: Msg) {
-    const c = toCommitReq(m), d = add(commitCardHtml(c, esc), "card commit pending");
+    const c = toCommitReq(m);
+    if (commitCards.has(c.id)) return onCommitResult(m);   // 同一 request_id 再推一次 = 状态更新
+    const d = add(commitCardHtml(c, esc), "card commit pending");
     commitCards.set(c.id, d);
-    mountCommitCard(d, c, (op, args) => call(op, args).then((r: any) => { if (r?.type === COMMIT_EV.declined || r?.[COMMIT_DECL_F.reason] != null) onCommitDeclined({ ...r, request_id: c.id }); return r; }));
+    mountCommitCard(d, c, (op, args) => call(op, args).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
+    if (commitResult(m).state !== "pending") onCommitResult(m);
   }
-  function onCommitDeclined(m: any) {
-    const d = toDeclined(m), el = commitCards.get(d.id) ?? [...commitCards.values()].pop();
-    if (el) showDeclined(el, d, esc, a => resolveFix(a), goFix);
-    else showDeclined(add(`<b>git 提交没有执行</b><div class="act"><span class="cc-res"></span></div>`, "card commit declined"), d, esc, a => resolveFix(a), goFix);
+  function onCommitResult(m: any) {
+    const r = commitResult(m), id = m?.[COMMIT_F.id] != null ? String(m[COMMIT_F.id]) : "";
+    if (r.state === "pending") return;
+    let el = commitCards.get(id);
+    if (!el) { el = add(`<b>git 提交</b><div class="act"><span class="cc-res"></span></div>`, "card commit"); commitCards.set(id, el); }
+    el.querySelectorAll<HTMLButtonElement>("button[data-cc]").forEach(b => b.disabled = true);
+    el.classList.remove("pending");
+    const res = el.querySelector<HTMLElement>(".cc-res")!;
+    if (r.state === "committed") { el.classList.add("done-ok"); res.innerHTML = committedHtml(r.commit, esc); return; }
+    if (r.state === "rejected") return showDeclined(el, r.decl!, esc, a => resolveFix(a), goFix);
+    el.classList.add("failed");   // 提交本身失败：三段（发生了什么 / 原因 / 处理）+ 修复按钮
+    const h = errParts({ code: m?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed, message: "git 提交失败", message_zh: "git 提交失败", reason_zh: r.decl!.reason } as any);
+    showDeclined(el, r.decl!, esc, a => resolveFix(a), goFix, `<div class="cc-fail">${partsHtml(h, esc)}</div>`);
+    el.querySelector(".cc-decl")?.remove();
   }
+  function onCommitDeclined(m: any) { onCommitResult({ ...m, [COMMIT_DECL_F.code]: m?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.declined }); }
   function renderAction(a: Msg) {
     const c = (a.preview ?? {}) as any, pa = c.prearm;
     const where = a.sim ? "仿真" : a.as_hw ? "仿真当实板" : "实机";

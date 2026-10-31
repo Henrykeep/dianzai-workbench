@@ -34,7 +34,7 @@ assert.deepEqual(toDeclined({ request_id: "c-7", reason_zh: "用户超时未确�
 assert.equal(toDeclined({}).reason, "后端未给原因");
 assert.equal(toDeclined({ reason_zh: "  " }).reason, "后端未给原因");
 const dh = declinedHtml({ reason: "用户拒绝", fix: "ask_user_commit" }, esc, { kind: "run", label: "回复 Agent 要不要提交" });
-assert.match(dh, /没有提交：用户拒绝/); assert.match(dh, /data-cc-fix="ask_user_commit"/); assert.ok(!/disabled/.test(dh));
+assert.match(dh, /未提交：用户拒绝/); assert.match(dh, /data-cc-fix="ask_user_commit"/); assert.ok(!/disabled/.test(dh));
 assert.match(declinedHtml({ reason: "x", fix: "zz" }, esc, { kind: "none", label: "暂不可用", note: "无入口" }), /disabled/);
 assert.ok(!/data-cc-fix/.test(declinedHtml({ reason: "x", fix: "" }, esc, null)));
 {
@@ -92,3 +92,22 @@ assert.match(html, /<div class="life" id="life"><span id="life-tag"[^>]*role="bu
 // 随机：任何组合标签都只有一个短句
 for (let i = 0; i < 200; i++) { const s = lifeSummary(Math.floor(Math.random() * 30), Math.floor(Math.random() * 30), Math.floor(Math.random() * 30)); assert.ok(s.text.length <= 10 && !s.text.includes("·  ·")); }
 console.log("r9p6c review ok");
+// #88 定稿（后端 tests/test_git_confirm.py 同名字段）：status pending → committed / rejected / failed
+import { commitResult, committedHtml } from "../src/commitcard";
+{
+  assert.equal(commitResult({ request_id: "c", status: "pending" }).state, "pending");
+  assert.deepEqual(commitResult({ ok: true, status: "committed", commit: "ab12cd3" }), { state: "committed", commit: "ab12cd3" });
+  assert.equal(commitResult({ type: "commit_confirm_request", request_id: "c", status: "committed" }).state, "committed");
+  const d = commitResult({ ok: false, reason: "commit_declined", reason_zh: "用户拒绝提交", fix_action: "ask_user_commit", request_id: "c" });
+  assert.equal(d.state, "rejected"); assert.equal(d.decl!.reason, "用户拒绝提交"); assert.equal(d.decl!.fix, "ask_user_commit");
+  assert.equal(commitResult({ status: "rejected" }).decl!.reason, "后端未给原因");
+  const f = commitResult({ ok: false, reason: "commit_failed", reason_zh: "pre-commit 钩子失败" });
+  assert.equal(f.state, "failed"); assert.equal(f.decl!.reason, "pre-commit 钩子失败");
+  assert.equal(commitResult({ status: "failed" }).state, "failed");
+  assert.match(committedHtml("ab12cd3", esc), /已提交 <span class="mono">ab12cd3/);
+  assert.match(declinedHtml({ reason: "x", fix: "" }, esc, null), /未提交：x/);
+  const yml = readFileSync("../../docs/dev/entrypoints.yaml", "utf8");
+  assert.ok(!/^\s+commit_confirm:/m.test(yml), "commit_confirm 不在 script_ops");
+  assert.match(yml, /ops: \[[^\]]*commit_confirm[^\]]*\]/, "commit_confirm 已登记到界面动作");
+  console.log("r9p6c status ok");
+}

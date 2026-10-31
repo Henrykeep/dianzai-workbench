@@ -40,12 +40,22 @@ export function mountCommitCard(el: HTMLElement, c: CommitReq, send: (op: string
 // 被拒绝 / 超时：卡上写中文原因，修复按钮走已有的 fix_action 机制（resolveFix / runAction）
 export function declinedHtml(d: { reason: string; fix: string }, esc: (s: string) => string, fix: { kind: string; label: string; note?: string } | null): string {
   const btn = fix ? `<button class="btn" data-cc-fix="${esc(d.fix)}"${fix.kind === "run" ? "" : " disabled"} title="${esc(fix.note ?? "")}">${esc(fix.label)}</button>` : "";
-  return `<span class="lbl warn-t cc-decl">没有提交：${esc(d.reason)}</span>${btn}`;
+  return `<span class="lbl warn-t cc-decl">未提交：${esc(d.reason)}</span>${btn}`;
 }
-export function showDeclined(el: HTMLElement, d: { reason: string; fix: string }, esc: (s: string) => string, resolve: (a: string) => any, run: (a: string) => void) {
+export function showDeclined(el: HTMLElement, d: { reason: string; fix: string }, esc: (s: string) => string, resolve: (a: string) => any, run: (a: string) => void, pre?: string) {
   el.querySelectorAll<HTMLButtonElement>("button[data-cc]").forEach(b => b.disabled = true);
   el.classList.add("declined");
   const act = el.querySelector<HTMLElement>(".act") ?? el;
-  act.querySelector(".cc-res")!.innerHTML = declinedHtml(d, esc, d.fix ? resolve(d.fix) : null);
+  act.querySelector(".cc-res")!.innerHTML = (pre ?? "") + declinedHtml(d, esc, d.fix ? resolve(d.fix) : null);
   act.querySelector<HTMLButtonElement>("[data-cc-fix]")?.addEventListener("click", () => run(d.fix));
 }
+// 状态：pending → committed / rejected / failed（同一事件再推一次，或 commit_confirm 的回复）
+export type CommitState = "pending" | "committed" | "rejected" | "failed";
+export function commitResult(raw: any): { state: CommitState; commit: string; decl?: { id: string; reason: string; fix: string } } {
+  const st = raw?.[COMMIT_F.state], code = raw?.[COMMIT_DECL_F.code], commit = s(raw?.[COMMIT_DECL_F.commit]);
+  if (code === COMMIT_DECL_F.failed || st === "failed") return { state: "failed", commit, decl: toDeclined(raw) };
+  if (code === COMMIT_DECL_F.declined || st === "rejected" || raw?.[COMMIT_DECL_F.ok] === false) return { state: "rejected", commit, decl: toDeclined(raw) };
+  if (st === "committed" || raw?.[COMMIT_DECL_F.ok] === true) return { state: "committed", commit };
+  return { state: "pending", commit };
+}
+export const committedHtml = (commit: string, esc: (s: string) => string) => `<span class="lbl ok-t cc-done">已提交${commit ? ` <span class="mono">${esc(commit)}</span>` : ""}</span>`;
