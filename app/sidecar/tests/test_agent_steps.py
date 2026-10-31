@@ -331,8 +331,9 @@ H_SENT = "2026 年 H 题车载平衡滚球：STM32 主控通过舵机调整平�
 
 @pytest.mark.needs_sim
 def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monkeypatch):
-    """#55 / #39 用户主线（r8 user-main 原话）：一句话开局 → 例题只读（project_open / flow_accept 例题被拒）→ quick_start
-    以例题为模板新建项目目录（一张卡）→ 点确认：建目录、设为当前项目、连 2026H 仿真、自动迭代 → “采用最好参数”卡。
+    """#55 / #39 / #53 用户主线（r8 user-main 原话）：一句话开局 → 例题只读（project_open / flow_accept 例题被拒）→ quick_start
+    自动选最近的例题新建项目目录（不出卡，只记审计，回复首句「已基于 X 新建 Y，可更换」）→ 设为当前项目、连 2026H 仿真、
+    自动迭代 → “采用最好参数”卡（稳态误差按仿真标称几何换成题目单位 cm 判 inside，写明 pass_basis）。
     记忆按 新项目 + 板子 记（不是 _none），第 0 轮带 params_hash；再开局一次落另一个新目录，例题目录始终不动。"""
     from dzbench import project as project_mod
     from dzbench.agent.journal import project_slug
@@ -347,6 +348,7 @@ def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monk
     ])
     svc, ev = _svc(repo, llm)
     try:
+        svc.s.connect("sim:motor_pos", log=False)                                 # r9q (b)：已连着别的仿真板也要换到例题自己的板
         reply = svc.ask(H_SENT)
         seen = json.dumps([m for m, _ in llm.seen], ensure_ascii=False)
         assert seen.count("example_readonly") >= 2, "例题必须只读：project_open / flow_accept 都要被拒"
@@ -361,12 +363,29 @@ def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monk
         assert pd.is_dir() and (pd / "requirements.yaml").exists() and out["path"] == str(pd)
         assert project_mod.current()["name"] == code
         assert out["sim"] == "sim:2026H_ball", out
+        assert "sim_board: sim:2026H_ball" in (pd / "project.yaml").read_text("utf-8")   # 项目钉住自己的仿真板
+        assert code == "2026h-ball", code                                         # r9q (c)：干净 HOME 第一个没有 -2
+        assert "PDF" not in reply, reply                                          # r9q (f)
+        evs = [e["type"] for e in ev if str(e.get("type", "")).startswith("iterate.")]
+        assert evs[0] == "iterate.started" and evs.count("iterate.stopped") == 1 and "iterate.round" in evs, evs   # r9q (a)
         assert out.get("best_card"), out                                        # 有板上阶跃走 iterate，没有（2026H 例题固件）走 tune_autopilot，都出卡
         assert [c["tool"] for c in _cards(ev)][-1] == "iterate_apply_best"      # 以“采用最好参数”卡收尾
         bc = _cards(ev)[-1]
         se = bc["args"]["ss_err"]                                                 # 卡上：实测稳态误差 + 题目误差带出处 + 是否在带内
         assert se["measured"] >= 0 and se["band"]["source"].startswith("题目 B") and se["band"]["unit"] == "cm"
-        assert se["inside"] is None and "标定" in se["note_zh"], se              # 实测 px、题目 cm：不硬判
+        assert isinstance(se["inside"], bool) and "仿真标称换算，未实机标定" in se["note_zh"], se   # 仿真：px → cm 用仿真自己的几何
+        assert se["converted"]["unit"] == "cm" and se["converted"]["value"] == pytest.approx(se["measured"] / 6, rel=1e-4), se
+        assert se["pass_basis"].startswith("按默认 2% 判定达标；另对照题目 B"), se
+        cmp_ = bc["args"]["compare"]                                             # 初值轮 vs 最好一轮并排，每项单独 value + unit
+        assert cmp_ and bc["preview"]["compare"] == cmp_ and cmp_["round0"]["metrics"] and cmp_["best"]["metrics"], cmp_
+        assert all(isinstance(r["value"], float) and isinstance(r["unit"], str) for r in cmp_["round0"]["metrics"] + cmp_["best"]["metrics"])
+        assert {"key": "overshoot_pct", "unit": "%"}.items() <= next(r for r in cmp_["best"]["metrics"] if r["key"] == "overshoot_pct").items()
+        if cmp_["unchanged"]:
+            assert "第0轮最好" not in cmp_["note_zh"] and cmp_["note_zh"].startswith("初值"), cmp_
+        else:
+            assert cmp_["note_zh"].startswith(f"第 {cmp_['best']['iter']} 轮比初值好"), cmp_
+        st = next(e for e in ev if e.get("type") == "iterate.stopped")
+        assert st["pass_basis"] == se["pass_basis"], st                         # 停止事件和卡上写同一条依据
         assert bc["preview"]["ss_err"] == se
         mem = svc.memory()
         assert mem.project == project_slug(str(pd)) and mem.project != "_none" and mem.key, (mem.project, mem.key)

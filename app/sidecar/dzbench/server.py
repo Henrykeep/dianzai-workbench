@@ -102,7 +102,7 @@ class Server:
             if pc:
                 out.append(pc)
                 out.extend(self.notifier.update(pc))  # 新增阻塞项：以 Agent 身份主动提醒（模板，不调大模型）
-            out.append(self.session.status() | {"clients": len(self.clients)})
+            out.append(self.session.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()})
         return out
 
     async def _ticker(self) -> None:
@@ -145,7 +145,7 @@ class Server:
         s, op = self.session, m.get("op")
         run = asyncio.get_running_loop().run_in_executor
         if op == "hello":
-            return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients)},
+            return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()},
                     "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
@@ -217,7 +217,11 @@ class Server:
         if op == "setpoint_set":                   # 只下发目标值，不跑阶跃（界面「恢复急停前目标」等）
             return await run(None, s.setpoint_set, m.get("name", ""), m.get("value"))
         if op == "param_set":
-            return await run(None, s.set_param, m["name"], m.get("value"))   # 原样交给 set_param 校验（#40）
+            r = await run(None, s.set_param, m["name"], m.get("value"))      # 原样交给 set_param 校验（#40）
+            if isinstance(r, dict) and r.get("status") == "rejected":           # #71：板子拒绝 → 回复 ok:false（带 reason/reason_zh/id），不报 ok:true
+                raise LinkError("param_rejected", f"{r.get('name')}：{r.get('reason_zh')}", "按提示调整后再写", None,
+                                {k: r.get(k) for k in ("ok", "name", "id", "reason", "reason_zh", "requested", "applied")})
+            return r
         if op == "param_read_all":
             return await run(None, s.read_all_params)
         if op == "snapshot_save":
@@ -288,14 +292,19 @@ class Server:
                     return await run(None, lambda: self.svc.iterate_start(**{k: m[k] for k in ("target", "params", "dur_ms", "ch") if m.get(k) is not None}))
                 if op == "iterate_cancel":
                     return await run(None, self.svc.iterate_cancel)
-                th = getattr(self.svc, "iter_thread", None)
-                return {"running": bool(th and th.is_alive()), "result": getattr(self.svc, "iter_result", None)}
+                return await run(None, self.svc.iterate_status)
             except GatewayError as e:
                 raise LinkError(e.code, getattr(e, "message", "") or str(e), e.fix, getattr(e, "fix_action", None)) from None
         if op == "quick_start":     # 一句话起项目：{"op":"quick_start","text":"两轮车速度环，STM32F1"} → 一张确认卡；确认走 agent_action_decide
             from .projflow import FlowError
             try:
                 return await run(None, self.svc.quick_start, m["text"])
+            except (FlowError, GatewayError) as e:
+                raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix, getattr(e, "fix_action", None)) from None
+        if op == "project_switch_example":             # 换例题：从内置例题新建项目（例题只读，只审计不出卡），推 project_forked
+            from .projflow import FlowError
+            try:
+                return await run(None, self.svc.project_switch_example, m["example"])
             except (FlowError, GatewayError) as e:
                 raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix, getattr(e, "fix_action", None)) from None
         if op == "project_chain" or op == "project_apply":   # 项目页“一键走完 ①–⑤（+Keil 注入）”：先整链预览，再一次写入（同 Agent 那张总卡）

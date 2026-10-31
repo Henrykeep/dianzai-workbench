@@ -136,6 +136,7 @@ def build(svc, tool: str, args: dict) -> dict | None:
         return {"title": TITLED[tool], "where": where, "iter": args.get("iter"), "params_hash": args.get("params_hash"),
                 "changes": [{"name": n, "from": cur.get(n), "to": v} for n, v in (args.get("params") or {}).items()
                             if cur.get(n) is None or abs(float(cur[n]) - float(v)) > 1e-9],
+                "compare": args.get("compare"), "verdict": args.get("verdict"), "verdict_zh": args.get("verdict_zh"),     # 第 0 轮（初值）和最好一轮的指标并排
                 "ss_err": args.get("ss_err"),       # 实测稳态误差 + 题目误差带（出处）+ 是否在带内，不只给 pass
                 "note": "写入迭代里最好一轮的参数（逐个校验）；掉电保持需再点“保存参数”"}
     if tool == "project_apply":

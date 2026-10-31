@@ -256,7 +256,7 @@ def test_agent_tuning_run_ends_with_best_params_card(home, tmp_path, monkeypatch
         st = [e for e in ev if e.get("type") == "iterate.started"]
         assert len(st) == 1 and st[0]["limits"]["rounds"] == 3            # events.md：limits.rounds = 本次轮数上限 N（#62）
         assert sum(e.get("type") == "iterate.stopped" for e in ev) == 1
-        assert 1 <= sum(e.get("type") == "iterate.round" for e in ev) <= 3
+        assert 1 <= sum(e.get("type") == "iterate.round" for e in ev) <= 3 + 1   # iter 0 基线 + 至多 N 轮（同 test_round_cap_hw_8）
         cards = [e for e in ev if e.get("type") == "agent_action" and e["tool"] == "iterate_apply_best"]
         assert len(cards) == 1 and cards[0]["id"] == res["best_card"]
         assert cards[0]["preview"]["title"] == "采用最好参数"
@@ -298,7 +298,7 @@ def test_iterate_ws_ops_motor_pos(home, tmp_path, monkeypatch):
         bad = ui.call("iterate_start", target=90.0, params=["kp"])
         assert not bad["ok"] and bad["error"]["code"] == "iterate_running", bad
         stp = ui.wait(lambda e: e["type"] == "iterate.stopped", 120)
-        assert stp["reason"] in ("pass", "budget_rounds", "no_improve"), stp       # 不是 blocked（#54）
+        assert stp["reason"] in ("pass", "budget_rounds", "no_improve"), [{k: e.get(k) for k in ("iter","why_invalid","rise_ms","settle_ms","metric_mode","n")} for e in ui.events if e.get("type") == "iterate.round"]       # 不是 blocked（#54）
         assert stp["rounds"] >= 2, stp
         assert ui.wait(lambda e: e["type"] == "agent_action" and e["tool"] == "iterate_apply_best", 10)
         assert not any("bit17" in json.dumps(x, ensure_ascii=False) for x in ui.events if x.get("type") == "error"), ui.events

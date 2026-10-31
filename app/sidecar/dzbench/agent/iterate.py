@@ -13,6 +13,7 @@ step_result 判定 → 直到达标或停止条件（预算 180 s / 轮数上限
 from __future__ import annotations
 
 import threading
+import struct
 import time
 
 from ..stepproto import dzstep        # tools/dzstep.py：0.13.0 帧格式的参考实现
@@ -98,6 +99,11 @@ def limits_for(p: dict, cur: float, sim: bool) -> tuple[float, float]:
     return a, b
 
 
+STEP_FRAC = 0.25        # 坐标搜索初始相对步长
+MIN_STEP_FRAC = 0.05
+ZERO_STEP_FRAC = 0.02   # 当前值为 0 时按量程的 2% 起步
+
+
 class Iterator:
     def __init__(self, io, plan: dict, sim: bool, emit=lambda e: None, now=time.monotonic,
                  budget_s: float = BUDGET_S, max_rounds: int | None = None):
@@ -134,7 +140,12 @@ class Iterator:
                "params_hash": f"{r['params_hash']:08x}",          # 以板上 step_result 的 CRC32 为准
                "local_hash": f"{local:08x}", "source": "firmware",
                **{k: r.get(k) for k in ("ss_err_pct", "overshoot_pct", "settle_ms", "rise_ms", "metric_mode", "u_sat_ratio", "n", "band")},
-               "unit": "abs" if r.get("metric_mode") == "abs" else "%"}   # abs 口径：超调 / 稳态误差是物理单位，不是百分比
+               "unit": "abs" if r.get("metric_mode") == "abs" else "%"}
+        rec["target"] = self.plan["target"]               # 相对口径 ss_err % → 物理单位要用 |sp − y0|
+        if r.get("start_y") is not None:
+            rec["start_y"] = r["start_y"]
+        if r.get("start_offset") is not None:             # 没回到起点：用实测起点当基线，这一轮标出来
+            rec["start_offset"], rec["start_y"] = r["start_offset"], r.get("start_y")   # abs 口径：超调 / 稳态误差是物理单位，不是百分比
         why = None
         if r.get("aborted"):
             why = "aborted"
@@ -143,6 +154,10 @@ class Iterator:
             why = "too_few_samples"
         elif r["params_hash"] != local:
             why = "hash_mismatch"
+        elif r.get("metric_mode") != "abs" and r.get("rise_ms") is None:
+            why = "no_rise"                               # #68：没测出上升时间的阶跃不算一轮，绝不判达标
+        elif r.get("settle_ms") == 0:
+            why = "settle_zero"                           # #68：调节时间 0 = 窗口没对上（实际没做阶跃）
         rec["valid"], rec["why_invalid"] = why is None, why
         if why is None:
             rec["pass"] = judge(r, self.abs_tol, self.good)
@@ -163,6 +178,10 @@ class Iterator:
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
                                               "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
                "next_zh": self._next_hint(reason)}
+        r0 = next((r for r in self.rounds if r["valid"]), None)       # 卡上和最好一轮并排对比的初值轮
+        if r0:
+            out["round0"] = {"iter": r0["iter"], "pass": r0.get("pass"),
+                             "metrics": {k: r0.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")}}
         self.emit(out)
         return out
 
@@ -187,6 +206,7 @@ class Iterator:
         it = 0
         cand_params = [p for p in self.plan["params"]]
         pi, direction, tried = 0, -1.0, set()             # 坐标搜索：当前参数下标、方向（先降增益）、已试过的(参数,方向)
+        frac = {p["name"]: STEP_FRAC for p in self.plan["params"]}   # #69：每个参数的相对步长；变差换方向时减半（不再每轮砍一半到 0）
         streak_pass = streak_invalid = streak_noimp = 0
         changed: dict = {}
         while True:
@@ -232,11 +252,13 @@ class Iterator:
                 return self._stopped("unstable", f"超调 {rec['overshoot_pct']:.1f}% > 40%")
             if streak_noimp >= CONSEC_NO_IMPROVE:
                 return self._stopped("no_improve", "连续 3 轮没有改进")
-            if it >= self.max_rounds:
+            if it > self.max_rounds:
                 return self._stopped("budget_rounds", f"轮数上限 {self.max_rounds} 用完")
-            if not improved and changed:                   # 变差：回到最好一轮的值，换方向
-                tried.add((cand_params[pi]["name"], direction))
+            if not improved and changed:                   # 变差：回到最好一轮的值，换方向，步长减半
+                nm = cand_params[pi]["name"]
+                tried.add((nm, direction))
                 direction = -direction
+                frac[nm] = max(MIN_STEP_FRAC, frac[nm] * 0.5)
             base = self.best["params"]
             while True:                                    # 选下一步（每轮只改 1 个参数）；被板子拒绝就换方向再选，不空跑阶跃
                 nxt = None
@@ -253,7 +275,8 @@ class Iterator:
                     if ((rec.get("u_sat_ratio") or 0) > 0.5 and direction > 0) or abs(v - c0) < 1e-9:
                         tried.add((p["name"], direction))      # 饱和不往更激进走；到边了
                         continue
-                    nxt = (p, c0 + (v - c0) * (0.5 if self.sim else 1.0))   # 仿真先走一半，实机用 HW 档上限
+                    d = abs(c0) * frac[p["name"]] if c0 else (float(p["max"]) - float(p["min"])) * ZERO_STEP_FRAC
+                    nxt = (p, min(b, max(a, c0 + direction * d)))   # #69：相对步长（默认 ±25%），夹在本轮允许范围内
                     break
                 if nxt is None:
                     return self._stopped("blocked", "所有方向都被拒绝或限幅挡住")
@@ -311,8 +334,54 @@ class SessionIO:
             raise
         return {"status": "rejected" if r["status"] == "rejected" else "ok", "reason": r.get("reason"), "applied": r["applied"]}
 
+    RETURN_TIMEOUT_S = 8.0          # 回起点最多等这么久；超时用实测起点当基线并标 start_offset
+
+    def _y(self, ch: int) -> tuple[str | None, int | None, float | None]:
+        cfg = next((c for c in (self.s.schema.step if self.s.schema else []) if int(c.get("sp", -1)) == int(ch)), None) \
+            or ((self.s.schema.step or [None])[0] if self.s.schema else None)
+        if not cfg or not cfg.get("y"):
+            return None, None, None
+        tol = cfg.get("abs_tol")
+        if tol is None and cfg.get("range") is not None:
+            tol = 0.02 * float(cfg["range"])
+        return cfg["y"], int(cfg.get("sp", ch)), (float(tol) if tol is not None else None)
+
+    def _y_now(self, y: str) -> float | None:
+        w = self.s.window(0.15)
+        vs = [float(v[y]) for _, v in w if v.get(y) is not None] if w else []
+        return sum(vs) / len(vs) if vs else None
+
+    def return_to_start(self, ch: int, it: int) -> dict:
+        """上位机负责回起点（r9）：第 0 轮记下起点 y0；之后每轮先把设定值放回 y0，等 |y − y0| < tol（app.yaml link.step.abs_tol，
+        没给按 2% range）持续 0.3 s，最多 8 s。超时不硬等：以实测位置为基线，这一轮标 start_offset。"""
+        y, slot, tol = self._y(ch)
+        if y is None or tol is None:
+            return {}
+        if it == 0 or getattr(self, "y0", None) is None:
+            self.y0 = self._y_now(y)
+            return {"start_y": self.y0}
+        names = self.s.setpoint_names()
+        vals = [float(self.s._sp_live.get(n, 0.0)) for n in names]
+        if slot is not None and slot < len(vals):
+            vals[slot] = self.y0
+            self.s.send_data(1, struct.pack(f"<{len(vals)}f", *vals))
+        t0, ok_since = time.monotonic(), None
+        cur = self._y_now(y)
+        while time.monotonic() - t0 < self.RETURN_TIMEOUT_S:
+            cur = self._y_now(y)
+            if cur is not None and abs(cur - self.y0) < tol:
+                ok_since = ok_since or time.monotonic()
+                if time.monotonic() - ok_since >= 0.3:
+                    return {"start_y": round(cur, 4), "return_s": round(time.monotonic() - t0, 2)}
+            else:
+                ok_since = None
+            time.sleep(0.05)
+        return {"start_y": None if cur is None else round(cur, 4), "start_offset": None if cur is None else round(cur - self.y0, 4),
+                "return_s": round(time.monotonic() - t0, 2)}
+
     def step(self, it: int, ch: int, target: float, dur_ms: int) -> dict:
         from ..session import LinkError
+        back = self.return_to_start(ch, it)
         try:
             self.s.step_start(ch, it, target, dur_ms)
         except LinkError as e:
@@ -320,4 +389,4 @@ class SessionIO:
         r = self.s.step_wait(it, dur_ms / 1000.0 + 2.0)
         if r is None:
             raise IterError("no_result", "板子没发 step_result")
-        return r
+        return dict(r) | back
