@@ -212,7 +212,7 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 
 ## r9e（#100 / #101 / #102）
 
-- `result.cleared` `{reason: iterate_start|reconnect|board_change, message_zh}`：迭代开始、重连、换板时推送；前端收到后清空结果 / 判定卡。`iterate_status` 在清空后、新结果出来前返回 `result: null, last: null, cleared: true`。
+- ~~`result.cleared`~~（已被 r9g `result_reset` 取代，见文末）`{reason: iterate_start|reconnect|board_change, message_zh}`：迭代开始、重连、换板时推送；前端收到后清空结果 / 判定卡。`iterate_status` 在清空后、新结果出来前返回 `result: null, last: null, cleared: true`。
 - `list_ports` 每次重扫仿真对象；sim 端口新增 `app`、`app_name`（app.yaml `name:`）、`label`（`仿真 · 应用名`）。只声明 `plant:` 的项目也列为仿真板。
 - Agent 工具 `change_status`（只读）：每张改代码卡 `{id, title, files, write_status, commit_status, commit, status_zh}`；Agent 每轮上下文附「改代码卡真实状态」（#99）。
 - `iterate.stopped`：没有任何稳定轮（有效且超调 ≤ 40%）时 `best: null`，`message_zh: "发散，未找到稳定参数"`。
@@ -222,7 +222,7 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 
 - 侧车心跳：专用线程，每 250 ms 一帧（`Session.HOST_HB_PERIOD_S`），按单调时钟定拍，不拿 session.lock（只用写锁）。
 - 板端阈值归固件（嵌入式开发-2）：当前 `apps/include/link_app.h` `dzctl_wd_init(&L->wd, 1000u)`；改为可声明、默认 1500 ms 并在握手上报 `wd_timeout_ms`。侧车读 schema `wd_timeout_ms`（或 `link.wd_timeout_ms`），没报 = `null`，文案写「阈值未知」，不编造。串口卡死检查在单独线程 `_stall_loop`。
-- 心跳超时急停的 `estop_cause` / `estop state:"latched"`：`cause:"hb_timeout"`、`message_zh:"心跳超时 <实测间隔> ms"`、`gap_ms`、`threshold_ms`（可为 null）、`detail_zh`、`fix_action:"estop_clear"`（一键解除）。
+- （字段名以文末 r9g 为准）心跳超时急停的 `estop_cause` / `estop state:"latched"`：`cause:"hb_timeout"`、`message_zh:"心跳超时 <实测间隔> ms"`、`gap_ms`、`threshold_ms`（可为 null）、`detail_zh`、`fix_action:"estop_clear"`（一键解除）。
 - `$DZBENCH_HOME/estop_latch.json` 每条记录：`source`、`detail`、`t`（epoch s）、`latched_at`（ISO 本机时间带时区，如 `2026-10-31T21:58:03+0800`）、`reason`（原因码，如 `hb_timeout`）、`gap_ms`、`threshold_ms`、`cause`。锁存持久化是设计行为，只有人点解除才清。
 - 侧车重启 / 重连恢复锁存：`estop_cause` 与 `tx_locked` 事件、`estop` 阻塞项都带 `restored:true`、`fix_action:"estop_clear"`，`message_zh` 形如 `21:58 心跳超时 1001 ms，已锁存`。
 
@@ -231,3 +231,31 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - 自动迭代每轮记录 `sensor_sat: bool`（该轮阶跃期间任一心跳带 bit18）；到量程的轮不算稳定。
 - `iterate.stopped` 加 `sensor_sat: bool`（最后一轮到量程）；没有稳定轮或最后一轮到量程 → `best: null`，`message_zh: "发散，未找到稳定参数"`。
 - 急停阈值 `threshold_ms` 取握手 `wd_timeout_ms`（固件 fw-wd，默认 1500）；握手未上报为 null。
+
+## r9g 最终字段（以本节为准，覆盖上文 r9e / 心跳一节的临时名）
+
+### #101 结果清空 `type: "result_reset"`
+`{run_id, reason: "iterate_start" | "reconnect" | "board_change"}`。`run_id` 是清空后的新一轮运行 id（reconnect / board_change 时为当前 run_id）。前端收到后清空结果 / 判定卡。
+
+### #104 `list_ports` 仿真条目
+sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_dir`（项目目录绝对路径）。`label` 仍为 `仿真 · <app_name>`。
+
+### #115 台账 / 运行
+- 每条台账记录带 `run_id`；每次 `iterate_start` 开一个新 `run_id`。
+- 最好参数、“初值即最好”只在当前 `run_id` 内计算。
+- 手动阶跃实验记录 `kind: "manual_step"`，不算迭代轮，不参与最好参数；迭代轮 `kind: "round"`。
+
+### #116（= #102）/ #121 最好参数与判定
+- `best` 永不指向无效 / 发散 / 到量程（心跳 bit18 `DZCTL_HB_SENSOR_SAT`，dzctl 0.15.0）的轮；没有稳定轮或最后一轮到量程 → `best: null`，`message_zh: "发散，未找到稳定参数"`。每轮和 `iterate.stopped` 带 `sensor_sat: bool`。
+- verdict `pass` 时总带 `verdict_zh: "通过"`。
+
+### 急停 status / 事件（`estop`、`status.estop_cause`）
+`{reason, reason_zh, latched_at, measured_ms, threshold_ms, restored, fix_action}`
+- `reason`：原因码（如 `hb_timeout`、`manual`）；`reason_zh`：中文说明（心跳超时为 `心跳超时 <measured_ms> ms`）。
+- `latched_at`：ISO 本机时间带时区，如 `2026-10-31T21:58:03+08:00`。
+- `measured_ms`：实测间隔（取代旧的 `cause.value` / `gap_ms`，#118）。
+- `threshold_ms`：取握手 `wd_timeout_ms`（固件 fw-wd，默认 1500，阈值归固件）；握手没有该字段则为 `null`。
+- 手动急停：`measured_ms` / `threshold_ms` **不出现**（不是 null）。
+- `restored: bool`：重启后从 `estop_latch.json` 读回为 true。
+- `fix_action: "estop_clear"`。
+`estop_latch.json` 记录同名字段：`reason`、`reason_zh`、`latched_at`、`measured_ms`、`threshold_ms`。
