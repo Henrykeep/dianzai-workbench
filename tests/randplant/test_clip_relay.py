@@ -91,6 +91,8 @@ def part_b():
     shutil.rmtree(HOME, ignore_errors=True)
     plants = [randplant.gen(s) for s in seeds] + [unstable(randplant.gen(seeds[0] + 100), 0.37)]
     for p in plants:
+        p["name"] = "clip-" + p["name"]                   # 和 test_randplant 的 randplant-N 分开（tsr.build 收集整个 obj 目录）
+        shutil.rmtree(ROOT / "build/host-sim" / p["name"], ignore_errors=True)
         out = HOME / "projects" / p["name"]
         randplant.write(p, out)
         exe, schema = tsr.build(p["name"])
