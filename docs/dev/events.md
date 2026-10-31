@@ -156,15 +156,16 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
   - `inside=true` 且停止原因 `pass` → `pass`；其余 → `fail`。
 - **WS op `project_switch_example {example}`**：从内置例题复制出全新项目（新 slug，例题目录只读、不复用旧项目），只写审计（`project_switch_example`）不出确认卡；推 `project_forked {example, project, path, message_zh, via: "project_switch_example"}`，返回同样字段加 `fork`。例题不存在 → `bad_example`。
 
-## 提交确认卡 `git_confirm`（#88）
+## 提交确认 `commit_confirm_request`（#88）
 
-写文件确认卡（`change`）**只授权写文件**。`change_decide accept=true` 后：写入 → 跑门禁 → `change.status = "written"`（不再直接 `committed`），并紧接一张提交确认卡：
+写文件确认卡（`change`）带 `scope: "write_only"`：**只授权写文件**。`change_decide accept=true` 后写入 → 跑门禁 → `change.status = "written"`（不再直接 `committed`），并紧接推送：
 
-`{type:"git_confirm", id, change_id, op:"commit", title_zh, files:[相对路径], message, status}`
+`{type:"commit_confirm_request", request_id, repo_root, branch, files:[{path, status}], message, message_zh, status}`
 
-- `status`：`pending` → `committed` / `rejected` / `failed`。
-- 人点确认/拒绝：`{"op":"git_confirm_decide","id":<id>,"accept":true|false}`。
-  - 批准：提交，返回 `{ok:true, ...change 卡（status=committed, commit=短哈希）}`，并重发 `git_confirm`（committed）和 `change` 卡。
-  - 拒绝或失败：不提交，返回 `{ok:false, ...git_confirm 卡, reason_zh, fix_action}`；`fix_action` 取 `commit_manually_or_reopen`（拒绝）或 `retry_commit`（提交失败）。文件仍留在工作区。
-- 任何 Agent 发起的 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason_zh, fix_action:"propose_git_confirm"}`，不执行。
-- `pending` 列表里同时包含待批的 `git_confirm` 卡。
+- `files[].status`：`A` 新建 / `M` 修改。`message` 是将用的 git 提交信息（原文），`message_zh` 是给人看的一句话。
+- `status`：`pending` → `committed` / `rejected` / `failed`（结果会再推一次同一事件，外加更新后的 `change` 卡）。
+- 界面回复 WS op：`{"op":"commit_confirm","request_id":<id>,"approve":true|false}`。
+  - 批准：提交，返回 `{ok:true, ...change 卡（status=committed, commit=短哈希）}`。
+  - 拒绝或超时：不提交，返回 `{ok:false, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit", ...请求字段}`；文件仍留在工作区。提交本身失败时 `reason:"commit_failed"`。
+- Agent 发起的任何 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit"}`，不执行。
+- `pending` 列表里同时包含待批的 `commit_confirm_request`。

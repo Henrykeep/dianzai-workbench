@@ -121,16 +121,21 @@ class Change:
     git_status: str = ""                        # #88：""（未到提交）/ pending / committed / rejected / failed
     message: str = ""
 
+    repo_root: str = ""
+    branch: str = ""
+
     def git_card(self) -> dict:
-        """#88 提交确认卡：写文件卡只授权写文件；git 提交要人另点这张卡。"""
-        return {"type": "git_confirm", "id": self.id, "change_id": self.id, "op": "commit",
-                "title_zh": f"提交到 git：{self.title}", "files": list(self.files), "message": self.message,
+        """#88 提交确认请求：写文件卡只授权写文件；git 提交要人另点这张卡（commit_confirm）。"""
+        return {"type": "commit_confirm_request", "request_id": self.id, "repo_root": self.repo_root, "branch": self.branch,
+                "files": [{"path": r, "status": "A" if not o else "M"} for r, (o, _) in self.files.items()],
+                "message": self.message, "message_zh": f"要把 {len(self.files)} 个文件提交到 git：{self.title}",
                 "status": self.git_status}
 
     def card(self) -> dict:
         return {"type": "change", "id": self.id, "title": self.title, "reason": self.reason, "source": self.source,
                 "layer": self.layer, "files": list(self.files), "diff": self.diff, "gates": [" ".join(g) for g in self.gates],
-                "status": self.status, "log": self.log[-2000:], "commit": self.commit}
+                "status": self.status, "log": self.log[-2000:], "commit": self.commit,
+                "scope": "write_only"}
 
 
 def _run(cmd: list[str], cwd: pathlib.Path) -> tuple[int, str]:
@@ -296,6 +301,8 @@ class Gateway:
         c.status, c.log = "written", "\n".join(logs) or "（该层无门禁）"
         c.message = f"{c.title}\n\n{c.reason}\n\n{TRAILER}: {c.id} ({c.source})"
         c.git_status = "pending"
+        c.repo_root = str(self.root)
+        c.branch = self._git("rev-parse", "--abbrev-ref", "HEAD")[1].strip()
         self.emit(c.git_card())
 
     GIT_MUTATIONS = ("commit", "branch", "reset", "push", "tag", "merge", "rebase", "checkout", "revert", "stash", "cherry-pick")
@@ -304,7 +311,7 @@ class Gateway:
         """#88：Agent 发起的任何 git 写操作，没经确认卡批准一律拒绝。"""
         if op in self.GIT_MUTATIONS and not approved:
             return {"ok": False, "op": op, "reason_zh": f"git {op} 会改动仓库历史或分支，需要你在确认卡上批准，未执行",
-                    "fix_action": "propose_git_confirm"}
+                    "reason": "commit_declined", "fix_action": "ask_user_commit"}
         rc, out = self._git(op, *args)
         return {"ok": rc == 0, "op": op, "output": out[-2000:]}
 
@@ -316,8 +323,9 @@ class Gateway:
             c.git_status = "committing" if accept else "rejected"
         if not accept:
             self.emit(c.git_card())
-            return {"ok": False, **c.git_card(), "reason_zh": "你没有批准提交：文件已写入工作区，但没有做 git 提交",
-                    "fix_action": "commit_manually_or_reopen"}
+            return {"ok": False, **c.git_card(), "reason": "commit_declined",
+                    "reason_zh": "用户没有批准提交（拒绝或超时）：文件已写入工作区，但没有做 git 提交",
+                    "fix_action": "ask_user_commit"}
         try:
             self._commit(c)
         finally:
@@ -325,8 +333,12 @@ class Gateway:
             self.emit(c.git_card())
             self.emit(c.card())
         if c.status != "committed":
-            return {"ok": False, **c.git_card(), "reason_zh": c.log[-500:], "fix_action": "retry_commit"}
+            return {"ok": False, **c.git_card(), "reason": "commit_failed", "reason_zh": c.log[-500:], "fix_action": "ask_user_commit"}
         return {"ok": True, **c.card()}
+
+    def commit_timeout(self, cid: int) -> dict:
+        """确认卡超时 = 拒绝。"""
+        return self.commit_decide(cid, False)
 
     def _commit(self, c: Change) -> None:
         logs, msg = c.log, c.message
