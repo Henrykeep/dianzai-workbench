@@ -222,13 +222,22 @@ static uint8_t s_relay_seq;
 DZ_WEAK void car_sim_key(uint8_t n);
 DZ_WEAK void car_sim_key(uint8_t n) { (void)n; }
 
+/* #38 阶跃：轮 A 目标 v rps → 直行线速度（w = 0），实验期间每拍续命令 */
+static void on_step_target(uint8_t sp_idx, float v, void *ctx)
+{
+    (void)sp_idx; (void)ctx;
+    s_state.cmd_v_mps = car_aux_limit_v(v * 3.14159265f * s_params.wheel_diam_m);
+    s_state.cmd_w_rps = 0.0f; s_state.cmd_ms = pal_millis();
+}
+
 static void handle_rx(uint32_t now)
 {
     uint8_t buf[32]; uint16_t got = 0;
     if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
-    dzframe_t f, ack, rej;
+    dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_link_params);
-    uint8_t sch; float stg; int sr; bool has_rej;
+    link_step_io_t sio = { .latched = s_estop, .offline = !dzrt_needs_host(&s_rt), .strict_params = true, .now = now,
+                           .tbl = &t, .seq = &s_step_seq, .send = send, .on_target = on_step_target, .on_params = apply_params };
     for (uint16_t i = 0; i < got; i++) {
         if (!dzframe_feed(&s_rx, buf[i], &f)) continue;
         dzctl_wd_feed(&s_wd, &f, now);
@@ -239,15 +248,7 @@ static void handle_rx(uint32_t now)
             s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f;
         } else if (link_relay_frame(&f, s_estop, &s_relay_seq, &ack)) {
             send(&ack);
-        } else if ((sr = link_step_rx(&f, s_estop, !dzrt_needs_host(&s_rt), now, &t, &s_step_seq, send, &sch, &stg)) != 0) {
-            if (sr == 2) {   /* #38 阶跃：轮 A 目标 stg rps → 直行线速度（w = 0），实验期间每拍续命令 */
-                s_state.cmd_v_mps = car_aux_limit_v(stg * 3.14159265f * s_params.wheel_diam_m);
-                s_state.cmd_w_rps = 0.0f; s_state.cmd_ms = now;
-            }
-        } else if (dzctl_handle_checked(&t, &f, s_estop || link_step_busy(), &ack, &rej, &has_rej)) {   /* 0.13.0 拒绝不限幅 */
-            if (!has_rej) apply_params();
-            send(&ack);
-            if (has_rej) send(&rej);
+        } else if (link_step_dispatch(&f, &sio)) {          /* 通用：0x7B 阶跃 + PARAM_SET 校验/拒绝（link_step.h） */
         } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'R') {
             uint32_t st = pal_irq_save();
             s_estop = false;

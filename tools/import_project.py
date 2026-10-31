@@ -236,7 +236,7 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("project", type=pathlib.Path, help="你的 CubeMX 工程目录（有 .ioc 和 Core/）")
     ap.add_argument("--name", help="板名（默认由目录名转成 a-z0-9-）")
-    ap.add_argument("--app", help="顺便检查这个应用的 requires（如 car_2wd）")
+    ap.add_argument("--app", help="顺便检查这个应用的 requires（apps/ 或 examples/ 下的目录名）")
     ap.add_argument("--root", type=pathlib.Path, default=None, help="暂存根：给了就写 <root>/boards/<板>（项目页预览用），不给就写 $DZ_BOARDS_DIR")
     ap.add_argument("--boards-dir", type=pathlib.Path, default=None,
                     help="板卡目录放哪（默认 $DZ_BOARDS_DIR；测试指到临时目录，不写进仓库）")

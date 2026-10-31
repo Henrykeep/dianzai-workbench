@@ -15,3 +15,4 @@
 | Web Awesome（@awesome.me/webawesome 3.14.0） | MIT | Fonticons, Inc.（原 Shoelace）；界面按钮 / 滑条 / 标签 / 卡片 / 骨架组件，本地打包进 `app/ui`，主题由 `app/ui/src/wa-theme.css` 从 tokens 映射；默认图标库已改为空（不访问 Font Awesome CDN）；传递依赖 lit（BSD-3-Clause）、@floating-ui（MIT）等均为宽松许可 | https://github.com/shoelace-style/webawesome |
 | python-control | BSD-3-Clause | python-control developers | https://github.com/python-control/python-control ；侧车依赖：`app/sidecar/dzbench/tuning/autotune.py` 模型仿真与 PID 初值，`tools/randplant_standin.py` 随机对象（rss / pade） |
 | SysIdentPy | BSD-3-Clause | Wilson Rocha Lacerda Junior 等 | https://github.com/wilsonrljr/sysidentpy ；侧车依赖：`autotune.identify()` 用 FROLS 从阶跃录波辨识 ARX 模型 |
+| python-control（control ≥ 0.10） | BSD-3-Clause | The Python Control Systems Library developers（Richard M. Murray 等）；`tools/randplant.py` 用 `control.rss` 生成随机稳定系统、`control.pade` 近似纯滞后、`control.c2d` 离散化；传递依赖 numpy、scipy（BSD-3-Clause） | https://github.com/python-control/python-control |

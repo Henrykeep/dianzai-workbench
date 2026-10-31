@@ -95,6 +95,14 @@ static void ensure_running(bool restart)
     if (c->st == COORD_IDLE) (void)coord_event(c, COORD_EV_START);
 }
 
+/* 阶跃开始：写设定值槽位（按 link.step 声明量程钳位）并重开当前小题 */
+static void on_step_target(uint8_t sp_idx, float v, void *ctx)
+{
+    (void)sp_idx; (void)ctx;
+    s_host_sp_px = link_step_clamp_sp(0u, v);
+    ensure_running(true);
+}
+
 static void handle_cmd(const dzframe_t *f)
 {
     uint8_t n = f->len > 1u ? f->payload[1] : 0u;
@@ -113,9 +121,9 @@ static uint8_t s_relay_seq;
 void io_link_read(void)
 {
     uint8_t buf[32]; uint16_t got = 0, i;
-    dzframe_t f, ack, rej;
-    uint8_t sch; float stg; int sr; bool has_rej;
+    dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_project_params[io_coord()->profile_idx]);
+    link_step_io_t sio;
     if (dzrt_needs_host(&RT) && dzctl_wd_expired(&WD, pal_millis())) {
         dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, pal_millis(), (float)(uint32_t)(pal_millis() - WD.last_ms));
         coord_event(io_coord(), COORD_EV_ESTOP);
@@ -124,21 +132,15 @@ void io_link_read(void)
     link_relay_guard(stop);                                  /* 急停/故障中结束继电 */
     if (stop && link_step_busy()) link_step_latch();         /* #38：急停/故障 → 本轮阶跃作废（aborted） */
     link_step_flush(&link_seq, link_send_c);
+    sio = (link_step_io_t){ .latched = stop, .offline = !dzrt_needs_host(&RT), .strict_params = false, .now = pal_millis(),
+                            .tbl = &t, .seq = &link_seq, .send = link_send_c, .on_target = on_step_target };
     if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
     for (i = 0; i < got; i++) {
         if (!dzframe_feed(&LL, buf[i], &f)) continue;
         dzctl_wd_feed(&WD, &f, pal_millis());
         if (dzctl_is_estop(&f)) { dzctl_estop_note(DZCTL_ES_MANUAL, pal_millis(), 0.0f); coord_event(io_coord(), COORD_EV_ESTOP); s_host_sp_px = 0.0f; }
         else if (link_relay_frame(&f, stop, &s_relay_seq, &ack)) link_send(&ack);
-        else if ((sr = link_step_rx(&f, stop, !dzrt_needs_host(&RT), pal_millis(), &t, &link_seq, link_send_c, &sch, &stg)) != 0) {
-            if (sr == 2) {                                   /* 阶跃 = 显式新目标（槽位 0 = 钢珠目标，钳位同 DATA id=1） */
-                s_host_sp_px = stg > 400.0f ? 400.0f : (stg < -400.0f ? -400.0f : stg);
-                ensure_running(true);
-            }
-        }
-        else if (f.kind == DZF_PARAM_SET && (stop || link_step_busy())) {                 /* 急停 / 阶跃实验中：参数写锁定（0.13.0 param_reject state） */
-            if (dzctl_handle_checked(&t, &f, true, &ack, &rej, &has_rej)) { link_send(&ack); if (has_rej) link_send(&rej); }
-        }
+        else if (link_step_dispatch(&f, &sio)) { }          /* 通用：0x7B 阶跃 + 锁定中的 PARAM_SET 校验/拒绝（link_step.h） */
         else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);   /* 其余照旧：越界钳位回 clamped（侧车 #40 本地先拒 + 固件钳位的既有约定） */
         else if (dzctl_is_bb_request(&f)) {                 /* 黑匣子导出（dzctl 0.6.0） */
             const bb_t *bb = io_safety_bb();
@@ -154,7 +156,7 @@ void io_link_read(void)
             float v; memcpy(&v, f.payload, 4u);
             if (isfinite(v) && !stop) {
                 if (link_step_busy() && v != s_host_sp_px) link_step_preempt();   /* 实验中途改目标：这一轮作废 */
-                s_host_sp_px = v > 400.0f ? 400.0f : (v < -400.0f ? -400.0f : v);
+                s_host_sp_px = link_step_clamp_sp(0u, v);
                 ensure_running(false);
             }
         }
