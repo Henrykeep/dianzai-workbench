@@ -13,6 +13,13 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 
 参数表、遥测打包函数和 `link_schema.json` 由 `tools/gen_link.py` 从 yaml 的 `link:` 段生成，C 与上位机同源。
 
+**设定值通道的 `hold`**（`link_schema.json` 的遥测字段，进 schema 哈希）：凡有 `ref_for` 或显式写 `hold` 的遥测字段都带 `hold`，说明上位机不再发命令时固件怎么处理这个目标：
+- `latched`：保持到上位机改它为止（motor_pos、pendulum_rot、pan_tilt、line_car、2026X_follow——link_app 的 `L.sp[]` / 参数）；
+- `timeout`：超过 `cmd_timeout_ms` 没有新命令就归零（断线停车，car_2wd）。
+- yaml 不写时默认 `timeout`（保守），但 `tools/test_link_hold.py` 要求每个设定值通道显式写，并按应用源码有无 `cmd_timeout` 核对。
+- 两种都会在急停锁存时立即清零（见上文），`hold` 只描述正常运行时的行为。
+
+
 ## 标准命令（全量回读 / 版本 / 黑匣子）
 - **参数全量回读**：上位机按 schema 逐个发空 PARAM_SET（板端回生效值，不是上位机记的值）。侧车 `Session.export_readback()` / WebSocket op `params_readback` 写 `params.txt`（界面按钮【未做】）（带 schema_hash、fw_rev、board_uid、时间），
   `python3 tools/params_diff.py last_good.txt now.txt` 对比两次回读（docs/verify 的 params_before/params.txt 就是它）。
