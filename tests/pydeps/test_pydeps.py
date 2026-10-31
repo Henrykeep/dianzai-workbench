@@ -152,8 +152,57 @@ if (plats != ["macosx_11_0_arm64", "macosx_10_9_x86_64", "manylinux2014_x86_64"]
     fails.append(f"wheelhouse pip 参数不对：{av}")
 if pydeps.expand_platforms(["linux"]) != ["manylinux2014_x86_64"]:
     fails.append("linux 预设不对")
+def test_pth_has_relative_sidecar_entry_once():
+    with tempfile.TemporaryDirectory() as d:
+        p = pathlib.Path(d) / "python312._pth"
+        p.write_text("python312.zip\n.\n#import site\n")
+        pyembed.enable_site(p)
+        pyembed.enable_site(p)
+        lines = [x.strip() for x in p.read_text().splitlines()]
+        assert lines.count("..\\repo\\app\\sidecar") == 1
+        assert lines.index("..\\repo\\app\\sidecar") < lines.index("import site")
+
+
+def test_stage_script_writes_selfcheck_bat_and_sidecar_deps():
+    s = (ROOT / "tools/stage_pyembed.sh").read_text()
+    assert "xintai-selfcheck.bat" in s and "wheelhouse-sidecar.txt" in s
+    assert "tools\\selfcheck.py" in s and "exit /b %RC%" in s and "DZ_NOPAUSE" in s
+    nsh = (ROOT / "app/src-tauri/windows/hooks.nsh").read_text()
+    assert nsh.count("芯台 自检.lnk") >= 2
+
+
+def _run_sh(py):
+    import os
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("DZ_LLM_", "PYTHONPATH"))}
+    env.update(DZ_NOPAUSE="1", PYTHON=py)
+    return subprocess.run([str(ROOT / "xintai-selfcheck.sh")], cwd=ROOT, env=env,
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=300)
+
+
+def test_selfcheck_sh_passes_with_deps():
+    r = _run_sh(sys.executable)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
+def test_selfcheck_sh_fails_in_chinese_without_deps():
+    with tempfile.TemporaryDirectory() as d:
+        subprocess.run([sys.executable, "-m", "venv", "--without-pip", d], check=True)
+        r = _run_sh(str(pathlib.Path(d) / "bin/python"))
+    out = r.stdout + r.stderr
+    assert r.returncode != 0 and "缺少" in out and "Traceback" not in out, out
+
+
+for _t in (test_pth_has_relative_sidecar_entry_once, test_stage_script_writes_selfcheck_bat_and_sidecar_deps,
+           test_selfcheck_sh_passes_with_deps, test_selfcheck_sh_fails_in_chinese_without_deps):
+    try:
+        _t()
+    except AssertionError as e:
+        fails.append(f"{_t.__name__}: {e}")
+
+
 for f in fails:
     print("✗ [pydeps]", f)
 if not fails:
     print("✓ 离线依赖：清单含 5 个钉版本包，自带嵌入版 Python + ._pth + manifest，doctor 版本/平台不符给 python_mismatch 中文说明，缺包中文提示")
 sys.exit(1 if fails else 0)
+

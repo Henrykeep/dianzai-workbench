@@ -17,7 +17,7 @@ mkdir -p "$STAGE/python" && (cd "$STAGE/python" && unzip -q "$WORK/pyembed.zip")
 "$PY" "$ROOT/tools/pyembed.py" pth "$STAGE/python/python$(echo "${PYVER%.*}" | tr -d .)._pth"   # 打开 site-packages（嵌入版默认关掉）
 PYTAG=${PYVER%.*}
 mkdir -p "$STAGE/wheelhouse/_pip"
-grep -v '^\s*#' "$ROOT/tools/wheelhouse.txt" | sed 's/\s*#.*//' | sed '/^\s*$/d' > "$STAGE/wheelhouse/requirements.txt"
+cat "$ROOT/tools/wheelhouse.txt" "$ROOT/tools/wheelhouse-sidecar.txt" | grep -v '^\s*#' | sed 's/\s*#.*//' | sed '/^\s*$/d' > "$STAGE/wheelhouse/requirements.txt"
 "$PY" -m pip download --only-binary=:all: --platform win_amd64 --python-version "$PYTAG" --implementation cp \
   -d "$STAGE/wheelhouse" -r "$STAGE/wheelhouse/requirements.txt" >/dev/null
 "$PY" -m pip download --only-binary=:all: --no-deps -d "$STAGE/wheelhouse/_pip" pip==25.0.1 >/dev/null   # 嵌入版没有 pip；.bat 从这个 wheel 直接跑 pip
@@ -29,4 +29,9 @@ grep -v '^\s*#' "$ROOT/tools/wheelhouse.txt" | sed 's/\s*#.*//' | sed '/^\s*$/d'
 # 补救 .bat：用自带解释器跑 pydeps.py repair（离线重装；pip 英文报错翻成中文说明，#137）
 printf '%s\r\n' '@echo off' 'chcp 65001 >nul' 'rem 离线重装 Python 依赖（不联网）到安装目录自带的 python\python.exe' \
   'set PYTHONUTF8=1' '"%~dp0python\python.exe" "%~dp0repo\tools\pydeps.py" repair' 'pause' > "$STAGE/安装离线依赖.bat"
+# 自检启动脚本（安装目录根，ASCII 文件名）：自带 python 跑 repo\tools\selfcheck.py（doctor → 数据文件 → dzbench selfcheck-data），中文结果，最后暂停
+printf '%s\r\n' '@echo off' 'chcp 65001 >nul' 'setlocal' 'set "PYTHONUTF8=1"' 'set "DZ=%~dp0"' 'set "RC=1"' \
+  'if not exist "%DZ%python\python.exe" (' '  echo [失败] 安装目录里缺少自带的 Python，请重新运行安装程序。' '  goto done' ')' \
+  '"%DZ%python\python.exe" "%DZ%repo\tools\selfcheck.py"' 'set "RC=%ERRORLEVEL%"' ':done' \
+  'if not defined DZ_NOPAUSE pause' 'exit /b %RC%' > "$STAGE/xintai-selfcheck.bat"
 echo "✓ 嵌入版 Python $PYVER → $STAGE/python（site-packages 已装好），wheelhouse + manifest.json → $STAGE/wheelhouse"

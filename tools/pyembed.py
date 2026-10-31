@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Windows 安装包自带的嵌入版 CPython（#112 后续）。打包时由 tools/package_windows.sh 调用：
 
-    python3 tools/pyembed.py pth <python312._pth>                     打开 site-packages（import site + Lib\\site-packages）
+    python3 tools/pyembed.py pth <python312._pth>                     打开 site-packages（import site + Lib\\site-packages + ..\\repo\\app\\sidecar）
     python3 tools/pyembed.py manifest <wheelhouse目录> <3.12> <win_amd64> <requirements.txt>
                                                                        写 wheelhouse/manifest.json，doctor 用它核对解释器
 安装目录布局：<安装目录>/python/python.exe（自带解释器）、<安装目录>/wheelhouse/、<安装目录>/repo/。
@@ -15,7 +15,10 @@ import sys
 SITE_DIR = r"Lib\site-packages"
 
 
-def enable_site(pth: pathlib.Path) -> None:
+SIDECAR_REL = r"..\repo\app\sidecar"   # ._pth 里的相对路径按 python.exe 所在目录算：<安装目录>/python → <安装目录>/repo/app/sidecar
+
+
+def enable_site(pth: pathlib.Path, extra: tuple[str, ...] = (SIDECAR_REL,)) -> None:
     """嵌入版 ._pth 默认不加载 site，pip 装进去的包导入不了；改成加载 site 并把 Lib\\site-packages 和仓库 tools 加进路径。幂等。"""
     lines = pth.read_text(encoding="utf-8").splitlines()
     out = []
@@ -27,6 +30,9 @@ def enable_site(pth: pathlib.Path) -> None:
         out.append("import site")
     if SITE_DIR not in [x.strip() for x in out]:
         out.insert(out.index("import site") if "import site" in out else len(out), SITE_DIR)
+    for e in extra:   # 嵌入版不认 PYTHONPATH：侧车源码路径直接写进 ._pth，python\python.exe -m dzbench 不用设环境变量
+        if e not in [x.strip() for x in out]:
+            out.insert(out.index("import site"), e)
     pth.write_text("\r\n".join(out) + "\r\n", encoding="utf-8")
 
 

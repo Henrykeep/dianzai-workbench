@@ -124,7 +124,7 @@ jobs:
         shell: bash
         working-directory: app/src-tauri
         run: |
-          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../dz-pyembed/python/":"python/","../dz-pyembed/wheelhouse/":"wheelhouse/","../dz-pyembed/安装离线依赖.bat":"install-offline-deps.bat","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
+          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../dz-pyembed/python/":"python/","../dz-pyembed/wheelhouse/":"wheelhouse/","../dz-pyembed/安装离线依赖.bat":"install-offline-deps.bat","../dz-pyembed/xintai-selfcheck.bat":"xintai-selfcheck.bat","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
           npx --yes @tauri-apps/cli@2 build --config ci-resources.json
           ls -la target/release/bundle/nsis/
       - name: 安装冒烟：旧版电赛工作台 → 新版 /S 静默安装（只一个芯台快捷方式、旧目录已删、工程保留）
@@ -145,7 +145,7 @@ jobs:
           $p = Start-Process $setup.FullName -ArgumentList "/S" -Wait -PassThru
           if ($p.ExitCode) { throw "新版安装退出码 $($p.ExitCode)" }
           $sm = @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")
-          $lnk = Get-ChildItem $sm -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -match "芯台|XinTai|电赛工作台" }
+          $lnk = Get-ChildItem $sm -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -match "芯台|XinTai|电赛工作台" -and $_.BaseName -ne "芯台 自检" }
           $lnk | ForEach-Object { Write-Host "快捷方式: $($_.FullName)" }
           $fail = @()
           if (@($lnk).Count -ne 1 -or $lnk[0].BaseName -ne "芯台") { $fail += "(a) 开始菜单应只有一个 芯台.lnk，实际 $(@($lnk).Count) 个" }
@@ -191,16 +191,30 @@ jobs:
                   sys.exit(f"原因码表 {rc} 读不出来：{e}")
           print("✓ 安装目录角色表：", "、".join(f"{r['code']}={r['zh']}" for r in roles), "（", f, "）")
           PY
-          # 侧车自检 selfcheck-data（后端在加）：有就必须退出码 0；还没有就只做上面的读取检查
-          if grep -rqs "selfcheck-data" "$inst/repo/app/sidecar/dzbench"; then
-            cd "$inst"
-            # 嵌入版 ._pth 模式不认 PYTHONPATH/当前目录，显式把安装目录里的侧车源码加进 sys.path
-            "$py" -c "import sys,runpy; sys.path.insert(0, sys.argv[1]); sys.argv=['dzbench','selfcheck-data']; runpy.run_module('dzbench', run_name='__main__')" \
-              "$(cygpath -w "$inst/repo/app/sidecar")" || { echo "::error::自带 python 跑 dzbench selfcheck-data 失败（安装目录数据不全）"; fail=1; }
-          else
-            echo "提示：这一版侧车还没有 selfcheck-data 命令，只做了 roles.json / reason_codes.json 读取检查"
-          fi
+          # 不设任何环境变量、在安装目录外：python\python.exe -m dzbench 必须直接能导入（侧车路径写在 ._pth 里）
+          (cd "$RUNNER_TEMP" && env -u PYTHONPATH -u PYTHONHOME "$py" -m dzbench --help >/dev/null) \
+            || { echo "::error::自带 python 直接跑 -m dzbench 失败（._pth 里的侧车路径或侧车依赖不对）"; fail=1; }
           exit $fail
+      - name: 安装后自检：去掉系统 Python 的 PATH 下跑 xintai-selfcheck.bat，必须退出码 0；开始菜单有「芯台 自检」
+        shell: pwsh
+        run: |
+          $rj = Get-ChildItem $env:LOCALAPPDATA -Recurse -Filter roles.json -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*\repo\docs\dev\roles.json" } | Select-Object -First 1
+          if (-not $rj) { Write-Host "::error::找不到安装目录"; exit 1 }
+          $inst = $rj.Directory.Parent.Parent.Parent.FullName
+          $bat = Join-Path $inst "xintai-selfcheck.bat"
+          if (-not (Test-Path $bat)) { Write-Host "::error::安装目录缺 xintai-selfcheck.bat"; exit 1 }
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          Remove-Item Env:PYTHONPATH, Env:PYTHONHOME, Env:pythonLocation, Env:Python_ROOT_DIR, Env:Python3_ROOT_DIR -ErrorAction SilentlyContinue
+          $env:DZ_NOPAUSE = "1"; $env:PIP_NO_INDEX = "1"
+          if (Get-Command python -ErrorAction SilentlyContinue) { Write-Host "::error::PATH 里还有 python，没清干净"; exit 1 }
+          Push-Location $env:RUNNER_TEMP
+          cmd /c "`"$bat`" < NUL"
+          $rc = $LASTEXITCODE
+          Pop-Location
+          if ($rc -ne 0) { Write-Host "::error::xintai-selfcheck.bat 退出码 $rc（自检没通过）"; exit 1 }
+          $sm = @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")
+          if (-not (Get-ChildItem $sm -Recurse -Filter "芯台 自检.lnk" -ErrorAction SilentlyContinue)) { Write-Host "::error::开始菜单没有「芯台 自检」快捷方式"; exit 1 }
+          Write-Host "安装后自检通过：$bat"
       - uses: actions/upload-artifact@v4
         with:
           name: dzbench-windows
