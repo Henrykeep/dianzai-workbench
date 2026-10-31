@@ -380,7 +380,7 @@ def test_iterate_plan_accepts_any_randplant_declaration(seed, tmp_path):
     spec, params, _ = gen_link.load(tmp_path / "app.yaml")
     assert not gen_link.check(spec, params), gen_link.check(spec, params)
     sch = Schema(gen_link.schema(spec, params))
-    o = types.SimpleNamespace(s=types.SimpleNamespace(schema=sch), _gains=lambda: {}, _tunable=S.AgentService._tunable,
+    o = types.SimpleNamespace(s=types.SimpleNamespace(schema=sch), _gains=lambda: {}, measure_step_timing=lambda: {}, _tunable=S.AgentService._tunable,
                               ABS_TOL_FRAC=S.AgentService.ABS_TOL_FRAC)
     st = sch.step[0]
     tgt = min(0.25 * float(st["sensor_range"]), float(st.get("max_step") or 1e9))
