@@ -106,6 +106,7 @@ script_ops:
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
   commit_confirm: "#88 提交确认（commit_confirm_request）的批准/拒绝；前端卡片合入后从这里移走"
+  autotune: "#108 通用整定（与 tunegate 同一份 tuning.autotune），Agent 工具 autotune 也走它；前端“通用整定”按钮接上后从这里移走"
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
   project.migrate: 旧版写在仓库 examples/ 的用户工程复制到 $DZBENCH_HOME/projects/（#29，只复制、不删源）；不带 confirmed 只返回清单（needs_confirm），界面确认卡确认后 confirmed=true 才复制。确认卡由前端接（page:req），接上后移到 actions
