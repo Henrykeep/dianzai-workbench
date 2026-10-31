@@ -338,6 +338,7 @@ class SessionIO:
             raise
         return {"status": "rejected" if r["status"] == "rejected" else "ok", "reason": r.get("reason"), "applied": r["applied"]}
 
+    RETURN_DT = 0.05
     RETURN_TIMEOUT_S = 8.0          # 回起点最多等这么久；超时用实测起点当基线并标 start_offset
 
     def _y(self, ch: int) -> tuple[str | None, int | None, float | None]:
@@ -369,19 +370,19 @@ class SessionIO:
         if slot is not None and slot < len(vals):
             vals[slot] = self.y0
             self.s.send_data(1, struct.pack(f"<{len(vals)}f", *vals))
-        t0, ok_since = time.monotonic(), None
+        # 按拍数计时（每拍 RETURN_DT），不读墙钟（Windows 15.6 ms 时钟粒度会让“持续 0.3 s”判不出来）
+        dt = self.RETURN_DT
+        n_hold, n_max, ok_n, k = round(0.3 / dt), round(self.RETURN_TIMEOUT_S / dt), 0, 0
         cur = self._y_now(y)
-        while time.monotonic() - t0 < self.RETURN_TIMEOUT_S:
+        while k < n_max:
             cur = self._y_now(y)
-            if cur is not None and abs(cur - self.y0) < tol:
-                ok_since = ok_since or time.monotonic()
-                if time.monotonic() - ok_since >= 0.3:
-                    return {"start_y": round(cur, 4), "return_s": round(time.monotonic() - t0, 2)}
-            else:
-                ok_since = None
-            time.sleep(0.05)
+            ok_n = ok_n + 1 if cur is not None and abs(cur - self.y0) < tol else 0
+            if ok_n >= n_hold:
+                return {"start_y": round(cur, 4), "return_s": round(k * dt, 2)}
+            time.sleep(dt)
+            k += 1
         return {"start_y": None if cur is None else round(cur, 4), "start_offset": None if cur is None else round(cur - self.y0, 4),
-                "return_s": round(time.monotonic() - t0, 2)}
+                "return_s": round(k * dt, 2)}
 
     def step(self, it: int, ch: int, target: float, dur_ms: int) -> dict:
         from ..session import LinkError

@@ -744,17 +744,22 @@ class AgentService:
             if amp:
                 val, unit = val * amp / 100.0, yu
                 judged, same = val, band["unit"] == unit
-        conv = (self.step_cfg() or {}).get("sim_nominal") if self.sim else None
-        if not same and conv and conv.get("from") == unit and conv.get("to") == band["unit"] and unit:
-            judged, same = val * float(conv["per"]), True               # 仿真对象自己的几何（dzbench.json step_tests.*.sim_nominal）
-            conv_note = f"仿真标称换算，未实机标定（{conv.get('source', '')}）"
-        per, src = self._unit_per(y, unit, band["unit"])
-        if not same and per is not None:
-            judged, same = val * per, True
-            conv_note = src
+        conv_source = None
+        if not same and unit:
+            if self.sim:                                  # 仿真：固件声明 link.step.phys 优先，其次 dzbench.json sim_nominal，最后遥测字段 cal
+                for src, per, txt in (("phys",) + self._phys_per(unit, band["unit"]), ("sim_nominal",) + self._sim_nominal_per(unit, band["unit"]),
+                                      ("cal",) + self._unit_per(y, unit, band["unit"])):
+                    if per is not None:
+                        judged, same, conv_source = val * per, True, src
+                        conv_note = f"仿真标称换算，未实机标定：{txt}"
+                        break
+            else:                                         # 实机：只认 #51 标定结果；phys 只当标定初值，绝不拿来判 inside
+                per, txt = self._calibration_per(y, unit, band["unit"])
+                if per is not None:
+                    judged, same, conv_source, conv_note = val * per, True, "calibration", f"按实机标定换算：{txt}"
         inside = (judged <= band["limit"]) if same else None
         if inside is None:
-            why = "仿真对象没有到该单位的标称几何" if self.sim else "要先标定换算（#51）"
+            why = "仿真对象没有到该单位的标称几何" if self.sim else "待标定（#51）"
             note = f"单位不同（实测 {unit or '无单位'}，题目 {band['unit'] or '无单位'}），{why}，暂不判是否在带内"
         else:
             note = "在题目误差带内" if inside else f"超出误差带 {judged - band['limit']:.4g}{band['unit']}"
@@ -764,7 +769,43 @@ class AgentService:
                "pass_basis": self._pass_basis(band, inside)}
         if conv_note:
             out["converted"] = {"value": round(judged, 6), "unit": band["unit"], "note_zh": conv_note}
+        out["conv_source"] = conv_source
+        if not self.sim and conv_source is None and unit != band["unit"]:
+            ph = self._phys_per(unit, band["unit"])[0]
+            if ph is not None:
+                out["calib_initial_guess"] = {"per": ph, "source": "phys"}      # 只给 #51 标定当初值
         return out
+
+    def _phys_per(self, frm: str, to: str) -> tuple[float | None, str | None]:
+        """固件声明 app.yaml link.step[0].phys {unit, per_unit}：per_unit = 多少个 y 单位 = 1 个 phys 单位（2026H 6 px = 1 cm）。"""
+        st = getattr(self.s.schema, "step", None) or []
+        ph = (st[0].get("phys") if st else None) or {}
+        try:
+            pu = float(ph.get("per_unit"))
+        except (TypeError, ValueError):
+            return None, None
+        if ph.get("unit") != to or pu <= 0 or not frm:
+            return None, None
+        return 1.0 / pu, f"固件声明 {pu:g} {frm} = 1 {to}"
+
+    def _sim_nominal_per(self, frm: str, to: str) -> tuple[float | None, str | None]:
+        conv = (self.step_cfg() or {}).get("sim_nominal") or {}
+        if conv.get("from") == frm and conv.get("to") == to and conv.get("per"):
+            return float(conv["per"]), str(conv.get("source", "dzbench.json sim_nominal"))
+        return None, None
+
+    def _calibration_per(self, y: str | None, frm: str, to: str) -> tuple[float | None, str | None]:
+        """#51 实机标定结果（项目 .dz/calib/<y>.json：{from, to, per, source}）；没有 = 待标定。"""
+        proj = self._project_path()
+        if not (proj and y):
+            return None, None
+        try:
+            c = json.loads((pathlib.Path(proj) / ".dz" / "calib" / f"{y}.json").read_text("utf-8"))
+        except (OSError, ValueError):
+            return None, None
+        if c.get("from") == frm and c.get("to") == to and c.get("per"):
+            return float(c["per"]), str(c.get("source", "实机标定"))
+        return None, None
 
     CMP_KEYS = ("ss_err_pct", "sse", "overshoot_pct", "overshoot", "settle_ms", "settling", "iae")
 
@@ -1146,6 +1187,7 @@ class AgentService:
             time.sleep(0.05)
 
     PRE_TOL = 0.1          # 没有 app.yaml abs_tol / 后端覆盖时：阶跃前 y 离起点不超过 10% 阶跃幅度才起跳
+    SETTLE_DT = 0.1        # 回起点每拍发一次 low、取一次样
     RETURN_TIMEOUT_S = 8.0 # 回起点最多等这么久（pre_s 之后）；超时用实测起点当基线，标 start_offset
 
     # 后端自管的阶跃时序覆盖（r9 #67）：不改 app.yaml link.step/hold、不改 dzbench.json pre_s/hold_s。键 = 仿真应用 / 板卡名。
@@ -1171,27 +1213,30 @@ class AgentService:
     def _settle_at_low(self, st: dict, lo, hi, pre: float) -> dict:
         """回起点（r9，上位机负责）：设定值停在 low 至少 pre_s，再等 |y − 起点| < tol 持续 0.3 s 才起跳，最多再等 8 s。
         超时不硬跳也不丢这一轮：以实测位置为基线（step_metrics 的 y0 = 起跳前一刻的 y），返回 start_offset 标出来。"""
-        t0 = time.monotonic()
+        # 按发送拍数计时（每拍 SETTLE_DT），不读墙钟：Windows 时钟粒度 15.6 ms、sleep 偏长，墙钟判“持续 0.3 s”会少数拍/提前超时
         span = abs(float(hi[0]) - float(lo[0])) or 1.0
         tol = self._return_tol(st, span)
         tmo = float(self.step_override().get("return_timeout_s", self.RETURN_TIMEOUT_S))
-        off, ok_since = None, None
+        dt = self.SETTLE_DT
+        n_pre, n_hold, n_max = round(pre / dt), round(0.3 / dt), round((pre + tmo) / dt)
+        off, ok_n, k = None, 0, 0
         while True:
             self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *lo))
-            time.sleep(0.1)
-            el = time.monotonic() - t0
+            time.sleep(dt)
+            k += 1
+            el = round(k * dt, 2)
             w = self.s.window(0.15)
             if not (w and st.get("y") and st.get("sp")):
-                if el >= pre:
-                    return {"settled": None, "wait_s": round(el, 2), "offset": None, "tol": tol}
+                if k >= n_pre:
+                    return {"settled": None, "wait_s": el, "offset": None, "tol": tol}
                 continue
             off = max(abs(float(v[st["y"]]) - float(lo[0])) for _, v in w)
-            ok_since = (ok_since or time.monotonic()) if off < tol else None
-            if el >= pre and ok_since and time.monotonic() - ok_since >= 0.3:
-                return {"settled": True, "wait_s": round(el, 2), "offset": round(off, 3), "tol": tol}
-            if el >= pre + tmo:
+            ok_n = ok_n + 1 if off < tol else 0
+            if k >= n_pre and ok_n >= n_hold:
+                return {"settled": True, "wait_s": el, "offset": round(off, 3), "tol": tol}
+            if k >= n_max:
                 y = float(w[-1][1][st["y"]])
-                return {"settled": False, "wait_s": round(el, 2), "offset": round(off, 3), "tol": tol,
+                return {"settled": False, "wait_s": el, "offset": round(off, 3), "tol": tol,
                         "start_offset": round(y - float(lo[0]), 3), "start_y": round(y, 3)}
 
     def run_step_test(self) -> dict:
