@@ -30,8 +30,8 @@ def test_no_setpoint_after_clear(home):
     s.connect("sim:motor_pos")
     tx, orig = [], s._send
 
-    def spy(kind, id_, payload=b""):
-        ok = orig(kind, id_, payload)
+    def spy(kind, id_, payload=b"", **k):
+        ok = orig(kind, id_, payload, **k)
         tx.append((time.monotonic(), id_, bytes(payload), threading.current_thread().name))
         return ok
     s._send = spy

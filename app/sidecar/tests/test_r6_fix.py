@@ -321,10 +321,10 @@ def test_estop_clear_sends_only_R_and_notifies(home):
         sent = []
         orig = s._send
 
-        def spy(kind, id_, payload=b""):
+        def spy(kind, id_, payload=b"", **k):
             if kind == DATA:
                 sent.append((id_, bytes(payload)))
-            return orig(kind, id_, payload)
+            return orig(kind, id_, payload, **k)
         s._send = spy
         m = ui.mark()
         ui.ok("cmd", c="R")
