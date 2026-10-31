@@ -137,7 +137,9 @@ def test_direct_iterate_start_and_main_flow_use_same_plan():
                            measure_step_timing=lambda: {})
     main = S.AgentService.iterate_plan(stub, _default_target=True)
     direct = S.AgentService.iterate_plan(stub, target=main["target"])
-    assert main == direct
+    why = ("timing_source", "timing_reason_zh")                   # 来源说明不同是对的：主线目标是回退来的，直调是人给的
+    assert {k: v for k, v in main.items() if k not in why} == {k: v for k, v in direct.items() if k not in why}
+    assert "量程 1/4" in main["timing_reason_zh"] and "量程 1/4" not in direct["timing_reason_zh"]
 
 
 def _rand_plant_rise(seed, kp, y0, target, dt=0.001, t_end=20.0):

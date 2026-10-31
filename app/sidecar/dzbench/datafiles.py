@@ -3,6 +3,7 @@
 CLI：python -m dzbench selfcheck-data（缺文件退出 1），app-windows CI 在安装目录里跑。"""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import pathlib
@@ -73,3 +74,23 @@ def main() -> int:
     for p in probs:
         print("✗ " + p["message_zh"], file=sys.stderr)
     return 1 if probs else 0
+
+
+def tables() -> dict:
+    """hello 里给界面的 data_tables：{roles|reason_codes: {sha256（原始字节）, content（原样解析的 JSON）} | null}。
+    缺失 / 不合法 / 版本不认识 → null（同时进度里出 data_file_missing 阻塞）。"""
+    out = {}
+    for name in FILES:
+        key = name[:-5]
+        f = find(name)
+        d, prob = load(name) if f else (None, True)
+        if prob or f is None:
+            out[key] = None
+            continue
+        try:
+            raw = f.read_bytes()
+        except OSError:
+            out[key] = None
+            continue
+        out[key] = {"sha256": hashlib.sha256(raw).hexdigest(), "content": d}
+    return out

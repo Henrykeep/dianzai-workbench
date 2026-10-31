@@ -88,3 +88,16 @@ def test_roles_json_unknown_version_rejected(tmp_path, monkeypatch):
     assert df.check()[0]["reason"] == "data_file_missing" and "版本 2" in df.check()[0]["message_zh"]
     assert SV.link_roles() == () and "版本 2" in SV.role_hint_zh()
     assert df.main() == 1
+
+
+def test_hello_data_tables_sha256_matches_file_bytes(tmp_path, monkeypatch):
+    import hashlib, json, pathlib
+    from dzbench import datafiles
+    t = datafiles.tables()
+    f = pathlib.Path(__file__).resolve().parents[3] / "docs/dev/roles.json"
+    assert t["roles"]["sha256"] == hashlib.sha256(f.read_bytes()).hexdigest()
+    assert t["roles"]["content"] == json.loads(f.read_text("utf-8"))
+    rc = datafiles.find("reason_codes.json")
+    assert (t["reason_codes"] is None) == (rc is None or bool(datafiles.load("reason_codes.json")[1]))
+    _datafiles_at(tmp_path, monkeypatch, None)
+    assert datafiles.tables() == {"roles": None, "reason_codes": None}
