@@ -1227,8 +1227,10 @@ class AgentService:
             lst = (self.s.schema.step if self.s.schema else None) or []
             if lst:                                                     # 板上阶跃（0x7B）
                 c = lst[0]
-                hs = getattr(self.s, "handshake", None) or {}           # 握手帧带 u_min/u_max/sat/range（工程声明；没声明为 null）
-                rng = float(c.get("range") or hs.get("range") or 0.0) or None
+                hs = ((self.s.schema.d if self.s.schema else {}) or {}).get("limits") or {}   # 握手帧 limits {u_min,u_max,sat,range}（工程声明；没声明为 null）
+                rng = float(c.get("range") or c.get("sensor_range") or hs.get("range") or 0.0) or None
+                if c.get("max_step"):                                   # 执行器能承受的单次最大阶跃（物理上限）
+                    rng = min(rng or math.inf, float(c["max_step"]) / stepident.PROBE_FRAC)
                 time.sleep(1.0)                                         # 起跳前 1 s 录噪声底 / 起点
                 w0 = self.s.window(1.0)
                 pre = [float(x[1][c["y"]]) for x in w0 if c.get("y") in x[1]]
@@ -1238,6 +1240,8 @@ class AgentService:
                     self.emit({"type": "event", "kind": "probe_amp", "message_zh": why, "fix_action": "在 app.yaml link.step 写 range / u_max"})
                 umax = None
                 um = c.get("u_max") if c.get("u_max") is not None else hs.get("u_max")
+                if hs.get("sat") is not None and isinstance(um, (int, float, type(None))):
+                    um = min(x for x in (um, hs["sat"]) if x is not None)
                 if isinstance(um, (int, float)):
                     umax = float(um)
                 elif um and w0 and um in w0[-1][1]:
@@ -1415,6 +1419,9 @@ class AgentService:
         st = self.step_cfg()
         if not st:
             raise LinkError("no_step_test", "没配置（或没有匹配当前遥测的）阶跃实验", "继电起步复用 step_test 的通道和工作点")
+        if self.s.schema and (self.s.schema.d or {}).get("relay") is False:   # link.yaml relay: off → 固件 0x7C 不接管输出
+            raise GatewayError("relay_off", "这块板的工程声明了 relay: off，固件不接管输出，不能做继电自整定",
+                               "在 link.yaml 去掉 relay: off（默认 on）后重新生成固件")
         rc = st.get("relay") or {}
         amp = float(rc.get("amp", 0.3)); hyst = float(rc.get("hyst", 0.0)); loop = int(rc.get("loop", 0))
         dur = min(float(rc.get("timeout_s", 12.0)), self.RELAY_MAX_S)

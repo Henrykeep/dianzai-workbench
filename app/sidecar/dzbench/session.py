@@ -1127,9 +1127,10 @@ class Session:
                             {"reason": "hold", "hold": hold, "message_zh": "这块板子的目标不会保持，重新开始实验即可"})
         v = check_value(name, raw, None)
         slot = names.index(name)
-        rng = next((float(c["range"]) for c in (self.schema.step or []) if int(c.get("sp", -1)) == slot and c.get("range") is not None), None)
+        rng = next((float(c["range"] if c.get("range") is not None else c["sensor_range"]) for c in (self.schema.step or [])
+                    if int(c.get("sp", -1)) == slot and (c.get("range") is not None or c.get("sensor_range") is not None)), None)   # range 可省，退到传感器量程
         if rng is not None and abs(v) > rng:
-            raise _invalid(name, f"超出范围（|值| ≤ {rng:g}，link.step.range）", None, "range")
+            raise _invalid(name, f"超出范围（|值| ≤ {rng:g}，link.step.range / sensor_range）", None, "range")
         with self.lock:
             vals = [float(self._sp_live.get(n, 0.0)) for n in names]
         vals[slot] = v

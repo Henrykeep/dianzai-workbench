@@ -314,7 +314,7 @@ class ProbeS:
     """板上阶跃探测的假板：step_start 之后第 2 次查询时急停。"""
     def __init__(self, estop_at=2):
         self.port, self.tx_locked, self.n, self.estop_at, self.stopped = "sim:x", False, 0, estop_at, False
-        self.schema = types.SimpleNamespace(step=[{"sp": 0, "y": "y", "u": "u", "u_max": 1.0, "range": 100.0}])
+        self.schema = types.SimpleNamespace(step=[{"sp": 0, "y": "y", "u": "u", "u_max": 1.0, "range": 100.0}], d={})
         self.started = []
 
     def window(self, sec):
@@ -342,3 +342,22 @@ def test_probe_aborts_on_estop(monkeypatch):
     assert r == {} and o.s.stopped and len(o.s.started) == 1
     assert o.s.started[0][2] == pytest.approx(100.0 * 0.05)          # 探测幅度 = 声明量程 × 5%
     assert "急停" in o._step_timing["sim:x#why"]["message_zh"] and o._step_timing["sim:x#why"]["fix_action"] == "estop_clear"
+
+
+def test_probe_reads_sensor_range_max_step_and_handshake_limits(monkeypatch):
+    monkeypatch.setattr(S.time, "sleep", lambda d: None)
+    b = ProbeS()
+    b.schema = types.SimpleNamespace(step=[{"sp": 0, "y": "y", "u": "u", "sensor_range": 720.0, "max_step": 20.0}],
+                                     d={"limits": {"u_min": -1, "u_max": 1, "sat": 0.8, "range": 720}, "relay": True})
+    o = types.SimpleNamespace(s=b, sim=True, PROBE_S=0.3, emit=lambda e: None)
+    o._probe_wait = lambda t: S.AgentService._probe_wait(o, t)
+    S.AgentService.measure_step_timing(o)
+    assert b.started[0][2] == pytest.approx(min(720.0 * 0.05, 20.0))   # sensor_range × 5%，且不超 max_step
+
+
+def test_relay_off_declared_refuses_relay_tune():
+    o = types.SimpleNamespace(s=types.SimpleNamespace(schema=types.SimpleNamespace(d={"relay": False}, step=[])),
+                              step_cfg=lambda: {"relay": {}})
+    with pytest.raises(S.GatewayError) as e:
+        S.AgentService.run_relay_tune(o)
+    assert e.value.code == "relay_off" and e.value.fix

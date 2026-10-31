@@ -219,7 +219,8 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     sp = parse_spec(spec_text)
     dt = float(link["sample_s"])
     u_max = float(link["u_max"])
-    rng_phys = float(link.get("range") or 0.0) or None
+    rng_phys = float(link.get("range") or link.get("sensor_range") or 0.0) or None   # 新声明只写物理量程 sensor_range
+    max_step = float(link.get("max_step") or 0.0) or None
     cur = board.read_params()
     p0 = {d["role"]: float(cur[d["name"]]) for d in decl}
     for d in decl:
@@ -253,8 +254,15 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     idn = stepident.identify(list(ts), list(ys), 0.0, probe) if np.all(np.isfinite(y)) else None
     timing = stepident.derive(idn, rng_phys, probe) or {}
     amp = float(timing.get("step_target") or probe * 5)
+    if sp.get("amp"):                                           # 题面写了阶跃幅度 → 就按它判（判卷与题面同一个实验）
+        amp = float(sp["amp"])
+    lims = [x for x in (max_step, (0.5 * rng_phys) if rng_phys else None) if x]
+    if lims and abs(amp) > min(lims):
+        amp = math.copysign(min(lims), amp)
     settle = (idn["L"] + stepident.SETTLE_TC * idn["T"]) if idn and idn.get("ok") else n_probe * dt / 3
     n = int(min(max(round(3 * settle / dt), 300), 1500))      # 判卷窗口 = 3 × 实测调节时间（按拍数，与墙钟无关）
+    if sp.get("settle_s"):                                      # 窗口至少盖住题面调节时间的 2 倍，否则“调节时间”判不了
+        n = int(min(max(n, round(2 * float(sp["settle_s"]) / dt)), 20000))
 
     # 2) 初值（第 0 轮）在正式幅度上的表现
     t, r, y, u, m_init = run(p0, amp, n)
@@ -282,6 +290,12 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         hist.append((cost(res[4]), c, res[4], res[:4]))
     bc, bp, bm, (bt, br, by, bu) = min(hist, key=lambda h: h[0])
     bad = meets(bm, sp)
+    if not bad:                                                 # 达标要复现：同参数再跑两次（带噪声），任一次不达标就不算 pass
+        for _ in range(2):
+            mm = run(bp, amp, n)[4]
+            if meets(mm, sp):
+                bad = meets(mm, sp)
+                break
     # 5) 诚实判定：卡在哪
     lim = min(u_max, bp.get("ulim", math.inf))
     sat = float(np.mean(np.abs(bu[: max(len(bu) // 2, 1)]) >= 0.98 * lim))
@@ -294,12 +308,17 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         cat = None
     else:
         verdict = "fail"
+        Kst = abs(float(idn["K"])) if idn and idn.get("ok") and idn.get("K") is not None else None
+        settled = bool(idn and idn.get("ok") and (idn["L"] + 3 * idn["T"]) < 0.7 * n_probe * dt)   # 探测窗里走稳了，K 才可信
+        reach = (Kst * lim / abs(amp)) if Kst and settled else None             # 满输出的稳态能走到目标的几成（积分对象不看）
         if inv < -0.03:
             cat, why = "nonminimum_phase", f"起步先反向 {abs(inv) * 100:.1f}%：非最小相位，快了必反冲"
-        elif sat > 0.3:
-            cat, why = "saturation", f"执行器 {sat * 100:.0f}% 时间顶在上限：饱和，再加增益也快不了"
+        elif reach is not None and reach < 0.98 and not (idn or {}).get("integrating"):
+            cat, why = "saturation", f"满输出稳态只能到目标的 {reach * 100:.0f}%：执行器饱和"
         elif LT > 0.8:
             cat, why = "delay", f"纯滞后 / 时间常数 ≈ {LT:.2f}：时延过大"
+        elif sat > 0.3:
+            cat, why = "saturation", f"执行器 {sat * 100:.0f}% 时间顶在上限：饱和，再加增益也快不了"
         else:
             cat, why = "not_reached", "模型与板上都没搜到满足题面的参数"
         why += "；未达标：" + "、".join(bad)
