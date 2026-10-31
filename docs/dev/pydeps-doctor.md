@@ -24,7 +24,7 @@ Windows 包（`tools/package_windows.sh`）带官方 CPython **3.12.10** embedda
 <安装目录>/python/Lib/site-packages 打包时已离线装好 tools/wheelhouse.txt 全部依赖
 <安装目录>/wheelhouse/              离线 wheel + requirements.txt + manifest.json + _pip/pip-*.whl
 <安装目录>/repo/                    工程仓库
-<安装目录>/安装离线依赖.bat          补救：用自带解释器 + _pip 里的 pip wheel 离线重装
+<安装目录>/安装离线依赖.bat          补救：自带解释器跑 repo\tools\pydeps.py repair（pip 报错翻成中文）
 ```
 
 `wheelhouse/manifest.json`：`{"python_version": "3.12", "platform": "win_amd64", "implementation": "cp", "packages": {...}, "bundled_python": "python/python.exe", "pip_wheel": "_pip/pip-….whl"}`。
@@ -36,3 +36,9 @@ doctor 输出：`{ok, reason, message_zh, missing, python, install_cmd}`。
 - `reason: "import_failed"`：五个包都在但真导入失败（子进程冒烟），`import_errors: {包名: 错误}`，中文 `message_zh`。
 - `reason: "missing"`：缺包，`missing` 列包名；`reason: null` 且 `ok: true`：一切正常。
 - 没有 manifest.json（开发环境）时不做版本核对。
+
+### #137 补充
+- wheelhouse 目录不存在时绝不给 install_cmd（为 `null`）；缺包时 `reason: "wheelhouse_missing"` + 中文说明。
+- `python tools/pydeps.py repair`：离线重装，pip 英文报错翻译：No matching distribution / Could not find a version → `python_mismatch`；Errno 2 / No such file → `wheelhouse_missing`；其他 → `pip_failed` + 最后一行。
+- Linux / macOS 源码运行：说明里按系统给办法（`python3.12 -m venv .venv && .venv/bin/pip install -r tools/wheelhouse.txt`；断网时在联网机器上 `python3 tools/pydeps.py wheelhouse --platform manylinux2014_x86_64|macosx_11_0_arm64 --python-version 3.12 -o wheelhouse`，再 `--no-index` 装），不提 python.exe。
+- 正式安装包（app-windows.yml）用同一个 `tools/stage_pyembed.sh` 打包 python/ + wheelhouse/ + .bat，并在 CI 里断网（PIP_NO_INDEX）用自带 python 跑 doctor 断言 ok:true、导入五个包。

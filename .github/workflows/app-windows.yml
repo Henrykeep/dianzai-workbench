@@ -103,11 +103,28 @@ jobs:
           mods="dzbench.session, dzstep"; [ -f ../sidecar/dzbench/stepproto.py ] && mods="$mods, dzbench.stepproto"
           printf 'import %s\nprint("ok frozen imports: %s")\n' "$mods" "$mods" > "$RUNNER_TEMP/smoke_imports.py"
           ../../dist/dzbench.exe "$RUNNER_TEMP/smoke_imports.py"
+      - name: 自带嵌入版 Python 3.12.10 + 预装依赖 + wheelhouse/manifest.json（tools/stage_pyembed.sh，与 package_windows.sh 同一份逻辑）
+        shell: bash
+        env: { PY: python }
+        run: bash tools/stage_pyembed.sh app/dz-pyembed
+      - name: 冒烟：断网（PIP_NO_INDEX）下自带 python 跑 doctor 必须 ok:true，五个包都能导入
+        shell: bash
+        env: { PIP_NO_INDEX: "1", PIP_INDEX_URL: "http://0.0.0.0/disabled", PYTHONUTF8: "1", PYTHONPATH: "", PYTHONHOME: "" }
+        run: |
+          inst="$RUNNER_TEMP/inst"; rm -rf "$inst"; mkdir -p "$inst"
+          cp -r app/dz-pyembed/python app/dz-pyembed/wheelhouse "$inst/"; cp -r app/dz-repo "$inst/repo"
+          py="$inst/python/python.exe"
+          "$py" -c "import sys; print(sys.version); assert sys.version_info[:2] == (3, 12)"
+          "$py" -c "import control, scipy, numpy, sysidentpy, uncertainties; print('ok imports', numpy.__version__, scipy.__version__)"
+          out=$("$py" "$inst/repo/tools/plantmodel.py" doctor) || { echo "::error::doctor 退出码非 0：$out"; exit 1; }
+          echo "$out"
+          echo "$out" | "$py" -c "import json,sys; d=json.load(sys.stdin); assert d['ok'] is True and d['reason'] is None, d; assert d['install_cmd'] and 'python.exe' in d['install_cmd'], d"
+          "$py" "$inst/repo/tools/pydeps.py" repair   # 补救路径：离线重装也得能过
       - name: 安装包（resources 带上 repo\）
         shell: bash
         working-directory: app/src-tauri
         run: |
-          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
+          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../dz-pyembed/python/":"python/","../dz-pyembed/wheelhouse/":"wheelhouse/","../dz-pyembed/安装离线依赖.bat":"install-offline-deps.bat","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
           npx --yes @tauri-apps/cli@2 build --config ci-resources.json
           ls -la target/release/bundle/nsis/
       - name: 安装冒烟：旧版电赛工作台 → 新版 /S 静默安装（只一个芯台快捷方式、旧目录已删、工程保留）
