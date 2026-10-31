@@ -42,7 +42,7 @@ const h0 = roleCardHtml(rq, { phase: "idle", left: 2 }); assert.ok(h0.includes("
 assert.ok(!/disabled/.test(roleCardHtml(rq, { phase: "idle", left: 0 })));
 const hs = roleCardHtml(rq, { phase: "sending", left: 0 }); assert.ok(/disabled>已发出，等后端结果/.test(hs));
 assert.deepEqual(roleReply({ ok: true, roles: { a: "P" } }), { phase: "sent", left: 0 });
-assert.deepEqual(roleReply({ ok: false, message_zh: "角色冲突", fix_action: "confirm_roles" }), { phase: "error", left: 0, msg: "角色冲突" });
+assert.deepEqual(roleReply({ ok: false, message_zh: "角色冲突", fix_action: "confirm_roles" }), { phase: "error", left: 0, msg: "后端拒绝：角色冲突", same: true });   // #142
 assert.ok(roleCardHtml(rq, { phase: "error", left: 0, msg: "角色冲突" }).includes("角色冲突"));
 assert.ok(roleCardHtml(rq, { phase: "sent", left: 0 }).includes("重试整定"));
 assert.deepEqual(collectRoles(rq, { b: "I", c: "LIM" }), { a: "P", b: "I", c: "LIM" });

@@ -1,4 +1,4 @@
-import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, roleLeft, roleReply, type RoleReq, type RoleUi } from "./roles";
+import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, roleLeft, RoleSender, rolesKey, type RoleReq, type RoleUi } from "./roles";
 import { ROLE_F, ROLE_CONFIRM_OP } from "./fieldmap";
 import { applyBrand } from "./brand";
 import { lastRound } from "./round";
@@ -7,7 +7,7 @@ import "./style.css";
 import "./wa";
 import { SWITCH_EX_OP, FORKED_F } from "./fieldmap";
 import { setVerdict, getVerdict } from "./verdictbus";
-import { resultCardHtml } from "./iterui";
+import { resultCardHtml, ampSpecValue, partialConfirmZh, adoptToastZh } from "./iterui";
 import { toPlant, plantTagHtml, type PlantView } from "./plant";
 import { PLANT_F } from "./fieldmap";
 // 仿真 / 对象模型标签：放在调参页标题行，粗估 / 已辨识 + 依据
@@ -414,22 +414,22 @@ function pending() {
 }
 const pos = (p: Param, v: number) => p.max > p.min ? String(Math.min(Math.max((v - p.min) / (p.max - p.min), 0), 1)) : "0";
 let ROLE_REQ: RoleReq | null = null, roleUi: RoleUi = { phase: "idle", left: 0 };
-let ROLE_PICKS: Record<string, string> = {};   // #135 用户选的角色存在状态里，参数列表重画（状态推送）不丢
+let ROLE_PICKS: Record<string, string> = {}; const ROLE_TX = new RoleSender();   // #135 用户选的角色存在状态里，参数列表重画（状态推送）不丢
 const rolePicked = () => { const p: Record<string, string> = { ...ROLE_PICKS }; document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { if (x.value) p[x.dataset.roleN!] = x.value; }); return p; };
 function renderRoleCard() {
   const el = document.getElementById("role-host"); if (!el) return;
-  if (ROLE_REQ && (roleUi.phase === "idle" || roleUi.phase === "error")) roleUi = { ...roleUi, left: roleLeft(ROLE_REQ, rolePicked()) };
+  if (ROLE_REQ && (roleUi.phase === "idle" || roleUi.phase === "error")) { const c = collectRoles(ROLE_REQ, rolePicked()); roleUi = { ...roleUi, left: roleLeft(ROLE_REQ, rolePicked()), same: roleUi.phase === "error" ? !c || rolesKey(c) === ROLE_TX.last : undefined }; }
   el.innerHTML = roleCardHtml(ROLE_REQ, roleUi);
   document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { x.onchange = () => { if (x.value) ROLE_PICKS[x.dataset.roleN!] = x.value; renderRoleCard(); }; x.classList.toggle("role-empty", !x.value); });
   const ok = document.getElementById("role-ok") as HTMLButtonElement | null, rt = document.getElementById("role-retry");
   if (ok) ok.onclick = async () => {
     if (roleUi.phase === "sending" || !ROLE_REQ) return;   // #135 只发一次
-    const roles = collectRoles(ROLE_REQ, rolePicked()); if (!roles) return renderRoleCard();
+    const roles = collectRoles(ROLE_REQ, rolePicked()); if (!roles || !ROLE_TX.canSend(roles)) return renderRoleCard();   // #142 角色没变不重发
     ok.disabled = true; roleUi = { phase: "sending", left: 0 }; renderRoleCard();
-    const r = await call(ROLE_CONFIRM_OP, { roles }).catch((e: any) => ({ message_zh: e?.message_zh ?? e?.message }));
-    roleUi = roleReply(r); renderRoleCard();
+    const u = await ROLE_TX.send(roles, x => call(ROLE_CONFIRM_OP, { roles: x }));
+    if (u) roleUi = u; renderRoleCard();
   };
-  if (rt) rt.onclick = () => { ROLE_REQ = null; ROLE_PICKS = {}; roleUi = { phase: "idle", left: 0 }; renderParams(); $("it-go").click(); };
+  if (rt) rt.onclick = () => { ROLE_REQ = null; ROLE_PICKS = {}; ROLE_TX.reset(); roleUi = { phase: "idle", left: 0 }; renderParams(); $("it-go").click(); };
 }
 function renderParams() {
   queueMicrotask(renderRoleCard);   // 角色卡挂在 plist 里，等 innerHTML 换完再画
@@ -824,14 +824,26 @@ function renderIter() {
   const v = cardView(IT.s.result), id = IT.applyId();
   setVerdict(v.verdict);
   c.hidden = false;
-  c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null }) + metricCardHtml(IT.s.result);   // r9p6 有 metrics_card 就追加通用指标卡
+  c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null, schema: S.schema }) + metricCardHtml(IT.s.result);   // r9p6 有 metrics_card 就追加通用指标卡
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
   const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
+  const rr = c.querySelector<HTMLElement & { disabled: boolean }>("#it-rerun");
+  if (rr) rr.onclick = async () => {   // #141 按题面幅度复测：走同一条 iterate_start，目标取 amp_spec
+    const target = ampSpecValue(IT.s.phase === "done" ? IT.s.result : null);
+    if (target == null) return toast({ code: "", message: "后端没给题面幅度", fix: "在「更多实验」里按题面幅度做一次阶跃，再点自动迭代" });
+    rr.disabled = true; done();
+    const r = await call("iterate_start", { target }).catch((e: any) => { toast(e); return null; });   // 没有声明上限可比时放行，后端拒绝原因照显示
+    if (r) { IT.onStartReply(r, performance.now()); } else rr.disabled = false;
+    renderIter();
+  };
+  c.querySelector<HTMLElement>("#it-decl")?.addEventListener("click", e => { e.preventDefault(); openDeclField((e.target as HTMLElement).dataset.field!); });
   if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
+    const part = w.dataset.partial === "1";   // #141 降幅：先确认；采用后不记为已验证档（前端不登记任何验证状态）
+    if (part && !window.confirm(partialConfirmZh(IT.s.phase === "done" ? IT.s.result : null))) return;
     w.disabled = true;
     const r = await call("agent_action_decide", { id, accept: true }).catch(() => null);
-    if (r?.status === "done") { done(); userChangedParams(); toast("已采用最好参数", "ok", 4000); IT.reset(); } else w.disabled = false;
+    if (r?.status === "done") { done(); userChangedParams(); { const t = adoptToastZh(r, part); toast(t.text, t.kind, 4000); } IT.reset(); } else w.disabled = false;
     renderIter();
   };
 }
@@ -1114,3 +1126,14 @@ initPalette(() => [
 document.addEventListener("click", e => { const x = (e.target as HTMLElement).closest<HTMLElement>("[data-mc-export]"); if (!x) return; const { op, args } = exportArgs(x.dataset.mcExport!);
   void call(op, args).then((r: any) => toast(r?.message_zh ?? (r?.path ? `已导出：${r.path}` : "已导出"), "ok", 5000)).catch((er: any) => toast(er)); });
 document.addEventListener("click", e => { const a = (e.target as HTMLElement).closest<HTMLElement>("[data-evidence]"); if (!a) return; e.preventDefault(); void call("replay", { path: a.dataset.evidence }).then(() => plot.clear()).catch((er: any) => toast(er)); });
+
+// #141 fix_action edit_declaration：到项目页，能找到这一行（data-decl-key 或文本含字段名）就滚过去高亮；找不到就明说去声明文件改
+function openDeclField(key: string) {
+  goStepRef?.("项目" as any);
+  setTimeout(() => {
+    const pg = document.querySelector<HTMLElement>('.page[data-page="项目"]');
+    const el = pg?.querySelector<HTMLElement>(`[data-decl-key="${key}"]`) ?? [...(pg?.querySelectorAll<HTMLElement>("input,textarea,code,pre,li,td") ?? [])].find(x => (x.textContent || (x as HTMLInputElement).value || "").includes(key));
+    if (el) { el.scrollIntoView({ block: "center" }); el.classList.add("hl"); (el as HTMLInputElement).focus?.(); setTimeout(() => el.classList.remove("hl"), 2400); }
+    else toast({ code: "", message: `界面里还没有 ${key} 这一行的编辑框`, fix: `在工程声明文件里找到 ${key} 修改后重新连接` });
+  }, 50);
+}
