@@ -331,9 +331,16 @@ class AgentService:
         ex = steptools.quick_example(self.gw.root, text)
         if ex:                                                        # #55：说的是内置例题 → 复制成新项目目录（例题只读，不复用）
             code = steptools.fresh_code(self.gw.root, ex)                # ASCII slug（2026h-ball、2026h-ball-2…），#55
-            card = self.gate("project_fork", {"example": ex, "code": code, "name": ex}, lambda: None)
-            return {"spec": {"code": code, "example": ex, "sim": "sim:" + ex}, "action_id": card.get("action_id"),
-                    "note": f"确认卡已出：以内置例题 {ex} 为模板新建项目 {code}（新目录，例题本身不动）；确认后自动建项目、上仿真、自动迭代调参。不要再调别的工具建项目。"}
+            # 开局直接按最接近的例题建（新目录、只写用户项目区、例题不动），不再让用户点卡；回复里说清楚并可更换
+            risk.audit("project_fork", {"example": ex, "code": code}, risk.LOG, "auto")
+            out = self.project_fork(ex, code, name=ex)
+            code = out["project"]
+            said = f"已基于 {ex} 新建 {code}，可更换"
+            self.forked = said
+            self.emit({"type": "project_forked", "example": ex, "project": code, "path": out["path"], "message_zh": said})
+            return {"spec": {"code": code, "example": ex, "sim": "sim:" + ex}, "action_id": None, "fork": out,
+                    "note": f"{said}（新目录，例题本身不动；换别的例题或从头建，跟我说一声即可）。项目已建好并跑完自动迭代，"
+                            "最终回复第一句原样写「" + said + "」，再总结最好一轮；不要再调别的工具建项目。"}
         sp = steptools.quick_spec(text)
         sp["code"] = steptools.fresh_code(self.gw.root, sp["code"])     # 新建一律落新目录，不复用旧项目/示例（#39）
         d = steptools._flow(self.gw.root).home / sp["code"]; d.mkdir(parents=True, exist_ok=True)
@@ -519,7 +526,8 @@ class AgentService:
                               "告诉用户点卡上的确认即可写入；不要以提问结束。") if res.get("best_card") else ""
         return res
 
-    def iterate_apply_best(self, params: dict, iter: int | None = None, params_hash: str | None = None) -> dict:  # noqa: A002
+    def iterate_apply_best(self, params: dict, iter: int | None = None, params_hash: str | None = None,  # noqa: A002
+                           ss_err: dict | None = None) -> dict:
         """“采用最好参数”卡被人确认：把最好一轮的参数写回板子（逐个 set_param，校验/限幅/急停锁都在 Session）。"""
         applied = {}
         cur = self.s.params
@@ -556,9 +564,42 @@ class AgentService:
         best = res.get("best")
         if not best:
             return None
-        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"]},
-                      lambda: None)
+        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"],
+                                             "ss_err": self._ss_band(best.get("metrics") or {})}, lambda: None)
         return r.get("action_id")
+
+    def _ss_band(self, m: dict) -> dict:
+        """最好参数卡上的稳态误差：实测值 + 题目误差带（出处）+ 本次在不在带内。单位对不上（如测得 px、题目 cm）
+        不硬判：inside=None 并说明需要标定（#51）。题目没写误差带时用默认口径，并标明出处是默认值。"""
+        from .iterate import GOOD_REL
+        y = (self.step_cfg() or {}).get("y")
+        yu = next((f.get("unit") for f in (self.s.schema.fields if self.s.schema else []) if f["name"] == y), None) or ""
+        if "sse" in m:                                                    # tune_autopilot：物理单位绝对值
+            val, unit = abs(float(m["sse"])), yu
+        elif m.get("metric_mode") == "abs":                               # 板上 step_result abs 口径
+            val, unit = abs(float(m.get("ss_err_pct") or 0.0)), yu
+        else:
+            val, unit = abs(float(m.get("ss_err_pct") or m.get("sse_pct") or 0.0)), "%"
+        band = None
+        proj = self._project_path()
+        if proj:
+            ms = [(it, mt) for it in steptools._yaml(pathlib.Path(proj) / "requirements.yaml").get("items") or []
+                  for mt in it.get("metrics") or []
+                  if "误差" in str(mt.get("name", "")) and mt.get("op") in ("<=", "<") and isinstance(mt.get("value"), (int, float))]
+            ms.sort(key=lambda x: "稳态" not in str(x[1]["name"]))      # 题目写了“稳态误差”优先，否则取第一条误差指标
+            if ms:
+                it, mt = ms[0]
+                band = {"limit": float(mt["value"]), "unit": str(mt.get("unit") or ""), "item": it.get("id"),
+                        "source": f"题目 {it.get('id')}：{mt['name']} ≤ {mt['value']}{mt.get('unit') or ''}"}
+        if band is None:
+            band = {"limit": GOOD_REL["ss_err_pct"], "unit": "%", "source": "默认口径 |稳态误差| ≤ 2%（题目没写误差带）"}
+        same = band["unit"] == unit and bool(unit)
+        inside = (val <= band["limit"]) if same else None
+        if inside is None:
+            note = f"单位不同（实测 {unit or '无单位'}，题目 {band['unit'] or '无单位'}），要先标定换算才能判是否在带内"
+        else:
+            note = "在题目误差带内" if inside else f"超出误差带 {val - band['limit']:.4g}{unit}"
+        return {"measured": round(val, 6), "unit": unit, "band": band, "inside": inside, "note_zh": note}
 
     def _iter_emit(self, e: dict) -> None:
         if e.get("type") == "iterate.round" and e.get("valid"):
@@ -1269,6 +1310,9 @@ class AgentService:
 
     def _end_with_card(self, reply: str, r0) -> str:
         """#53：本轮跑完了自动迭代 → 这一轮以“采用最好参数”卡收尾，不以提问结束（模型偶尔还是会问“要不要…？”）。"""
+        said, self.forked = getattr(self, "forked", None), None
+        if said and said not in (reply or ""):                     # 开局自动建项目：第一句必须说明基于哪个例题、可更换
+            reply = said + "。\n" + (reply or "")
         res = getattr(self, "iter_result", None)
         if not res or res is r0 or not res.get("best_card"):
             return reply

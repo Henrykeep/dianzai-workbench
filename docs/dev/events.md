@@ -101,3 +101,13 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - `attempt` / `max`：第几次 / 最多几次（`RETRIES_5XX = 4`）；`wait_s`：本次等待秒数（退避，单次 ≤ 30 s）。
 - `fix_action: "switch_local_model"`：界面据此给「换成本地模型」按钮（打开模型设置，选本地/局域网的 OpenAI 兼容服务）。
 - 429 和断网不发 `llm_retry`（不是服务端忙，换模型未必有用），只有 `agent_retry`。
+
+## 自动新建项目 `type: "project_forked"`（开局按最近例题建，不出卡）
+
+开局一句话命中内置例题时，本地服务直接把例题复制成新项目目录（例题只读不动），推：`{example, project, path, message_zh}`，
+`message_zh` 固定为「已基于 <example> 新建 <project>，可更换」，Agent 回复第一句同样是这句。想换例题或从头建，直接跟 Agent 说。
+
+## “采用最好参数”卡的 `args.ss_err` / `preview.ss_err`
+
+`{measured, unit, band: {limit, unit, item, source}, inside, note_zh}`：实测稳态误差（绝对值）、题目误差带及出处（`source` 如「题目 B3：… ≤ 1cm」；
+题目没写时为默认口径 2%，`source` 会写明）、本次是否在带内。单位对不上（实测 px、题目 cm）时 `inside: null`，`note_zh` 说明需先标定（#51）。
