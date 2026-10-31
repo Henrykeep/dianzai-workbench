@@ -29,7 +29,8 @@ def test_every_server_op_has_a_caller():
     # 进度条的修复按钮按 fix_action 生成（dzbench/progress.py FIX → entrypoints.yaml 里同名动作；位置已固定登记，不再靠 dynamic）
     from dzbench.progress import FIX
     acts = yaml.safe_load((APP.parent / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["actions"]
-    fix_ops = {op for a in acts if a["id"] in FIX.values() or a.get("ready") is False for op in a.get("ops") or []}   # ready:false = 已登记、界面待接
+    from dzbench.human_only import GOTO                    # human_only 错误的 fix_action（如 enable_cloud）：Agent 错误卡按它跳到界面入口
+    fix_ops = {op for a in acts if a["id"] in FIX.values() or a["id"] in GOTO or a.get("ready") is False for op in a.get("ops") or []}   # ready:false = 已登记、界面待接
     orphan = SERVER_OPS - ui_ops() - set(SCRIPT_ONLY) - fix_ops
     assert not orphan, f"侧车 op 没有界面入口也没写进 SCRIPT_ONLY：{orphan}"
     assert not (set(SCRIPT_ONLY) - SERVER_OPS), "SCRIPT_ONLY 里有已删掉的 op"

@@ -31,7 +31,6 @@ actions:
   # ── 项目 ──
   - {id: project_new,  label: 新建项目,         at: page:req,   ui: pj-new,     ops: []}   # 只把焦点移到一句话输入（project_ask），不另起新建流程
   - {id: project_open, label: 打开项目,         at: page:req,   ui: pj-open,    ops: [project.list, project.open]}   # 列表按钮 .pj-item 是这一入口的选项，选中即 project.open {code}
-  - {id: project_migrate, label: 迁移旧工程,     at: page:req,   ui: pj-migrate, dynamic: true, ready: false, ops: [project.migrate]}   # #29：旧版写在仓库 examples/ 的用户工程复制到 $DZBENCH_HOME/projects/（只复制、不删源）；先 confirmed=false 出清单，人在确认卡上确认后 confirmed=true。界面入口待前端接
   - {id: project_ask,  label: 一句话新建工程,   at: step:项目,   ui: pj-ask-go,  ops: []}   # 只读 agent_config 判断是否已配置，配置入口仍是 llm_cfg
   - {id: project_sample, label: 打开示例项目,   at: step:项目,   ui: pj-sample,  ops: []}
   - {id: project_flow, label: 读题到生成引导,   at: step:项目,   ui: pflow,      ops: [flow_preview, flow_accept]}
@@ -73,7 +72,7 @@ actions:
   # ── 封箱 ──
   - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
   - {id: run_mode,     label: 切换运行模式,     at: page:seal,   ui: seal-mode,  ops: [set_run_mode]}   # 先 confirmed=false，needs_confirm 出确认卡，人确认后 confirmed=true；Agent 只给跳转（human_only）
-  - {id: enable_cloud, label: 比赛模式启用云端, at: toolbox:设置, ui: cloud-enable, dynamic: true, ready: false, human_only: true, ops: [set_cloud_enabled]}   # 合规底线：只能由人——先 confirmed=false 出确认卡，人确认后 confirmed=true；Agent 只给 goto settings:cloud（human_only）。界面入口待前端接（settings:cloud）
+  - {id: enable_cloud, label: 比赛模式启用云端, at: toolbox:设置, ui: cloud-enable, dynamic: true, human_only: true, ops: [set_cloud_enabled]}   # 合规底线：只能由人——先 confirmed=false 出确认卡，人确认后 confirmed=true；Agent 只给 goto settings:cloud（human_only）。界面入口待前端接（settings:cloud）；没接上前界面查不到 #cloud-enable，进度条/错误卡按“无元素”不出可点按钮（前端测试禁止 ready: false 行）
   - {id: run_selftest, label: 板上自检,         at: page:tune,   ui: seal-selftest, ops: [run_selftest]}   # 也是进度阻塞项 selftest_fail 的修复动作；固件没报时照写 selftest_unreported 的原因 + 处理
   - {id: params_flash, label: 存参数到 flash,   at: page:tune,   ui: tb-save,    ops: [save_params]}   # 调参页页头常驻；也是进度阻塞项 params_not_saved 的修复动作。原赛前检查对话框里的 cmd W 按钮已去掉（一个功能一个入口）
   - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}
@@ -106,6 +105,7 @@ script_ops:
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
+  project.migrate: 旧版写在仓库 examples/ 的用户工程复制到 $DZBENCH_HOME/projects/（#29，只复制、不删源）；不带 confirmed 只返回清单（needs_confirm），界面确认卡确认后 confirmed=true 才复制。确认卡由前端接（page:req），接上后移到 actions
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）
 agent_tools:
