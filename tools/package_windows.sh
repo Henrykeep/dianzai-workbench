@@ -6,7 +6,8 @@
 #   电赛工作台.exe          Tauri 外壳（windows-gnu）
 #   dzbench.exe            侧车（PyInstaller，wine 里打）
 #   repo/                  tools/stage_win_repo.sh 出的工程仓库子集 + Windows 仿真板
-#   （tools/*.py 由 dzbench.exe 在本进程里跑，不再带嵌入版 Python）
+#   python/                官方 CPython 嵌入版（钉版本 + sha256），已打开 site-packages 并离线装好 wheelhouse
+#   wheelhouse/            离线 wheel + manifest.json（python_version/platform，doctor 核对用）
 # 首选是 CI：.github/workflows/app-windows.yml 出 NSIS 安装包；这个脚本只是 CI 不可用时的备用
 # 用法：bash tools/package_windows.sh [输出目录=/workspace/dist]
 set -euo pipefail
@@ -33,12 +34,26 @@ echo "== 2/5 侧车 dzbench.exe（wine + PyInstaller）"
   --hidden-import serial.tools.list_ports --collect-submodules pypdf --collect-data pypinyin "$(zpath "$ROOT/app/sidecar/dzbench_entry.py")")
 cp "$WORK/pyi/dzbench.exe" "$STAGE/dzbench.exe"
 
-echo "== 3/5 离线依赖 wheelhouse（tools/wheelhouse.txt，钉版本；安装时不联网）"
-mkdir -p "$STAGE/wheelhouse"
+echo "== 3/5 自带嵌入版 CPython $PYVER + 离线依赖 wheelhouse（tools/wheelhouse.txt，钉版本；安装时不联网）"
+# 官方 embeddable zip（python.org，钉版本 + sha256）解到 <安装目录>/python/；用户机器上的 Python 版本不再影响离线安装
+source "$ROOT/tools/fetch_lib.sh"
+PYEMBED_URL="https://www.python.org/ftp/python/$PYVER/python-$PYVER-embed-amd64.zip"
+PYEMBED_SHA=4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3
+fetch_url "$PYEMBED_URL" "$WORK/pyembed.zip" "$PYEMBED_SHA" || { echo "✗ [pyembed] 嵌入版 Python 下载或 sha256 校验失败"; exit 1; }
+mkdir -p "$STAGE/python" && (cd "$STAGE/python" && unzip -q "$WORK/pyembed.zip")
+python3 "$ROOT/tools/pyembed.py" pth "$STAGE/python/python${PYVER%.*}._pth"   # 打开 site-packages（嵌入版默认关掉）
+PYTAG=${PYVER%.*}
+mkdir -p "$STAGE/wheelhouse/_pip"
 grep -v '^\s*#' "$ROOT/tools/wheelhouse.txt" | sed 's/\s*#.*//' | sed '/^\s*$/d' > "$STAGE/wheelhouse/requirements.txt"
-python3 -m pip download --only-binary=:all: --platform win_amd64 --python-version 3.12 --implementation cp \
+python3 -m pip download --only-binary=:all: --platform win_amd64 --python-version "$PYTAG" --implementation cp \
   -d "$STAGE/wheelhouse" -r "$STAGE/wheelhouse/requirements.txt" >/dev/null
-printf '@echo off\r\nrem 离线安装 Python 依赖（不联网）：python-control/scipy/numpy/sysidentpy/uncertainties\r\npython -m pip install --no-index --find-links "%%~dp0wheelhouse" -r "%%~dp0wheelhouse\\requirements.txt"\r\n' > "$STAGE/安装离线依赖.bat"
+python3 -m pip download --only-binary=:all: --no-deps -d "$STAGE/wheelhouse/_pip" pip==25.0.1 >/dev/null   # 嵌入版没有 pip；.bat 从这个 wheel 直接跑 pip
+python3 "$ROOT/tools/pyembed.py" manifest "$STAGE/wheelhouse" "$PYTAG" win_amd64 "$STAGE/wheelhouse/requirements.txt"
+# 打包时就离线装进自带解释器（本机 pip 按目标平台装，不联网）；.bat 只是用户误删后的补救
+python3 -m pip install --no-index --find-links "$STAGE/wheelhouse" --only-binary=:all: --platform win_amd64 \
+  --python-version "$PYTAG" --implementation cp --target "$STAGE/python/Lib/site-packages" \
+  -r "$STAGE/wheelhouse/requirements.txt" >/dev/null
+printf '@echo off\r\nrem 离线安装 Python 依赖（不联网）到安装目录自带的 python\\python.exe：python-control/scipy/numpy/sysidentpy/uncertainties\r\nfor %%%%W in ("%%~dp0wheelhouse\\_pip\\pip-*.whl") do set "PIPWHL=%%%%~fW"\r\n"%%~dp0python\\python.exe" "%%PIPWHL%%\\pip" install --no-index --find-links "%%~dp0wheelhouse" --target "%%~dp0python\\Lib\\site-packages" -r "%%~dp0wheelhouse\\requirements.txt"\r\n' > "$STAGE/安装离线依赖.bat"
 
 echo "== 4/5 Tauri 外壳（x86_64-pc-windows-gnu）"
 mkdir -p "$ROOT/app/src-tauri/binaries" && cp "$STAGE/dzbench.exe" "$ROOT/app/src-tauri/binaries/dzbench-x86_64-pc-windows-gnu.exe"

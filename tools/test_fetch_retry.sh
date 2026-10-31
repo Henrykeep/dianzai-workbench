@@ -6,7 +6,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 w=$(mktemp -d); trap 'rm -rf "$w"' EXIT
 mkdir -p "$w/bin" "$w/repo/tools"
-cp "$root/tools/fetch_third_party.sh" "$w/repo/tools/"
+cp "$root/tools/fetch_third_party.sh" "$root/tools/fetch_lib.sh" "$w/repo/tools/"
 cat > "$w/bin/curl" <<'C'
 #!/usr/bin/env bash
 if [ "${1:-}" = --help ]; then echo "--retry-all-errors"; exit 0; fi
