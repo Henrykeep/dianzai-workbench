@@ -406,6 +406,11 @@ class OpenAICompat:
                 self.emit({"type": "agent_retry", "attempt": attempt, "max": limit, "wait_s": wait, "code": code or None,
                            "why": e.message[:120],
                            "message_zh": f"{what}，{wait:g} 秒后自动重试（第 {attempt}/{limit} 次），不用重发"})
+                if code in (502, 503, 504):     # 服务端忙：单独一条 llm_retry，带可点的处理建议（换本地模型）
+                    self.emit({"type": "llm_retry", "attempt": attempt, "max": limit, "wait_s": wait, "code": code,
+                               "fix_action": "switch_local_model",
+                               "message_zh": f"模型服务忙（HTTP {code}），{wait:g} 秒后重试（{attempt}/{limit}）；"
+                                             "一直忙可以换成本地模型"})
                 time.sleep(wait)
         if tools and not m.get("tool_calls") and (calls := parse_json_call(m.get("content") or "", {t["name"] for t in tools})):
             m = {"role": "assistant", "content": "", "tool_calls": calls}      # 小模型常把调用写进正文：也认

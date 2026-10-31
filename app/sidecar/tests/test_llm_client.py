@@ -240,6 +240,7 @@ def test_429_waits_retry_after_and_shows_clean_message(cfgdir, monkeypatch):
     srv.shutdown()
     assert m["content"] == "好" and waits == [3.0]
     assert next(e for e in ev if e["type"] == "agent_retry")["why"].startswith("模型服务返回 429：1分钟内")
+    assert not [e for e in ev if e["type"] == "llm_retry"]            # 429 是限流不是服务忙：不发 llm_retry
 
 
 def test_native_tools_refused_with_zero_retries_still_falls_back(cfgdir):
@@ -276,3 +277,6 @@ def test_503_no_provider_retries_with_message_then_clear_error(cfgdir, monkeypat
     assert all("暂时不可用" in r["message_zh"] and "自动重试" in r["message_zh"] for r in rs)
     assert waits == sorted(waits) and waits[0] < waits[-1] and sum(waits) <= 30
     assert "503" in e.value.message and "已自动重试 4 次" in e.value.message and len(log) == 5
+    lr = [x for x in ev if x["type"] == "llm_retry"]                 # 每次 5xx 重试都有 llm_retry，带换本地模型的处理
+    assert [(r["attempt"], r["max"], r["code"], r["fix_action"]) for r in lr] == [(i, 4, 503, "switch_local_model") for i in (1, 2, 3, 4)]
+    assert [r["wait_s"] for r in lr] == waits

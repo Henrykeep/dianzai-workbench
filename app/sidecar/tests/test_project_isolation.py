@@ -56,3 +56,18 @@ def test_chain_refuses_example_as_new_project():
     with pytest.raises(FlowError) as e:
         steptools.project_chain(ROOT, ex)
     assert e.value.code == "example_readonly"
+
+
+def test_slug_pinyin_fullwidth_and_collision():
+    """#55：中文 → 无声调拼音（pypinyin）；全角 → ASCII；重名加 -2/-3；转完为空才 proj-<哈希>。"""
+    from dzbench import paths
+    assert steptools.slug("2026H小球") == "2026h-xiaoqiu"
+    assert steptools.slug("平衡滚球") == "pinghenggunqiu"
+    assert steptools.slug("２０２６Ｈ　小球") == "2026h-xiaoqiu"          # 全角数字/字母/空格
+    assert steptools.slug("ＰＩＤ＿电机") == "pid-dianji"
+    assert steptools.slug("！！？").startswith("proj-")
+    assert steptools.fresh_code(ROOT, "2026H小球") == "2026h-xiaoqiu"
+    (paths.projects_dir() / "2026h-xiaoqiu").mkdir(parents=True)
+    assert steptools.fresh_code(ROOT, "2026H小球") == "2026h-xiaoqiu-2"
+    (paths.projects_dir() / "2026h-xiaoqiu-2").mkdir(parents=True)
+    assert steptools.fresh_code(ROOT, "２０２６Ｈ小球") == "2026h-xiaoqiu-3"

@@ -102,6 +102,32 @@ jobs:
           echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
           npx --yes @tauri-apps/cli@2 build --config ci-resources.json
           ls -la target/release/bundle/nsis/
+      - name: 安装冒烟：旧版电赛工作台 → 新版 /S 静默安装（只一个芯台快捷方式、旧目录已删、工程保留）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $nsis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+          if (-not (Test-Path $nsis)) { choco install nsis -y --no-progress | Out-Null }
+          $old = "$env:RUNNER_TEMP\oldinst"; New-Item -ItemType Directory -Force $old | Out-Null
+          Copy-Item app\src-tauri\windows\ci\old-dzbench.nsi $old
+          Push-Location $old; & $nsis /INPUTCHARSET UTF8 old-dzbench.nsi; if ($LASTEXITCODE) { throw "makensis 失败" }; Pop-Location
+          Start-Process "$old\old-setup.exe" -ArgumentList "/S" -Wait
+          $oldDir = Join-Path $env:LOCALAPPDATA "电赛工作台"
+          if (-not (Test-Path "$oldDir\uninstall.exe")) { throw "旧版没装上" }
+          $proj = Join-Path $HOME ".dzbench\projects\ci-keep"; New-Item -ItemType Directory -Force $proj | Out-Null
+          Set-Content "$proj\marker.txt" "keep"
+          $setup = Get-ChildItem app\src-tauri\target\release\bundle\nsis\*.exe | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList "/S" -Wait -PassThru
+          if ($p.ExitCode) { throw "新版安装退出码 $($p.ExitCode)" }
+          $sm = @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")
+          $lnk = Get-ChildItem $sm -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -match "芯台|XinTai|电赛工作台" }
+          $lnk | ForEach-Object { Write-Host "快捷方式: $($_.FullName)" }
+          $fail = @()
+          if (@($lnk).Count -ne 1 -or $lnk[0].BaseName -ne "芯台") { $fail += "(a) 开始菜单应只有一个 芯台.lnk，实际 $(@($lnk).Count) 个" }
+          if (Test-Path $oldDir) { $fail += "(b) 旧程序目录还在：$oldDir" }
+          if (-not (Test-Path "$proj\marker.txt")) { $fail += "(c) 测试工程丢了：$proj" }
+          if ($fail) { $fail | ForEach-Object { Write-Host "::error::$_" }; exit 1 }
+          Write-Host "安装冒烟通过：一个芯台快捷方式、旧目录已删、工程保留"
       - uses: actions/upload-artifact@v4
         with:
           name: dzbench-windows

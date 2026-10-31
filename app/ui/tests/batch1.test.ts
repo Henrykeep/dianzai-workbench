@@ -12,11 +12,11 @@ it.setSim(true); eq(it.text(0), "最多 20 轮 / 180 s", "sim idle text");
 it.onStartReply({ status: "started", budget: { time_s: 180, rounds: 8 } }, 0);
 eq(it.button().op, "cancel", "running btn is stop");
 it.onEvent({ type: "iterate.round", iter: 2 }, 0);
-eq(it.text(65000), "第 3/8 轮 · 剩余 1:55", "progress text");
-eq(runText(1, { time_s: 180, rounds: 8 }, 200), "第 1/8 轮 · 剩余 0:00", "clamped");
+eq(it.text(65000), "第 3/8 轮，预算还剩 115 s", "progress text");
+eq(runText(1, { time_s: 180, rounds: 8 }, 200), "第 1/8 轮，预算还剩 0 s", "clamped");
 const p = new IterModel(false); p.onStartReply({ status: "pending_human_click", action_id: "a" }, 0);
 eq(p.button().op, "cancel", "pending stop"); eq(p.text(0).startsWith("等待确认卡"), true, "pending text");
-const ev = new IterModel(true); ev.onEvent({ type: "iterate.started", limits: { time_s: 60, rounds: 5 } }, 0); eq(ev.text(0), "第 1/5 轮 · 剩余 1:00", "started limits");
+const ev = new IterModel(true); ev.onEvent({ type: "iterate.started", limits: { time_s: 60, rounds: 5 } }, 0); eq(ev.text(0), "第 1/5 轮，预算还剩 60 s", "started limits");
 it.onEvent({ type: "iterate.stopped", reason: "budget_rounds", rounds: 8, next_zh: "可写入后再试", best: { iter: 5, params: { kp: 1.23456, ki: 0.5 }, gaps: { overshoot: { value: 12, limit: 5, gap: 7, unit: "%" } } } }, 0);
 eq(it.s.phase, "done", "done"); eq(it.button(), { label: "自动迭代", op: "start" }, "done btn");
 const v = cardView((it.s as any).result);
@@ -42,3 +42,20 @@ eq(isFlashNotice({ blocker_code: "x", message_zh: "板上参数已修改但尚�
 eq(pickTheme(null), "light", "default light"); eq(pickTheme("dark"), "dark", "persisted dark"); eq(pickTheme("bogus"), "light", "bad");
 eq([clearBtnHidden(true), clearBtnHidden(false)], [false, true], "cmd-r only while latched");
 console.log("✓ batch1 (iterate / flash nag / theme)");
+// r9：采用最好参数卡 = 本地服务的 agent_action（只出一张卡）；iterate_status 补状态；N 取 iterate.started.limits.rounds
+(() => {
+  const m = new IterModel(true);
+  m.onEvent({ type: "iterate.started", limits: { time_s: 180, rounds: 20 } }, 0);
+  if (m.text(0) !== "第 1/20 轮，预算还剩 180 s") throw new Error("N from limits");
+  m.onEvent({ type: "iterate.stopped", reason: "pass", best: { iter: 3, params: { kp: 1 }, pass: { all: true } } }, 0);
+  if (m.applyId() !== null) throw new Error("no card yet");
+  if (!m.onEvent({ type: "agent_action", tool: "iterate_apply_best", id: 42 }, 0) || m.applyId() !== 42) throw new Error("card id");
+  if (m.onEvent({ type: "agent_action", tool: "flash", id: 7 }, 0)) throw new Error("other cards untouched");
+  const r = new IterModel(true); r.onStatus({ running: true, result: null }, 0); if (r.button().op !== "cancel") throw new Error("status running");
+  const d = new IterModel(true); d.onStatus({ running: false, result: { type: "iterate.stopped", reason: "budget_time", best: { iter: 2, params: { kp: 2 } }, best_card: 9 } }, 0);
+  if (d.applyId() !== 9 || cardView((d.s as any).result).title !== "最好一组参数（第 2 轮）") throw new Error("status done");
+  const n = new IterModel(true); n.onStatus({ running: false, result: null }, 0); if (n.s.phase !== "idle") throw new Error("status idle");
+  console.log("✓ r9 iterate card/status");
+})();
+if (cardView({ reason: "pass", next_zh: "已连续达标：点“保存参数”写入 flash" }).next !== "") throw new Error("flash next"); console.log("✓ r9 no flash in card");
+(() => { const m = new IterModel(true); m.onStatus({ running: false, result: { reason: "pass", best: { iter: 1, params: { kp: 1 } }, best_card: 5 } }, 0, 5); if (m.s.phase !== "idle") throw new Error("dismissed"); console.log("✓ r9 dismissed card stays closed"); })();

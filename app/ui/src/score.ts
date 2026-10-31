@@ -4,6 +4,7 @@
 // 表格结构借 DS-land-and-air《D题 V23 联调与计分矩阵》的“得分验收矩阵”：评分项 | 自动判定 | 人工 / 物理证据 | 当前结论（默认未验收）。
 import { acceptEval, worstOf, type AcceptSpec, type AcceptR } from "./accept";
 import type { Plot } from "./plot";
+const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 type Call = <T = any>(op: string, a?: Record<string, unknown>) => Promise<T>;
 type Metric = { name: string; op?: string; value?: number; unit?: string; how?: string; accept?: string; test_id?: string };
 export type ScoreItem = { id: string; part?: string; score?: number; text: string; metrics: Metric[]; evidence: unknown[]; accept?: string; runs?: number };
@@ -34,22 +35,22 @@ export function snapRun(rel: number[], ys: number[][], names: string[], units: s
   const L = lanesOf(names, refOf, vis); if (!L.length || rel.length < 2) return;
   const W = 900, LH = 150, TOP = 28, BOT = 24, PADL = 60, PADR = 12, H = TOP + L.length * LH + BOT;
   const o = document.createElement("canvas"); o.width = W; o.height = H; const g = o.getContext("2d")!;
-  g.fillStyle = "#111"; g.fillRect(0, 0, W, H); g.font = "13px sans-serif"; g.fillStyle = "#ddd"; g.fillText(title, 8, 18);
+  g.fillStyle = css("--surface-1"); g.fillRect(0, 0, W, H); g.font = "13px sans-serif"; g.fillStyle = css("--text-primary"); g.fillText(title, 8, 18);
   const t0 = rel[0], t1 = rel[rel.length - 1], X = (t: number) => PADL + (t - t0) / (t1 - t0 || 1) * (W - PADL - PADR);
   L.forEach((ln, k) => {
     const y0 = TOP + k * LH, ser = [ys[ln.y], ln.ref >= 0 ? ys[ln.ref] : []];
     const all = ser.flat().filter(Number.isFinite); let lo = Math.min(...all), hi = Math.max(...all);
     if (!all.length) { lo = -1; hi = 1; } if (hi - lo < 1e-9) { lo -= 1; hi += 1; } const pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
     const Y = (v: number) => y0 + 8 + (hi - v) / (hi - lo) * (LH - 24);
-    g.strokeStyle = "#333"; g.strokeRect(PADL, y0 + 8, W - PADL - PADR, LH - 24);
-    g.fillStyle = "#888"; g.font = "11px monospace"; g.fillText(hi.toPrecision(3), 4, y0 + 18); g.fillText(lo.toPrecision(3), 4, y0 + LH - 18);
-    ser.forEach((a, si) => { if (!a.length) return; g.strokeStyle = si ? "#c9a24a" : "#6cc"; g.setLineDash(si ? [5, 4] : []); g.beginPath();
+    g.strokeStyle = css("--border"); g.strokeRect(PADL, y0 + 8, W - PADL - PADR, LH - 24);
+    g.fillStyle = css("--text-muted"); g.font = "12px monospace"; g.fillText(hi.toPrecision(3), 4, y0 + 18); g.fillText(lo.toPrecision(3), 4, y0 + LH - 18);
+    ser.forEach((a, si) => { if (!a.length) return; g.strokeStyle = si ? css("--ch2") : css("--ch1"); g.setLineDash(si ? [5, 4] : []); g.beginPath();
       let pen = false; rel.forEach((t, q) => { const v = a[q]; if (!Number.isFinite(v)) { pen = false; return; } pen ? g.lineTo(X(t), Y(v)) : g.moveTo(X(t), Y(v)); pen = true; }); g.stroke(); });
-    g.setLineDash([]); g.font = "12px sans-serif"; g.fillStyle = "#6cc";
+    g.setLineDash([]); g.font = "12px sans-serif"; g.fillStyle = css("--ch1");
     g.fillText(`${names[ln.y]}${units[ln.y] ? ` (${units[ln.y]})` : ""}`, PADL + 6, y0 + 22);
-    if (ln.ref >= 0) { g.fillStyle = "#c9a24a"; g.fillText(`- - ${names[ln.ref]}`, PADL + 6, y0 + 38); }
+    if (ln.ref >= 0) { g.fillStyle = css("--ch2"); g.fillText(`- - ${names[ln.ref]}`, PADL + 6, y0 + 38); }
   });
-  g.fillStyle = "#888"; g.font = "11px monospace";
+  g.fillStyle = css("--text-muted"); g.font = "12px monospace";
   for (let q = 0; q <= 5; q++) { const t = t0 + (t1 - t0) * q / 5; g.fillText(t.toFixed(2) + " s", X(t) - 18, H - 8); }
   return o.toDataURL("image/png");
 }

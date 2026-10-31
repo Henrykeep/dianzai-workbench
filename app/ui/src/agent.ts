@@ -1,5 +1,7 @@
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
+import { retryText, clearsRetry, LOCAL_LABEL } from "./llmretry";
+import { isRetry, toRetry, agentState, sourceLabel, AGENT_F } from "./fieldmap";
 import { dropFlashBlockers, isFlashNotice } from "./flashnag";
 import { Msg } from "./ws";
 import { runAction, resolveFix } from "./progress";
@@ -50,7 +52,7 @@ export function initAgent(call: Call) {
     const m = r.metrics;
     const sel = (cur: string, opts: string[]) => opts.map(o => `<option ${o === cur ? "selected" : ""}>${esc(o)}</option>`).join("");
     const ys = r.pairs.map((p: string[]) => p[0]), sps = r.pairs.map((p: string[]) => p[1]);
-    const d = add(`<div class="hd"><span class="dotk tune"></span><span class="t">阶跃分析</span><span class="lbl">规则 · 离线</span></div>
+    const d = add(`<div class="hd"><span class="dotk tune"></span><span class="t">阶跃分析</span><wa-tag size="small" appearance="filled" variant="neutral">来自规则引擎</wa-tag></div>
       <div class="row sm">反馈 <select class="in" data-k="y">${sel(r.y, ys.includes(r.y) ? ys : [r.y, ...ys])}</select>
         设定 <select class="in" data-k="sp">${sel(r.sp, sps.includes(r.sp) ? sps : [r.sp, ...sps])}</select></div>
       ${m.ok ? `<table class="met">
@@ -161,7 +163,7 @@ export function initAgent(call: Call) {
     const where = a.sim ? "仿真" : a.as_hw ? "仿真当实板" : "实机";
     const steps = (c.steps || []) as any[];
     const body = `<header class="ahd"><span class="pulse"></span><div><div class="at">${esc(c.title ?? TOOL_CN[a.tool] ?? a.tool)}</div>
-        ${c.summary ? `<div class="as">${esc(c.summary)}</div>` : ""}</div><span class="where ${a.sim ? "sim" : "hw"}">${where}</span></header>
+        ${c.summary ? `<div class="as">${esc(c.summary)}</div>` : ""}</div>${sourceLabel(a) ? `<wa-tag size="small" variant="neutral">${sourceLabel(a)}</wa-tag>` : ""}<span class="where ${a.sim ? "sim" : "hw"}">${where}</span></header>
       ${c.error ? `<div class="aerr">${esc(c.error)}</div>` : ""}
       ${pa ? `<ul class="prearm">${(pa.checked as string[]).map(x => `<li class="ok-t">✓ ${esc(PRE[x] ?? x)}</li>`).join("")}${(pa.failed as string[]).map(f => `<li class="warn-t">✕ ${esc(f)}</li>`).join("")}</ul>` : ""}
       ${steps.length ? `<ol class="asteps">${steps.map((st, i) => stepRow(st, i, steps.length)).join("")}</ol>` : ""}
@@ -460,11 +462,12 @@ export function initAgent(call: Call) {
     bs = dropFlashBlockers(bs); const fresh = newBlockers(seenBlk, bs);
     gateN.sync(bs.map(b => b.code)); for (const k of [...notes.keys()]) if (!seenBlk.has(k)) notes.delete(k);
     if (!primed) { primed = true; bs.forEach(b => gateN.offer(b.code)); return; }   // 打开页面时已有的 blocker 不刷屏
-    for (const b of fresh) if (gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
+    for (const b of fresh) if (b.code !== "params_not_saved" && gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
   }
   function onNotice(n: Notice) {
     if (!n?.blocker_code || isFlashNotice(n)) return;   // #63 未写入 Flash 只在保存参数旁
     if (n.blocker_code === "estop_cleared") return;   // 解除提示由主界面统一一张卡（estopbtn.clearedOnce），这里不重复
+    if (n.blocker_code === "params_not_saved") return;   // 设计 v11：未保存只在页头出现一次
     const fallback = notes.get(n.blocker_code)?.dataset.src !== "notice" && notes.has(n.blocker_code);
     if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复
     seenBlk.add(n.blocker_code);
@@ -559,11 +562,22 @@ export function initAgent(call: Call) {
   call("agent_config").then(c => {
     if (c?.configured) badge(/ollama|localhost|127\.0\.0\.1|:11434/i.test(`${c.provider} ${c.base_url}`) ? "local" : "cloud");
     if (!c || c.configured) return;
-    document.querySelectorAll(".setup-card").forEach(e => e.remove());   // 只保留一张
-    const card = add(`<div class="ag-setup"><b>Agent 未配置</b><p>原因：尚未配置大模型服务。处理：点击「配置模型」。未配置时，新建项目、烧录、示波、调参、评分与急停均可正常使用。</p></div>
-      <div class="act"><button class="btn" data-r="cfg">配置模型</button></div>`, "card setup-card");
-    card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
+    showSetup(true);
   }).catch(() => {});
+
+  // 未配置模型：右栏只放这一张（说明 + 去配置）；建议卡自己标来源（来自规则引擎 / 来自模型）
+  function showSetup(on: boolean) {
+    document.querySelectorAll(".setup-card").forEach(e => e.remove());
+    if (!on) return;
+    const card = add(`<div class="ag-setup"><b>Agent 还没有大模型</b><p>配置后可以一句话建工程、读题、解释波形。调参、示波、评分、急停和规则引擎建议不依赖它。</p>
+      <wa-button size="small" appearance="outlined" data-r="cfg">去配置</wa-button></div>`, "card setup-card");
+    card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
+  }
+  let lastAgentState: string | null = null;
+  function onAgentState(m: any) {   // status.agent.state 驱动（fix_action=configure_model → 去配置）
+    const st = agentState(m); if (!st || st === lastAgentState) return; lastAgentState = st;
+    showSetup(st === "unconfigured" || m?.[AGENT_F.obj]?.[AGENT_F.fix] === AGENT_F.cfgFix);
+  }
 
   // ---------------------------------------------------------------- 计划 / 撤销
   let planEl: HTMLElement | null = null;
@@ -638,8 +652,23 @@ export function initAgent(call: Call) {
     c.querySelector<HTMLElement>("[data-r=retry]")!.onclick = () => { c.remove(); $<HTMLInputElement>("ag-in").value = m.text; $<HTMLFormElement>("ag-form").requestSubmit(); };
   }
 
+  // llm_retry：同一轮只一条，原地更新
+  let retryEl: HTMLElement | null = null;
+  function onRetry(m: any) {
+    const html = `<span class="lbl">大模型</span>${esc(retryText(toRetry(m)))}<div class="act"><button class="btn sm">${LOCAL_LABEL}</button></div>`;
+    if (retryEl?.isConnected) retryEl.innerHTML = html; else retryEl = add(html, "msg bot llm-retry");
+    retryEl.querySelector("button")!.onclick = () => {
+      const fa = toRetry(m).fix, f = resolveFix(fa);
+      if (fa && f?.kind === "run") return runAction(fa, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
+      document.getElementById("ag-cfg")?.click();   // 本地服务没给可执行的 fix_action：打开模型设置（本地 Ollama 一栏）
+      document.getElementById("cfg-ol")?.scrollIntoView({ block: "nearest" });
+    };
+  }
   return {
     onMsg(m: Msg) {
+      if (m.type === "status") onAgentState(m);
+      if (isRetry(m)) onRetry(m);
+      else if (retryEl && clearsRetry(m.type)) { retryEl.remove(); retryEl = null; }
       if (typeof m.type === "string" && m.type.startsWith("agent_")) watch.touch(performance.now());
       if (m.type === "agent_error") { gate.error(); watch.stop(); live?.remove(); showCard(errorCard(m as any)); }
       if (m.type === "agent_delta") onDelta(m.text);
@@ -652,7 +681,8 @@ export function initAgent(call: Call) {
       if (m.type === "agent_tune_pending") renderTune(m);
       if (m.type === "agent_journal") renderJournal(m.items);
       if (m.type === "change") renderChange(m);
-      if (m.type === "agent_action") renderAction(m);
+      if (m.type === "agent_action" && m.tool === "iterate_apply_best") iterPointer();
+      if (m.type === "agent_action" && m.tool !== "iterate_apply_best") renderAction(m);   // “采用最好参数”只在调参页结果卡出一次（main.ts #it-card）
       if (m.type === "tune_round") renderRound(m);
       if (m.type === "sweep_result") renderSweep(m);
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
@@ -665,4 +695,15 @@ export function initAgent(call: Call) {
       if (thinkEl?.isConnected && /等待解除急停/.test(thinkEl.textContent || "")) thinkEl.textContent = "急停已解除，等待本地服务继续";
     },
   };
+}
+
+// 结果卡只在调参页出一张；Agent 流里只放一行指路（不是第二张卡），不在调参页时能一键过去
+function iterPointer(): void {
+  const box = document.getElementById("props"); if (!box) return;
+  box.querySelector(".it-ptr")?.remove();
+  const d = document.createElement("div"); d.className = "msg bot it-ptr";
+  d.append("自动迭代已结束，结果卡在调参页。");
+  const b = document.createElement("button"); b.type = "button"; b.className = "btn sm"; b.textContent = "去调参页查看";
+  b.onclick = () => (document.querySelector('#steps [data-step="调参"]') as HTMLButtonElement | null)?.click();
+  d.append(" ", b); box.append(d); d.scrollIntoView({ block: "nearest" });
 }
