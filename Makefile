@@ -277,6 +277,8 @@ check:
 	@tools/require_fetch.sh   # 先于一切：没 make fetch 就直接说，别等编译报错
 	tools/require_fetch.sh --selftest
 	$(PY) tools/check_redef.py --selftest
+	$(PY) tools/check_problem_specific.py --selftest   # #80 核心代码不许为某一道题写专门代码
+	$(PY) tools/check_problem_specific.py
 	$(PY) tools/check_redef.py
 	$(PY) tools/tree_guard.py --selftest
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)

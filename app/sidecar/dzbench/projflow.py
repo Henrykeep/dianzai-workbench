@@ -39,7 +39,7 @@ class FlowError(Exception):
 def _safe(name: str) -> str:
     s = re.sub(r"[^A-Za-z0-9_-]+", "-", name or "").strip("-")
     if not s:
-        raise FlowError("bad_name", "题号 / 板名只能用字母数字和 - _", "例：2026H")
+        raise FlowError("bad_name", "题号 / 板名只能用字母数字和 - _", "例：H-car_01")
     return s
 
 

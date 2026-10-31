@@ -1,7 +1,7 @@
 """Agent 评测一键运行：真大模型 × 仿真板 × 评测集，重复 N 次出打分报告（JSON + Markdown）。
 
     python -m dzbench.agent.evalrun                 # 用 Agent 设置里的模型（或环境变量 DZBENCH_API_KEY）
-    python -m dzbench.agent.evalrun --repeat 3 --ports sim:car_2wd,sim:2026H_ball
+    python -m dzbench.agent.evalrun --repeat 3 --ports sim:car_2wd,sim:<例题代号>
     DZBENCH_BASE_URL=… DZBENCH_MODEL=… DZBENCH_API_KEY=… python -m dzbench.agent.evalrun   # 任一 OpenAI 兼容服务/中转站
     python -m dzbench.agent.evalrun --replay tests/fixtures/agent_evals/<模型>.json        # 离线：拿录好的对话按当前评分规则重评（不要 Key）
 
@@ -19,7 +19,16 @@ from collections import defaultdict
 from . import evals
 from . import llm as llm_mod
 
-DEFAULT_PORTS = ("sim:car_2wd", "sim:2026H_ball")  # 快速默认；全部仿真对象：--ports all
+def _default_ports() -> tuple[str, ...]:
+    """快速默认：一个应用 + 第一个内置例题自己声明的仿真板（不写死题号）；全部仿真对象：--ports all。"""
+    import pathlib
+    from .steptools import example_sim_board
+    ex = pathlib.Path(__file__).resolve().parents[4] / "examples"
+    first = next((d for d in sorted(ex.iterdir()) if (d / "project.yaml").exists()), None) if ex.is_dir() else None
+    return ("sim:car_2wd",) + ((example_sim_board(first, first.name),) if first else ())
+
+
+DEFAULT_PORTS = _default_ports()
 
 
 def summarize(runs: list[dict], meta: dict) -> dict:

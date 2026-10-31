@@ -13,9 +13,9 @@ def test_parse_notes():
 
 
 def test_explicit_wins_and_defaults():
-    pt = pretune.from_answers({"plant": "ball", "notes": "超调 3%", "max_overshoot_pct": "8"})
+    pt = pretune.from_answers({"plant": "unstable", "notes": "超调 3%", "max_overshoot_pct": "8"})
     assert pt.max_overshoot_pct == 8.0                  # 显式填的优先于自由文本
-    assert pt.effective_goal() == "conservative"        # 钢球默认稳为主
+    assert pt.effective_goal() == "conservative"        # 不稳定对象默认稳为主
     assert pretune.from_answers({"plant": "nonsense"}).plant == "other"
     assert pretune.from_answers({"max_overshoot_pct": "abc"}).max_overshoot_pct is None
 

@@ -260,7 +260,7 @@ def _load_phrases() -> None:
 
 def slug(name: str) -> str:
     """项目目录名：只用 ASCII 小写字母/数字/连字符（Windows 路径、Keil、make 都不怕）。
-    中文转无声调拼音（pypinyin，MIT），全角先 NFKC 归一：2026H小球 → 2026h-xiaoqiu。转完为空才用 proj-<哈希>。"""
+    中文转无声调拼音（pypinyin，MIT），全角先 NFKC 归一：H题小车 → h-ti-xiao-che。转完为空才用 proj-<哈希>。"""
     import hashlib
     import re
     import unicodedata
@@ -275,9 +275,9 @@ def slug(name: str) -> str:
 
 
 def fresh_code(root, code: str) -> str:
-    """新建项目的目录名（#39/#55）：ASCII slug（如 2026h-ball）；只和真实存在的用户项目（$DZBENCH_HOME/projects，按小写比，
-    Windows 不分大小写）重名才加 -2、-3…。内置例题在仓库 examples/、代号是 2026H_ball 这种原名，和用户项目不在一个目录、
-    也不会同名，所以不算占用（r9q：以前把例题自己的 slug 当成已占用，干净 HOME 第一次新建就成了 2026h-ball-2）。"""
+    """新建项目的目录名（#39/#55）：ASCII slug（如 h-ti-xiao-che）；只和真实存在的用户项目（$DZBENCH_HOME/projects，按小写比，
+    Windows 不分大小写）重名才加 -2、-3…。内置例题在仓库 examples/、代号是原名（examples/ 目录名），和用户项目不在一个目录、
+    也不会同名，所以不算占用（r9q：以前把例题自己的 slug 当成已占用，干净 HOME 第一次新建就带了 -2）。"""
     pd = paths.projects_dir()
     have = {d.name.lower() for d in pd.iterdir()} if pd.is_dir() else set()
     base = slug(code)
@@ -341,7 +341,7 @@ QUICK_MCU = [(r"f1|f103|c8t6", "stm32f103c8t6"), (r"f407|f4|vet6|天空星", "st
 
 
 def quick_example(root, text: str) -> str | None:
-    """#55：一句话说的是某道内置例题（如“2026 年 H 题 车载平衡滚球”）→ 例题代号；对不上 = None。
+    """#55：一句话说的是某道内置例题（题号或题目标题）→ 例题代号；对不上 = None。
     只用来“以例题为模板新建”，例题目录本身只读、永远不当用户项目用。"""
     import re as _re
     t = (text or "").replace(" ", "")
