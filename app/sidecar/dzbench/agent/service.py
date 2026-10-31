@@ -108,7 +108,7 @@ class AgentService:
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
             "tune_autopilot": self.tune_autopilot,
-            "iterate_start": self.iterate_start, "iterate_cancel": self.iterate_cancel,
+            "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
@@ -433,6 +433,8 @@ class AgentService:
         io = SessionIO(self.s)
         return Iterator.card(plan, io.read_params(), io.order(), self.sim)
 
+    ITER_ROUNDS: int | None = None                               # 测试用：缩短轮数上限（None = Iterator 默认 实机 8 / 仿真 20）
+
     def iterate_start(self, **args) -> dict:
         """一张批量确认卡（参数范围 / max_delta / 起始值 + hash / 预算）→ 人点一次 → 后台自动迭代到达标或停止条件。"""
         self.iterate_plan(**args)                                # 先校验，错了不出卡
@@ -442,12 +444,47 @@ class AgentService:
             th = getattr(self, "iter_thread", None)
             if th and th.is_alive():
                 raise GatewayError("iterate_running", "已经在自动迭代", "先点“停止迭代”")
-            it = Iterator(SessionIO(self.s), self.iterate_plan(**args), self.sim, emit=self._iter_emit)
+            it = Iterator(SessionIO(self.s), self.iterate_plan(**args), self.sim, emit=self._iter_emit,
+                          **({"max_rounds": self.ITER_ROUNDS} if self.ITER_ROUNDS else {}))
             self.iterator, self.iter_result = it, None
             self.iter_thread = threading.Thread(target=self._iter_run, args=(it,), daemon=True, name="iterate")
             self.iter_thread.start()
             return {"status": "started", "budget": {"time_s": it.budget_s, "rounds": it.max_rounds}}
         return self.gate("iterate_start", args, run)
+
+    def _iterate_start_agent(self, **args) -> dict:
+        """#53 Agent 走的 iterate_start：仿真里直接跑完（等后台线程到停止条件），把结果和“采用最好参数”卡一起回给模型；
+        实机先出批量确认卡（pending），点了以后同样在结束时出最好参数卡。"""
+        r = self.iterate_start(**args)
+        th = getattr(self, "iter_thread", None)
+        if r.get("status") != "started" or th is None:
+            return r
+        th.join(float(r["budget"]["time_s"]) + 30)
+        res = dict(self.iter_result or {"reason": "running", "message_zh": "迭代还没结束"})
+        res["instruction"] = ("迭代已结束，界面上已出“采用最好参数”确认卡（best_card）。最终回复：总结最好一轮的指标、各项差距和下一步，"
+                              "告诉用户点卡上的确认即可写入；不要以提问结束。") if res.get("best_card") else ""
+        return res
+
+    def iterate_apply_best(self, params: dict, iter: int | None = None, params_hash: str | None = None) -> dict:  # noqa: A002
+        """“采用最好参数”卡被人确认：把最好一轮的参数写回板子（逐个 set_param，校验/限幅/急停锁都在 Session）。"""
+        applied = {}
+        cur = self.s.params
+        for n, v in params.items():
+            if cur.get(n) is None or abs(float(cur[n]) - float(v)) > 1e-9:
+                applied[n] = self.s.set_param(n, float(v), verify=True)["applied"]
+        return {"status": "applied", "iter": iter, "params_hash": params_hash, "applied": applied,
+                "next_zh": "已写入最好一轮参数；需要掉电保持就点“保存参数”"}
+
+    CARD_ONLY = {"iterate_apply_best": iterate_apply_best}       # 只由服务端出卡、模型调不到的动作（不进工具表）
+
+    def _best_card(self, res: dict) -> int | None:
+        """迭代停止（任何原因）且有最好一轮 → 出“采用最好参数”卡（always human）。"""
+        best = res.get("best")
+        if not best:
+            return None
+        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"]},
+                      lambda: None)
+        return r.get("action_id")
 
     def _iter_emit(self, e: dict) -> None:
         if e.get("type") == "iterate.round" and e.get("valid"):
@@ -456,10 +493,15 @@ class AgentService:
 
     def _iter_run(self, it) -> None:
         try:
-            self.iter_result = it.run()
+            res = it.run()
         except Exception as e:  # noqa: BLE001  后台线程不能把异常漏掉
-            self.iter_result = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
-            self.emit(self.iter_result)
+            res = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
+            self.emit(res)
+        try:
+            res["best_card"] = self._best_card(res)
+        except Exception as e:  # noqa: BLE001
+            res["best_card"], res["best_card_error"] = None, str(e)
+        self.iter_result = res
 
     def iterate_cancel(self) -> dict:
         it = getattr(self, "iterator", None)
@@ -535,7 +577,7 @@ class AgentService:
         if a["tool"] in ("flash", "flash_rollback"):
             args["dry_run"] = False                      # 人点了“确认烧录”才真烧
         try:
-            out = {"id": aid, "status": "done", "result": self.loop.handlers[a["tool"]](**args)}
+            out = {"id": aid, "status": "done", "result": (self.loop.handlers.get(a["tool"]) or self.CARD_ONLY[a["tool"]].__get__(self))(**args)}
             if a["tool"] == "flow_accept":
                 out["next"] = self._flow_next(args["code"])
             return out
@@ -1137,8 +1179,9 @@ class AgentService:
         local = getattr(llm, "active", None) is getattr(llm, "local", 0) or getattr(llm, "cfg", {}).get("provider") == "ollama"
         self.emit({"type": "agent_mode", "mode": "local" if local else "llm", "name": getattr(llm, "name", "")})
         n0 = len(self.loop.messages)
+        r0 = getattr(self, "iter_result", None)
         try:
-            return self.loop.ask(text)
+            return self._end_with_card(self.loop.ask(text), r0)
         except llm_mod.LLMError as e:
             del self.loop.messages[n0:]                  # 本轮作废，下一句从干净的对话接着来
             self._agent_error(e)
@@ -1147,6 +1190,19 @@ class AgentService:
             del self.loop.messages[n0:]
             err = self._agent_error(e)
             return f"（Agent 这一轮出错了：{err['message']}）"
+
+    def _end_with_card(self, reply: str, r0) -> str:
+        """#53：本轮跑完了自动迭代 → 这一轮以“采用最好参数”卡收尾，不以提问结束（模型偶尔还是会问“要不要…？”）。"""
+        res = getattr(self, "iter_result", None)
+        if not res or res is r0 or not res.get("best_card"):
+            return reply
+        t = (reply or "").rstrip()
+        if t.endswith(("？", "?")):
+            cut = max(t.rfind(c, 0, len(t) - 1) for c in "。！!\n")
+            t = t[:cut + 1].rstrip() if cut >= 0 else ""
+        b = res.get("best") or {}
+        tail = f"最好一轮是第 {b.get('iter')} 轮（参数 hash {b.get('params_hash')}），已出“采用最好参数”卡，点确认即写入。"
+        return (t + "\n" + tail).strip() if tail not in t else t
 
     # agent_error.fix_action 只能是 docs/dev/entrypoints.yaml 里的入口 id（或 None）；测试会核对
     FIX_SETTINGS, FIX_RESEND = "llm_cfg", "agent_chat"
