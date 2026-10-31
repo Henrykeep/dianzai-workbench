@@ -26,6 +26,7 @@ import { initProject } from "./project";
 import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
+import { holdOf, restoreAllowed, restoreClick } from "./sprestore";
 import { clearedEvent, latchHead, portsWithSession } from "./r8pre";
 import { bannerHint, clearedLine, EstopSpans, RestoreTarget } from "./estophist";
 import { purgeEstopBlockers, resolveEstopAlerts, dropEstopBlockers } from "./estopclear";
@@ -65,7 +66,7 @@ function renderAlerts() {
   const latched = S.latched;
   document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   $("estop").classList.toggle("locked", latched);
-  if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
+  if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); const nn = document.getElementById("sp-restore-note"); if (nn) nn.textContent = ""; showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
   el.classList.remove("al-hist");
   if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.innerHTML = `<span class="al-t">${esc(estopHist)}</span><span class="sp"></span><button class="btn sm" id="al-retune">${esc(RETUNE.label)}</button>`; el.querySelector<HTMLElement>("#al-retune")!.onclick = () => runAction(RETUNE.action, s => goStepRef(s)); } else el.innerHTML = ""; return; }
@@ -100,10 +101,12 @@ const tl = initTimeline($("tl"), e => jumpAt({ log_t: e.log_t, plot_t: e.plot_t 
 function showRestore() {
   const b = document.getElementById("sp-restore"); if (!b) return;
   const f = S.plotted.find(x => x.name === spLast?.name);
-  const lbl = RESTORE.label(f?.unit ?? "", v => num(v));
+  const ok = restoreAllowed(holdOf(spLast?.name, { status: S.status, fields: S.plotted as any, params: (S as any).params }));   // hold 只认 latched
+  const lbl = ok ? RESTORE.label(f?.unit ?? "", v => num(v)) : "";
   b.hidden = !lbl; b.textContent = lbl;
+  const n = document.getElementById("sp-restore-note"); if (n) n.hidden = !n.textContent;
 }
-function restoreEdited() { RESTORE.onEdit(); showRestore(); }
+function restoreEdited() { RESTORE.onEdit(); const n = document.getElementById("sp-restore-note"); if (n) n.textContent = ""; showRestore(); }
 const ana = initAnalysis(plot, () => S.applied, notifySide);
 const showXDiv = () => { const d = plot.xDiv(); $("xdiv").textContent = `${d < 1 ? d * 1000 + " ms" : d + " s"}/div`; };
 
@@ -522,9 +525,14 @@ $("snap-save").onclick = saveSnap;
 
 // ---------------------------------------------------------------- 命令 / 回放 / 曲线控制
 $("cmd-r").onclick = () => { markClearClick(); return call("cmd", { c: "R" }); };
-$("sp-restore").onclick = async () => { const v = RESTORE.take(); showRestore(); if (v == null || !spLast) return;
-  // 本地服务还没有单独下发设定值的 op：先走已登记的 tune_step_test（按 step_test 配置重新下发目标），待后端补 op 后换成直接下发 v
-  try { await call("tune_step_test"); toast(`已重新下发目标 ${num(v)}`, "ok", 3000); } catch {} };
+const spBusy = { on: false };
+$("sp-restore").insertAdjacentHTML("afterend", `<span class="hint" id="sp-restore-note" hidden></span>`);
+$("sp-restore").onclick = async () => { const v = RESTORE.value(); if (v == null || !spLast) return;
+  const r = await restoreClick((op, a) => link.rpc(op, a), spLast.name, v, spBusy); if (!r) return;   // 只发一次 setpoint_set，不连发
+  $("sp-restore-note").textContent = r.note;
+  if (!r.keep) RESTORE.take();
+  if (!r.note) toast(`已下发目标 ${num(v)}`, "ok", 3000);
+  showRestore(); };
 $("cmd-send").onclick = () => { restoreEdited(); const c = $<HTMLInputElement>("cmd-c").value, n = $<HTMLInputElement>("cmd-n").value; if (c) call("cmd", { c, n: n === "" ? null : +n }); };
 $("win").querySelectorAll<HTMLElement>("span").forEach(s => s.onclick = () => {
   $("win").querySelectorAll("span").forEach(x => x.classList.toggle("on", x === s)); plot.win = +s.dataset.w!; showXDiv(); plot.redraw();
