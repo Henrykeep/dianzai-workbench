@@ -191,6 +191,15 @@ jobs:
                   sys.exit(f"原因码表 {rc} 读不出来：{e}")
           print("✓ 安装目录角色表：", "、".join(f"{r['code']}={r['zh']}" for r in roles), "（", f, "）")
           PY
+          # 侧车自检 selfcheck-data（后端在加）：有就必须退出码 0；还没有就只做上面的读取检查
+          if grep -rqs "selfcheck-data" "$inst/repo/app/sidecar/dzbench"; then
+            cd "$inst"
+            # 嵌入版 ._pth 模式不认 PYTHONPATH/当前目录，显式把安装目录里的侧车源码加进 sys.path
+            "$py" -c "import sys,runpy; sys.path.insert(0, sys.argv[1]); sys.argv=['dzbench','selfcheck-data']; runpy.run_module('dzbench', run_name='__main__')" \
+              "$(cygpath -w "$inst/repo/app/sidecar")" || { echo "::error::自带 python 跑 dzbench selfcheck-data 失败（安装目录数据不全）"; fail=1; }
+          else
+            echo "提示：这一版侧车还没有 selfcheck-data 命令，只做了 roles.json / reason_codes.json 读取检查"
+          fi
           exit $fail
       - uses: actions/upload-artifact@v4
         with:
