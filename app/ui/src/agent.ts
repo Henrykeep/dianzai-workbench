@@ -457,11 +457,12 @@ export function initAgent(call: Call) {
     const fresh = newBlockers(seenBlk, bs);
     gateN.sync(bs.map(b => b.code)); for (const k of [...notes.keys()]) if (!seenBlk.has(k)) notes.delete(k);
     if (!primed) { primed = true; bs.forEach(b => gateN.offer(b.code)); return; }   // 打开页面时已有的 blocker 不刷屏
-    for (const b of fresh) if (gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
+    for (const b of fresh) if (b.code !== "params_not_saved" && gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
   }
   function onNotice(n: Notice) {
     if (!n?.blocker_code) return;
-    if (n.blocker_code === "estop_cleared") return;   // 解除提示由主界面统一一张卡（estopbtn.clearedOnce），这里不重复
+    if (n.blocker_code === "estop_cleared") return;   // 解除提示由主界面统一一张卡
+    if (n.blocker_code === "params_not_saved") return;   // 设计 v11：未保存只在页头「保存参数」旁出现一次，Agent 不再出卡   // 解除提示由主界面统一一张卡（estopbtn.clearedOnce），这里不重复
     const fallback = notes.get(n.blocker_code)?.dataset.src !== "notice" && notes.has(n.blocker_code);
     if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复
     seenBlk.add(n.blocker_code);

@@ -172,16 +172,16 @@ export class Plot {
       const u = new uPlot({
         width: 100, height: 100,
         legend: { show: false },
-        padding: [first ? 4 : 8, 28, 8, 8],     // 右侧留固定边距：首条的刻度字不会把它的绘图区挤得比其他 lane 窄（光标/锚点要对齐）
+        padding: [first ? 4 : 8, 28, 8, 16],     // 右侧留固定边距：首条的刻度字不会把它的绘图区挤得比其他 lane 窄（光标/锚点要对齐）
         cursor: { sync: { key: this.sync.key }, points: { size: 5 }, drag: { x: false, y: false } },
         scales: { x: { time: false }, y: { range: yRange } },
         axes: [
-          { show: first, side: 0, size: 24, stroke: css("--muted"), grid, ticks: tick, font,
+          { show: first, side: 0, size: 24, stroke: css("--dim"), grid, ticks: tick, font,
             splits: (_u, _a, lo, hi) => { const d = this.xDiv(), ref = this.xRef(), out: number[] = [];
               for (let x = ref + Math.ceil((lo - ref) / d) * d; x <= hi + 1e-9; x += d) out.push(x); return out; },
             values: (_u, v) => v.map(x => { const r = x - this.xRef(), n = Math.round(r / this.xDiv());
               return n % 2 ? "" : (this.t0 != null && r >= 0 ? "+" : "") + r.toFixed(this.xDiv() < .1 ? 2 : 1) + " s"; }) },
-          { stroke: css("--muted"), grid, ticks: tick, font, size: 44, gap: 4,
+          { stroke: css("--dim"), grid, ticks: tick, font, size: 44, gap: 4,
             splits: (uu, _a, lo, hi) => { const d = divs.get(uu) ?? (hi - lo) / 4, out: number[] = [];
               for (let y = lo; y <= hi + d * 1e-6; y += d) out.push(y); return out; },
             // 首尾刻度不标数字：贴边的数字会被裁掉，读数看标签列的 /div
@@ -211,7 +211,7 @@ export class Plot {
       l.cols.forEach(c => data.push(dy[c]));
       l.u.batch(() => { l.u.setData(data, false); l.u.setScale("x", { min: t0, max: tEnd }); });
       const d = divs.get(l.u);
-      if (d) l.rng.textContent = `${num(d)}${this.units[l.i] ? " " + this.units[l.i] : ""}/div`;
+      if (d) l.rng.textContent = this.units[l.i] ? `${num(d)} ${this.units[l.i]}/div` : "";   // 无单位通道不显示每格刻度（读轴上数字即可）
     }
   }
 }

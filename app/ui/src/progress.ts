@@ -104,7 +104,7 @@ export const ACTION_LABEL: Record<string, string> = {
 export function viewStep(step: string | undefined): StepId | undefined { return JOURNEY.find(j => (j.pages as readonly string[]).includes(step ?? ""))?.id; }
 export function pageHead(p: Progress, view?: StepId, resident: string[] = []): { text: string; label: string; action?: string; goto?: StepId; hidden?: boolean } {
   const cur = p.steps.find(s => s.id === (view ?? p.current)) ?? p.steps.find(s => s.id === p.current)!;
-  const text = PURPOSE[cur.id];
+  const text = (view && PURPOSE[view]) || PURPOSE[cur.id];   // 文案永远跟当前打开的页，进度数据里缺这一步也不串页
   const dup = (a: string) => { const ui = ACTIONS[a]?.ui; return !!ui && resident.includes(ui); };
   if (p.next && p.next.title === cur.title) return dup(p.next.action) ? { text, label: "", hidden: true } : { text, label: ACTION_LABEL[p.next.action] ?? "开始", action: p.next.action };
   const nx = p.next && p.steps.find(s => s.title === p.next!.title);

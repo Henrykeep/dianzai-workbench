@@ -133,6 +133,7 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
   function renderHist() {
     const host = $("hist"), ln = layerName(), rs = runs.filter(r => r.layer === ln), sp = specOf(mainCh(plot));
     $("hist-n").textContent = runs.length ? `${rs.length}${ln ? " 轮 · " + ln : " 轮"}` : "";
+    document.querySelector(".app")?.classList.toggle("hist-empty", !runs.length);   // 台账为空：调参页收起这一格（不用 :has，兼容 WebKitGTK）
     if (!runs.length) { host.innerHTML = `<p class="hint">每点一次“阶跃实验”，这一轮的改动和超调 / 上升 / 调节自动记到这里；上一轮淡色画在曲线上对比。只存在内存里。</p>`; return; }
     // 台账：每轮一行，改动 + 三个指标，当前余辉轮左侧黄铜边
     // 串级：每层一本台账（只列在当前层做的轮次）；有验收规格时列评委口径 + 最近 N 轮按最差一轮的汇总

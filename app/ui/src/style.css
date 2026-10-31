@@ -895,7 +895,7 @@ body{background:var(--bg);color:var(--text-primary);font-size:var(--fs-14);line-
 .theme-sw{position:relative;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:var(--radius-md);color:var(--text-secondary);cursor:pointer}
 .theme-sw:hover{background:var(--surface-hover);color:var(--text-primary)}
 .theme-sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
-.theme-sw:has(input:focus-visible){box-shadow:var(--focus-ring)}
+.theme-sw:focus-within{box-shadow:var(--focus-ring)}
 .theme-sw svg{width:16px;height:16px}
 
 /* ---- 设计 v10：第二轮打磨（更少等宽、更少噪点、更大读数） ---- */
@@ -935,6 +935,26 @@ body{font-size:var(--fs-14);line-height:var(--lh-14)}
 .tl::before{content:none}
 .tl-e{background:none;border:0;padding:0;gap:var(--sp-2);color:var(--text-muted)}
 .tl-e b{color:var(--text-secondary);font-weight:var(--fw-medium)}
-.app[data-step="调参"]:has(#hist>p.hint:only-child){grid-template-rows:var(--h-top) auto minmax(0,1fr) 0 var(--h-sb)}
-.app[data-step="调参"]:has(#hist>p.hint:only-child) .side>.pane[data-side="hist"]{display:none!important}
-.app[data-step="调参"]:has(#hist>p.hint:only-child) .side>.pane.agent,.app[data-step="调参"]:has(#hist>p.hint:only-child) .dock{grid-row:3/4}
+.app.hist-empty[data-step="调参"]{grid-template-rows:var(--h-top) auto minmax(0,1fr) 0 var(--h-sb)}
+.app.hist-empty[data-step="调参"] .side>.pane[data-side="hist"]{display:none!important}
+.app.hist-empty[data-step="调参"] .side>.pane.agent,.app.hist-empty[data-step="调参"] .dock{grid-row:3/4}
+
+/* ---- 设计 v11 ---- */
+:root,[data-theme=light],[data-theme=dark]{--f-sans:"Inter","PingFang SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC","Noto Sans SC Dz",system-ui,sans-serif}
+body{font-family:var(--f-sans);font-feature-settings:"cv11","ss01";-webkit-font-smoothing:antialiased}
+/* 判定：没内容就不留空标签 */
+.tunebar .verdict>.lbl:first-child{display:none}
+/* 分段控件统一成一种胶囊：浅底轨道 + 选中项白底 */
+.app .seg{display:inline-flex;gap:2px;padding:2px;border-radius:var(--radius-md);background:var(--surface-2);border:0}
+.app .seg span{height:24px;padding:0 var(--sp-2);border-radius:var(--radius-sm);font:var(--fw-medium) var(--fs-12)/1 var(--f-sans);color:var(--text-secondary);background:none;border:0;box-shadow:none}
+.app .seg span:hover{color:var(--text-primary)}
+.app .seg span.on{background:var(--surface-1);color:var(--text-primary);box-shadow:var(--shadow-1)}
+.app .seg kbd{display:none}
+/* 页头：放不下时「上板 / 读取自检」整体换到第二行，标题行不截断 */
+.pg-head{flex-wrap:wrap;row-gap:var(--sp-2)}
+.pg-head .pg-tt{flex:1 0 auto;overflow:visible}
+.pg-head .pg-s{overflow:visible;text-overflow:clip}
+/* 通道标签列：8px 栅格对齐 */
+.lab{width:144px;padding:var(--sp-2) var(--sp-2) 0 var(--sp-5);gap:var(--sp-1)}
+.lab::before{left:var(--sp-2);top:calc(var(--sp-2) + 8px)}
+.lane:first-child .lab{padding-top:var(--sp-5)}
