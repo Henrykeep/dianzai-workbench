@@ -556,7 +556,7 @@ class AgentService:
         return res
 
     def iterate_apply_best(self, params: dict, iter: int | None = None, params_hash: str | None = None,  # noqa: A002
-                           ss_err: dict | None = None, compare: dict | None = None) -> dict:   # ss_err / compare 只给卡上显示
+                           ss_err: dict | None = None, compare: dict | None = None, verdict: str | None = None, verdict_zh: str | None = None) -> dict:   # ss_err / compare 只给卡上显示
         """“采用最好参数”卡被人确认：把最好一轮的参数写回板子（逐个 set_param，校验/限幅/急停锁都在 Session）。"""
         applied = {}
         cur = self.s.params
