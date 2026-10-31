@@ -9,6 +9,14 @@ from dzbench.session import Session
 from test_agent import Runner, repo  # noqa: F401  —— 复用 fixture
 
 
+
+def _accept_and_commit(g, cid):
+    """#88：写文件卡确认后，还要另点提交确认卡才会提交。"""
+    r = g.decide(cid, True)
+    if g.changes[cid].git_status == "pending":
+        r = g.commit_decide(cid, True)
+    return r
+
 def wait(pred, t=10):
     t0 = time.monotonic()
     while time.monotonic() - t0 < t:
@@ -42,7 +50,7 @@ def test_plan_memory_and_undo(home, repo):  # noqa: F811
         pid = next(e["id"] for e in ev if e.get("type") == "proposal")
         tools.decide(pid, True)
         cid = next(e["id"] for e in ev if e.get("type") == "change")
-        assert svc.gw.decide(cid, True)["status"] == "committed"
+        assert _accept_and_commit(svc.gw, cid)["status"] == "committed"
         assert [j["kind"] for j in svc.journal_list()] == ["param", "commit"]
         assert {r["kind"] for r in svc.memory().load()} >= {"param", "commit"}
         # 倒序撤销：先 git，再参数

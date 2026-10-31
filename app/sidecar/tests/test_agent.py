@@ -25,6 +25,14 @@ from dzbench.schema import Schema
 from dzbench.session import Session
 
 
+
+def _accept_and_commit(g, cid):
+    """#88：写文件卡确认后，还要另点提交确认卡才会提交。"""
+    r = g.decide(cid, True)
+    if g.changes[cid].git_status == "pending":
+        r = g.commit_decide(cid, True)
+    return r
+
 def second_order(zeta, wn=10.0, T=3.0, dt=0.005, amp=2.0, t_step=0.5, gain=1.0):
     t, y, sp = [], [], []
     x, v = 0.0, 0.0
@@ -137,7 +145,7 @@ def test_gateway_accept_runs_gates_and_commits_then_rollback(repo):
     c = g.propose_edit("apps/x/main.c", "int gain = 1;", "int gain = 3;", "加大增益")
     assert c["status"] == "pending" and "+int gain = 3;" in c["diff"] and "make check" in c["gates"]
     assert "gain = 1" in (repo / "apps/x/main.c").read_text(encoding="utf-8"), "确认前不能落盘"
-    r = g.decide(c["id"], True)
+    r = _accept_and_commit(g, c["id"])
     assert r["status"] == "committed" and run.cmds == ["make check", "make test"]
     assert f"{TRAILER}: {c['id']}" in git(repo, "log", "-1", "--format=%B")
     assert g.history()[0]["commit"] == r["commit"]
@@ -153,7 +161,7 @@ def test_gateway_gate_failure_restores(repo):
     head = git(repo, "rev-parse", "HEAD")
     c = g.propose_yaml_params("apps/x/app.yaml", {"kp": 0.5}, "写回")
     assert c["layer"] == "config" and c["gates"] == ["make check"]
-    r = g.decide(c["id"], True)
+    r = _accept_and_commit(g, c["id"])
     assert r["status"] == "failed" and "boom" in r["log"]
     assert "default: 0.08" in (repo / "apps/x/app.yaml").read_text(encoding="utf-8") and git(repo, "rev-parse", "HEAD") == head
 
@@ -162,10 +170,10 @@ def test_gateway_refuses_dirty_or_stale(repo):
     g = Gateway(repo, runner=Runner())
     c = g.propose_edit("apps/x/main.c", "int gain = 1;", "int gain = 2;", "r")
     (repo / "apps/x/main.c").write_text("int gain = 1;\nint other = 9;\n", encoding="utf-8")      # 人手改了没提交
-    r = g.decide(c["id"], True)
+    r = _accept_and_commit(g, c["id"])
     assert r["status"] == "failed" and "未提交" in r["log"]
     with pytest.raises(GatewayError):
-        g.decide(c["id"], True)
+        _accept_and_commit(g, c["id"])
 
 
 # ---------------------------------------------------------------- Agent 循环（假 LLM）
@@ -290,7 +298,7 @@ def test_no_model_says_unreachable(home, tmp_path):
 def test_rollback_refuses_when_touched_file_dirty(repo):
     g = Gateway(repo, lambda e: None, runner=Runner())
     c = g.propose_edit("apps/x/main.c", "int gain = 1;", "int gain = 3;", "t")
-    r = g.decide(c["id"], True)
+    r = _accept_and_commit(g, c["id"])
     f = repo / "apps/x/main.c"
     f.write_text(f.read_text(encoding="utf-8") + "// 用户手改\n", encoding="utf-8")
     with pytest.raises(GatewayError) as e:
@@ -338,13 +346,13 @@ def test_gateway_first_file_in_new_project_dir(repo):
             return rc, out
     g = Gateway(repo, runner=Warn())
     c = g.propose_edit("apps/dc_motor_pid/main.c", "", "int main(void){return 0;}\n", "新建项目第一个文件")
-    r = g.decide(c["id"], True)
+    r = _accept_and_commit(g, c["id"])
     assert r["status"] == "committed", r["log"]
     assert (repo / "apps/dc_motor_pid/main.c").exists() and "apps/dc_motor_pid/main.c" in git(repo, "show", "--name-only", "--format=", "HEAD")
     # 真正的手改仍然拦
     (repo / "apps/x/main.c").write_text((repo / "apps/x/main.c").read_text(encoding="utf-8") + "// hand\n", encoding="utf-8")
     c2 = g.propose_edit("apps/x/main.c", "// hand\n", "// hand2\n", "r")
-    r2 = g.decide(c2["id"], True)
+    r2 = _accept_and_commit(g, c2["id"])
     assert r2["status"] == "failed" and "未提交的改动" in r2["log"] and "处理" in r2["log"]
 
 
