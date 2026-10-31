@@ -53,6 +53,7 @@ class Session:
     def __init__(self, emit: Callable[[dict], None] = lambda e: None, log_dir: pathlib.Path | None = None,
                  history_s: float = 120.0):
         self.emit = emit
+        self._conn_lock = threading.Lock()       # r9q (d)：连接串行化，界面/脚本重复点“连接”不再打断正在启动的仿真板
         self.log_dir = log_dir or snapshots.base_dir() / "logs"
         self.lock = threading.RLock()
         self.wlock = threading.Lock()
@@ -145,6 +146,15 @@ class Session:
 
     # ------------------------------------------------------------------ 连接
     def connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
+        """r9q (d) 根因：首次连仿真板要先 make 编出 host-sim 程序（干净工作区约 10–15 s），期间以前什么都不推、连接回复也不来，
+        界面一直是“未连接”，用户/脚本就再点一次“连接”——第二次先 disconnect 再从头编，于是 18 s + 重连。
+        现在：编译前后推 sim_starting（start / ready，带耗时）；连接串行化，排队的同口连接在前一个连上后直接复用，不再拆掉重来。"""
+        with self._conn_lock:
+            if port.startswith(SIM_PREFIX) and port == self.port and self.tr is not None:
+                return {"port": port, "baud": self.baud, "note": "已连上（复用刚启动的仿真板）", "reused": True}
+            return self._connect(port, baud, log)
+
+    def _connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
         self.disconnect()
         note = ""
         if not port.startswith((SIM_PREFIX, "replay:", "rtt:")) and not baud:
@@ -156,7 +166,12 @@ class Session:
                 raise LinkError("no_frames", note, "也可以在波特率下拉框手动选一个再连；不是工作台固件的设备"
                                 "（视觉模块 printf、蓝牙 AT…）手动选波特率连上后，切到“原始”视图看收发")
         try:
+            t_open = time.monotonic()
+            if port.startswith(SIM_PREFIX):
+                self.emit({"type": "sim_starting", "port": port, "state": "start", "message_zh": "正在启动仿真板（首次要编译，约 10–20 s）"})
             tr = ReplayTransport(port[7:]) if port.startswith("replay:") else self._open(port, baud or 0)
+            if port.startswith(SIM_PREFIX):
+                self.emit({"type": "sim_starting", "port": port, "state": "ready", "elapsed_s": round(time.monotonic() - t_open, 2)})
         except Exception as e:  # noqa: BLE001
             if port.startswith(SIM_PREFIX):
                 raise LinkError("open_failed", f"仿真板起不来：{e}", f"在仓库根目录跑一次 make BOARD=host-sim APP={port[len(SIM_PREFIX):].split('+')[0]} 看报错") from e

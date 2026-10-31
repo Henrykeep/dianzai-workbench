@@ -1,11 +1,11 @@
-import { toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr } from "./fieldmap";
+import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
 // 纯状态机 + 文案；main.ts 只做 DOM 接线。预算一律以本地服务报的 limits 为准，没报前按板型兜底（实机 8 轮、仿真 20 轮、180 s）。
 export type Limits = { time_s: number; rounds: number };
 export const DEFAULT_LIMITS = (sim: boolean): Limits => ({ time_s: 180, rounds: sim ? 20 : 8 });
 export type Gap = { value: number; limit: number; gap: number; unit: string };
 export type Best = { iter: number; params: Record<string, number>; params_hash?: string; metrics?: Record<string, unknown>; pass?: unknown; gaps?: Record<string, Gap> };
-export type Stopped = { reason: string; message_zh?: string; rounds?: number; best?: Best | null; next_zh?: string; best_card?: number | null; ss_err?: SsErr | null; pass_basis?: string; verdict?: Verdict; base?: Record<string, number> | null };
+export type Stopped = { reason: string; message_zh?: string; rounds?: number; best?: Best | null; next_zh?: string; best_card?: number | null; ss_err?: SsErr | null; pass_basis?: string; verdict?: Verdict; verdict_zh?: string; base?: Record<string, number> | null; compare?: CompareRaw | null };
 // 本地服务在 iterate.stopped 后推一张 agent_action（tool=iterate_apply_best，“采用最好参数”）：界面只出一张卡——调参页这张，按钮确认的就是那张 action
 export const APPLY_TOOL = "iterate_apply_best";
 export const APPLY_LABEL = "采用最好参数";
@@ -53,11 +53,18 @@ export function verdictLine(v: Verdict | undefined, e: SsErr | null, basis: stri
   const x: Verdict = !v || e?.inside === null ? { v: "unknown", zh: v?.v === "unknown" && v.zh ? v.zh : "未判定" } : v;
   return { v: x.v, text: `${x.zh}${basis ? `（${basis}）` : ""}` };
 }
+// events.md compare：round0 / best 各是 [{key,value,unit}]，按 key 对齐
+export function compareRaw(c: CompareRaw): string[][] {
+  return c.round0.filter(a => c.best.some(x => x.key === a.key)).map(a => {
+    const bb = c.best.find(x => x.key === a.key)!, x = Math.abs(a.value), y = Math.abs(bb.value), d = y - x, pct = x ? Math.round(d / x * 100) : 0, u = bb.unit || a.unit;
+    return [METRIC_ZH[a.key] ?? a.key, `${n(x)} ${a.unit}`, `${n(y)} ${u}`, d === 0 ? "—" : `${d < 0 ? "↓" : "↑"} ${n(Math.abs(d))} ${u}${x ? `（${pct > 0 ? "+" : ""}${pct}%）` : ""}`, d < 0 ? "good" : d > 0 ? "bad" : ""];
+  });
+}
 export function cardView(r: Stopped): { verdict: { v: string; text: string }; title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
   const b = r.best ?? null, basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
   return {
-    compare: b && !zero ? compareRows(r.base, b.metrics) : [],
-    title: !b ? "没有可用的一轮" : zero ? "初值已是最好一组，未改参" : `最好一组参数（第 ${b.iter} 轮）`,
+    compare: r.compare && !r.compare.unchanged ? compareRaw(r.compare) : b && !zero ? compareRows(r.base, b.metrics) : [],
+    title: !b ? "没有可用的一轮" : r.compare?.unchanged || zero ? (r.compare?.note || "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
     reason: `停止原因：${REASON_ZH[r.reason] ?? r.reason}${r.message_zh ? `（${r.message_zh}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
     gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null || b.pass)] : [],
@@ -81,31 +88,33 @@ export class IterModel {
     if (m?.type === "iterate.started") { const l = m.limits?.rounds ? { time_s: m.limits.time_s, rounds: m.limits.rounds } : this.s.limits; this.base = null; this.s = { phase: "running", limits: l, t0: now, iter: 0 }; return true; }
     if (m?.type === "iterate.round" && +m.iter === 0) this.base = roundMetrics(m);
     if (m?.type === "iterate.round") { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; (this.s as any).iter = Math.max((this.s as any).iter, +m.iter || 0); return true; }
-    if (m?.type === "iterate.stopped") { const id = this.s.phase === "done" ? this.s.result.best_card : undefined; const x = this.extra; this.s = { phase: "done", limits: this.s.limits, result: { ...m, base: roundMetrics(m[ROUND0_F.obj]) ?? this.base, best_card: m.best_card ?? id ?? null, ss_err: toSsErr(m) ?? x.ss_err ?? null, pass_basis: passBasis(m) || x.pass_basis || "", verdict: m.verdict ? toVerdict(m) : x.verdict } }; return true; }
-    if (m?.type === "agent_action" && m.tool === APPLY_TOOL) { this.cardId = m.id; this.extra = { ss_err: toSsErr(m), pass_basis: passBasis(m), verdict: m.args?.verdict || m.verdict ? toVerdict(m) : undefined }; this.cache?.set(JSON.stringify({ id: m.id, ...this.extra }));
+    if (m?.type === "iterate.stopped") { const id = this.s.phase === "done" ? this.s.result.best_card : undefined; const x = this.extra; this.s = { phase: "done", limits: this.s.limits, result: { ...m, base: roundMetrics(m[ROUND0_F.obj]) ?? this.base, best_card: m.best_card ?? id ?? null, ss_err: toSsErr(m) ?? x.ss_err ?? null, pass_basis: passBasis(m) || x.pass_basis || "", verdict: m.verdict ? toVerdict(m) : x.verdict, compare: toCompare(m) ?? x.compare ?? null } }; return true; }
+    if (m?.type === "agent_action" && m.tool === APPLY_TOOL) { this.cardId = m.id; this.extra = { ss_err: toSsErr(m), pass_basis: passBasis(m), verdict: m.args?.verdict || m.preview?.verdict || m.verdict ? toVerdict(m) : undefined, compare: toCompare(m) }; this.cache?.set(JSON.stringify({ id: m.id, ...this.extra }));
       // 走的是 tune 自动调参（tune_round，无 iterate.stopped）时，卡本身就是结果：用卡参数合成结果，调参页照样出这一张
-      if (this.s.phase !== "done") { const a = m.args ?? {}; this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", best: { iter: +a.iter || 0, params: a.params ?? {}, params_hash: a.params_hash }, best_card: m.id, ss_err: this.extra.ss_err, pass_basis: this.extra.pass_basis, verdict: this.extra.verdict } }; return true; }
-      if (this.s.phase === "done") { const r = this.s.result; r.best_card = m.id; r.ss_err = this.extra.ss_err; r.pass_basis = r.pass_basis || this.extra.pass_basis; r.verdict = this.extra.verdict; } return true; }
+      if (this.s.phase !== "done") { const a = m.args ?? {}; this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", best: { iter: +a.iter || 0, params: a.params ?? {}, params_hash: a.params_hash }, best_card: m.id, ss_err: this.extra.ss_err, pass_basis: this.extra.pass_basis, verdict: this.extra.verdict, compare: this.extra.compare } }; return true; }
+      if (this.s.phase === "done") { const r = this.s.result; r.best_card = m.id; r.ss_err = this.extra.ss_err; r.pass_basis = r.pass_basis || this.extra.pass_basis; r.verdict = this.extra.verdict ?? r.verdict; r.compare = this.extra.compare ?? r.compare; } return true; }
     return false;
   }
   cardId: number | null = null;
   base: Record<string, number> | null = null;
-  extra: { ss_err: SsErr | null; pass_basis: string; verdict?: Verdict } = { ss_err: null, pass_basis: "" };
+  extra: { ss_err: SsErr | null; pass_basis: string; verdict?: Verdict; compare?: CompareRaw | null } = { ss_err: null, pass_basis: "" };
   // 刷新后补回卡字段：优先 iterate_status 里的结果（后端按工程+板子存），否则用本地缓存的上一张卡（同 id）
   cache?: { get(): string | null; set(v: string): void };
-  restored(res: any): { ss_err: SsErr | null; pass_basis: string; verdict?: Verdict } {
+  restored(res: any): { ss_err: SsErr | null; pass_basis: string; verdict?: Verdict; compare?: CompareRaw | null } {
     const card = res?.card ?? res?.param_card ?? res;
     let c: any = null; try { c = JSON.parse(this.cache?.get() ?? "null"); } catch { c = null; }
     const same = c && (res?.best_card == null || c.id === res.best_card);
-    const hasV = card?.args?.verdict ?? card?.verdict ?? res?.verdict;
+    const hasV = card?.args?.verdict ?? card?.preview?.verdict ?? card?.verdict ?? res?.verdict;
     return {
       ss_err: toSsErr(card) ?? toSsErr(res) ?? (same ? c.ss_err : null),
       pass_basis: passBasis(card) || passBasis(res) || (same ? c.pass_basis || "" : ""),
-      verdict: hasV ? toVerdict(card?.args?.verdict || card?.verdict ? card : res) : same ? c.verdict : undefined,
+      compare: toCompare(card) ?? toCompare(res) ?? (same ? c.compare : null),
+      verdict: hasV ? toVerdict(card?.args?.verdict || card?.preview?.verdict || card?.verdict ? card : res) : same ? c.verdict : undefined,
     };
   }
   // 重连 / 刷新：iterate_status {running, result}
-  onStatus(r: any, now: number, dismissed?: number | null) {
+  onStatus(r0: any, now: number, dismissed?: number | null) {
+    const r = r0 && !r0.result && r0.last?.result ? { ...r0, result: r0.last.result } : r0;   // events.md：内存没有时回落到按项目+板卡落盘的 last
     if (!r?.running && r?.result && r.result.best_card != null && r.result.best_card === dismissed) return;   // 已采用 / 已收起的结果不再出卡
     if (r?.running) { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; }
     else if (r?.result && this.s.phase !== "done" && r.result.type !== "tune.stopped") this.s = { phase: "done", limits: this.s.limits, result: { ...r.result, best_card: r.result.best_card ?? null, ...this.restored(r.result) } };

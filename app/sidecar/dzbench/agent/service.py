@@ -5,6 +5,7 @@ import itertools
 import os
 import re
 import pathlib
+import json
 import math
 import struct
 import time
@@ -221,7 +222,7 @@ class AgentService:
         return out
 
     def _param_applied(self, p: dict, r: dict) -> None:
-        if p.get("source") != "agent":
+        if p.get("origin", p.get("source")) not in ("agent", "llm", "规则引擎"):   # source 已是 llm/rule_engine 枚举，原始调用方看 origin
             return
         self._mark_tuning(p["name"], p.get("current"))
         self.journal.add("param", name=p["name"], old=p.get("current"), new=r.get("applied", p["value"]), reason=p.get("reason", ""))
@@ -339,7 +340,8 @@ class AgentService:
             self.forked = said
             self.emit({"type": "project_forked", "example": ex, "project": code, "path": out["path"], "message_zh": said})
             return {"spec": {"code": code, "example": ex, "sim": "sim:" + ex}, "action_id": None, "fork": out,
-                    "note": f"{said}（新目录，例题本身不动；换别的例题或从头建，跟我说一声即可）。项目已建好并跑完自动迭代，"
+                    "note": f"{said}（新目录，例题本身不动；换别的例题或从头建，跟我说一声即可）。例题自带题目拆解（requirements.yaml），"
+                            "读题已完成，不要向用户要题目 PDF 或路径。项目已建好并跑完自动迭代，"
                             "最终回复第一句原样写「" + said + "」，再总结最好一轮；不要再调别的工具建项目。"}
         sp = steptools.quick_spec(text)
         sp["code"] = steptools.fresh_code(self.gw.root, sp["code"])     # 新建一律落新目录，不复用旧项目/示例（#39）
@@ -352,6 +354,33 @@ class AgentService:
         card = self.gate("project_apply", {"code": sp["code"]}, lambda: None)
         return {"spec": sp, "chain": ch, "action_id": card.get("action_id"),
                 "note": "确认卡已出（含方案与引脚表）；用户点确认后自动写项目、上仿真、调参、评分。不要再调 project_apply。"}
+
+    def _ensure_board(self, board: str) -> None:
+        """r9q (b)：例题声明了自己的仿真板（2026H → sim:2026H_ball）。没连、或连着别的仿真板（如 motor_pos）就换过去，
+        不默默沿用已连的板子。连着实板（非 sim:）不动：实板换线要人来，后面调参照实板规则走、卡上写明。"""
+        cur = self.s.port or ""
+        if cur == board or (cur and not cur.startswith("sim:")):
+            return
+        if cur:
+            self.emit({"type": "event", "kind": "board_switch", "text": f"换到例题的仿真板 {board}（原来连的是 {cur}）"})
+        self.s.connect(board, 115200, log=False)
+        t0 = time.monotonic()
+        while (self.s.schema_hash is None or not self.s.params) and time.monotonic() - t0 < 10:
+            time.sleep(0.05)
+
+    def project_switch_example(self, example: str) -> dict:
+        """界面“换一个例题”：从该内置例题复制出一个全新项目（例题目录只读、不复用旧项目），只记审计不出确认卡，推 project_forked。"""
+        ex = str(example or "")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", ex) or not (pathlib.Path(self.gw.root) / "examples" / ex / "requirements.yaml").exists():
+            raise GatewayError("bad_example", f"没有内置例题 {ex}")
+        code = steptools.fresh_code(self.gw.root, ex)
+        risk.audit("project_switch_example", {"example": ex, "code": code}, risk.LOG, "ui")
+        out = self.project_fork(ex, code, name=ex)
+        said = f"已基于 {ex} 新建 {out['project']}，可更换"
+        self.forked = said
+        ev = {"type": "project_forked", "example": ex, "project": out["project"], "path": out["path"], "message_zh": said, "via": "project_switch_example"}
+        self.emit(ev)
+        return ev | {"fork": out}
 
     def project_fork(self, example: str, code: str, name: str | None = None) -> dict:
         """“以例题为模板新建”卡被确认：examples/<example> 整个复制到 $DZBENCH_HOME/projects/<code>（新目录），设为当前项目，
@@ -366,19 +395,17 @@ class AgentService:
         shutil.copytree(src, dst, symlinks=True)
         steptools.set_display_name(dst, name or example)               # 显示名（可中文）进 project.yaml；目录名是 ASCII slug
         project.set_current(self.gw.root, code)
-        out: dict = {"project": code, "path": str(dst), "from_example": example}
-        if not self.s.port:
-            self.s.connect("sim:" + example, 115200, log=False)
-            t0 = time.monotonic()
-            while (self.s.schema_hash is None or not self.s.params) and time.monotonic() - t0 < 10:
-                time.sleep(0.05)
+        board = steptools.example_sim_board(src, example)
+        steptools.pin_sim_board(dst, board)                            # 项目记下自己的仿真板，之后不靠“当前连着哪块”
+        out: dict = {"project": code, "path": str(dst), "from_example": example, "sim_board": board}
+        self._ensure_board(board)
         out["sim"] = self.s.port
         st = (self.s.schema.step if self.s.schema else None) or []
         if self.sim and st:
             rng = float(st[0].get("range") or 1.0)
             out["iterate"] = self._iterate_start_agent(target=round(rng / 4, 4))
-        elif self.sim:                                                 # 例题固件没有板上阶跃（link.step 为空）→ 退回 tune_autopilot，同样出最好参数卡
-            out["tune"] = self._tune_autopilot_agent(rounds=4)
+        elif self.sim:                                                 # 例题固件没有板上阶跃（link.step 为空）→ iterate 入口走上位机阶跃，同样出 iterate.* 和最好参数卡
+            out["iterate"] = self._iterate_start_agent()
         out["best_card"] = (self.iter_result or {}).get("best_card")
         return out
 
@@ -516,6 +543,8 @@ class AgentService:
     def _iterate_start_agent(self, **args) -> dict:
         """#53 Agent 走的 iterate_start：仿真里直接跑完（等后台线程到停止条件），把结果和“采用最好参数”卡一起回给模型；
         实机先出批量确认卡（pending），点了以后同样在结束时出最好参数卡。"""
+        if self.sim and self.s.schema and not self.s.schema.step:     # r9q (a)：板上没有 step_result（如 2026H 例题固件）→ 同一个入口改用上位机阶跃
+            return self._tune_autopilot_agent(rounds=4)
         r = self.iterate_start(**args)
         th = getattr(self, "iter_thread", None)
         if r.get("status") != "started" or th is None:
@@ -527,7 +556,7 @@ class AgentService:
         return res
 
     def iterate_apply_best(self, params: dict, iter: int | None = None, params_hash: str | None = None,  # noqa: A002
-                           ss_err: dict | None = None) -> dict:
+                           ss_err: dict | None = None, compare: dict | None = None, verdict: str | None = None, verdict_zh: str | None = None) -> dict:   # ss_err / compare 只给卡上显示
         """“采用最好参数”卡被人确认：把最好一轮的参数写回板子（逐个 set_param，校验/限幅/急停锁都在 Session）。"""
         applied = {}
         cur = self.s.params
@@ -548,15 +577,30 @@ class AgentService:
 
     def _tune_autopilot_agent(self, **args) -> dict:
         """板子不支持 step_result（没有 link.step，如 2026H 仿真）时的退路：tune_autopilot 跑完同样以“采用最好参数”卡收尾（#53）。"""
+        n = int(args.get("rounds", 6))
+        self.emit({"type": "iterate.started", "engine": "host_step", "start": self._gains(), "start_hash": self._local_hash(),
+                   "limits": {"time_s": None, "rounds": n + 1}})
         r = self.tune_autopilot(**args)
+        for x in r.get("rounds") or []:
+            if x.get("round") is not None:
+                self.emit({"type": "iterate.round", "engine": "host_step", "iter": x["round"], "action": x.get("action"),
+                           "change": x.get("change"), "score": x.get("score"), "valid": True})
         b = r.get("best_round") if isinstance(r, dict) else None
         if not b or not b.get("gains"):
+            self.emit({"type": "iterate.stopped", "engine": "host_step", "reason": "invalid", "message_zh": "没有有效的一轮", "best": None})
             return r
         h = self._local_hash(b["gains"])
-        res = {"type": "tune.stopped", "reason": "autopilot",
+        res = {"type": "iterate.stopped", "engine": "host_step", "reason": "pass" if r.get("passed") else "budget_rounds",
+               "rounds": len([x for x in r.get("rounds") or [] if x.get("round") is not None]),
                "best": {"iter": b.get("round"), "params": dict(b["gains"]), "params_hash": h, "metrics": b.get("metrics")}}
+        r0 = r.get("round0")
+        if r0:
+            res["round0"] = {"iter": r0["round"], "metrics": r0["metrics"], "passed": r0["passed"]}
+        res["pass_basis"] = self._ss_band(b.get("metrics") or {})["pass_basis"]
         res["best_card"] = self._best_card(res)
         self.iter_result = res
+        self._persist_last(res)
+        self.emit(res)
         return r | {"best_card": res["best_card"], "instruction": "已出“采用最好参数”确认卡；最终回复总结最好一轮并让用户点卡确认，不要以提问结束。"}
 
     def _best_card(self, res: dict) -> int | None:
@@ -564,9 +608,56 @@ class AgentService:
         best = res.get("best")
         if not best:
             return None
+        ss = self._ss_band(best.get("metrics") or {})
+        v, vzh = self._verdict(ss, res)
+        res["verdict"], res["verdict_zh"], res["ss_err"] = v, vzh, ss
         r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"],
-                                             "ss_err": self._ss_band(best.get("metrics") or {})}, lambda: None)
+                                             "ss_err": ss, "verdict": v, "verdict_zh": vzh,
+                                             "compare": self._compare(res.get("round0"), best)}, lambda: None)
+        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "ss_err": ss,
+                       "verdict": v, "verdict_zh": vzh, "pass_basis": ss.get("pass_basis"), "compare": self._compare(res.get("round0"), best)}
         return r.get("action_id")
+
+    @staticmethod
+    def _verdict(ss: dict, res: dict) -> tuple[str, str]:
+        """卡片级结论 pass | fail | unknown。ss_err.inside 为 null（单位对不上、实机未标定）一律 unknown，
+        界面据此不说「各项指标均已达标」。"""
+        if ss.get("inside") is None:
+            return "unknown", "暂无法判定是否满足题目误差带（" + (ss.get("pass_basis") or "误差带待标定") + "）"
+        if ss["inside"] and res.get("reason") == "pass":
+            return "pass", "各项指标均已达标（含题目误差带）"
+        return "fail", "未达标：" + ("稳态误差超出题目误差带" if not ss["inside"] else "其他指标未达标")
+
+    def _last_path(self) -> pathlib.Path | None:
+        proj = self._project_path()
+        if not proj:
+            return None
+        board = re.sub(r"[^A-Za-z0-9_.-]+", "_", self.s.port or "none")
+        return pathlib.Path(proj) / ".dz" / "iterate_last" / f"{board}.json"
+
+    def _persist_last(self, res: dict) -> None:
+        """最近一次迭代结果（含最好参数卡、ss_err、pass_basis、verdict）按 项目+板卡 落盘，刷新页面后 iterate_status 能还原。"""
+        p = self._last_path()
+        if not p:
+            return
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps({"board": self.s.port, "t": time.time(), "result": res}, ensure_ascii=False, default=str), "utf-8")
+        except OSError:
+            pass
+
+    def iterate_last(self) -> dict | None:
+        p = self._last_path()
+        try:
+            return json.loads(p.read_text("utf-8")) if p and p.exists() else None
+        except (OSError, ValueError):
+            return None
+
+    def iterate_status(self) -> dict:
+        th = getattr(self, "iter_thread", None)
+        last = self.iterate_last()
+        return {"running": bool(th and th.is_alive()), "result": getattr(self, "iter_result", None) or (last or {}).get("result"),
+                "last": last}
 
     def _ss_band(self, m: dict) -> dict:
         """最好参数卡上的稳态误差：实测值 + 题目误差带（出处）+ 本次在不在带内。单位对不上（如测得 px、题目 cm）
@@ -594,17 +685,69 @@ class AgentService:
         if band is None:
             band = {"limit": GOOD_REL["ss_err_pct"], "unit": "%", "source": "默认口径 |稳态误差| ≤ 2%（题目没写误差带）"}
         same = band["unit"] == unit and bool(unit)
-        inside = (val <= band["limit"]) if same else None
+        judged, conv_note = val, None
+        conv = (self.step_cfg() or {}).get("sim_nominal") if self.sim else None
+        if not same and conv and conv.get("from") == unit and conv.get("to") == band["unit"] and unit:
+            judged, same = val * float(conv["per"]), True               # 仿真对象自己的几何（dzbench.json step_tests.*.sim_nominal）
+            conv_note = f"仿真标称换算，未实机标定（{conv.get('source', '')}）"
+        inside = (judged <= band["limit"]) if same else None
         if inside is None:
-            note = f"单位不同（实测 {unit or '无单位'}，题目 {band['unit'] or '无单位'}），要先标定换算才能判是否在带内"
+            why = "仿真对象没有到该单位的标称几何" if self.sim else "要先标定换算（#51）"
+            note = f"单位不同（实测 {unit or '无单位'}，题目 {band['unit'] or '无单位'}），{why}，暂不判是否在带内"
         else:
-            note = "在题目误差带内" if inside else f"超出误差带 {val - band['limit']:.4g}{unit}"
-        return {"measured": round(val, 6), "unit": unit, "band": band, "inside": inside, "note_zh": note}
+            note = "在题目误差带内" if inside else f"超出误差带 {judged - band['limit']:.4g}{band['unit']}"
+            if conv_note:
+                note += "；" + conv_note
+        out = {"measured": round(val, 6), "unit": unit, "band": band, "inside": inside, "note_zh": note,
+               "pass_basis": self._pass_basis(band, inside)}
+        if conv_note:
+            out["converted"] = {"value": round(judged, 6), "unit": band["unit"], "note_zh": conv_note}
+        return out
+
+    CMP_KEYS = ("ss_err_pct", "sse", "overshoot_pct", "overshoot", "settle_ms", "settling", "iae")
+
+    def _compare(self, r0: dict | None, best: dict) -> dict | None:
+        """卡上第 0 轮（初值）和最好一轮的指标并排；第 0 轮就是最好的一轮时写「初值已达标，未改参」（没达标另说），不写“第0轮最好”。"""
+        if not r0:
+            return None
+        y = (self.step_cfg() or {}).get("y")
+        yu = next((f.get("unit") for f in (self.s.schema.fields if self.s.schema else []) if f["name"] == y), None) or ""
+        units = {"ss_err_pct": "%", "overshoot_pct": "%", "sse": yu, "overshoot": yu, "settle_ms": "ms", "settling": "s",
+                 "iae": f"{yu}·s" if yu else "s"}
+        a = {k: float(v) for k, v in (r0.get("metrics") or {}).items() if k in self.CMP_KEYS and isinstance(v, (int, float))}
+        b = {k: float(v) for k, v in (best.get("metrics") or {}).items() if k in self.CMP_KEYS and isinstance(v, (int, float))}
+
+        def rows(m):                                                    # 每项单独的数值 + 单位字段，界面直接排表
+            return [{"key": k, "value": round(m[k], 6), "unit": units[k]} for k in self.CMP_KEYS if k in m]
+        same = r0.get("iter") == best.get("iter")
+        ok0 = bool(r0.get("passed", (r0.get("pass") or {}).get("all")))
+        if same:
+            note = "初值已达标，未改参" if ok0 else "初值就是最好一轮，未改参（仍未达标，看差距最大的一项）"
+        else:
+            ks = [k for k in a if k in b]
+            note = f"第 {best.get('iter')} 轮比初值好：" + "，".join(f"{k} {a[k]:.4g} → {b[k]:.4g}{units[k]}" for k in ks[:3])
+        return {"round0": {"iter": r0.get("iter"), "metrics": rows(a)}, "best": {"iter": best.get("iter"), "metrics": rows(b)},
+                "unchanged": same, "note_zh": note}
+
+    @staticmethod
+    def _pass_basis(band: dict | None, inside: bool | None) -> str:
+        """“达标停止”的依据（卡上和 stopped 事件都带）：迭代本身一律按默认口径（|稳态误差| ≤ 2%、超调 ≤ 10%）判达标；
+        题目误差带能用时另外写明对照结果，不能用时说清楚待标定，免得用户把“已达标”当成题目要求已满足。"""
+        if band is None or "item" not in band:
+            return "按默认 2% 判定（题目没写误差带）"
+        if inside is None:
+            return "按默认 2% 判定，题目误差带待标定"
+        return f"按默认 2% 判定达标；另对照{band['source']}：" + ("在带内" if inside else "超出")
 
     def _iter_emit(self, e: dict) -> None:
         if e.get("type") == "iterate.round" and e.get("valid"):
             self.memory().add("iterate", iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
                               score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
+        if e.get("type") == "iterate.stopped" and "pass_basis" not in e:
+            try:
+                e["pass_basis"] = self._ss_band((e.get("best") or {}).get("metrics") or {})["pass_basis"]
+            except Exception:  # noqa: BLE001  依据写不出来也不能吞掉停止事件
+                e["pass_basis"] = "按默认 2% 判定，题目误差带待标定"
         self.emit(e)
 
     def _iter_run(self, it) -> None:
@@ -614,10 +757,12 @@ class AgentService:
             res = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
             self.emit(res)
         try:
+            res.setdefault("pass_basis", self._ss_band((res.get("best") or {}).get("metrics") or {})["pass_basis"])
             res["best_card"] = self._best_card(res)
         except Exception as e:  # noqa: BLE001
             res["best_card"], res["best_card_error"] = None, str(e)
         self.iter_result = res
+        self._persist_last(res)
 
     def iterate_cancel(self) -> dict:
         it = getattr(self, "iterator", None)
@@ -655,9 +800,12 @@ class AgentService:
         g = self._guard()
         b = g.best()
         best = {"round": b.n, "gains": b.gains, "metrics": b.metrics, "score": round(b.score, 4)} if b else None
+        r0 = g.rounds[0] if g.rounds else None
+        round0 = {"round": r0.n, "metrics": r0.metrics, "score": round(r0.score, 4),
+                  "passed": log[0].get("action") == "done"} if r0 else None
         if v.get("action") != "done" and g.rounds:
             self.rollback_best(_auto=True)
-        return {"rounds": log, "final": v.get("action"), "best_round": best, "gains_now": self._gains(),
+        return {"rounds": log, "final": v.get("action"), "best_round": best, "round0": round0, "gains_now": self._gains(),
                 "passed": v.get("action") == "done"}
 
     def _flow_next(self, code: str) -> dict | None:
@@ -763,12 +911,16 @@ class AgentService:
         return {"status": "reset"}
 
     def agent_propose_param(self, name: str, value: float, reason: str) -> dict:
+        """大模型调的提议工具：卡上 source=llm。规则引擎走 _propose(..., "规则引擎")，source=rule_engine。"""
+        return self._propose(name, value, reason, "agent")
+
+    def _propose(self, name: str, value: float, reason: str, src: str) -> dict:
         g = self._guard()
         try:
             v, notes = g.check(name, self.s.params.get(name), value)
         except GuardError as e:
             raise GatewayError(e.code, e.message) from e
-        r = self.tools.propose_param_change(name, v, reason + ("（护栏：" + "；".join(notes) + "）" if notes else ""), "agent")
+        r = self.tools.propose_param_change(name, v, reason + ("（护栏：" + "；".join(notes) + "）" if notes else ""), src)
         if self.sim and r.get("id") is not None:     # 仿真：采纳即自动验证阶跃（省一次点击）；实机仍由 run_step_test 出确认卡
             self.verify_groups = getattr(self, "verify_groups", {}) | {r["id"]: {r["id"]}}
             r = r | {"verify_step": "采纳后自动做一次验证阶跃"}
@@ -1093,13 +1245,13 @@ class AgentService:
             if not p:
                 return {"action": "OBSERVE", "reason": "分阶段搜索 P→I→D 已走完，没有可用的单项建议"}
             ph = "PID"[min(self.staged.stage, 2)]
-            return self.agent_propose_param(p[0], p[1], f"分阶段搜索（{ph} 阶段）：{p[0]} → {p[1]:.4g}")
+            return self._propose(p[0], p[1], f"分阶段搜索（{ph} 阶段）：{p[0]} → {p[1]:.4g}", "规则引擎")
         a = self.step_analysis()
         for h in a["hints"]:
             for k, v in (h.get("changes") or {}).items():
                 d = 1 if v > (self.s.params.get(k) or 0) else -1
                 if (k, d) not in g.blocked:
-                    return self.agent_propose_param(k, v, "规则：" + h["text"])
+                    return self._propose(k, v, "规则：" + h["text"], "规则引擎")
         return {"action": "OBSERVE", "reason": "规则没有可用的单项建议"}
 
     # -------------------------------------------------------------- 编译 / 故障 / 变量
@@ -1285,7 +1437,30 @@ class AgentService:
             return self._llm
         return llm_mod.build(emit=self.emit)
 
+    _asking = 0
+
+    def agent_state(self) -> dict:
+        """status 里唯一的 Agent 状态来源（界面别再自己拼）：unconfigured（没配模型，fix_action=configure_model）/
+        busy（正在回答或自动迭代在跑）/ ready。只看配置有没有 Key，不读出、不带 Key。"""
+        try:
+            configured = bool(llm_mod.public_config().get("configured"))
+        except Exception:  # noqa: BLE001  配置文件坏了也算没配好
+            configured = False
+        if not configured:
+            return {"state": "unconfigured", "fix_action": "configure_model", "message_zh": "还没接大模型：点“大模型设置”选服务商、填 Key"}
+        th = getattr(self, "iter_thread", None)
+        if self._asking or (th is not None and th.is_alive()):
+            return {"state": "busy"}
+        return {"state": "ready"}
+
     def ask(self, text: str) -> str:
+        self._asking += 1
+        try:
+            return self._ask(text)
+        finally:
+            self._asking -= 1
+
+    def _ask(self, text: str) -> str:
         """回答前发 agent_mode。没配模型 / 连不上 → 发 agent_unreachable（界面给“重试 / 设置”），
         不再有规则助手兜底：调参、示波、急停、阶跃测试、评分页都不依赖 Agent，照常能用。"""
         llm = self.llm()
