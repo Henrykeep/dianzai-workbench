@@ -27,6 +27,7 @@ DZ_BOARDS_DIR ?= $(DZBENCH_HOME)/boards
 BOARD_FOUND := $(firstword $(wildcard $(DZ_BOARDS_DIR)/$(BOARD)/board.yaml boards/$(BOARD)/board.yaml))
 BOARD_YML := $(if $(BOARD_FOUND),$(BOARD_FOUND),boards/$(BOARD)/board.yaml)
 APP_DIR   ?= $(firstword $(wildcard $(DZBENCH_HOME)/projects/$(APP) apps/$(APP) examples/$(APP)))
+BOARDS_DIR ?= $(DZ_BOARDS_DIR)
 # LINK=rtt：LINK 走调试探针 RTT（firmware/proto/dzrtt），不占串口；默认 uart。换输出目录免得混用目标文件
 LINK      ?= uart
 BDIR      := build/$(BOARD)$(if $(VARIANT),-$(VARIANT))$(if $(filter rtt,$(LINK)),-rtt)
@@ -40,7 +41,7 @@ ifeq ($(APP_DIR),)
 $(error 找不到应用 $(APP)（apps/ 或 examples/ 下）)
 endif
 ifeq ($(wildcard $(BOARD_YML)),)
-$(error 找不到 $(BOARD_YML)。可用板卡：$(notdir $(wildcard boards/*)))
+$(error 找不到 $(BOARD_YML)。可用板卡：$(notdir $(wildcard $(BOARDS_DIR)/*)))
 endif
 
 # 由 board.yaml 生成 board_gen.{h,c,mk}；board.yaml 或 app.yaml 变了自动重新生成
@@ -203,8 +204,11 @@ agent-eval:
 selftest:
 	$(MAKE) APP=port_selftest BOARD=$(BOARD)
 
+# 测试前后给仓库拍快照：测试在仓库树里留下文件（boards/zz-test-*、build/zz-test-*、未跟踪文件）就失败
+test check: TREE_SNAP := $(shell mktemp 2>/dev/null || echo /tmp/dz-tree-$$$$)
 test:
 	@tools/require_fetch.sh   # 缺 third_party/CMSIS_6 → 「缺少 third_party/CMSIS_6，请先运行 make fetch」并退出非零
+	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
@@ -214,6 +218,7 @@ test:
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
+	$(PY) tools/tree_guard.py check $(TREE_SNAP)
 
 # 推送前：干净克隆 + 空 HOME + 无器件包里跑 CI 同款步骤（tools/preflight.sh）
 # 许可扫描（make check 调用）：vendored/third_party 每目录 LICENSE、Python 依赖 pip-licenses、前端 npm 依赖。
@@ -237,6 +242,8 @@ check:
 	tools/require_fetch.sh --selftest
 	$(PY) tools/check_redef.py --selftest
 	$(PY) tools/check_redef.py
+	$(PY) tools/tree_guard.py --selftest
+	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	$(PY) tools/test_port_policy.py
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
@@ -300,6 +307,7 @@ check:
 	cd host/python && $(PY) -m dzlink.test_sender
 	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && for t in tests/*.test.ts; do node_modules/.bin/esbuild $$t --bundle --platform=node --log-level=error | node || exit 1; done; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
+	$(PY) tools/tree_guard.py check $(TREE_SNAP)
 
 fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）
 	tools/fetch_third_party.sh
