@@ -31,7 +31,7 @@
   --warning:#9A5B00; --warning-subtle:#FFF4E0;
   --danger:#CD2B31;  --danger-hover:#B8252B; --danger-subtle:#FDECEC;
   --info:#2550C7;    --info-subtle:#EDF2FE;
-  --chart-1:#2E5BDB;--chart-2:#E06A00;--chart-3:#0F9488;--chart-4:#8B4FC9;--chart-5:#C2185B;--chart-6:#656A73;
+  --chart-1:#2E5BDB;--chart-2:#E06A00;--chart-3:#0F9488;--chart-4:#AB6400;--chart-5:#12A594;--chart-6:#656A73;
   --chart-grid:#ECEEF1;--chart-axis:#656A73;
   --focus-ring:0 0 0 2px var(--surface-1),0 0 0 4px #7A9BF0;
   --shadow-1:0 1px 2px rgba(16,24,40,.06);
@@ -48,7 +48,7 @@
   --warning:#F5B544; --warning-subtle:#2E2410;
   --danger:#FF6B6E;  --danger-hover:#FF8587; --danger-subtle:#3A1517;
   --info:#86A8FF;    --info-subtle:#1A2440;
-  --chart-1:#6E93FF;--chart-2:#FF9A4D;--chart-3:#3CCBB8;--chart-4:#B38CF0;--chart-5:#F06FA0;--chart-6:#A3A8B2;
+  --chart-1:#6E93FF;--chart-2:#FF9A4D;--chart-3:#3CCBB8;--chart-4:#FFC53D;--chart-5:#0BD8B6;--chart-6:#A3A8B2;
   --chart-grid:#24272B;--chart-axis:#9196A0;
   --focus-ring:0 0 0 2px var(--surface-1),0 0 0 4px #5C86F5;
   --shadow-1:0 1px 2px rgba(0,0,0,.4);
@@ -58,7 +58,7 @@
 }
 
 /* ---- 应用扩展（不改上面统筹者 token 的值；只加别名，组件读语义名） ----
- * 规则：90% 以上是灰；蓝只用于主按钮与选中态；红只给急停与故障；其他状态中性色 + 小图标。不用紫（图表不用 chart-4/chart-5）。 */
+ * 规则：90% 以上是灰；蓝只用于主按钮与选中态；红只给急停与故障；其他状态中性色 + 小图标。不用紫粉：chart-4/5 已换成琥珀/青（与统筹稿唯一差异）。 */
 :root,[data-theme=light],[data-theme=dark]{
   --accent-solid:#0D74CE; --danger-solid:#CE2C31;   /* 浅深统一：白字对比 4.77 / 5.21 */
   --f-sans:var(--font-sans); --f-mono:var(--font-mono);
@@ -80,6 +80,7 @@
   --ok-bg:transparent; --warn-bg:transparent; --crit-bg:var(--danger-subtle);
   --estop:var(--danger-solid); --estop-ink:#FFFFFF; --estop-bg:var(--danger-subtle);
   --band:var(--accent-subtle);
-  --ch1:var(--chart-1); --ch2:var(--chart-2); --ch3:var(--chart-3); --ch4:var(--chart-6); --ch5:var(--chart-1); --ch6:var(--chart-3); --ch7:var(--chart-2); --ch8:var(--chart-6);
+  --ch1:var(--chart-1); --ch2:var(--chart-3); --ch3:var(--chart-4); --ch4:var(--chart-6); --ch5:var(--chart-2); --ch6:var(--chart-5); --ch7:var(--chart-1); --ch8:var(--chart-6);
+  --f-mono:"Geist Mono",var(--font-mono);
   --setpoint:var(--text-primary);
 }

@@ -336,11 +336,12 @@ function renderParams() {
   // 全部来自 schema 的 params（名字 / 量程 / 单位 / 说明），界面不认任何题目的参数名。
   // 设计 v9：每行只显示名字、数值、刻度尺；说明 / 单位 / 量程收进悬停提示（title）
   const tip = (p: Param) => [p.desc, `量程 ${fmt(p.min, p)} … ${fmt(p.max, p)}${p.unit ? " " + p.unit : ""}`, `默认 ${fmt(p.default, p)}`].filter(Boolean).join("\n");
-  $("plist").innerHTML = ps.length ? ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(tip(p))}">
+  $("plist").innerHTML = ps.length ? `<div class="p-unread" id="p-unread" hidden><span>灰色为固件默认值，尚未从板子读取</span><button class="btn sm ghost" type="button" id="p-unread-go">从板子读取参数</button></div>` + ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(tip(p))}">
     <div class="pr"><span class="k mono">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
       <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off" aria-label="${esc(p.name)}${p.unit ? "（" + esc(p.unit) + "）" : ""}"></div>
     <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div></div>`).join("")
     : emptyState("sliders", "连上后列出可调参数");
+  document.getElementById("p-unread-go")?.addEventListener("click", () => $("p-read").click());
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
     inp.onkeydown = e => {
@@ -413,11 +414,15 @@ function markParams() {
     // 草稿 ≠ 板上真值：行变成“待下发”，旧值划掉留在左边，刻度尺上黄铜标出新值和改动范围（板上始终是板子回报的生效值）
     const on = pend.has(p.name), b = document.getElementById(`pb-${p.name}`), v = S.applied[p.name];
     document.getElementById(`row-${p.name}`)?.classList.toggle("dirty", on);
-    if (b) b.textContent = on ? fmt(v, p) : "";
+    if (b) b.textContent = on ? fmt(v, p) : v == null ? "未读取" : "";
+    const pi = document.getElementById(`pi-${p.name}`) as HTMLInputElement | null;
+    if (pi) pi.placeholder = v == null ? fmt(p.default, p) : "";
+    document.getElementById(`row-${p.name}`)?.classList.toggle("unread", v == null);
     const set = (id: string, k: string, x: string) => document.getElementById(id)?.style.setProperty(k, x);
     if (v != null) set(`pk-${p.name}`, "--x", pos(p, v));
     if (on && v != null) { const n = clampLocal(p, +S.edit[p.name]); set(`pn-${p.name}`, "--x", pos(p, n)); set(`ps-${p.name}`, "--a", pos(p, Math.min(v, n))); set(`ps-${p.name}`, "--b", pos(p, Math.max(v, n))); }
   });
+  const pu = document.getElementById("p-unread"); if (pu) pu.hidden = !(S.schema?.params ?? []).some(p => S.applied[p.name] == null);
   const pl = pending();
   $("pend").innerHTML = pl.map(p => `<span>${esc(p.name)}</span><span>${fmt(S.applied[p.name], p)} → <b>${fmt(clampLocal(p, +S.edit[p.name]), p)}</b></span>`).join("");
   flow();
@@ -593,6 +598,10 @@ function renderStatus(st: Msg) {
   }
   $("connect").innerHTML = st.connected ? "断开 <kbd>⌃O</kbd>" : "连接 <kbd>⌃O</kbd>";
   $("connect").classList.toggle("pri", !st.connected);
+  if (st.connected && st.port) {   // 连着时下拉框显示的就是真正连着的口（仿真板换题后不再停在旧的那一项）
+    const sel = $<HTMLSelectElement>("port");
+    if (sel.value !== st.port) { if (![...sel.options].some(o => o.value === st.port)) sel.add(new Option(String(st.port), st.port)); sel.value = st.port; }
+  }
   $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = $<HTMLSelectElement>("lines").disabled = !!st.connected;
   $("empty").hidden = !!st.connected && !!S.schema;
   // 曲线区空状态即引导：说明这一页做什么 + 一个主按钮（点的是已有入口，不新增功能入口）

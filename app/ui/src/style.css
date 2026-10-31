@@ -897,3 +897,44 @@ body{background:var(--bg);color:var(--text-primary);font-size:var(--fs-14);line-
 .theme-sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
 .theme-sw:has(input:focus-visible){box-shadow:var(--focus-ring)}
 .theme-sw svg{width:16px;height:16px}
+
+/* ---- 设计 v10：第二轮打磨（更少等宽、更少噪点、更大读数） ---- */
+body{font-size:var(--fs-14);line-height:var(--lh-14)}
+/* 等宽只给数字：标签、标题、参数名一律用界面无衬线 */
+.lab .nm,.prow .k,.life,.pins .v,#ro-link,#ro-schema,#ro-mode,#st-ws,#st-log{font-family:var(--f-sans)}
+.prow .k{font-size:var(--fs-14);font-weight:var(--fw-medium)}
+.lab .nm{font:var(--fw-medium) var(--fs-14)/var(--lh-14) var(--f-sans)}
+.lab .lv{font:var(--fw-regular) var(--fs-20)/var(--lh-20) var(--f-mono);letter-spacing:-.01em}
+.lab .lv small,.lab .lref,.lab .lr{font-family:var(--f-sans);font-size:var(--fs-12)}
+.lane:first-child .lab{padding-top:var(--sp-5)}
+/* 参数：未读取 = 默认值灰显 + 一处行内动作 */
+.p-unread{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);margin:0 0 var(--sp-2);padding:var(--sp-2) var(--sp-3);border-radius:var(--radius-md);background:var(--surface-2);color:var(--text-secondary);font-size:var(--fs-12)}
+.p-unread[hidden]{display:none}
+.prow.unread .in::placeholder{color:var(--text-muted);opacity:1}
+.prow.unread .bv{color:var(--text-muted);font:var(--fs-12) var(--f-sans)}
+/* 页头：20px 标题 + 一行说明 */
+.pg-head .pg-tt{display:flex;align-items:baseline;gap:var(--sp-3);white-space:nowrap;overflow:hidden;min-width:0}
+.pg-head .pg-h{font-size:var(--fs-20);line-height:var(--lh-20);font-weight:var(--fw-semibold);color:var(--text-primary)}
+.pg-head .pg-s{font-size:var(--fs-14);color:var(--text-muted);overflow:hidden;text-overflow:ellipsis}
+/* 左栏：去掉「下一步」长段；条目 14px、行距更松 */
+.nav .step-hint,.nav .step-hint[hidden]{display:none!important}
+#steps .ns{font-size:var(--fs-14);min-height:36px;margin-bottom:var(--sp-1)}
+/* 顶栏：状态字做成小中性胶囊；排障/工具箱是幽灵按钮 */
+.pins b[class^="st-"]{display:inline-flex;align-items:center;height:20px;padding:0 var(--sp-2);border-radius:var(--radius-full);background:var(--surface-2);color:var(--text-secondary)!important;font:var(--fw-medium) var(--fs-12)/1 var(--f-sans);letter-spacing:.02em;text-transform:lowercase}
+.pins b[class^="st-"]::first-letter{text-transform:uppercase}
+.top #trouble,.top #toolbox{background:transparent;box-shadow:none;border-color:transparent;color:var(--text-secondary)}
+.top #trouble:hover,.top #toolbox:hover{background:var(--surface-hover);color:var(--text-primary)}
+/* 底栏链路质量：窄、中性的迷你柱图，永不出现红色宽条 */
+.hbstrip{height:14px;gap:1px;align-items:flex-end;max-width:120px;overflow:hidden}
+.hbstrip i,.hbstrip i.hb-warn,.hbstrip i.hb-bad,.hbstrip i.hb-off{width:2px;flex:none;border-radius:1px;height:var(--h,100%);background:var(--border-strong)}
+.hbstrip i.hb-ok{background:var(--text-muted)}
+.hbstrip i.hb-warn,.hbstrip i.hb-bad{background:var(--accent-text)}
+.hbstrip i.hb-off{height:15%}
+/* 事件 + 台账：一行安静的灰字；台账为空时整格收起 */
+.tl{padding:var(--sp-1) var(--sp-5);font-size:var(--fs-12);color:var(--text-muted)}
+.tl::before{content:none}
+.tl-e{background:none;border:0;padding:0;gap:var(--sp-2);color:var(--text-muted)}
+.tl-e b{color:var(--text-secondary);font-weight:var(--fw-medium)}
+.app[data-step="调参"]:has(#hist>p.hint:only-child){grid-template-rows:var(--h-top) auto minmax(0,1fr) 0 var(--h-sb)}
+.app[data-step="调参"]:has(#hist>p.hint:only-child) .side>.pane[data-side="hist"]{display:none!important}
+.app[data-step="调参"]:has(#hist>p.hint:only-child) .side>.pane.agent,.app[data-step="调参"]:has(#hist>p.hint:only-child) .dock{grid-row:3/4}

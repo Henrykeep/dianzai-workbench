@@ -12,7 +12,7 @@
     <div class="nav-sec">流程</div>
     <nav class="steps" id="steps" title="开发流程：点一步切到那一页；高亮 = 当前页，描边 = 建议的下一步，✓ = 已走过"><button class="ns" data-step="项目" data-pid="req" title="读题定方案"><i data-lucide="file-text"></i><span class="nl">读题定方案</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="烧录" data-pid="project" title="建工程"><i data-lucide="hammer"></i><span class="nl">建工程</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="联调" data-pid="sim" title="仿真"><i data-lucide="activity"></i><span class="nl">仿真</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="模块" data-pid="bringup" title="上板联调"><i data-lucide="cpu"></i><span class="nl">上板联调</span><span class="nd" aria-hidden="true"></span></button><button class="ns sub" data-step="标定" data-pid="bringup" title="标定"><i data-lucide="crosshair"></i><span class="nl">标定</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="调参" data-pid="tune" title="调参"><i data-lucide="sliders-horizontal"></i><span class="nl">调参</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="评分" data-pid="score" title="评分"><i data-lucide="clipboard-check"></i><span class="nl">评分</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="封箱" data-pid="seal" title="封箱"><i data-lucide="package-check"></i><span class="nl">封箱</span><span class="nd" aria-hidden="true"></span></button></nav>
     <div class="sp"></div>
-    <p class="lbl step-hint" id="step-hint"></p>
+    <p class="lbl step-hint" id="step-hint" hidden></p>
     <button class="nav-fold" id="nav-fold" type="button" title="收起或展开导航"><i data-lucide="panel-left"></i><span class="nl">收起</span></button>
   </aside>
   <header class="top">
@@ -300,7 +300,7 @@
   <div id="alerts" class="alerts" data-region="alerts" hidden></div>
   <footer class="status">
     <span class="mono" id="ro-link">未连接</span><span class="mono" id="ro-mode" hidden></span><span class="mono" id="ro-schema">—</span><span class="mono" id="ro-rx">—</span>
-    <span id="hbstrip" class="hbstrip" title="链路心跳：每格 1 秒，绿=正常 黄=帧率掉半 红=有 CRC 坏帧/丢帧 灰=没帧；点格子跳到那一秒"></span>
+    <span id="hbstrip" class="hbstrip" title="链路质量：每格 1 秒，高度 = 帧率；颜色变深 = 有坏帧或丢帧，浅灰 = 没帧；点格子跳到那一秒"></span>
     <span id="st-hint" class="warn-t"></span>
     <span class="sp"></span>
     <span id="rec" class="rec" hidden><span class="dot"></span>REC</span>

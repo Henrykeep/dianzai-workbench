@@ -18,7 +18,7 @@ export function initTimeline(el: HTMLElement, onJump: (e: Ev) => void, onChange:
   const render = () => {
     el.hidden = !evs.length;
     el.innerHTML = evs.slice(-80).map(e => { const [n, c] = kindOf(e.kind);
-      return `<span class="tl-e" data-i="${e.i}" style="--c:var(${c})" title="${esc(e.text)} · dzlog ${when(e)}（点击跳到这一刻）"><b>${n}</b>${esc(e.text)}<i>${when(e)}</i></span>`; }).join("");
+      return `<span class="tl-e" data-i="${e.i}" style="--c:var(${c})" title="${esc(e.text)} · dzlog ${when(e)}（点击跳到这一刻）"><b>${n}</b>${esc(e.text.startsWith(n) ? e.text.slice(n.length).trimStart() : e.text)}<i>${when(e)}</i></span>`; }).join("");
     el.scrollLeft = el.scrollWidth;
     onChange(evs);
   };

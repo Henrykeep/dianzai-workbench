@@ -145,6 +145,11 @@ export function render(p: Progress, go: (s: Step) => void) {
     ph.innerHTML = `<p class="pg-t"></p><button class="btn pri" type="button"></button>`;
     if (extra) ph.querySelector("p")!.after(extra);
     ph.querySelector("p")!.textContent = hd.text;
+    if (view === "tune") {   // 设计 v10：调参页头 = 20px 标题 + 一行短说明；完整说明放悬停提示
+      const t = ph.querySelector("p")!; t.title = hd.text; t.classList.add("pg-tt");
+      t.replaceChildren(Object.assign(document.createElement("b"), { className: "pg-h", textContent: "调参" }),
+        Object.assign(document.createElement("span"), { className: "pg-s", textContent: "阶跃实验 → 看指标 → 达标后保存参数" }));
+    }
     const b = ph.querySelector<HTMLButtonElement>(":scope > button.pri")!   /* 不能取第一个 button：调参页常驻的「保存参数」也在页头 */; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto; b.hidden = !!hd.hidden;   // 与页头常驻入口重复：只留入口表登记的那个
     b.onclick = () => { if (hd.action) runAction(hd.action, go); else if (hd.goto) go(JOURNEY.find(j => j.id === hd.goto)!.pages[0] as Step); };
     if (view === "tune") b.hidden = true;   // 调参页唯一主按钮是「阶跃实验」
