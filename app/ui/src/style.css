@@ -1017,11 +1017,11 @@ body{font-variant-numeric:tabular-nums}
 /* 去掉一层：各页 h3 下的重复说明（页头一句话已说明这一页做什么） */
 .page > h3 + p.hint,.page > .pg-hd > p.hint{display:none}
 /* r9p2 急停锁存：整条实心红、白字；屏上只剩红色（工作区与侧栏去色） */
-.alerts.latched{background:var(--danger);color:var(--on-danger,var(--bg));box-shadow:none;border-radius:0;margin:0}
-.alerts.latched .al-h,.alerts.latched .al-t,.alerts.latched .al-fix{color:var(--on-danger,var(--bg))}
-.alerts.latched .al-n{background:var(--on-danger,var(--bg));color:var(--danger)}
-.alerts.latched .btn{background:transparent;color:var(--on-danger,var(--bg));border:1px solid var(--on-danger,var(--bg))}
-.alerts.latched #al-r{background:var(--on-danger,var(--bg));color:var(--danger);font-weight:600}
+.alerts.latched{background:var(--estop-bg);color:var(--on-estop);box-shadow:none;border-radius:0;margin:0}
+.alerts.latched .al-h,.alerts.latched .al-t,.alerts.latched .al-fix{color:var(--on-estop)}
+.alerts.latched .al-n{background:var(--on-estop);color:var(--estop-bg)}
+.alerts.latched .btn{background:transparent;color:var(--on-estop);border:1px solid var(--on-estop)}
+.alerts.latched #al-r{background:var(--on-estop);color:var(--estop-bg);font-weight:600}
 html.estop-latched .work,html.estop-latched .side,html.estop-latched .nav,html.estop-latched .status{filter:grayscale(1)}
 /* r9p2 每屏 ≤3 个蓝：心跳条异常格、项目步骤序号、RAM≠默认 标记、引导卡当前步改灰阶层级 */
 .hbstrip i.hb-warn,.hbstrip i.hb-bad{background:var(--ink)}
@@ -1030,3 +1030,9 @@ html.estop-latched .work,html.estop-latched .side,html.estop-latched .nav,html.e
 .gd li.cur .n{border-color:var(--ink);color:var(--ink)}
 .psl{--indicator-color:var(--text-secondary);--wa-color-brand-fill-loud:var(--ink);--wa-color-brand-border-loud:var(--ink)}
 .psl{--wa-form-control-activated-color:var(--ink)} .psl::part(thumb){background-color:var(--ink);border-color:var(--ink)} .psl::part(indicator){background-color:var(--text-secondary)}
+
+/* r9p3 大屏：内容限宽居中，1920 下不空 */
+@media (min-width:1600px){
+  .page.pj > *,.page[data-page="烧录"] > *,.page[data-page="标定"] > *,.page[data-page="封箱"] > *,.page[data-page="评分"] > *,.page[data-page="模块"] > *{max-width:960px;margin-left:auto;margin-right:auto}
+  .prow .k,.prow .in,.prow .in.num{font-size:var(--t-lg)}
+}

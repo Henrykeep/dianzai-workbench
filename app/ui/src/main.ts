@@ -69,25 +69,27 @@ const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
 const hb = initHbStrip($("hbstrip"), jumpAt);
 const AL = new Alerts();
 let clearedHide = 0;
-let latchAt: number | null = null, writesLocked = false;
+let latchAt: number | null = null, writesLocked = false, latchBase = 0;   // 告警计数按锁存段：每次新锁存从 1 数起
 const ESTOP_WHY = "急停已锁存：先在红条上点「解除」";
-const WRITE_IDS = ["p-send", "it-go", "it-write", "tb-save", "seal-mode"];
+// 锁存期间真正禁用（不只是去色）：所有会改板子 / 发运动 / 写参数的按钮
+const WRITE_IDS = ["p-send", "p-def", "it-go", "it-write", "tb-save", "seal-mode", "fw-flash", "ag-step", "ag-relay", "ag-search", "ag-guard", "lines-btn", "pre-bbtn"];
+const WRITE_SEL = WRITE_IDS.map(i => "#" + i).join(",") + ",[data-write],.act-ok,.ag-accept,.snap-apply,#plist .psl,#plist input.in";
 function lockWrites(on: boolean) {
-  if (on) WRITE_IDS.forEach(id => { const e = document.getElementById(id) as any; if (e) { e.disabled = true; e.title = ESTOP_WHY; e.dataset.estop = "1"; } });
-  else if (writesLocked) { WRITE_IDS.forEach(id => { const e = document.getElementById(id) as any; if (e?.dataset.estop) { delete e.dataset.estop; e.title = ""; e.disabled = false; } }); syncParams(); renderIter(); }
+  if (on) document.querySelectorAll<any>(WRITE_SEL).forEach(e => { if (!e.dataset.estop) { e.dataset.estopTitle = e.title || ""; e.dataset.estop = e.disabled ? "was" : "1"; } e.disabled = true; e.title = ESTOP_WHY; });
+  else if (writesLocked) { document.querySelectorAll<any>("[data-estop]").forEach(e => { e.disabled = e.dataset.estop === "was"; e.title = e.dataset.estopTitle ?? ""; delete e.dataset.estop; delete e.dataset.estopTitle; }); syncParams(); renderIter(); }
   writesLocked = on;
 }
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   // 锁存只认本地服务上报（S.latched ← status.tx_locked），断开 / 重连都不由前端清（#20）
   const latched = S.latched;
-  { const r = document.getElementById("cmd-r"); if (r) { r.classList.toggle("attn", latched); r.hidden = clearBtnHidden(latched); } }   // 「解除」只在急停锁存时出现
+  { const r = document.getElementById("cmd-r"); if (r) { r.classList.toggle("attn", latched); r.hidden = true; void clearBtnHidden; } }   // r9p3：锁存时只留红条上的一个「解除」
   $("estop").classList.toggle("locked", latched);
   if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); const nn = document.getElementById("sp-restore-note"); if (nn) nn.textContent = ""; showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
   el.classList.remove("al-hist"); el.classList.toggle("latched", latched);
   document.documentElement.classList.toggle("estop-latched", latched);   // 锁存时全屏只留红色：其余区域去色
-  if (latched && latchAt == null) latchAt = Date.now(); if (!latched) latchAt = null;
+  if (latched && latchAt == null) { latchAt = Date.now(); latchBase = Math.max(0, l.length - 1); } if (!latched) latchAt = null;
   lockWrites(latched);
   if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.innerHTML = `<span class="al-t">${esc(estopHist)}</span><span class="sp"></span><button class="btn sm" id="al-retune">${esc(RETUNE.label)}</button>`; el.querySelector<HTMLElement>("#al-retune")!.onclick = () => runAction(RETUNE.action, s => goStepRef(s)); } else el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
@@ -102,7 +104,7 @@ function renderAlerts() {
   const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
   if (!head) head = `<b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
-  el.innerHTML = `<span class="al-n">${Math.max(l.length, 1)}</span>${head}` +
+  el.innerHTML = `<span class="al-n">${Math.max(l.length - latchBase, 1)}</span>${head}` +
     (l.length > 1 ? `<span class="al-more">${l.filter(e => !isE(e) && !isW(e)).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
     `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除</button>` : "") +
     (l.length ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
