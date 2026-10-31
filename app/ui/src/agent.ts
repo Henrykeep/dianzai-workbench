@@ -472,7 +472,7 @@ export function initAgent(call: Call) {
     if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复
     seenBlk.add(n.blocker_code);
     const v = noticeView(n);
-    noteEl(n.blocker_code, `<div><b>${esc(v.head)}</b></div>${v.lines.map(l => `<p>${esc(l)}</p>`).join("")}`, n.fix_action, v.tag);
+    noteEl(n.blocker_code, `<div><span class="sys-tag">系统提示</span> <b>${esc(v.head)}</b></div>${v.lines.map(l => `<p>${esc(l)}</p>`).join("")}`, n.fix_action, v.tag);
     notes.get(n.blocker_code)!.dataset.src = "notice";
   }
 

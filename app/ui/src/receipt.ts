@@ -58,7 +58,7 @@ export function newBlockers<T extends { code: string }>(prev: Set<string>, cur: 
 export type Notice = { blocker_code: string; what: string; source?: string; suggestion?: string; fix_action?: string | null; human_only?: boolean };
 export function noticeView(n: Notice) {
   return {
-    head: n.human_only ? "系统提示 · 结论：需要人工确认后才能继续" : "系统提示 · 结论：处理后即可继续",
+    head: n.human_only ? "结论：需要人工确认后才能继续" : "结论：处理后即可继续",
     lines: [`发生了什么：${n.what}`, `原因来自：${sourceZh(n.source)}`, `建议：${n.suggestion || "按下方按钮处理"}`],
     tag: n.human_only ? "需人工确认" : "",
   };

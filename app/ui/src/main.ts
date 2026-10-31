@@ -4,7 +4,8 @@ import "./tokens.css";
 import "./style.css";
 import "./wa";
 import { SWITCH_EX_OP, FORKED_F } from "./fieldmap";
-import { enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
+import { setVerdict, getVerdict } from "./verdictbus";
+import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
 import "./entry-data";
@@ -70,6 +71,8 @@ const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
 const hb = initHbStrip($("hbstrip"), jumpAt);
 const AL = new Alerts();
 let clearedHide = 0;
+let lkMsg: any = null, lkSince: number | null = null, lkNext: number | null = null, lkNextAt = 0;
+let sidecarUp = true, simT0: number | null = null;
 let latchAt: number | null = null, writesLocked = false, latchBase = 0;   // 告警计数按锁存段：每次新锁存从 1 数起
 function lockWrites(on: boolean) {
   if (on) lockWritesIn(document, true);
@@ -162,7 +165,7 @@ function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", 
   d.className = `toast ${kind}`;
   // 侧车已给出 fix 的按原样显示；否则过翻译层（发生了什么 · 原因 · 处理 + 详情）
   const f = er.fix_action ? resolveFix(er.fix_action) : null;
-  const btn = f?.kind === "run" ? `<wa-button size="small" appearance="outlined" class="fx" data-fx="${esc(er.fix_action!)}">${esc(f.label)}</wa-button>` : "";
+  const btn = f && f.kind !== "wait" ? `<wa-button size="small" variant="brand" class="fx" data-fx="${esc(er.fix_action!)}">${esc(f.label)}</wa-button>` : "";
   d.innerHTML = kind === "ok" || kind === "info" ? `<b>${esc(er.message)}</b>` : partsHtml(errParts(er), esc, btn);
   d.querySelector<HTMLElement>(".fx")?.addEventListener("click", ev => { ev.stopPropagation(); runAction(er.fix_action!, s => goStepRef(s)); d.remove(); });
   d.onclick = e => { if (!(e.target as Element).closest("details")) d.remove(); };
@@ -457,7 +460,7 @@ function syncRelaySlot() {
 let paramsLocked = false;
 function lockParams(on: boolean) {
   paramsLocked = on;
-  document.querySelectorAll<HTMLElement>("#plist .psl, #plist input.in").forEach(e => { (e as any).disabled = on; });
+  document.querySelectorAll<HTMLElement>("#plist .psl, #plist input.in").forEach(e => { (e as any).disabled = on || writesLocked; });
   const l = document.getElementById("p-lock"); if (l) l.hidden = !on;
   if (on) { $<HTMLButtonElement>("p-send").disabled = true; const w = document.getElementById("it-write") as any; if (w) w.disabled = true; }
   $("p-send").title = on ? ITER_LOCK_ZH : S.latched ? "急停已锁存：先在红条上点「解除」" : "";
@@ -541,6 +544,7 @@ async function sendPending(only?: string[], undoing = false) {
     try {
       const before = S.applied[p.name];
       const r = await call("param_set", { name: p.name, value: clampLocal(p, +S.edit[p.name]) });
+      if (paramRejected(r)) { showReject({ ...r, name: p.name, requested: r.requested ?? +S.edit[p.name], current: r.current ?? before }); continue; }
       if (!undoing) UNDO.push(p.name, before);
       delete S.edit[p.name];
       S.applied[p.name] = r.applied; FN.onUserChange();
@@ -646,7 +650,8 @@ function renderProposal(m: Msg) {
       <tr><td>调节</td><td>${n1(k.settling_s, 2, " s")}</td><td>—</td></tr>
       <tr><td>稳态误差</td><td>${n1(k.sse_pct, 1, "%")}</td><td class="ok-t">${tg.sse_pct != null ? "≤ " + n1(tg.sse_pct, 1, "%") : "—"}</td></tr></table>` : "";
   d.className = "card sugg";
-  d.innerHTML = `<div class="sg-h"><span class="mono">${esc(m.name)}</span><span class="sg-v">${p ? fmt(m.current, p) : m.current} → <em>${p ? fmt(m.value, p) : m.value}</em></span></div>
+  const gv = getVerdict();
+  d.innerHTML = (gv ? `<div class="sg-concl ${esc(gv.v)}">当前结论：${esc(gv.text)}</div>` : "") + `<div class="sg-h"><span class="mono">${esc(m.name)}</span><span class="sg-v">${p ? fmt(m.current, p) : m.current} → <em>${p ? fmt(m.value, p) : m.value}</em></span></div>
     ${rows}<p>${esc(m.reason)}${m.clamped ? "（已按范围限幅）" : ""}</p><div class="lbl">来源：${esc(m.source)}</div>
     <div class="act"><button class="btn pri" data-a="1">采纳 <kbd>Y</kbd></button><button class="btn" data-a="0">驳回 <kbd>N</kbd></button></div>`;
   d.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
@@ -768,6 +773,7 @@ function renderIter() {
   const c = $("it-card");
   if (IT.s.phase !== "done") { c.hidden = true; c.innerHTML = ""; return; }
   const v = cardView(IT.s.result), id = IT.applyId();
+  setVerdict(v.verdict);
   c.hidden = false;
   c.innerHTML = `<wa-card class="itc"><h4>${esc(v.title)}</h4><div class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(v.verdict.text)}</div>${v.compare.length ? `<table class="it-cmp"><thead><tr><th></th><th>第 0 轮</th><th>最好</th><th>变化</th></tr></thead><tbody>${v.compare.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num ${r[4]}">${esc(r[3])}</td></tr>`).join("")}</tbody></table>` : ""}<div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
     `<div class="it-col">${v.gaps.map(g => `<span>${esc(g)}</span>`).join("")}</div><div class="it-col"><span>${esc(v.reason)}</span>${v.next ? `<span class="hint">${esc(v.next)}</span>` : ""}</div>` +
@@ -893,19 +899,18 @@ document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();
 conn.on(c => {
   if (!c.board) {   // 侧车停或板子 lost/disconnected：状态栏左侧、速率、连接按钮同步切换，清掉旧速率
-    $("ro-link").textContent = c.sidecar ? "" : "本地服务无响应";
+    $("ro-link").textContent = "";
     $("ro-rx").textContent = "—"; S.rate = 0;
     $("led").className = "led";
     $("connect").innerHTML = "连接 <kbd>⌃O</kbd>"; $("connect").classList.add("pri");
   }
   $<HTMLButtonElement>("ag-send").disabled = !c.sidecar || $<HTMLInputElement>("ag-in").disabled;
-  $("st-ws").textContent = c.sidecar ? "本地服务 已连接" : "本地服务 未连接";
+  $("st-ws").textContent = c.sidecar ? "本地服务 已连接" : "本地服务未连接";
+  sidecarUp = c.sidecar; document.documentElement.classList.toggle("sidecar-down", !c.sidecar); renderLinkTag();
   $("banner").hidden = c.sidecar;
   $("banner").innerHTML = "本地服务无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
 });
 // link.state reason 横幅（中性/告警）+ 端口下拉高亮；急停锁存告警在 #alerts，独立于连接状态，重连后照常显示
-let lkMsg: any = null, lkSince: number | null = null, lkNext: number | null = null, lkNextAt = 0;
-let simT0: number | null = null;
 function simStarting(m: any) {
   if (m.state === "start") simT0 = Date.now() - (+m.elapsed_s || 0) * 1000; else simT0 = null;
   $<HTMLButtonElement>("connect").disabled = simT0 != null; $("connect").title = simT0 != null ? "仿真板正在编译启动，好了自动连上" : "";
@@ -914,7 +919,7 @@ function simStarting(m: any) {
 setInterval(() => { if (simT0 != null) renderLinkTag(); }, 1000);
 function renderLinkTag() {
   if (simT0 != null) { const e = $("ro-lk"); e.textContent = simStartText((Date.now() - simT0) / 1000); e.className = "ltag busy"; return; }
-  const t = linkTag(lkMsg, lkSince, Date.now(), lkNext != null ? lkNext - (Date.now() - lkNextAt) / 1000 : null), e = $("ro-lk");
+  const t = linkTag(lkMsg, lkSince, Date.now(), lkNext != null ? lkNext - (Date.now() - lkNextAt) / 1000 : null, sidecarUp), e = $("ro-lk");
   e.textContent = t.text; e.className = "ltag " + t.tone;
 }
 setInterval(() => { if (lkMsg && lkMsg.board !== "connected" && lkSince != null) renderLinkTag(); }, 1000);

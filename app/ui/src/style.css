@@ -1042,3 +1042,10 @@ html.estop-latched .work,html.estop-latched .side,html.estop-latched .nav,html.e
 .pj-ask .pj-ask-row .in{height:56px;font-size:var(--t-lg);padding:0 var(--sp4)}
 .pj-ask .pj-ask-row .btn{height:56px;padding:0 var(--sp6)}
 .pj-alt{display:flex;gap:var(--sp2);margin-top:var(--sp3)}
+/* #73 本地服务断了：状态栏只留一句「本地服务未连接」 */
+html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
+/* #76 数字统一：大指标与曲线读数同一档（20px 等宽表格数字），参数值 16px 等宽表格数字 */
+.rd .v,.lab .lv{font:400 var(--t-xl)/28px var(--f-mono);letter-spacing:0;font-variant-numeric:tabular-nums}
+.rd .v small,.lab .lv small{font:400 var(--t-sm) var(--f-sans);margin-left:4px;color:var(--text-muted)}
+#plist .pv .in.num,#plist input[id^=pi-]{font:400 var(--t-lg)/24px var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.sugg .sg-concl{font-weight:600;margin-bottom:var(--sp2)}

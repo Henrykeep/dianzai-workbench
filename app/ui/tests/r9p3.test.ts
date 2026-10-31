@@ -24,3 +24,29 @@ const m = new IterModel(true);
 m.onStatus({ running: false, last: { board: "sim", t: 1, result: { type: "iterate.stopped", reason: "budget", best: { iter: 2, params: {}, pass: false, gaps: {} } } } }, 0);
 assert.ok((m.s as any).result, "falls back to last.result");
 console.log("r9p3 ok");
+// #71 reason=state 即便 ok:true 也算被拒
+import { paramRejected, linkTag, rejectHint } from "../src/batch1";
+assert.equal(paramRejected({ ok: true, reason: "state", applied: 1 }), true);
+assert.equal(paramRejected({ ok: true, status: "clamped", reason: "range", applied: 1 }), false);
+assert.equal(paramRejected({ ok: true, applied: 1 }), false);
+assert.match(rejectHint({ reason: "state", requested: 2, current: 1 }), /当前状态不允许改.*板上仍为 1/);
+// #72 报错正文无原始英文，原文只在详情；有 fix_action 就有按钮
+import { errParts, partsHtml } from "../src/errors";
+const h = errParts({ code: "E_STATE", message: "param write rejected: state" });
+assert.ok(!/[A-Za-z_]{3,}/.test(h.what + h.why + h.fix), JSON.stringify(h)); assert.match(h.raw, /E_STATE/);
+const html = partsHtml(h, s => s, "<wa-button class=\"fx\">去处理</wa-button>");
+assert.ok(html.indexOf("fx") < html.indexOf("<details"), "按钮在详情外、默认可见");
+// #73 本地服务断了绝不显示已连接
+assert.equal(linkTag({ board: "connected" }, null, 0, null, false).text, "本地服务未连接");
+assert.equal(linkTag({ board: "connected" }, null, 0, null, true).text, "已连接");
+// #75 结果卡 / 台账 / 建议卡同一结论源
+import { setVerdict, getVerdict, ledgerJudge } from "../src/verdictbus";
+setVerdict({ v: "unknown", text: "未判定" });
+assert.equal(ledgerJudge(true, "未过"), "未判定"); assert.equal(ledgerJudge(false, "未过"), "未过"); assert.equal(getVerdict()!.text, "未判定");
+console.log("r9p3 steering ok");
+// 结果卡标题不得在未判定时出现「达标」；依据不重复
+import { cardView } from "../src/iterui";
+const cv = cardView({ type: "iterate.stopped", reason: "pass", best: { iter: 0, params: { kp: 1 }, pass: true, gaps: {} }, ss_err: { measured: 1, unit: "deg", band: null, inside: null, note_zh: "" }, pass_basis: "按默认 2% 判定", message_zh: "连续 2 轮达标", compare: { round0: [], best: [], unchanged: true, note: "初值已达标，未改参" } } as any);
+assert.ok(!/达标/.test(cv.title + cv.reason), cv.title + cv.reason);
+assert.equal((cv.verdict.text.match(/按默认 2% 判定/g) ?? []).length <= 1, true, cv.verdict.text);
+console.log("r9p3 card ok");

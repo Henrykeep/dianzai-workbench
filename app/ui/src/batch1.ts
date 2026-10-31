@@ -1,7 +1,8 @@
 // r9 batch-1 纯逻辑（无 DOM）：连接标签、仿真/实机标签、迭代锁、param_reject 文案、首页三步引导
 export type LinkTag = { text: string; tone: "ok" | "off" | "busy" };
 // 连接状态只看 link.state：已连接 / 断开+原因 / 重连中（已等 X s，Y s 后再试）
-export function linkTag(m: { board?: string; reason?: string; cause_zh?: string; message_zh?: string } | null, since: number | null, now: number, nextS?: number | null): LinkTag {
+export function linkTag(m: { board?: string; reason?: string; cause_zh?: string; message_zh?: string } | null, since: number | null, now: number, nextS?: number | null, sidecarUp = true): LinkTag {
+  if (!sidecarUp) return { text: "本地服务未连接", tone: "off" };   // #73 侧车不在时板子状态无从得知，绝不显示「已连接」
   const b = m?.board;
   if (b === "connected") return { text: "已连接", tone: "ok" };
   if (b === "lost" || m?.reason === "resuming") {
@@ -36,7 +37,7 @@ export const iterProgress = (iter: number, rounds: number, leftS: number) => `�
 export const ENUM_ZH: Record<string, string> = { idle: "空闲", running: "运行中", run: "运行中", estop: "急停", fault: "故障", error: "故障", ready: "就绪", stopped: "已停止", stop: "已停止", calib: "标定中", init: "初始化", boot: "启动中", hold: "保持", step: "阶跃中", safe: "安全态", stall: "堵转" };
 export const enumZh = (s: string) => ENUM_ZH[s.toLowerCase()] ?? s;
 // 原因来源 → 中文
-export const SOURCE_ZH: Record<string, string> = { ui: "在工作台上按了急停", button: "在工作台上按了急停", key: "在工作台上按了急停", board: "板子上报", firmware: "板子上报", hb_timeout: "心跳超时", watchdog: "心跳超时", host: "上位机停止", agent: "Agent 发起", sidecar: "本地服务", link: "连接中断", stall: "堵转保护", limit: "限位触发" };
+export const SOURCE_ZH: Record<string, string> = { ui: "在工作台上按了急停", button: "在工作台上按了急停", key: "在工作台上按了急停", board: "板子上报", firmware: "板子上报", hb_timeout: "心跳超时", watchdog: "心跳超时", host: "上位机停止", agent: "Agent 发起", sidecar: "本地服务", link: "连接中断", stall: "堵转保护", heartbeat_lost: "心跳丢失", hb_lost: "心跳丢失", limit: "限位触发" };
 export const sourceZh = (s?: string | null) => !s ? "本地服务未上报" : SOURCE_ZH[s] ?? (/^[\x00-\x7f]+$/.test(s) ? "其他来源" : s);
 // 仿真启动中：sim_starting {state:start|ready, elapsed_s?}
 export const simStartText = (elapsedS: number) => `仿真启动中 · 已 ${Math.max(0, Math.round(elapsedS))} s`;
@@ -49,3 +50,5 @@ export function lockWritesIn(root: ParentNode, on: boolean) {
   if (on) root.querySelectorAll<any>(WRITE_SEL).forEach(e => { if (!e.dataset.estop) { e.dataset.estopTitle = e.title || ""; e.dataset.estop = e.disabled ? "was" : "1"; } e.disabled = true; e.title = ESTOP_WHY; });
   else root.querySelectorAll<any>("[data-estop]").forEach(e => { e.disabled = e.dataset.estop === "was"; e.title = e.dataset.estopTitle ?? ""; delete e.dataset.estop; delete e.dataset.estopTitle; });
 }
+// #71 写参数回执：只要带 reason（如 state），即便 ok:true 也算被拒，参数不算生效
+export const paramRejected = (r: any) => !!r && (r.ok === false || r.status === "rejected" || (r.reason != null && r.reason !== "" && r.status !== "clamped"));

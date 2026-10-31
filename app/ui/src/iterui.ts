@@ -51,7 +51,7 @@ export function compareRows(base: Record<string, number> | null | undefined, bes
 // 结论行：只显示 verdict_zh；inside=null 一律「未判定」（不论后端给什么 pass）；达标口径附在后面
 export function verdictLine(v: Verdict | undefined, e: SsErr | null, basis: string): { v: string; text: string } {
   const x: Verdict = !v || e?.inside === null ? { v: "unknown", zh: v?.v === "unknown" && v.zh ? v.zh : "未判定" } : v;
-  return { v: x.v, text: `${x.zh}${basis ? `（${basis}）` : ""}` };
+  return { v: x.v, text: `${x.zh}${basis && !x.zh.includes(basis) ? `（${basis}）` : ""}` };
 }
 // events.md compare：round0 / best 各是 [{key,value,unit}]，按 key 对齐
 export function compareRaw(c: CompareRaw): string[][] {
@@ -64,8 +64,8 @@ export function cardView(r: Stopped): { verdict: { v: string; text: string }; ti
   const b = r.best ?? null, basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
   return {
     compare: r.compare && !r.compare.unchanged ? compareRaw(r.compare) : b && !zero ? compareRows(r.base, b.metrics) : [],
-    title: !b ? "没有可用的一轮" : r.compare?.unchanged || zero ? (r.compare?.note || "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
-    reason: `停止原因：${REASON_ZH[r.reason] ?? r.reason}${r.message_zh ? `（${r.message_zh}）` : ""}`,
+    title: !b ? "没有可用的一轮" : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
+    reason: `停止原因：${REASON_ZH[r.reason] ?? "其他"}${r.message_zh ? `（${verdictLine(r.verdict, e, "").v === "pass" ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
     gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null || b.pass)] : [],
     verdict: verdictLine(r.verdict, e, basis),
