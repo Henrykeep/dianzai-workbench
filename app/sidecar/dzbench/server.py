@@ -144,6 +144,14 @@ class Server:
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
         if op == "project.list":                       # 可打开的项目（只读，读题页空状态用）
             return {"projects": await run(None, project_mod.list_projects, self.svc.gw.root), "current": project_mod.current()}
+        if op == "project.migrate":                    # 旧版写在仓库 examples/ 的用户工程 → $DZBENCH_HOME/projects/：只复制不删；先 confirmed=false 出清单给界面确认卡，人确认后 confirmed=true
+            from . import paths as paths_mod
+            if m.get("confirmed") is not True:
+                return {"needs_confirm": True, "plan": await run(None, paths_mod.migrate_plan, self.svc.gw.root), "dest": str(paths_mod.projects_dir())}
+            codes = m.get("codes")
+            if codes is None:
+                codes = [x["code"] for x in await run(None, paths_mod.migrate_plan, self.svc.gw.root)]
+            return await run(None, paths_mod.migrate_copy, self.svc.gw.root, [str(c) for c in codes], True)
         if op == "project.open":                       # 打开已有项目 = 设为当前项目（持久化）+ 推 progress.changed
             try:
                 p = await run(None, project_mod.open_project, self.svc.gw.root, m.get("code"))

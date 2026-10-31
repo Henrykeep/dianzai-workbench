@@ -14,6 +14,7 @@ from .. import elfsym, hardfault, keil
 from ..agent_api import AgentTools
 from . import cards, steptools
 from .. import pageops
+from .. import paths
 from ..flash import FlashError, Flasher, schema_hash_of
 from ..session import LinkError, Session
 from ..transport import ROOT
@@ -289,7 +290,7 @@ class AgentService:
         from .. import ports as ports_mod
         root = pathlib.Path(self.gw.root)
         st = steptools.project_state(root, None)
-        cm = {"apps": "应用固件（每个子目录一个应用）", "examples": "比赛项目（读题/方案/分配/生成的产物）", "boards": "板卡定义 board.yaml",
+        cm = {"apps": "应用固件（每个子目录一个应用）", "examples": "内置例题（只读；用户工程在 $DZBENCH_HOME/projects/）", "boards": "板卡定义 board.yaml",
               "firmware": "通用固件库（algo/drivers/proto，冻结层）", "tools": "命令行工具（req/scheme/alloc/gen/keil_inject）", "subsys": "子系统库"}
         lines = [f"- {k}/：{v}" for k, v in cm.items() if (root / k).is_dir()]
         try:
@@ -325,7 +326,7 @@ class AgentService:
         if not self.sim:
             return {"written": written, "stopped": "不在仿真板上：实机调参每轮要人确认，没有自动连跑"}
         tune = self.tune_autopilot(4)
-        items = (steptools._yaml(pathlib.Path(self.gw.root) / "examples" / code / "requirements.yaml").get("items") or [])
+        items = (steptools._yaml(paths.project_dir(self.gw.root, code) / "requirements.yaml").get("items") or [])
         score = self.score_run(str(items[0]["id"]), n=1, band=sp["band"]) if items else {"error": "没有评分项"}
         return {"written": written, "sim": self.s.port, "tune": tune, "score": score}
 

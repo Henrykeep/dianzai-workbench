@@ -19,6 +19,8 @@ import sys
 from xml.sax.saxutils import quoteattr
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import boardlib  # noqa: E402
 
 
 def make_vars(board: str, app: str) -> dict[str, str]:
@@ -29,7 +31,7 @@ def make_vars(board: str, app: str) -> dict[str, str]:
 
 def render(board: str, app: str) -> tuple[pathlib.Path, str]:
     v = make_vars(board, app)
-    ccs = ROOT / "boards" / board / "ccs"
+    ccs = boardlib.board_dir(board, ROOT) / "ccs"
     rel = lambda p: os.path.relpath(ROOT / p, ccs).replace(os.sep, "/")
     gen = v["GEN"]
     incs = "".join(f"\n            -I${{PROJECT_LOC}}/{rel(i)}" for i in v["INC"].split())
@@ -41,7 +43,7 @@ def render(board: str, app: str) -> tuple[pathlib.Path, str]:
     syscfg = next(ccs.glob("*.syscfg")).name
     # 掉电保存区（board.yaml mcu.nvm_kb>0）：用 tools/gen_ide_nvm.py 生成的 dz_nvm_linker.cmd（FLASH 截短）替 SysConfig 的链接文件
     import yaml
-    mcu = yaml.safe_load((ROOT / "boards" / board / "board.yaml").read_text(encoding="utf-8")).get("mcu", {})
+    mcu = yaml.safe_load((boardlib.board_dir(board, ROOT) / "board.yaml").read_text(encoding="utf-8")).get("mcu", {})
     nvm = int(mcu.get("nvm_kb", 0) or 0)
     nvm_file = ""
     if nvm:

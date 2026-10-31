@@ -21,8 +21,12 @@ export PYTHONUTF8 := 1
 Q := $(if $(filter 1,$(V)),,@)
 .DEFAULT_GOAL := all
 ROOT      := $(CURDIR)
-BOARD_YML := boards/$(BOARD)/board.yaml
-APP_DIR   ?= $(firstword $(wildcard apps/$(APP) examples/$(APP)))
+# 用户板卡 / 工程不进仓库（#29）：$(DZ_BOARDS_DIR)/<板>、$(DZBENCH_HOME)/projects/<工程> 优先，其次仓库内置 boards/、apps/、examples/（只读）
+DZBENCH_HOME  ?= $(HOME)/.dzbench
+DZ_BOARDS_DIR ?= $(DZBENCH_HOME)/boards
+BOARD_FOUND := $(firstword $(wildcard $(DZ_BOARDS_DIR)/$(BOARD)/board.yaml boards/$(BOARD)/board.yaml))
+BOARD_YML := $(if $(BOARD_FOUND),$(BOARD_FOUND),boards/$(BOARD)/board.yaml)
+APP_DIR   ?= $(firstword $(wildcard $(DZBENCH_HOME)/projects/$(APP) apps/$(APP) examples/$(APP)))
 # LINK=rtt：LINK 走调试探针 RTT（firmware/proto/dzrtt），不占串口；默认 uart。换输出目录免得混用目标文件
 LINK      ?= uart
 BDIR      := build/$(BOARD)$(if $(VARIANT),-$(VARIANT))$(if $(filter rtt,$(LINK)),-rtt)
@@ -62,7 +66,7 @@ endif
 PROJECT_YML := $(wildcard $(APP_DIR)/project.yaml)
 PROJ_GEN    := $(OUT)/projgen
 ifneq ($(PROJECT_YML),)
-$(PROJ_GEN)/project_gen.mk: $(PROJECT_YML) tools/gen_project.py tools/gen_coproc.py $(wildcard boards/*/board.yaml)
+$(PROJ_GEN)/project_gen.mk: $(PROJECT_YML) tools/gen_project.py tools/gen_coproc.py $(wildcard boards/*/board.yaml $(DZ_BOARDS_DIR)/*/board.yaml)
 	$(PY) tools/gen_project.py $(PROJECT_YML) -o $(PROJ_GEN) --role $(or $(ROLE),main)
 $(PROJ_GEN)/project_gen.h $(PROJ_GEN)/project_gen.c: $(PROJ_GEN)/project_gen.mk
 -include $(PROJ_GEN)/project_gen.mk

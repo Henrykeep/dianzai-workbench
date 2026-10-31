@@ -13,18 +13,18 @@ BAUDS = [460800, 921600, 115200, 230400, 1000000, 500000, 57600, 9600]
 
 
 def sim_apps() -> list[str]:
-    """能当仿真板的应用：apps/ 或 examples/ 下有 sim_setup.c（仿真被控对象）且声明了 link: 的目录。
+    """能当仿真板的应用：apps/、examples/ 或工程根目录 $DZBENCH_HOME/projects/ 下有 sim_setup.c（仿真被控对象）且声明了 link: 的目录。
     不写死题目名单：新加一个被控对象，端口列表里自动出现。"""
     found = []
-    for base in ("apps", "examples"):
-        d = sim_root() / base
+    from . import paths
+    for d in (sim_root() / "apps", sim_root() / "examples", paths.projects_dir()):
         if not d.is_dir():
             continue
         for a in sorted(d.iterdir()):
             if not a.is_dir() or not any(a.rglob("sim_setup.c")):
                 continue
             ymls = [y for y in (a / "app.yaml", a / "project.yaml") if y.exists()]
-            if any(any(ln.startswith("link:") for ln in y.read_text(encoding="utf-8").splitlines()) for y in ymls):
+            if a.name not in found and any(any(ln.startswith("link:") for ln in y.read_text(encoding="utf-8").splitlines()) for y in ymls):
                 found.append(a.name)
     if not found:   # 安装包里没有源码树：只列已经编好的
         hs = sim_root() / "build" / "host-sim"

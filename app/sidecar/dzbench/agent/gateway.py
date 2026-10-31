@@ -49,9 +49,11 @@ LAYERS: list[dict] = [
     {"layer": "frozen", "globs": ["firmware/*", "ports/*", "tools/*", "third_party/*", "schema/*", "iface.lock.json",
                                   "Makefile", ".github/*", "app/*", "tests/*", "build/*"],
      "read": ALLOW, "write": DENY, "why": "冻结接口/工具链/工作台自身：只读。要改请人工提交"},
-    {"layer": "config", "globs": ["apps/*/app.yaml", "examples/*/project.yaml", "examples/*/app.yaml", "boards/*/board.yaml"],
+    {"layer": "builtin", "globs": ["examples/*", "boards/*"], "read": ALLOW, "write": DENY,
+     "why": "内置例题 / 板卡只读：用户工程在 $DZBENCH_HOME/projects/<名称>/，用户板卡在 $DZ_BOARDS_DIR/<板>/（项目页流程写入）"},
+    {"layer": "config", "globs": ["apps/*/app.yaml"],
      "read": ALLOW, "write": ASK, "gates": [["make", "check"]]},
-    {"layer": "app", "globs": ["apps/*", "examples/*"], "read": ALLOW, "write": ASK,
+    {"layer": "app", "globs": ["apps/*"], "read": ALLOW, "write": ASK,
      "gates": [["make", "check"], ["make", "test"]]},
     {"layer": "docs", "globs": ["docs/*", "*.md"], "read": ALLOW, "write": ASK, "gates": []},
 ]

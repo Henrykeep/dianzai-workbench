@@ -1,6 +1,6 @@
 """Agent 的“项目 / 评分”工具：只是把工作台已有入口（projflow.Flow、scoring）包成工具，不另起一套逻辑。
 
-- project_state  只读：examples/<code>/ 下项目流程走到哪一步、评分项有几条已有证据（Agent 的“项目状态”依据）
+- project_state  只读：工程目录（$DZBENCH_HOME/projects/<code>/，或内置例题）下项目流程走到哪一步、评分项有几条已有证据（Agent 的“项目状态”依据）
 - flow_preview   只写暂存区（~/.dzbench/flow），等同项目页“运行”（op flow_preview）
 - flow_accept    真正写仓库 → 风险 human，变成确认卡，等同项目页“确认写入”（op flow_accept）
 - score_items    只读：评分项和已有证据，等同评分页列表（op score_items）
@@ -12,6 +12,8 @@ import pathlib
 import re
 
 import yaml
+
+from .. import paths
 
 from .gateway import GatewayError
 
@@ -29,11 +31,11 @@ def _yaml(p: pathlib.Path) -> dict:
 
 def own_board(root: pathlib.Path, code: str) -> dict:
     """这个项目自己的板：project.yaml 的 boards.main（导入/选定过）> alloc/board.yaml 的 name（从零新建的草稿）。"""
-    d = pathlib.Path(root) / "examples" / code
+    d = paths.project_dir(root, code)
     pj = _yaml(d / "project.yaml")
     main = (pj.get("boards") or {}).get("main") if isinstance(pj.get("boards"), dict) else None
     draft = _yaml(d / "alloc" / "board.yaml").get("name")
-    out = {"declared": main, "draft": draft, "exists": bool(main and (pathlib.Path(root) / "boards" / main / "board.yaml").exists())}
+    out = {"declared": main, "draft": draft, "exists": bool(main and (paths.board_dir(root, main) / "board.yaml").exists())}
     if draft:                                   # 从零新建分支：.ioc 写到 ~/dz-cubemx/<name>/，人在 CubeMX 点 GENERATE 后才有 main.c
         cm = pathlib.Path.home() / "dz-cubemx" / draft
         out |= {"ioc_written": (cm / f"{draft}.ioc").exists(), "cubemx_generated": (cm / "Core" / "Src" / "main.c").exists(), "cubemx_dir": str(cm)}
@@ -42,17 +44,17 @@ def own_board(root: pathlib.Path, code: str) -> dict:
 
 def project_state(root: pathlib.Path, code: str | None = None) -> dict:
     root = pathlib.Path(root)
-    codes = sorted(p.name for p in (root / "examples").iterdir() if p.is_dir()) if (root / "examples").is_dir() else []
-    boards = sorted(p.name for p in (root / "boards").iterdir() if (p / "board.yaml").exists()) if (root / "boards").is_dir() else []
+    codes = [p.name for p in paths.project_dirs(root)]     # 工程根目录 + 内置例题
+    boards = [p.name for p in paths.board_dirs(root)]       # DZ_BOARDS_DIR + 内置板卡
     if not code:
         return {"projects": codes, "boards": boards, "hint": "指定 code 看某个项目走到哪一步"}
-    d = root / "examples" / code
+    d = paths.project_dir(root, code)
     req = _yaml(d / "requirements.yaml")
     items = req.get("items") or []
     ob = own_board(root, code)
     hw = ob["exists"] or bool(ob.get("ioc_written"))            # 导入了自己的板，或从零新建已写出 .ioc
     done = {"req": bool(items), "scheme": (d / "scheme.yaml").exists(), "import": hw,
-            "alloc": (d / "alloc").is_dir() and any((d / "alloc").iterdir()), "gen": (root / "build" / code / "gen").is_dir()}
+            "alloc": (d / "alloc").is_dir() and any((d / "alloc").iterdir()), "gen": (d / "build" / "gen").is_dir()}
     nxt = next((s for s in STEPS if not done[s]), None)
     return {"code": code, "steps": {LABEL[s]: done[s] for s in STEPS}, "next_step": nxt, "next_needs": NEEDS.get(nxt or "", ""),
             "board": ob, "req_items": len(items), "items_with_evidence": sum(bool(i.get("evidence")) for i in items),
@@ -123,13 +125,13 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
                   mcu: str | None = None, tpl: str | None = None, uvprojx: str | None = None, app: str | None = None, hand_edit: str | None = None) -> dict:
     """把还没做的步依次预览完（全部落在暂存区 + 沙盒题目目录，不动仓库），返回一张“批量写入”清单给 project_apply。
     后一步要读前一步的结果：前一步在沙盒目录里 accept（Flow 的 dest 参数），所以真仓库一个字节都不变。
-    gen 的 accept 会写仓库 build/，所以只预览不在沙盒确认；import 会写 boards/，同理。"""
+    gen 的 accept 会写工程根目录 build/gen/、import 会写 DZ_BOARDS_DIR，所以只预览不在沙盒确认。"""
     import shutil
     from ..projflow import FlowError, scratch_options
     root = pathlib.Path(root); f = _flow(root)
     if src and not pathlib.Path(src).is_absolute() and (root / src).exists():
         src = str(root / src)            # 模型只知道仓库相对路径
-    real = root / "examples" / code
+    real = paths.project_dir(root, code)
     sb = f.home / code / "sandbox"
     if sb.exists():
         shutil.rmtree(sb)
@@ -183,7 +185,7 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
                     return stop("import", f"导入工程的芯片是 {got}，题面要求 {mcu}，不一致", "换成该芯片的工程，或明确告诉我改用 " + got)
                 steps.append({"step": "import", "ok": True, "board": board, "aliases": len(r.get("aliases") or []), "overwrite": r.get("overwrite")})
                 if r.get("overwrite"):
-                    return stop("import", f"boards/{board} 已存在，批量写入不覆盖", "换个板名（name），或在项目页③勾“覆盖”")
+                    return stop("import", f"{paths.boards_dir() / board} 已存在，批量写入不覆盖", "换个板名（name），或在项目页③勾“覆盖”")
                 batch.append(("import", {"name": board}))
             else:                                   # 没有工程：从零新建，芯片按方案/候选排序取第一个能生成 .ioc 的
                 opts = scratch_options(root, _yaml(sb / "scheme.yaml"))
@@ -217,7 +219,7 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
         # ⑤ 之后：有 Keil 工程就把工作台模块注入 .uvprojx（同一张卡里一起确认；导入的工程自动找 MDK-ARM/*.uvprojx）
         from ..projflow import find_uvprojx
         uv = uvprojx or (find_uvprojx(pathlib.Path(project).expanduser()) if project else "")
-        if uv and board and (project or (root / "boards" / board).is_dir()):   # 从零新建要先在 CubeMX 生成+导入才有板，此时不注入
+        if uv and board and (project or paths.board_dir(root, board).is_dir()):   # 从零新建要先在 CubeMX 生成+导入才有板，此时不注入
             km = {"code": code, "board": board, "app": app or code, "uvprojx": str(pathlib.Path(uv).expanduser())}
             from ..projflow import keil_hand_edited
             if keil_hand_edited(pathlib.Path(km["uvprojx"])) and hand_edit not in ("merge", "keep"):
@@ -225,7 +227,7 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
                             "选“合并”（hand_edit=merge：重写 dz/ 组，备份 .bak）或“保留”（hand_edit=keep：这次不注入）")
             if hand_edit:
                 km["hand_edit"] = hand_edit
-            if (root / "apps" / km["app"]).is_dir() or (root / "examples" / km["app"] / "project.yaml").exists():
+            if (root / "apps" / km["app"]).is_dir() or (paths.project_dir(root, km["app"]) / "project.yaml").exists():
                 r = f._run(["tools/keil_inject.py", km["uvprojx"], "--root", f.repo, *f._kargs(km), "--dry-run"])
             else:                                   # 应用要等 ⑤ 写入后才有：预演留到写入时按顺序跑（失败就停在这步）
                 r = {"rc": 0, "out": "⑤ 写入后再注入（应用此刻还在暂存区）"}

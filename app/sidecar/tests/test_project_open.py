@@ -56,7 +56,7 @@ def test_open_bad_code(sv, code, err):
 def test_open_missing_project(sv):
     with pytest.raises(LinkError) as ei:
         op(sv, op="project.open", code="nope")
-    assert ei.value.code == "project_not_found" and "examples/nope" in ei.value.message
+    assert ei.value.code == "project_not_found" and "projects/nope" in ei.value.message
     assert ei.value.fix_action == "project_list"
     with pytest.raises(LinkError):
         op(sv, op="project.open", code="notes.txt")         # 文件不是项目目录
@@ -77,7 +77,7 @@ def test_list(sv):
     r = op(sv, op="project.list")
     assert sorted(p["code"] for p in r["projects"]) == ["2026X_follow", "demo"]
     for p in r["projects"]:
-        assert set(p) == {"code", "name", "updated_at"}
+        assert set(p) == {"code", "name", "updated_at", "builtin"} and p["builtin"] is True   # 仓库 examples/ 下的都是只读内置例题
         assert datetime.datetime.fromisoformat(p["updated_at"]).tzinfo is not None
     assert r["current"] is None
     assert r["projects"][0]["code"] == "demo"              # demo 里刚写过文件，最新
@@ -93,3 +93,26 @@ def test_agent_tools_same_interface(sv):
     assert sv.svc.project_open("demo")["project"]["name"] == "demo"
     bad = sv.svc.project_open("../x")
     assert bad["error"] == "project_code_invalid" and bad["fix_action"] == "project_list"
+
+
+def test_list_prefers_project_root(sv):
+    """#29：$DZBENCH_HOME/projects/ 下的工程可写（builtin=False），同名时覆盖内置例题；打开的就是工程根目录那份。"""
+    from dzbench import paths
+    (paths.projects_dir() / "demo").mkdir(parents=True)
+    (paths.projects_dir() / "mine").mkdir()
+    r = {p["code"]: p for p in op(sv, op="project.list")["projects"]}
+    assert r["demo"]["builtin"] is False and r["mine"]["builtin"] is False and r["2026X_follow"]["builtin"] is True
+    assert op(sv, op="project.open", code="demo")["project"]["path"] == str(paths.projects_dir() / "demo")
+
+
+def test_migrate_op_needs_confirm(sv):
+    """project.migrate：不带 confirmed 只给清单（needs_confirm），confirmed=true 才复制；源不删。"""
+    import subprocess
+    from dzbench import paths
+    root = sv.svc.gw.root
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    r = op(sv, op="project.migrate")
+    assert r["needs_confirm"] is True and {p["code"] for p in r["plan"]} == {"demo", "2026X_follow"} and not paths.projects_dir().exists()
+    r = op(sv, op="project.migrate", confirmed=True, codes=["demo"])
+    assert r["copied"] == ["demo"] and (paths.projects_dir() / "demo" / "requirements.yaml").exists()
+    assert (root / "examples" / "demo" / "requirements.yaml").exists()

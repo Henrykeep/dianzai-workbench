@@ -6,6 +6,13 @@ REPO = pathlib.Path(__file__).resolve().parents[3]
 PROJ = REPO / "tools/testdata/real/projects/Car_Mode1021"
 
 
+@pytest.fixture(autouse=True)
+def _home(tmp_path, monkeypatch):
+    """#29：写盘只认工程根目录（$DZBENCH_HOME/projects）和 DZ_BOARDS_DIR，测试里都指到 tmp_path。"""
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path))
+    monkeypatch.delenv("DZ_BOARDS_DIR", raising=False)
+
+
 def _snap(p):
     return sorted(str(x.relative_to(p)) for x in p.rglob("*")) if p.exists() else []
 
@@ -19,7 +26,7 @@ def test_alias_edit_keeps_comments():
 
 
 def test_req_scheme_alloc_preview_then_accept(tmp_path):
-    f = Flow(REPO, home=tmp_path / "home"); dest = tmp_path / "ex"
+    f = Flow(REPO, home=tmp_path / "home"); dest = tmp_path / "projects" / "ex"
     src = tmp_path / "t.txt"; src.write_text("一、任务\n设计一个小车。\n二、要求\n1．基本要求\n(1) 小车 10 s 内行驶 2 m。（20 分）\n", encoding="utf-8")
     m = {"code": "T1", "dest": str(dest)}
     r = f.preview("req", m | {"src": str(src)})
@@ -32,7 +39,7 @@ def test_req_scheme_alloc_preview_then_accept(tmp_path):
     f.accept("scheme", m)
     assert (dest / "scheme.yaml").exists()
     with pytest.raises(FlowError):
-        Flow(REPO, home=tmp_path / "h2").preview("alloc", {"code": "T2", "dest": str(tmp_path / "none")})
+        Flow(REPO, home=tmp_path / "h2").preview("alloc", {"code": "T2", "dest": str(tmp_path / "projects" / "none")})
 
 
 @pytest.mark.skipif(not PROJ.exists(), reason="no real project fixture")
@@ -66,7 +73,7 @@ def test_scheme_choices_and_apply_picks():
 
 
 def test_gen_drafts_project_yaml_from_catalog(tmp_path):
-    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "projects" / "t"; dest.mkdir(parents=True)
     import shutil
     for n in ("requirements.yaml", "scheme.yaml"):
         shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
@@ -77,7 +84,8 @@ def test_gen_drafts_project_yaml_from_catalog(tmp_path):
     assert not (dest / "project.yaml").exists()                 # 预览不写题目目录
     w = f.accept("gen", {"code": "T1", "dest": str(dest)})
     assert (dest / "project.yaml").exists() and (dest / "subsys/chassis/chassis.c").exists() and str(dest / "requirements.yaml") not in w["written"]
-    shutil.rmtree(REPO / "build" / "T1", ignore_errors=True)
+    assert (dest / "build/gen/project_gen.h").exists() and all(pathlib.Path(x).is_relative_to(tmp_path) for x in w["written"])
+    assert not (REPO / "build" / "T1").exists()                 # 生成产物落在工程根目录，不进仓库 build/
 
 
 def test_keil_needs_second_confirm(tmp_path):
@@ -91,7 +99,7 @@ def test_keil_needs_second_confirm(tmp_path):
 def test_scratch_allocs_and_writes_ioc(tmp_path):
     """从零新建：选项按方案主控排序、MSPM0 标不可用；预览生成 .ioc 且 ioc_import 反导无错；确认写到 CubeMX 目录。"""
     import shutil
-    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "projects" / "t"; dest.mkdir(parents=True)
     for n in ("requirements.yaml", "scheme.yaml"):
         shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
     m = {"code": "S1", "dest": str(dest)}
@@ -122,7 +130,7 @@ def test_scratch_mspm0_syscfg(tmp_path):
     from dzbench.projflow import syscfg_cli
     if syscfg_cli() is None:
         pytest.skip("本机没有 SysConfig CLI")
-    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "projects" / "t"; dest.mkdir(parents=True)
     for n in ("requirements.yaml", "scheme.yaml"):
         shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
     r = f.preview("scratch", {"code": "S2", "dest": str(dest), "mcu": "mspm0g3507", "name": "zz-m0-test"})
@@ -139,10 +147,50 @@ def test_scratch_missing_sdk_says_make_fetch(tmp_path, monkeypatch):
     h = tmp_path / "third_party/stm32f1xx-hal-driver/Inc"; h.mkdir(parents=True); (h / "stm32f1xx_hal_conf_template.h").write_text("")
     assert missing_sdk(tmp_path, "stm32f103c8t6", "stm32") == []
     import shutil
-    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "t"; dest.mkdir()
+    f = Flow(REPO, tmp_path / "h"); dest = tmp_path / "projects" / "t"; dest.mkdir(parents=True)
     for n in ("requirements.yaml", "scheme.yaml"):
         shutil.copy(REPO / "examples/2026H_ball" / n, dest / n)
     monkeypatch.setattr(projflow, "missing_sdk", lambda *a: ["third_party/stm32f4xx-hal-driver/Inc/stm32f4xx_hal_conf_template.h"])
     with pytest.raises(FlowError) as e:
         f.preview("scratch", {"code": "S1", "dest": str(dest), "mcu": "stm32f407vet6"})
     assert e.value.code == "missing_sdk" and "make fetch" in e.value.fix and "hal_conf_template" in e.value.msg
+
+
+def test_dest_outside_project_root_refused(tmp_path):
+    """#29：dest 指到仓库 examples/（或任何工程根目录之外）一律拒绝；相对 dest 算在工程根目录下。"""
+    f = Flow(REPO, tmp_path / "h")
+    with pytest.raises(FlowError) as e:
+        f.target("X", str(REPO / "examples" / "X"))
+    assert e.value.code == "readonly_dest"
+    assert f.target("X") == tmp_path / "projects" / "X" and f.target("X", "sub/X") == tmp_path / "projects" / "sub" / "X"
+
+
+def test_builtin_example_forks_into_project_root(tmp_path):
+    """内置例题只读：确认写入时先整份复制到 $DZBENCH_HOME/projects/<题号>/，仓库 examples/ 一个字节不变。"""
+    before = _snap(REPO / "examples" / "2026H_ball")
+    f = Flow(REPO, tmp_path / "h")
+    r = f.preview("scheme", {"code": "2026H_ball"})           # 读：回落到内置例题
+    assert r["target"] == str(tmp_path / "projects" / "2026H_ball" / "scheme.yaml")
+    f.accept("scheme", {"code": "2026H_ball"})
+    pd = tmp_path / "projects" / "2026H_ball"
+    assert (pd / "requirements.yaml").exists() and (pd / "scheme.yaml").exists()
+    assert _snap(REPO / "examples" / "2026H_ball") == before
+    assert subprocess.run(["git", "status", "--porcelain", "examples"], cwd=REPO, capture_output=True, text=True).stdout == ""
+
+
+def test_migrate_copies_only_after_confirm(tmp_path):
+    """旧版写在仓库 examples/ 的用户工程：只复制、不删源，且必须 confirmed。"""
+    from dzbench import paths
+    repo = tmp_path / "repo"; (repo / "examples" / "old1").mkdir(parents=True)
+    (repo / "examples" / "old1" / "requirements.yaml").write_text("items: []\n", encoding="utf-8")
+    (repo / "examples" / "kept").mkdir(); (repo / "examples" / "kept" / "a.txt").write_text("x")
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(["git", "add", "examples/kept"], cwd=repo, check=True)
+    plan = paths.migrate_plan(repo)
+    assert [p["code"] for p in plan] == ["old1"]               # 受 git 管理的内置例题不算旧工程
+    r = paths.migrate_copy(repo, ["old1"], confirmed=False)
+    assert r["ok"] is False and r["reason"] == "confirm_required" and not (tmp_path / "projects" / "old1").exists()
+    r = paths.migrate_copy(repo, ["old1"], confirmed=True)
+    assert r["copied"] == ["old1"] and (tmp_path / "projects" / "old1" / "requirements.yaml").exists()
+    assert (repo / "examples" / "old1" / "requirements.yaml").exists()      # 源不删
+    assert paths.migrate_copy(repo, ["old1"], confirmed=True)["skipped"] == ["old1"]   # 已有不覆盖

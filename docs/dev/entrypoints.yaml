@@ -31,6 +31,7 @@ actions:
   # ── 项目 ──
   - {id: project_new,  label: 新建项目,         at: page:req,   ui: pj-new,     ops: []}   # 只把焦点移到一句话输入（project_ask），不另起新建流程
   - {id: project_open, label: 打开项目,         at: page:req,   ui: pj-open,    ops: [project.list, project.open]}   # 列表按钮 .pj-item 是这一入口的选项，选中即 project.open {code}
+  - {id: project_migrate, label: 迁移旧工程,     at: page:req,   ui: pj-migrate, dynamic: true, ready: false, ops: [project.migrate]}   # #29：旧版写在仓库 examples/ 的用户工程复制到 $DZBENCH_HOME/projects/（只复制、不删源）；先 confirmed=false 出清单，人在确认卡上确认后 confirmed=true。界面入口待前端接
   - {id: project_ask,  label: 一句话新建工程,   at: step:项目,   ui: pj-ask-go,  ops: []}   # 只读 agent_config 判断是否已配置，配置入口仍是 llm_cfg
   - {id: project_sample, label: 打开示例项目,   at: step:项目,   ui: pj-sample,  ops: []}
   - {id: project_flow, label: 读题到生成引导,   at: step:项目,   ui: pflow,      ops: [flow_preview, flow_accept]}

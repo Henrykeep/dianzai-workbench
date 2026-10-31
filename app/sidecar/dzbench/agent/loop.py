@@ -102,7 +102,7 @@ TOOLS = [
     {"name": "project_open", "description": "打开已有项目并设为当前项目（与界面 project.open 同一接口；只改“当前项目”指针，不改任何文件）。code 用 project_list 返回的代号",
      "input_schema": {"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}}}},
     {"name": "project_state", "description": "项目流程状态（只读）：不给 code 列出所有项目和板卡；给 code 返回 ①读题 ②方案 ③导入 ④分配 ⑤生成 哪步已完成、下一步和它需要的输入、评分项数与已有证据数",
-     "input_schema": {"type": "object", "properties": {"code": {"type": "string", "description": "题号，即 examples/ 下的目录名"}}}},
+     "input_schema": {"type": "object", "properties": {"code": {"type": "string", "description": "题号，即 $DZBENCH_HOME/projects/ 下的目录名（或内置例题 examples/ 下的，只读）"}}}},
     {"name": "flow_preview", "description": "跑项目页某一步的预览（只写暂存区，不动仓库）：step=req|scheme|import|alloc|gen。req 要 src，import 要 project，gen 可带 board/app/uvprojx",
      "input_schema": {"type": "object", "required": ["step", "code"], "properties": {
          "step": {"type": "string", "enum": ["req", "scheme", "import", "alloc", "gen"]}, "code": {"type": "string"},
@@ -133,7 +133,7 @@ TOOLS = [
     {"name": "score_run", "description": "评分：按验收定义把某评分项跑 N 次（实机要确认），最差一次算数",
      "input_schema": {"type": "object", "properties": {"item": {"type": "string"}, "n": {"type": "integer"}, "path": {"type": "string"},
                       "band": {"type": "number", "description": "schema 没有 accept 规格时：题目原文给的允许误差"}, "hold_s": {"type": "number"}}, "required": ["item"]}},
-    {"name": "score_save", "description": "评分：把 score_run 的每轮数据存成证据（docs/verify/...）",
+    {"name": "score_save", "description": "评分：把 score_run 的每轮数据存成证据（工程目录 verify/logs/...）",
      "input_schema": {"type": "object", "properties": {"item": {"type": "string"}}, "required": ["item"]}},
     {"name": "score_writeback", "description": "评分：把结果回写到 requirements.yaml 该项（dir=证据目录）",
      "input_schema": {"type": "object", "properties": {"item": {"type": "string"}, "dir": {"type": "string"}, "note": {"type": "string"}}, "required": ["item"]}},
