@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import itertools
+import uuid
 import os
 import re
 import pathlib
@@ -52,32 +53,37 @@ def guess_gain(params: list[str], kind: str) -> str | None:
     return None
 
 
-def step_invalid(m: dict | None) -> str | None:
-    """#68：阶跃本身无效（指标空、没测出上升时间、调节时间为 0）→ 这一轮不能判达标。返回原因码或 None。
-    同时认上位机口径（rise_s / settling_s）和板上 step_result 口径（rise_ms / settle_ms）。"""
-    if not m or not any(isinstance(v, (int, float)) and not isinstance(v, bool) for v in m.values()):
-        return "empty_metrics"
-    if m.get("ok") is False:
-        return "step_failed"
-    for k in ("rise_s", "rise_ms"):
-        if k in m and m[k] is None:
-            return "no_rise"
-    for k in ("settling_s", "settle_ms"):
-        if k in m and m[k] is not None and float(m[k]) == 0.0:
-            return "settle_zero"
-    return None
+from .iterate import INVALID_ZH, step_invalid  # noqa: E402  唯一的有效性判定（台账 / 卡 / 提议 / 迭代共用）
 
 
 NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse", "sse_pct", "ss_err_pct", "rise_s", "rise_ms")
 
-INVALID_ZH = {"empty_metrics": "指标为空", "step_failed": "阶跃没做成", "no_rise": "没测出上升时间", "settle_zero": "调节时间为 0（窗口没对上）"}
 
+
+
+def link_roles() -> tuple:
+    """#136：role 取值只认 tools/gen_link.py 的 ROLES（同一份枚举，生成器校验什么，提示就写什么）。"""
+    import importlib.util
+    import pathlib
+    f = pathlib.Path(__file__).resolve().parents[4] / "tools" / "gen_link.py"
+    spec = importlib.util.spec_from_file_location("dz_gen_link_roles", f)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return tuple(mod.ROLES)
+
+
+def role_hint_zh() -> str:
+    rs = link_roles()
+    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {' / '.join(rs)}（例如比例增益写 role: {rs[0]}）"
 
 class AgentService:
     def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):
         # 工程仓库：DZBENCH_REPO > 配置 repo > 本仓库（开发模式）。安装版必须在 ⚙ 里指定（未在 Windows 实测）
         root = root or os.environ.get("DZBENCH_REPO") or llm_mod.load_config().get("repo") or ROOT
         self.s, self.tools, self.emit = session, tools, emit
+        try:
+            session.__dict__.setdefault("connect_hooks", []).append(self._on_connect)    # #101
+        except AttributeError:
+            pass
         self.journal = Journal()
         self.tune_orig: dict | None = None     # Agent 第一次改参数前的整套参数（ArduPilot 自整定 ORIGINAL 增益的思路）
         self.gw = Gateway(root, self._gw_emit, **({"runner": runner} if runner else {}))
@@ -117,7 +123,9 @@ class AgentService:
             "remember": lambda note, reason: knowledge.propose_memory(self.gw, note, reason),
             "list_files": lambda glob="**/*": self.gw.list_files(glob),
             "read_file": lambda path: self.gw.read_file(path),
-            "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
+            "propose_edit": lambda path, search, replace, reason: dict(self.gw.propose_edit(path, search, replace, reason, "agent"),
+                                                                     status_note_zh="status 只是提议这一刻的状态；之后写入/提交由用户在卡上决定，描述状态前先调 change_status"),
+            "change_status": lambda: self.gw.change_states(),
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
             "progress_get": self.progress_get,
@@ -135,7 +143,7 @@ class AgentService:
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
             "quick_start": lambda text: self.quick_start(text),
-        }, emit, preload=self._preload, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
+        }, emit, preload=self._preload, card_states=self._card_states, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
 
@@ -331,6 +339,11 @@ class AgentService:
         self.chains[code] = r
         return {k: v for k, v in r.items() if k != "batch"} | {"to_write": [s for s, _ in r["batch"]]}
 
+    def _card_states(self) -> str:
+        """#99：改代码卡真实状态（写入 + 提交卡），每轮附给 Agent；没有卡就不附。"""
+        rows = self.gw.change_states()
+        return ("改代码卡真实状态（以此为准）：\n" + "\n".join("- " + r["status_zh"] for r in rows)) if rows else ""
+
     def _preload(self) -> str:
         """第一轮附上：仓库地图（顶层目录 + 一句话用途）、板卡、项目、仿真对象。几百字，换掉 3~6 次只读调用。"""
         from .. import ports as ports_mod
@@ -423,10 +436,7 @@ class AgentService:
         out["sim"] = self.s.port
         st = (self.s.schema.step if self.s.schema else None) or []
         if self.sim and st:
-            rng = float(st[0].get("range") or 1.0)
-            o = self.measure_step_timing()                             # 实测推出幅度/时长，不查题号
-            out["iterate"] = self._iterate_start_agent(target=float(o.get("step_target", round(rng / 4, 4))),
-                                                       **({"dur_ms": int(o["step_dur_ms"])} if o.get("step_dur_ms") else {}))
+            out["iterate"] = self._iterate_start_agent(_default_target=True)   # #94：目标 / 时长的默认值只在 iterate_plan 一处定，和直接 iterate_start 同一条路
         elif self.sim:                                                 # 例题固件没有板上阶跃（link.step 为空）→ iterate 入口走上位机阶跃，同样出 iterate.* 和最好参数卡
             out["iterate"] = self._iterate_start_agent()
         out["best_card"] = (self.iter_result or {}).get("best_card")
@@ -520,7 +530,8 @@ class AgentService:
 
     # -------------------------------------------------------------- 仿真自动调参
     # -------------------------------------------------------------- #38 自动迭代（板上阶跃 step_result）
-    def iterate_plan(self, params: list | None = None, target: float | None = None, dur_ms: int = 2000, ch: int = 0) -> dict:
+    def iterate_plan(self, params: list | None = None, target: float | None = None, dur_ms: int | None = None, ch: int = 0,
+                     _default_target: bool = False) -> dict:
         """按 link_schema.json 拼迭代方案：参数的 [min, max] / max_delta、阶跃通道（link.step）。"""
         sch = self.s.schema
         if not sch:
@@ -534,6 +545,12 @@ class AgentService:
             raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
         st = steps[int(ch)]
         span = st.get("range") if st.get("range") is not None else st.get("sensor_range")
+        o = self.measure_step_timing() if (dur_ms is None or (target is None and _default_target)) else {}
+        # #94：主线和直接 iterate_start 同一个时序来源（stepident 实测；实机返回 {} 用默认）
+        if dur_ms is None:
+            dur_ms = int(o.get("step_dur_ms", 2000))
+        if target is None and _default_target:
+            target = float(o.get("step_target", round(float(st.get("range") or 1.0) / 4, 4)))
         if target is None:
             raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {float(span):g} 的 1/4" if span else "按题面给的阶跃幅度")
         ms = st.get("max_step")
@@ -577,7 +594,8 @@ class AgentService:
                 raise GatewayError("iterate_running", "已经在自动迭代", "先点“停止迭代”")
             it = Iterator(SessionIO(self.s), self.iterate_plan(**args), self.sim, emit=self._iter_emit,
                           **({"max_rounds": self.ITER_ROUNDS} if self.ITER_ROUNDS else {}))
-            self.iterator, self.iter_result = it, None
+            self.iterator = it
+            self.clear_result("iterate_start")                    # #101：新一轮迭代开始，旧结果卡作废
             self.iter_thread = threading.Thread(target=self._iter_run, args=(it,), daemon=True, name="iterate")
             self.iter_thread.start()
             return {"status": "started", "budget": {"time_s": it.budget_s, "rounds": it.max_rounds}}
@@ -643,7 +661,7 @@ class AgentService:
         res["pass_basis"] = self._ss_band(b.get("metrics") or {})["pass_basis"]
         self._restore_best(res)
         res["best_card"] = self._best_card(res)
-        self.iter_result = res
+        self.iter_result, self._result_cleared = res, False
         self._persist_last(res)
         self.emit(res)
         return r | {"best_card": res["best_card"], "instruction": "已出“采用最好参数”确认卡；最终回复总结最好一轮并让用户点卡确认，不要以提问结束。"}
@@ -669,11 +687,12 @@ class AgentService:
         阶跃无效 → invalid；ss_err.inside 为 null（单位对不上、实机未标定）→ unknown。这两种文案里都不出现「达标」。"""
         why = step_invalid(metrics) if metrics is not None else None
         if why or res.get("reason") == "invalid":
+            why = why or res.get("why_invalid")
             return "unknown", "本轮阶跃无效：" + INVALID_ZH.get(why or "", "没有有效的一轮") + "，不能判定，先检查实验通道"
         if ss.get("inside") is None:
             return "unknown", "暂无法判定是否满足题目误差带（题目误差带待标定）"
         if ss["inside"] and res.get("reason") == "pass":
-            return "pass", "各项指标均已达标（含题目误差带）"
+            return "pass", "通过"                     # #121：pass 一律「通过」；依据见 pass_basis
         return "fail", "未达标：" + ("稳态误差超出题目误差带" if not ss["inside"] else "其他指标未达标")
 
     def _last_path(self) -> pathlib.Path | None:
@@ -701,8 +720,33 @@ class AgentService:
         except (OSError, ValueError):
             return None
 
+    RESULT_CLEARED_ZH = {"iterate_start": "开始新的迭代，上一次的结果已清空", "reconnect": "重新连接，上一次的结果已清空",
+                         "board_change": "换了板子，上一次的结果已清空"}
+
+    def current_run_id(self) -> str:
+        """#115：一次自动迭代 = 一个 run_id；台账 / 最好参数只在当前 run 内算。"""
+        if not getattr(self, "run_id", None):
+            self.run_id = uuid.uuid4().hex[:12]
+        return self.run_id
+
+    def clear_result(self, reason: str) -> dict:
+        """#101：迭代开始 / 重连 / 换板时清掉结果与判定，并推 result_reset，前端据此清空结果卡。迭代开始换新 run_id。"""
+        self.iter_result = None
+        self._result_cleared = True
+        if reason == "iterate_start":
+            self.run_id = None
+        ev = {"type": "result_reset", "run_id": self.current_run_id(), "reason": reason,
+              "message_zh": self.RESULT_CLEARED_ZH.get(reason, "结果已清空")}
+        self.emit(ev)
+        return ev
+
+    def _on_connect(self, port: str, prev: str | None) -> None:
+        self.clear_result("board_change" if prev and prev != port else "reconnect")
+
     def iterate_status(self) -> dict:
         th = getattr(self, "iter_thread", None)
+        if getattr(self, "_result_cleared", False) and getattr(self, "iter_result", None) is None:
+            return {"running": bool(th and th.is_alive()), "result": None, "last": None, "cleared": True}
         last = self.iterate_last()
         return {"running": bool(th and th.is_alive()), "result": getattr(self, "iter_result", None) or (last or {}).get("result"),
                 "last": last}
@@ -786,7 +830,8 @@ class AgentService:
             if conv_note:
                 note += "；" + conv_note
         out = {"measured": round(val, 6), "unit": unit, "band": band, "inside": inside, "note_zh": note,
-               "pass_basis": self._pass_basis(band, inside)}
+               "pass_basis": self._pass_basis(band, inside, self._conv_zh(conv_source, unit, band["unit"]) if inside is not None else
+                                              ("仿真对象没有到该单位的标称换算" if self.sim else "实机未标定"))}
         if conv_note:
             out["converted"] = {"value": round(judged, 6), "unit": band["unit"], "note_zh": conv_note}
         out["conv_source"] = conv_source
@@ -794,6 +839,8 @@ class AgentService:
             ph = self._phys_per(unit, band["unit"])[0]
             if ph is not None:
                 out["calib_initial_guess"] = {"per": ph, "source": "phys"}      # 只给 #51 标定当初值
+        out["value_source"] = "sim_nominal" if self.sim else "hw_measured"          # #93 r9e：依据里写明测量值出处
+        out["pass_basis"] += "；测量值为仿真标称值" if self.sim else "；测量值为实机实测值"
         return out
 
     def _phys_per(self, frm: str, to: str) -> tuple[float | None, str | None]:
@@ -858,19 +905,30 @@ class AgentService:
                 "unchanged": same, "note_zh": note}
 
     @staticmethod
-    def _pass_basis(band: dict | None, inside: bool | None) -> str:
+    def _conv_zh(src: str | None, unit: str | None, band_unit: str | None) -> str:
+        """#93：换算出处，pass_basis / verdict_zh 一律写明（仿真标称 / 已标定 / 同单位直接比）。"""
+        if src == "calibration":
+            return "按实机标定换算"
+        if src in ("phys", "sim_nominal", "cal"):
+            return "按仿真标称换算、未实机标定"
+        return "同单位直接比较、无需换算" if unit == band_unit else "未换算"
+
+    @staticmethod
+    def _pass_basis(band: dict | None, inside: bool | None, conv: str = "") -> str:
         """“达标停止”的依据（卡上和 stopped 事件都带）：迭代本身一律按默认口径（|稳态误差| ≤ 2%、超调 ≤ 10%）判达标；
         题目误差带能用时另外写明对照结果，不能用时说清楚待标定，免得用户把“已达标”当成题目要求已满足。"""
         if band is None or "item" not in band:
             return "题目未给误差带，按默认 2% 判定"
         if inside is None:
-            return "按默认 2% 判定，题目误差带待标定"
+            return "按默认 2% 判定，题目误差带待标定" + (f"：{conv}" if conv else "")
         src = re.sub(r"\s*[（(][^（）()]*[）)]", "", str(band["source"]))      # pass_basis 一句话，不带括号
-        return f"按默认 2% 判定达标，另对照{src}：" + ("在带内" if inside else "超出")
+        return f"按默认 2% 判定达标，另对照{src}：" + ("在带内" if inside else "超出") + (f"，{conv}" if conv else "")
 
     def _iter_emit(self, e: dict) -> None:
+        if str(e.get("type", "")).startswith("iterate."):
+            e.setdefault("run_id", self.current_run_id())
         if e.get("type") == "iterate.round" and e.get("valid"):
-            self.memory().add("iterate", iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
+            self.memory().add("round", run_id=self.current_run_id(), iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
                               score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
         if e.get("type") == "iterate.stopped" and "pass_basis" not in e:
             try:
@@ -919,7 +977,7 @@ class AgentService:
             res["best_card"] = self._best_card(res)
         except Exception as e:  # noqa: BLE001
             res["best_card"], res["best_card_error"] = None, str(e)
-        self.iter_result = res
+        self.iter_result, self._result_cleared = res, False
         self._persist_last(res)
 
     def iterate_cancel(self) -> dict:
@@ -947,7 +1005,7 @@ class AgentService:
             raise GatewayError("hw_needs_human", "实机自动整定会连续写参数，要走批量确认", "用“自动迭代”（iterate_start）出确认卡")
         rl = roles(sch, guess_gain)
         if "kp" not in rl:
-            raise GatewayError("no_roles", "认不出哪个参数是比例增益", "在 app.yaml 参数上写 role: kp / ki / kd")
+            raise GatewayError("no_roles", "认不出哪个参数是比例增益", role_hint_zh())
         by = {p["name"]: p for p in sch.params}
         decl = [{"role": r, "name": n, "min": float(by[n]["min"]), "max": float(by[n]["max"]), "max_delta": by[n].get("max_delta")}
                 for r, n in rl.items()]
@@ -1441,7 +1499,7 @@ class AgentService:
         if verdict["action"] == "rollback" and verdict.get("auto"):
             verdict["rolled_back"] = self.rollback_best(_auto=True)
         self.last_verdict = verdict
-        self.memory().add("verdict", round=verdict.get("round"), action=verdict.get("action"), gains=self._gains(),
+        self.memory().add("manual_step", run_id=getattr(self, "run_id", None), round=verdict.get("round"),   # #115：手动实验不算迭代轮 action=verdict.get("action"), gains=self._gains(),
                           params_hash=self._local_hash(),                 # #39：每轮（含第 0 轮）都带本地算的参数 CRC32
                           overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
         ssr = self._ss_band(m.as_dict())                 # #75：台账（tune_round）和卡片用同一个判定函数
@@ -1595,6 +1653,9 @@ class AgentService:
     def rule_round(self) -> dict:
         """无 LLM 模式：默认分阶段 P→I→D（tune.rule_mode=staged），否则用规则提示；同样经过护栏与人工确认。"""
         g = self._guard()
+        last = g.rounds[-1] if g.rounds else None
+        if last is not None and not last.valid:          # #92：提议只用有效轮；最近一轮无效就不据此改参
+            return {"action": "OBSERVE", "reason": f"第 {last.n} 轮无效（{INVALID_ZH.get(last.why_invalid, last.why_invalid)}），不据此提议改参，先重做阶跃"}
         if self.cfg["tune"].get("rule_mode", "staged") == "staged" and g.rounds:
             p = self.staged.propose(StepMetrics(**g.rounds[-1].metrics), self._gains(), g)
             if not p:

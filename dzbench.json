@@ -2,11 +2,7 @@
   "_doc": "工作台工程配置（进 git，团队共享；不要放密钥）。本机差异放 ~/.dzbench/machine.json。见 docs/17。",
   "flash": {
     "tool": "pyocd",
-    "target": "mspm0g3507",
     "dry_run": true
-  },
-  "build": {
-    "elf": "build/car_2wd_mspm0g3507/car_2wd.elf"
   },
   "tune": {
     "vbat_min": null,

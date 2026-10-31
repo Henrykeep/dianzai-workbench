@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import time
 
@@ -12,24 +13,43 @@ from .transport import SIM_PREFIX, sim_elf, sim_root
 BAUDS = [460800, 921600, 115200, 230400, 1000000, 500000, 57600, 9600]
 
 
-def sim_apps() -> list[str]:
-    """能当仿真板的应用：apps/、examples/ 或工程根目录 $DZBENCH_HOME/projects/ 下有 sim_setup.c（仿真被控对象）且声明了 link: 的目录。
-    不写死题目名单：新加一个被控对象，端口列表里自动出现。"""
-    found = []
+def _yaml_top(y) -> dict:
+    """app.yaml / project.yaml 顶层键（只看 key: 开头的行，name 取值）。"""
+    keys: dict = {}
+    for ln in y.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^([A-Za-z_][\w-]*):\s*(.*)$", ln)
+        if m:
+            keys[m.group(1)] = m.group(2).split("#", 1)[0].strip().strip("\"'")
+    return keys
+
+
+def _sim_dirs():
     from . import paths
     for d in (sim_root() / "apps", sim_root() / "examples", paths.projects_dir()):
-        if not d.is_dir():
+        if d.is_dir():
+            yield from (a for a in sorted(d.iterdir()) if a.is_dir())
+
+
+def sim_app_info() -> dict[str, dict]:
+    """能当仿真板的应用 → {"name": 应用显示名}。条件（不写死题目名单）：
+    有 sim_setup.c 且声明了 link:；或 #100：app.yaml / project.yaml 只声明了 plant:（通用对象板由 plantgen 生成）。"""
+    found: dict[str, dict] = {}
+    for a in _sim_dirs():
+        tops = [_yaml_top(y) for y in (a / "app.yaml", a / "project.yaml") if y.exists()]
+        if not tops or a.name in found:
             continue
-        for a in sorted(d.iterdir()):
-            if not a.is_dir() or not any(a.rglob("sim_setup.c")):
-                continue
-            ymls = [y for y in (a / "app.yaml", a / "project.yaml") if y.exists()]
-            if a.name not in found and any(any(ln.startswith("link:") for ln in y.read_text(encoding="utf-8").splitlines()) for y in ymls):
-                found.append(a.name)
+        has_link = any("link" in t for t in tops) and any(a.rglob("sim_setup.c"))
+        has_plant = any("plant" in t for t in tops)
+        if has_link or has_plant:
+            found[a.name] = {"name": next((t["name"] for t in tops if t.get("name")), "") or a.name, "dir": str(a.resolve())}
     if not found:   # 安装包里没有源码树：只列已经编好的
         hs = sim_root() / "build" / "host-sim"
-        found = sorted(p.name for p in hs.iterdir() if sim_elf(p.name).exists()) if hs.is_dir() else []
+        found = {p.name: {"name": p.name, "dir": None} for p in sorted(hs.iterdir()) if sim_elf(p.name).exists()} if hs.is_dir() else {}
     return found
+
+
+def sim_apps() -> list[str]:
+    return list(sim_app_info())
 
 
 SIM_APPS = sim_apps()
@@ -45,12 +65,19 @@ def list_ports() -> list[dict]:
                         "likely": any(k in hint.upper() for k in ("CH340", "CH343", "CP210", "FTDI", "STLINK", "ST-LINK", "XDS", "USB"))})
     except ImportError:
         pass
+    global SIM_APPS
+    info = sim_app_info()                     # #100：每次列端口都重扫（新建项目不用重启侧车）
+    SIM_APPS = list(info)
     can_sim = (os.name != "nt" and shutil.which("make")) or any(sim_elf(a).exists() for a in SIM_APPS)   # 安装包自带编好的仿真板
     if can_sim:
         for a in SIM_APPS:
-            out.append({"port": SIM_PREFIX + a, "desc": f"仿真板 · {a}（host-sim，无需硬件）", "kind": "sim", "likely": False})
+            nm = info[a]["name"]
+            out.append({"port": SIM_PREFIX + a, "app": a, "app_name": nm, "app_dir": info[a].get("dir"), "label": f"仿真 · {nm}",
+                        "desc": f"仿真板 · {nm}（host-sim，无需硬件）", "kind": "sim", "likely": False})
         for a in SIM_APPS:
-            out.append({"port": SIM_PREFIX + a + "+hw", "desc": f"仿真板当实板 · {a}（测确认卡 / pre-arm，实验要人点执行）", "kind": "sim", "likely": False})
+            nm = info[a]["name"]
+            out.append({"port": SIM_PREFIX + a + "+hw", "app": a, "app_name": nm, "app_dir": info[a].get("dir"), "label": f"仿真当实板 · {nm}",
+                        "desc": f"仿真板当实板 · {nm}（测确认卡 / pre-arm，实验要人点执行）", "kind": "sim", "likely": False})
     out += rtt_ports()
     return out
 
