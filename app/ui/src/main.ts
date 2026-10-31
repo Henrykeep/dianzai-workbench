@@ -6,6 +6,16 @@ import "./wa";
 import { SWITCH_EX_OP, FORKED_F } from "./fieldmap";
 import { setVerdict, getVerdict } from "./verdictbus";
 import { resultCardHtml } from "./iterui";
+import { toPlant, plantTagHtml, type PlantView } from "./plant";
+import { PLANT_F } from "./fieldmap";
+// 仿真 / 对象模型标签：放在调参页标题行，粗估 / 已辨识 + 依据
+let lastPlant: PlantView = null;
+function paintPlant(v: PlantView) {
+  lastPlant = v;
+  const host = document.querySelector(".pg-s")?.parentElement; if (!host) return;
+  let t = document.getElementById("plant-tag"); if (!t) { t = document.createElement("span"); t.id = "plant-tag"; host.appendChild(t); }
+  t.innerHTML = plantTagHtml(v, esc);
+}
 import { boardName, SIDECAR_DOWN } from "./batch1";
 import { connButton, declaredBoard, boardLabel, portOption, chUnit, shortHint, paramDesc, lifeSummary } from "./r9p6c";
 import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
@@ -807,6 +817,7 @@ $("it-go").onclick = async () => {
 const syncIter = () => link.rpc("iterate_status", {}).then(r => { IT.onStatus(r, performance.now(), +(localStorage.getItem("dz.iter.done") ?? NaN)); renderIter(); }, () => {});
 setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
+  { const pv = toPlant((m as any)?.[PLANT_F.obj]); if (pv) paintPlant(pv); }
   if (IT.onEvent(m, performance.now())) { if (m.type === "iterate.round") FN.onUserChange(); renderIter(); }
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   if (m.metrics_card && !String(m.type).startsWith("iterate")) { const h = metricCardHtml(m), e = $("mc-card"); e.innerHTML = h; e.hidden = !h; }   // r9p6 测量 / 电源题：独立推送的指标卡

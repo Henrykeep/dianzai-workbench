@@ -138,3 +138,9 @@ export const WRITE_ONLY_ZH = "只授权写入文件，不会提交（git 提交�
 // 工程声明的板子名：schema 里的 title / name（后端给了就用），否则当前项目名
 export const BOARD_F = { schema: ["title", "name"], project: "name", path: "path" } as const;
 export const writeScopeNote = (card: any): string => card?.[WRITE_F.scope] === WRITE_F.writeOnly ? WRITE_ONLY_ZH : "";
+// fw-plant a4161a3 schema/plant.schema.json：plant.estimate ∈ coarse|identified，plant.basis 一句话依据；单位原样显示
+export const PLANT_F = { obj: "plant", estimate: "estimate", basis: "basis", unit: "unit", uUnit: "u_unit" } as const;
+export const PLANT_EST_ZH: Record<string, string> = { coarse: "粗估", identified: "已辨识" };
+// 结果在粗估模型下得出的标记（后端定稿前暂定，两种写法都认）：plant_estimate:"coarse" 或 plant_coarse:true
+export const COARSE_F = { est: "plant_estimate", flag: "plant_coarse", coarse: "coarse" } as const;
+export const COARSE_ZH = "仅仿真粗估";

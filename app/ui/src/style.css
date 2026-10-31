@@ -1153,3 +1153,6 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .card.commit .cc-res{flex-basis:100%;min-width:0}
 .card.commit .cc-fail{display:block;width:100%}
 .card.commit .cc-fail{display:flex;flex-direction:column;gap:4px}
+#plant-tag{display:inline-flex;gap:8px;align-items:center;margin-left:8px}
+#plant-tag .plant-basis{max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rc-coarse{margin-left:8px}

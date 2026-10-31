@@ -124,3 +124,23 @@ import { forkFirstExample } from "../src/pjask";
     .then(m => { assert.deepEqual(tried, ["aa", "bb"]); assert.equal(m, "已基于 bb 新建 p1"); console.log("r9p6c #80 ok"); });
   forkFirstExample(async () => { throw { code: "bad_example" }; }, []).then(m => assert.match(m, /没有找到内置示例/));
 }
+// fw-plant a4161a3：plant.estimate / basis 标签；粗估模型下的结果标「仅仿真粗估」；单位原样
+import { toPlant, plantTagHtml, isCoarse, coarseTagHtml } from "../src/plant";
+import { resultCardHtml } from "../src/iterui";
+{
+  const c = toPlant({ plant: { order: 1, unit: "°C", u_unit: "%", estimate: "coarse", basis: "题面(2)：加热 60 s 升 10 °C" } })!;
+  assert.equal(c.tag, "粗估");
+  const h = plantTagHtml(c, esc);
+  assert.match(h, /对象模型：粗估 · % → °C/); assert.match(h, /title="题面\(2\)：加热 60 s 升 10 °C"/); assert.match(h, /warn-t/);
+  const i = toPlant({ estimate: "identified", basis: "data/id_0412.csv", unit: "rpm" })!;
+  assert.match(plantTagHtml(i, esc), /对象模型：已辨识 · rpm/);
+  assert.match(plantTagHtml(toPlant({ estimate: "identified" }), esc), /title="后端未给依据"/);
+  assert.equal(toPlant({ plant: { unit: "m" } }), null); assert.equal(plantTagHtml(null, esc), "");
+  assert.ok(isCoarse({ plant_estimate: "coarse" }) && isCoarse({ plant_coarse: true }) && isCoarse({ plant: { estimate: "coarse" } }));
+  assert.ok(!isCoarse({ plant_estimate: "identified" }) && !isCoarse({}));
+  assert.match(coarseTagHtml({ plant_coarse: true }), /仅仿真粗估/);
+  const card = (x: any) => resultCardHtml({ reason: "pass", verdict: "pass", verdict_zh: "达标", ...x } as any, esc, { canApply: false, applyReady: false });
+  assert.match(card({ plant_estimate: "coarse" }), /仅仿真粗估/); assert.ok(!/仅仿真粗估/.test(card({})));
+  for (const f of ["src/plant.ts", "src/main.ts", "src/iterui.ts"]) assert.ok(!/"(estimate|basis|plant_estimate|plant_coarse)"/.test(readFileSync(f, "utf8")), f + " 不写字段名");
+  console.log("r9p6c plant ok");
+}
