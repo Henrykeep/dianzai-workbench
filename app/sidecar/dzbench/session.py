@@ -1430,6 +1430,7 @@ class Session:
                           replay_speed=self.tr.speed, replay_paused=self.tr.paused)
             marks, self._pending_marks = list(self._pending_marks), []
             st.update(hb_status_dict(self.hb_status))
+            st["sensor_sat"] = bool((self.hb_status or 0) & HB_SENSOR_SAT_BIT)   # bit18：最新一帧心跳，不锁存
             st["estop_cause"] = self._estop_cause_view()
             if self.tx_locked and not self._sp_frozen:
                 self._freeze_sp()
@@ -1487,6 +1488,7 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
+HB_SENSOR_SAT_BIT = 1 << 18      # DZCTL_HB_SENSOR_SAT
 HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存", 1 << 17: "迭代中", 1 << 18: "被控量到量程"}
 
 

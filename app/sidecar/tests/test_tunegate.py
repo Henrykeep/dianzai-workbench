@@ -70,3 +70,37 @@ def test_standin_is_opt_in_and_never_passes(monkeypatch, capsys):
     monkeypatch.setattr(TG, "one", lambda s, k: {"seed": s, "ok": True, "errors": []})
     assert TG.main(["--seed", "1"]) != 0
     assert "未合入" in capsys.readouterr().out
+
+
+def _graded(tmp_path, monkeypatch, feasible, verdict, recheck):
+    import json
+    import yaml
+    import tunegate_grade as G
+    from dzbench.tuning import autotune as AT
+    RP.make(3001, "any", str(tmp_path))
+    pj = tmp_path / "plant.json"
+    pl = json.loads(pj.read_text("utf-8"))
+    pl |= {"feasible": feasible, "infeasible_reason": "saturation" if feasible is False else None}
+    pj.write_text(json.dumps(pl), "utf-8")
+    app = yaml.safe_load((tmp_path / "app.yaml").read_text("utf-8"))
+    link = yaml.safe_load((tmp_path / "link.yaml").read_text("utf-8"))
+    spec = (tmp_path / "spec.txt").read_text("utf-8")
+    res = AT.autotune(G.board(str(tmp_path), app, 3001, "randplant"), app, link, spec, 3001)
+    monkeypatch.setattr(G, "_recheck", lambda *a: recheck)
+    monkeypatch.setattr(AT, "meets", lambda m, sp: [])            # 真值满足题面
+    return G.grade(str(tmp_path), 3001, res | {"verdict": verdict, "amp_reduced": False}, app, spec)
+
+
+def test_bucket_unknown_undecided(tmp_path, monkeypatch):
+    g = _graded(tmp_path, monkeypatch, "unknown", "fail", "undecided")
+    assert g["bucket"] == "undecided" and g["feasible"] == "unknown" and not g["false_pass"]
+
+
+def test_bucket_truth_label_suspect(tmp_path, monkeypatch):
+    g = _graded(tmp_path, monkeypatch, False, "pass", "ok")
+    assert g["bucket"] == "truth_label_suspect" and not g["false_pass"]
+
+
+def test_bucket_false_label_confirmed_is_false_pass(tmp_path, monkeypatch):
+    g = _graded(tmp_path, monkeypatch, False, "pass", "false_pass")
+    assert g["bucket"] == "false_pass" and g["false_pass"]

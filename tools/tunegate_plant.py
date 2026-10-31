@@ -27,22 +27,36 @@ ROLE = {"P": "kp", "I": "ki", "D": "kd", "FF": "ff", "LIM": "ulim"}
 CAT = {"unstable_zero": "nonminimum_phase", "delay_too_large": "delay", "saturation": "saturation"}
 
 
+def handshake_params(rp: dict) -> list[dict]:
+    """#123：整定器的参数角色只从握手表来——randplant 写的 app.yaml 经 gen_link 生成握手 params[i].role，
+    不从 randplant 的真值 / plant.json 取。role 为 null / other 的不调。"""
+    import tempfile
+    import gen_link
+    with tempfile.TemporaryDirectory() as d:
+        y = pathlib.Path(d) / "app.yaml"
+        y.write_text(randplant.app_yaml(rp), "utf-8")
+        spec, ps, _ = gen_link.load(y)
+        hs = gen_link.schema(spec, ps)["params"]
+    return [{"name": q["name"], "role": ROLE[q["role"]], "min": float(q["min"]), "max": float(q["max"]),
+             "init": float(q["default"]), "max_delta": float(q["max_delta"])} for q in hs if q.get("role") in ROLE]
+
+
 def make(seed: int, kind: str = "any", out: str | None = None) -> dict:
     """randplant.gen(seed) 原样取对象、可调参数（随机名 + 角色）、题面指标和可行性；这里只换成整定器读的格式 + 判卷用的参考代价。"""
     rp = randplant.gen(seed, "1-3", kind)
-    params = [{"name": nm, "role": ROLE[r], "min": float(rp["ranges"][nm][0]), "max": float(rp["ranges"][nm][1]),
-               "init": float(rp["init"][nm]), "max_delta": float(rp["max_delta"][nm])} for r, nm in rp["roles"].items()]
+    params = handshake_params(rp)
     unit = rp["unit"]
     plant = {"source": "tools/randplant.py", "seed": seed, "kind": rp["kind"], "num": [float(x) for x in rp["tf"]["num"]],
              "den": [float(x) for x in rp["tf"]["den"]], "delay_s": float(rp["delay_s"]), "u_max": float(rp["sat"]),
              "deadzone": float(rp["deadzone"]), "noise_std": float(rp["noise_std"]), "sample_s": float(rp["dt_s"]),
              "range": float(rp["sensor_range"]), "unit": unit}
     app = {"params": params, "channels": {"sp": "sp", "y": "y", "u": "u"}, "unit": unit}
-    link = {"sample_s": plant["sample_s"], "u_max": plant["u_max"], "sensor_range": plant["range"], "max_step": float(rp["max_step"])}
+    link = {"sample_s": plant["sample_s"], "u_max": plant["u_max"], "sensor_range": plant["range"], "max_step": float(rp["max_step"]), "unit": unit or None}
     ref = reference(plant, app, float(rp["reference"]["step_amp"]))
-    spec, feasible = rp["spec_text"], bool(rp["feasible"])
+    spec, feasible = rp["spec_text"], rp["feasible"]            # True / False / "unknown"（fw-feas #124：三态透传，不 bool()）
     cat = CAT.get(rp.get("reason_category") or "", rp.get("reason_category"))
-    plant |= {"reference": ref, "feasible": feasible, "infeasible_reason": None if feasible else cat, "reason_zh": rp.get("reason")}
+    plant |= {"reference": ref, "feasible": feasible, "infeasible_reason": cat if feasible is False else None,
+              "reason_zh": rp.get("reason"), "gen_kind": kind}
     if out:
         d = pathlib.Path(out)
         d.mkdir(parents=True, exist_ok=True)
