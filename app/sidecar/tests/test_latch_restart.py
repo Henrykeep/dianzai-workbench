@@ -101,3 +101,26 @@ def test_hello_data_tables_sha256_matches_file_bytes(tmp_path, monkeypatch):
     assert (t["reason_codes"] is None) == (rc is None or bool(datafiles.load("reason_codes.json")[1]))
     _datafiles_at(tmp_path, monkeypatch, None)
     assert datafiles.tables() == {"roles": None, "reason_codes": None}
+
+
+def test_selfcheck_standalone_script_from_other_cwd_without_pythonpath(tmp_path):
+    import json, os, pathlib, subprocess, sys
+    from dzbench import datafiles
+    script = pathlib.Path(__file__).resolve().parents[1] / "selfcheck_data.py"
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "DZBENCH_REPO")}
+    r = subprocess.run([sys.executable, str(script)], cwd=tmp_path, env=env, capture_output=True, timeout=60)
+    out = json.loads(r.stdout.decode("utf-8"))
+    assert r.returncode == 0 and out["ok"] and out == datafiles.report()
+    assert all(set(i) == {"file", "status", "message_zh", "fix_action"} for i in out["items"])
+
+
+def test_selfcheck_op_missing_has_no_command_line(tmp_path, monkeypatch):
+    import asyncio
+    from dzbench import server
+    _datafiles_at(tmp_path, monkeypatch, None)
+    sv = server.Server.__new__(server.Server)
+    sv.session = None
+    r = asyncio.run(sv._op({"op": "selfcheck_data"}))
+    it = next(i for i in r["items"] if i["file"].endswith("roles.json"))
+    assert not r["ok"] and it["status"] == "missing" and it["fix_action"] == "reinstall"
+    assert "python" not in it["message_zh"] and "-m" not in it["message_zh"] and "『运行自检』" in it["message_zh"]

@@ -2,6 +2,9 @@
 全部用随机 / 自编声明的对象，不用例题。"""
 from __future__ import annotations
 
+import os
+import types
+
 import random
 from types import SimpleNamespace
 
@@ -21,7 +24,10 @@ def test_plant_only_project_is_sim_and_rescanned_with_app_name(tmp_path, monkeyp
     monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("DZBENCH_REPO", str(tmp_path / "repo"))
     monkeypatch.setattr(ports.shutil, "which", lambda x: "/usr/bin/" + x)
-    monkeypatch.setattr(ports.os, "name", "posix")
+    # 只换 ports 看到的 os（代理）；改全局 os.name 会让 Windows 上 pathlib 去实例化 PosixPath → NotImplementedError
+    proxy = types.SimpleNamespace(**{k: getattr(os, k) for k in dir(os) if not k.startswith("__")})
+    proxy.name = "posix"
+    monkeypatch.setattr(ports, "os", proxy)
     proj = tmp_path / "home" / "projects"
     (proj / "p_a").mkdir(parents=True)
     (proj / "p_a" / "app.yaml").write_text(_plant_yaml(rng, "随机对象甲"), "utf-8")

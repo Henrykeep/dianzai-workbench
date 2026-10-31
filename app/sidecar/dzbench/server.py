@@ -145,6 +145,8 @@ class Server:
     async def _op(self, m: dict):
         s, op = self.session, m.get("op")
         run = asyncio.get_running_loop().run_in_executor
+        if op == "selfcheck_data":                         # 随包数据文件自检（界面『运行自检』）；与 CLI / selfcheck_data.py 同一函数
+            return _datafiles.report()
         if op == "hello":
             return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()},
                     "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),

@@ -38,10 +38,11 @@ def load(name: str) -> tuple[dict | None, dict | None]:
     req, ver, zh = FILES[name]
     f = find(name)
 
-    def bad(msg):
-        return None, {"reason": "data_file_missing", "file": str(REL / name), "message_zh": msg, "fix_action": "reinstall"}
+    def bad(msg, status="invalid"):
+        return None, {"reason": "data_file_missing", "file": (REL / name).as_posix(), "status": status,
+                      "message_zh": msg, "fix_action": "reinstall"}
     if f is None:
-        return bad(f"{zh} {REL.as_posix()}/{name} 没找到，安装包可能不完整，请重新安装工作台")
+        return bad(f"{zh} {REL.as_posix()}/{name} 没找到，安装包可能不完整，请重新安装工作台，装好后点『运行自检』确认", "missing")
     try:
         d = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -63,17 +64,24 @@ def check() -> list[dict]:
     return out
 
 
-def main() -> int:
-    probs = check()
-    for name in FILES:
-        f = find(name)
-        if f is None and not FILES[name][0]:
-            print(f"- {name}：可选，尚未生成")
+def report() -> dict:
+    """唯一的检查函数：CLI、独立脚本 selfcheck_data.py 和 op selfcheck_data 都用它。
+    → {ok, items:[{file, status:'ok'|'missing'|'invalid', message_zh, fix_action}]}；提示里不出现命令行。"""
+    items = []
+    for name, (req, _, zh) in FILES.items():
+        if not req and find(name) is None:
+            items.append({"file": (REL / name).as_posix(), "status": "ok", "message_zh": f"{zh}：可选，尚未提供", "fix_action": None})
             continue
-        print(f"{'✓' if f and not any(p['file'].endswith(name) for p in probs) else '✗'} {name}：{f or '没找到'}")
-    for p in probs:
-        print("✗ " + p["message_zh"], file=sys.stderr)
-    return 1 if probs else 0
+        _, p = load(name)
+        items.append({k: p[k] for k in ("file", "status", "message_zh", "fix_action")} if p else
+                     {"file": (REL / name).as_posix(), "status": "ok", "message_zh": f"{zh}：正常", "fix_action": None})
+    return {"ok": all(i["status"] == "ok" for i in items), "items": items}
+
+
+def main() -> int:
+    r = report()
+    print(json.dumps(r, ensure_ascii=False, indent=1))
+    return 0 if r["ok"] else 1
 
 
 def tables() -> dict:
