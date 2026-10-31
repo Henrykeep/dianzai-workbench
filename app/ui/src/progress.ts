@@ -8,7 +8,7 @@ export type State = "todo" | "doing" | "done" | "blocked";
 export type BlockerCode = "no_board" | "missing_deps" | "gains_zero" | "estop" | "selftest_fail" | "params_not_saved";
 // 7 步旅程：id 与后端 progress.get 的 steps[].id 一致；page = 进入时打开的内部页
 export const JOURNEY = [
-  { id: "req", title: "读题定方案", pages: ["项目"] }, { id: "project", title: "建工程", pages: ["烧录"] },
+  { id: "req", title: "选题与方案", pages: ["项目"] }, { id: "project", title: "建工程", pages: ["烧录"] },
   { id: "sim", title: "仿真", pages: ["联调"] }, { id: "bringup", title: "上板联调", pages: ["模块", "标定"] },
   { id: "tune", title: "调参", pages: ["调参"] }, { id: "score", title: "评分", pages: ["评分"] }, { id: "seal", title: "封箱", pages: ["封箱"] },
 ] as const;
@@ -74,7 +74,7 @@ export function infer(c: Ctx): Progress {
   const nx = cur.state !== "done" ? cur : steps.find(s => s.state !== "done");
   const nj = nx && JOURNEY.find(j => j.id === nx.id)!;
   const next = nx && nj ? { title: nx.title, action: MAIN[nj.pages[0] as Step], hint: STEP_HINT[nj.pages[0] as Step] } : null;
-  return { steps, current: curId, next, blockers };
+  return { steps, current: curId, next, blockers, inferred: true } as Progress;
 }
 
 let noApiUntil = 0;
@@ -89,7 +89,7 @@ export async function fetchProgress(call: (op: string) => Promise<any>, c: Ctx):
 
 // 每页顶部「一句话说明 + 一个主按钮」：说明这一步做什么、做完产出什么；按钮与 progress.next 同源
 export const PURPOSE: Record<StepId, string> = {
-  req: "把题目或需求整理成需求表与技术方案；产出 requirements.yaml、scheme.yaml。",
+  req: "把题目或需求整理成需求表与技术方案，确认后写进工程。",
   project: "生成或导入工程并编译、烧录到目标板；产出可运行的固件。",
   sim: "在仿真板上跑通控制回路，确认信号与参数结构；产出可用的参数初值。",
   bringup: "逐个模块上板收发并完成标定；产出极性、零偏等标定值。",
@@ -119,12 +119,14 @@ export function runAction(a: string, go: (s: Step) => void) {
   const t = ACTIONS[a]; if (!t || entry(a)?.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => { const el = document.getElementById(t.ui); if (t.jump) el?.focus(); else el?.click(); }, 0);
 }
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
+// r9p4：左栏的勾只认当前项目的进度接口（progress.get / progress.changed）；本地推断、没有项目 → 一个勾都不画
+export const tickable = (p: any) => !p?.inferred && !!p?.project && p.project !== null;
 export function render(p: Progress, go: (s: Step) => void) {
   document.querySelectorAll<HTMLElement>("#steps [data-step]").forEach(b => {
     const s = p.steps.find(x => x.id === b.dataset.pid); if (!s) return;
     if (b.classList.contains("sub")) return;   // 子项（标定）跟随父步，不单独标状态
     b.dataset.state = s.state;
-    b.classList.toggle("done", s.state === "done");
+    b.classList.toggle("done", s.state === "done" && tickable(p));
     b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
     b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
   });
@@ -138,7 +140,10 @@ export function render(p: Progress, go: (s: Step) => void) {
     nav.dataset.blocked = "1"; nav.title += "\n" + bs.map(b => b.message).join("\n");
   }
   const ph = document.getElementById("pg-head");
-  if (ph) {
+  // 新建项目页不放页头条：和三步卡重复，且新项目上不该写「已完成」
+  const onReq = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step) === "req";
+  if (ph) ph.hidden = onReq;
+  if (ph && !onReq) {
     const view = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step);
     const extra = document.getElementById("pg-tune");   // 调参页「读取自检」「保存参数」常驻在页头，重画时保留
     const resident = view === "tune" && extra ? [...extra.querySelectorAll<HTMLElement>("button[id]")].map(e => e.id) : [];

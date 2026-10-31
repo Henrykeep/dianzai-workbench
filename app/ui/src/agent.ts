@@ -472,7 +472,7 @@ export function initAgent(call: Call) {
     if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复
     seenBlk.add(n.blocker_code);
     const v = noticeView(n);
-    noteEl(n.blocker_code, `<div><b>${esc(v.head)}</b></div>${v.lines.map(l => `<p>${esc(l)}</p>`).join("")}`, n.fix_action, v.tag);
+    noteEl(n.blocker_code, `<div><span class="sys-tag">系统提示</span> <b>${esc(v.head)}</b></div>${v.lines.map(l => `<p>${esc(l)}</p>`).join("")}`, n.fix_action, v.tag);
     notes.get(n.blocker_code)!.dataset.src = "notice";
   }
 
@@ -568,6 +568,9 @@ export function initAgent(call: Call) {
   // 未配置模型：右栏只放这一张（说明 + 去配置）；建议卡自己标来源（来自规则引擎 / 来自模型）
   function showSetup(on: boolean) {
     document.querySelectorAll(".setup-card").forEach(e => e.remove());
+    const inp = $<HTMLInputElement>("ag-in");
+    inp.dataset.ph ??= inp.placeholder;
+    inp.disabled = on; $<HTMLButtonElement>("ag-send").disabled = on; inp.placeholder = on ? "配置模型后可用" : inp.dataset.ph;
     if (!on) return;
     const card = add(`<div class="ag-setup"><b>Agent 还没有大模型</b><p>配置后可以一句话建工程、读题、解释波形。调参、示波、评分、急停和规则引擎建议不依赖它。</p>
       <wa-button size="small" appearance="outlined" data-r="cfg">去配置</wa-button></div>`, "card setup-card");

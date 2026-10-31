@@ -6,7 +6,7 @@
 # at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件> | page:<旅程 id>（页内具名区域，index.html 用 data-region 标）| <区域>:（独立区域，在 regions 里声明，如告警条 alerts:）。
 #   ui = index.html 里的元素 id；独立区域入口写区域选择器 [data-region="<区域>"]（区域固定在 index.html，里面的按钮由 ts 生成）。dynamic: true = 由 ts 动态生成、无固定位置（尽量不用）。
 
-# 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（读题定方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
+# 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（选题与方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
 always:    [急停, 连接, 排障]
@@ -31,8 +31,8 @@ actions:
   # ── 项目 ──
   - {id: project_new,  label: 新建项目,         at: page:req,   ui: pj-new,     ops: []}   # 只把焦点移到一句话输入（project_ask），不另起新建流程
   - {id: project_open, label: 打开项目,         at: page:req,   ui: pj-open,    ops: [project.list, project.open]}   # 列表按钮 .pj-item 是这一入口的选项，选中即 project.open {code}
+  - {id: project_sample, label: 从示例开始,       at: page:req,   ui: pj-sample,  ops: [project_switch_example]}   # 例题只读：复制出新项目，回 project_forked
   - {id: project_ask,  label: 一句话新建工程,   at: step:项目,   ui: pj-ask-go,  ops: []}   # 只读 agent_config 判断是否已配置，配置入口仍是 llm_cfg
-  - {id: project_sample, label: 打开示例项目,   at: step:项目,   ui: pj-sample,  ops: []}
   - {id: project_flow, label: 读题到生成引导,   at: step:项目,   ui: pflow,      ops: [flow_preview, flow_accept]}
   # ── 烧录 ──
   - {id: build,        label: 编译,             at: step:烧录,   ui: fw-build,   ops: [build]}

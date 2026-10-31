@@ -3,6 +3,11 @@ import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
 import "./wa";
+import { SWITCH_EX_OP, FORKED_F } from "./fieldmap";
+import { setVerdict, getVerdict } from "./verdictbus";
+import { resultCardHtml } from "./iterui";
+import { boardName, SIDECAR_DOWN } from "./batch1";
+import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
 import "./entry-data";
@@ -68,15 +73,31 @@ const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
 const hb = initHbStrip($("hbstrip"), jumpAt);
 const AL = new Alerts();
 let clearedHide = 0;
+let lkMsg: any = null, lkSince: number | null = null, lkNext: number | null = null, lkNextAt = 0;
+let sidecarUp = true, simT0: number | null = null;
+let latchAt: number | null = null, writesLocked = false, latchBase = 0;   // 告警计数按锁存段：每次新锁存从 1 数起
+function lockWrites(on: boolean) {
+  if (on) lockWritesIn(document, true);
+  else if (writesLocked) { lockWritesIn(document, false); syncParams(); renderIter(); }
+  writesLocked = on;
+}
+setInterval(() => { if (writesLocked) lockWritesIn(document, true); }, 300);   // 参数行会重建：锁存期间持续补禁用
+void WRITE_IDS;
+const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   // 锁存只认本地服务上报（S.latched ← status.tx_locked），断开 / 重连都不由前端清（#20）
   const latched = S.latched;
-  { const r = document.getElementById("cmd-r"); if (r) { r.classList.toggle("attn", latched); r.hidden = clearBtnHidden(latched); } }   // 「解除」只在急停锁存时出现
+  { const r = document.getElementById("cmd-r"); if (r) { r.classList.toggle("attn", latched); r.hidden = true; void clearBtnHidden; } }   // r9p3：锁存时只留红条上的一个「解除」
   $("estop").classList.toggle("locked", latched);
   if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); const nn = document.getElementById("sp-restore-note"); if (nn) nn.textContent = ""; showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
-  el.classList.remove("al-hist");
+  // r9p3：解除后的急停记录收进时间线，不在告警条里留着；首页从不显示已解除的告警
+  if (!latched && (!l.some(e => e.kind !== "estop") || curPage() === "项目")) { el.hidden = true; el.innerHTML = ""; el.classList.remove("latched", "al-hist"); document.documentElement.classList.remove("estop-latched"); lockWrites(false); return; }
+  el.classList.remove("al-hist"); el.classList.toggle("latched", latched);
+  document.documentElement.classList.toggle("estop-latched", latched);   // 锁存时全屏只留红色：其余区域去色
+  if (latched && latchAt == null) { latchAt = Date.now(); latchBase = Math.max(0, l.length - 1); } if (!latched) latchAt = null;
+  lockWrites(latched);
   if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.innerHTML = `<span class="al-t">${esc(estopHist)}</span><span class="sp"></span><button class="btn sm" id="al-retune">${esc(RETUNE.label)}</button>`; el.querySelector<HTMLElement>("#al-retune")!.onclick = () => runAction(RETUNE.action, s => goStepRef(s)); } else el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
   const last = l[l.length - 1];
@@ -85,14 +106,15 @@ function renderAlerts() {
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
   if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? (ev ? v.head : latchHead((S.status as any).estop_cause ?? latchedCause())) : "已解除（之前：" + v.head + "）")}</b></span>`;
+  if (latched && latchAt != null) head += `<span class="al-t al-at">锁存于 ${new Date(latchAt).toLocaleTimeString("zh-CN", { hour12: false })}</span>`;
   const fh = bannerHint(latched, ev); if (fh) head += `<span class="al-t al-fix">${esc(fh)}</span>`;
   const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
   if (!head) head = `<b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
-  el.innerHTML = `<span class="al-n">${Math.max(l.length, 1)}</span>${head}` +
+  el.innerHTML = `<span class="al-n">${Math.max(l.length - latchBase, 1)}</span>${head}` +
     (l.length > 1 ? `<span class="al-more">${l.filter(e => !isE(e) && !isW(e)).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
-    `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除急停</button>` : "") +
-    (l.length ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
+    `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除</button>` : "") +
+    (l.length && !latched ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
   if (shownCleared) markClearedShown();
   // 横幅只给正在发生的危险：已解除且没有别的告警时，降成一行中性提示，800 ms 后收起
   el.classList.toggle("cleared", shownCleared && !wd);
@@ -145,7 +167,7 @@ function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", 
   d.className = `toast ${kind}`;
   // 侧车已给出 fix 的按原样显示；否则过翻译层（发生了什么 · 原因 · 处理 + 详情）
   const f = er.fix_action ? resolveFix(er.fix_action) : null;
-  const btn = f?.kind === "run" ? `<wa-button size="small" appearance="outlined" class="fx" data-fx="${esc(er.fix_action!)}">${esc(f.label)}</wa-button>` : "";
+  const btn = f && f.kind !== "wait" ? `<wa-button size="small" variant="brand" class="fx" data-fx="${esc(er.fix_action!)}">${esc(f.label)}</wa-button>` : "";
   d.innerHTML = kind === "ok" || kind === "info" ? `<b>${esc(er.message)}</b>` : partsHtml(errParts(er), esc, btn);
   d.querySelector<HTMLElement>(".fx")?.addEventListener("click", ev => { ev.stopPropagation(); runAction(er.fix_action!, s => goStepRef(s)); d.remove(); });
   d.onclick = e => { if (!(e.target as Element).closest("details")) d.remove(); };
@@ -170,7 +192,7 @@ function resolveEstop() {
   S.latched = false; resolveEstopAlerts(AL);
   { const r = document.getElementById("cmd-r"); if (r) { r.classList.remove("attn"); r.hidden = true; } } $("estop").classList.remove("locked");
   renderAlerts(); purgeEstopBlockers(document); agent.resolveEstop?.();
-  if (estopHist) markClearedShown();
+ 
   if (estopHist && tl.all().at(-1)?.kind !== "estop_clear") tl.add(clearedEvent(tl.all(), null, plot.now()));   // r8pre：时间线最新一条是中性「急停已解除」
   ana.invalidate();
   showRestore(); tl.refresh();
@@ -213,7 +235,7 @@ function renderPorts(keep = true) {
   // 排序：可能是板子的 USB 串口 → 仿真板 → 其余（板载 ttyS0/COM1 放最后）
   const rank = (p: { kind: string; likely?: boolean }) => p.likely ? 0 : p.kind === "sim" ? 1 : 2;
   S.ports = [...S.ports].sort((a, b) => rank(a) - rank(b));
-  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}">${esc(p.kind === "sim" ? p.desc : `${p.port} · ${p.desc}`)}</option>`).join("")
+  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}" title="${esc(p.port)}">${esc(p.kind === "sim" ? boardName(p.port) : `${boardName(p.port)} · ${p.desc}`)}</option>`).join("")
     || `<option value="">没有找到串口 — 插上 USB 转串口</option>`;
   // 零配置：USB 串口优先；没有就选仿真板（板载 ttyS0/COM1 几乎不会是你的板子，不默认选）
   const last = localStorage.getItem("dz-port") ?? "";   // 记住上次连接的端口
@@ -348,7 +370,7 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
   });
   S.enums.forEach(f => {
     const el = document.getElementById(`ev-${f.name}`), v = S.enumVal[f.name];
-    if (el && v != null) { const name = f.enum![v] ?? String(v); el.textContent = name; el.className = `mono st-${name}`; }
+    if (el && v != null) { const name = f.enum![v] ?? String(v); el.textContent = enumZh(name); el.title = name; el.className = `mono st-${name}`; }
   });
   // schema 里标了 pin 的枚举字段放到顶栏（视觉链路、通信、模式……由题目自己声明，界面不认字段名）
   for (const f of S.enums) {
@@ -359,7 +381,7 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
       return v == null ? "" : ` · ${Math.round(v)}${S.plotted[k].unit ? " " + S.plotted[k].unit : ""}`;
     }).join("");
     const el = document.getElementById(`pin-${f.name}`);
-    if (el) el.innerHTML = `<b class="st-${name}">${esc(name)}</b><i>${esc(extra.replace(/^ · /, ""))}</i>`;
+    if (el) el.innerHTML = `<b class="st-${name}" title="${esc(name)}">${esc(enumZh(name))}</b><i>${esc(extra.replace(/^ · /, ""))}</i>`;
   }
 }, 100);
 
@@ -440,10 +462,19 @@ function syncRelaySlot() {
 let paramsLocked = false;
 function lockParams(on: boolean) {
   paramsLocked = on;
-  document.querySelectorAll<HTMLElement>("#plist .psl, #plist input.in").forEach(e => { (e as any).disabled = on; });
+  document.querySelectorAll<HTMLElement>("#plist .psl, #plist input.in").forEach(e => { (e as any).disabled = on || writesLocked; });
   const l = document.getElementById("p-lock"); if (l) l.hidden = !on;
   if (on) { $<HTMLButtonElement>("p-send").disabled = true; const w = document.getElementById("it-write") as any; if (w) w.disabled = true; }
-  $("p-send").title = on ? ITER_LOCK_ZH : "";
+  $("p-send").title = on ? ITER_LOCK_ZH : S.latched ? "急停已锁存：先在红条上点「解除」" : "";
+}
+// 首次自动套用最接近的示例：一句话 +「更换示例」（op project_switch_example）
+function showForked(m: any) {
+  const st = document.getElementById("pj-ask-st"); if (!st) return;
+  if (m[FORKED_F.project]) hasProject = true;
+  const alts: string[] = Array.isArray(m[FORKED_F.alts]) ? m[FORKED_F.alts] : [];
+  st.innerHTML = `<span>${esc(m[FORKED_F.msg] || `已基于 ${m[FORKED_F.example] ?? "示例"} 新建 ${m[FORKED_F.project] ?? ""}`)}</span> <wa-button size="small" appearance="outlined" id="pj-swap">更换示例</wa-button><span class="pj-swap" id="pj-swap-f" hidden><input class="in" id="pj-swap-in" list="pj-swap-l" placeholder="示例名，如 2026H_ball"><datalist id="pj-swap-l">${alts.map(a => `<option value="${esc(a)}">`).join("")}</datalist><wa-button size="small" variant="neutral" id="pj-swap-go">换成这个</wa-button></span>`;
+  $("pj-swap").onclick = () => { $("pj-swap-f").hidden = false; $("pj-swap-in").focus(); };
+  $("pj-swap-go").onclick = () => { const ex = $<HTMLInputElement>("pj-swap-in").value.trim(); if (ex) void call(SWITCH_EX_OP, { example: ex }).catch(() => {}); };
 }
 function showReject(m: any) {
   const e = document.getElementById(`rej-${m.name}`); if (!e) return;
@@ -515,6 +546,7 @@ async function sendPending(only?: string[], undoing = false) {
     try {
       const before = S.applied[p.name];
       const r = await call("param_set", { name: p.name, value: clampLocal(p, +S.edit[p.name]) });
+      if (paramRejected(r)) { showReject({ ...r, name: p.name, requested: r.requested ?? +S.edit[p.name], current: r.current ?? before }); continue; }
       if (!undoing) UNDO.push(p.name, before);
       delete S.edit[p.name];
       S.applied[p.name] = r.applied; FN.onUserChange();
@@ -620,7 +652,8 @@ function renderProposal(m: Msg) {
       <tr><td>调节</td><td>${n1(k.settling_s, 2, " s")}</td><td>—</td></tr>
       <tr><td>稳态误差</td><td>${n1(k.sse_pct, 1, "%")}</td><td class="ok-t">${tg.sse_pct != null ? "≤ " + n1(tg.sse_pct, 1, "%") : "—"}</td></tr></table>` : "";
   d.className = "card sugg";
-  d.innerHTML = `<div class="sg-h"><span class="mono">${esc(m.name)}</span><span class="sg-v">${p ? fmt(m.current, p) : m.current} → <em>${p ? fmt(m.value, p) : m.value}</em></span></div>
+  const gv = getVerdict();
+  d.innerHTML = (gv ? `<div class="sg-concl ${esc(gv.v)}">当前结论：${esc(gv.text)}</div>` : "") + `<div class="sg-h"><span class="mono">${esc(m.name)}</span><span class="sg-v">${p ? fmt(m.current, p) : m.current} → <em>${p ? fmt(m.value, p) : m.value}</em></span></div>
     ${rows}<p>${esc(m.reason)}${m.clamped ? "（已按范围限幅）" : ""}</p><div class="lbl">来源：${esc(m.source)}</div>
     <div class="act"><button class="btn pri" data-a="1">采纳 <kbd>Y</kbd></button><button class="btn" data-a="0">驳回 <kbd>N</kbd></button></div>`;
   d.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
@@ -651,19 +684,20 @@ function renderStatus(st: Msg) {
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");
-  $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.baud || ""}</i>` : "";   // 连接状态只在 #ro-lk（link.state）
+  $("ro-link").textContent = st.connected ? boardName(st.port) : ""; $("ro-link").title = st.connected ? `${st.port}${st.baud ? " · " + st.baud : ""}` : "";   // 连接状态只在 #ro-lk（link.state）
   { const d = dataTag(st.connected ? st.port : null), e = $("ro-src"); e.hidden = !d; e.textContent = d; e.className = "dtag " + (d === "仿真" ? "sim" : "hw"); }
   renderGuide(!!st.connected);
+  if (S.latched) lockWrites(true);
   lockParams(iterLocked(st.hb_flags, IT.s.phase === "running"));
-  $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
+  $("ro-schema").innerHTML = st.schema ? `<i>${st.schema_ok ? "协议已识别" : "协议未知"}</i>` : "—";
   // 心跳 status 字（dzctl 0.5.0）：复位原因 + 安全态/堵转/急停标志；旧固件没有 → 不显示
   const hbf: string[] = (st.hb_flags ?? []).filter((f: string) => f !== "参数未保存");   // #63 只在「保存参数」旁提示
-  $("ro-schema").title = st.reset ? `板子复位原因：${st.reset}${hbf.length ? "；" + hbf.join("、") : ""}` : "";
+  $("ro-schema").title = (st.schema ? `协议 ${st.schema}` : "") + (st.reset ? `；板子复位原因：${st.reset}${hbf.length ? "；" + hbf.join("、") : ""}` : "");
   if (hbf.length) $("ro-schema").innerHTML += `<i class="hb-flag">${esc(hbf.join("·"))}</i>`;
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
   if (st.log && st.log !== S.lastLog) { S.lastLog = st.log; loadLogs(); }   // 新开的记录马上出现在回放列表
-  $("st-log").textContent = st.replay ? `回放 ${(st.replay_progress * 100).toFixed(0)}%` : st.log ? `记录到 ${st.log}` : "未记录";
+  $("st-log").textContent = st.replay ? `回放 ${(st.replay_progress * 100).toFixed(0)}%` : st.log ? "记录中" : "未记录"; $("st-log").title = st.log ? `记录到 ${st.log}` : "";
   $("st-hint").textContent = [st.hint, st.clients > 1 ? `另有 ${st.clients - 1} 个窗口也连着本地服务：参数以最后一次下发为准，急停哪个窗口按都有效` : ""].filter(Boolean).join("  ·  ");
   $("rp").hidden = !st.replay;
   if (st.replay) {
@@ -732,6 +766,7 @@ $("props").innerHTML = AGENT_IDLE;
 function userChangedParams() { FN.onUserChange(); renderBoard(S.status); }
 // #62 自动迭代（WS op iterate_start / iterate_cancel / iterate_status，见 docs/dev/events.md）
 const IT = new IterModel(true);
+IT.cache = { get: () => localStorage.getItem("dz.iter.card"), set: v => localStorage.setItem("dz.iter.card", v) };
 function renderIter() {
   IT.setSim(String(S.status.port ?? "").startsWith("sim:"));
   const b = IT.button(), go = $<HTMLButtonElement>("it-go");
@@ -740,10 +775,9 @@ function renderIter() {
   const c = $("it-card");
   if (IT.s.phase !== "done") { c.hidden = true; c.innerHTML = ""; return; }
   const v = cardView(IT.s.result), id = IT.applyId();
+  setVerdict(v.verdict);
   c.hidden = false;
-  c.innerHTML = `<wa-card class="itc"><h4>${esc(v.title)}</h4>${v.compare.length ? `<table class="it-cmp"><thead><tr><th></th><th>第 0 轮</th><th>最好</th><th>变化</th></tr></thead><tbody>${v.compare.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num ${r[4]}">${esc(r[3])}</td></tr>`).join("")}</tbody></table>` : ""}<div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
-    `<div class="it-col">${v.gaps.map(g => `<span>${esc(g)}</span>`).join("")}</div><div class="it-col"><span>${esc(v.reason)}</span>${v.next ? `<span class="hint">${esc(v.next)}</span>` : ""}</div>` +
-    `<span class="it-act">${v.canWrite ? `<wa-button variant="brand" size="small" id="it-write" ${id == null ? "disabled title=\"等本地服务出确认卡…\"" : ""}>${APPLY_LABEL}</wa-button>` : ""}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null });
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
   const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
@@ -784,9 +818,11 @@ link.on(m => {
     case "agent_notice": if ((m as any).blocker_code === CLEARED_NOTICE) showCleared(); break;   // 与 cleared 事件合并成一张卡
     case "link.state": onLinkState(m as any); showLink(m as any); break;
     case "seeked": plot.clear(); break;
+    case "sim_starting": simStarting(m); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
     case "param_reject": showReject(m); break;
+    case "project_forked": showForked(m); break;
     case "reconnecting": lkNext = +m.next_s || null; lkNextAt = Date.now(); if (lkSince == null) lkSince = Date.now(); if (!lkMsg || lkMsg.board === "connected") lkMsg = { board: "lost" }; renderLinkTag(); if (m.attempt >= 5) toast(`${m.port} 还没回来：已试 ${m.attempt} 次，每 ${m.next_s} s 再试；不想等就点“断开”`, "info", 4000); break;
     case "estop": if ((m as any).state === "latched") RESTORE.onReport((m as any).sp_before_latch);
       handleEstopMsg(m as any, { setPhase: setEstopPhase, showCleared, toast: (t, k, ms) => toast(t, k, ms) }); break;   // 状态只看 state
@@ -863,20 +899,30 @@ document.querySelectorAll("dialog").forEach(d => document.body.append(d));
 initChrome();
 conn.on(c => {
   if (!c.board) {   // 侧车停或板子 lost/disconnected：状态栏左侧、速率、连接按钮同步切换，清掉旧速率
-    $("ro-link").textContent = c.sidecar ? "" : "本地服务无响应";
+    $("ro-link").textContent = "";
     $("ro-rx").textContent = "—"; S.rate = 0;
     $("led").className = "led";
     $("connect").innerHTML = "连接 <kbd>⌃O</kbd>"; $("connect").classList.add("pri");
   }
-  $<HTMLButtonElement>("ag-send").disabled = !c.sidecar;
-  $("st-ws").textContent = c.sidecar ? "本地服务 已连接" : "本地服务 未连接";
+  $<HTMLButtonElement>("ag-send").disabled = !c.sidecar || $<HTMLInputElement>("ag-in").disabled;
+  $("st-ws").textContent = c.sidecar ? "本地服务 已连接" : "本地服务未连接";
+  sidecarUp = c.sidecar; document.documentElement.classList.toggle("sidecar-down", !c.sidecar); renderLinkTag();
   $("banner").hidden = c.sidecar;
-  $("banner").innerHTML = "本地服务无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
+  if (!c.sidecar && !$("banner").querySelector(".sd-x")) {
+    $("banner").innerHTML = partsHtml({ ...SIDECAR_DOWN, why: SIDECAR_DOWN.why + "；板子 1 s 收不到心跳会自动急停" }, esc, `<button class="btn sm sd-x" type="button">重新连接</button>`);
+    $("banner").querySelector<HTMLElement>(".sd-x")!.onclick = () => location.reload();
+  }
 });
 // link.state reason 横幅（中性/告警）+ 端口下拉高亮；急停锁存告警在 #alerts，独立于连接状态，重连后照常显示
-let lkMsg: any = null, lkSince: number | null = null, lkNext: number | null = null, lkNextAt = 0;
+function simStarting(m: any) {
+  if (m.state === "start") simT0 = Date.now() - (+m.elapsed_s || 0) * 1000; else simT0 = null;
+  $<HTMLButtonElement>("connect").disabled = simT0 != null; $("connect").title = simT0 != null ? "仿真板正在编译启动，好了自动连上" : "";
+  renderLinkTag();
+}
+setInterval(() => { if (simT0 != null) renderLinkTag(); }, 1000);
 function renderLinkTag() {
-  const t = linkTag(lkMsg, lkSince, Date.now(), lkNext != null ? lkNext - (Date.now() - lkNextAt) / 1000 : null), e = $("ro-lk");
+  if (simT0 != null) { const e = $("ro-lk"); e.textContent = simStartText((Date.now() - simT0) / 1000); e.className = "ltag busy"; return; }
+  const t = linkTag(lkMsg, lkSince, Date.now(), lkNext != null ? lkNext - (Date.now() - lkNextAt) / 1000 : null, sidecarUp), e = $("ro-lk");
   e.textContent = t.text; e.className = "ltag " + t.tone;
 }
 setInterval(() => { if (lkMsg && lkMsg.board !== "connected" && lkSince != null) renderLinkTag(); }, 1000);

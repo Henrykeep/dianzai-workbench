@@ -815,8 +815,6 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .pg-head .btn{flex:none}
 /* 页内已有的主按钮降为次要，保证一屏一个主按钮 */
 .work [data-page] .btn.pri,.work .tunebar .btn.pri{background:var(--s3);color:var(--ink);box-shadow:none}
-/* 项目页：提交按钮由顶部主按钮代理（同一入口 pj-ask-go），表单内只留输入框和「打开示例」；回车也可提交 */
-#pj-ask-go{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
 .lk-banner{order:-3;padding:var(--sp2) var(--sp4);font-size:var(--t-sm);border-bottom:1px solid var(--line);background:var(--bg2);color:var(--ink)}
 .lk-banner.warn{background:var(--warn-bg);color:var(--warn)}
 #port.attn{box-shadow:0 0 0 2px var(--warn)}
@@ -1005,3 +1003,74 @@ body{font-variant-numeric:tabular-nums}
 .gd li .n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;border:1px solid var(--line);font-size:var(--t-xs)}
 .gd li.cur{color:var(--ink);font-weight:600} .gd li.cur .n{border-color:var(--accent);color:var(--accent)}
 .gd li.done{color:var(--ink)}
+.it-verdict{margin:var(--sp2) 0;font-size:var(--t-lg);color:var(--ink)} .it-verdict.unknown{color:var(--muted)} .it-verdict.fail{color:var(--crit)}
+/* r9p2 density: 正文 14、参数名/值 16、卡内边距 ≥16、8/16 网格留白 */
+.prow .k,.prow .in,.prow .in.num{font-size:var(--t-lg)}
+.prow{padding:var(--sp4) 0}
+.prow .u{font-size:var(--t-sm)}
+.page h3{margin-bottom:var(--sp4)}
+.page > section,.page .card,.cal-step,.seal-card,.pj-box{padding:var(--sp4)}
+.page{row-gap:var(--sp4)}
+.it-col span,.hint{font-size:var(--t-sm);line-height:22px}
+/* 去掉一层：各页 h3 下的重复说明（页头一句话已说明这一页做什么） */
+.page > h3 + p.hint,.page > .pg-hd > p.hint{display:none}
+/* r9p2 急停锁存：整条实心红、白字；屏上只剩红色（工作区与侧栏去色） */
+.alerts.latched{background:var(--estop-bar);color:var(--on-estop);box-shadow:none;border-radius:0;margin:0}
+.alerts.latched .al-h,.alerts.latched .al-t,.alerts.latched .al-fix{color:var(--on-estop)}
+.alerts.latched .al-n{background:var(--on-estop);color:var(--estop-bar)}
+.alerts.latched .btn{background:transparent;color:var(--on-estop);border:1px solid var(--on-estop)}
+.alerts.latched #al-r{background:var(--on-estop);color:var(--estop-bar);font-weight:600}
+html.estop-latched .work,html.estop-latched .side,html.estop-latched .nav,html.estop-latched .status{filter:grayscale(1)}
+/* r9p2 每屏 ≤3 个蓝：心跳条异常格、项目步骤序号、RAM≠默认 标记、引导卡当前步改灰阶层级 */
+.hbstrip i.hb-warn,.hbstrip i.hb-bad{background:var(--ink)}
+.pf-card.cur .pf-n{background:var(--ink);color:var(--bg)}
+.life span.hot{color:var(--ink);font-weight:600}
+.gd li.cur .n{border-color:var(--ink);color:var(--ink)}
+.psl{--indicator-color:var(--text-secondary);--wa-color-brand-fill-loud:var(--ink);--wa-color-brand-border-loud:var(--ink)}
+.psl{--wa-form-control-activated-color:var(--ink)} .psl::part(thumb){background-color:var(--ink);border-color:var(--ink)} .psl::part(indicator){background-color:var(--text-secondary)}
+
+/* r9p3 大屏：内容限宽居中，1920 下不空 */
+@media (min-width:1600px){
+  .page.pj > *,.page[data-page="烧录"] > *,.page[data-page="标定"] > *,.page[data-page="封箱"] > *,.page[data-page="评分"] > *,.page[data-page="模块"] > *{max-width:960px;margin-left:auto;margin-right:auto}
+  .prow .k,.prow .in,.prow .in.num{font-size:var(--t-lg)}
+}
+/* r9p3 首页：一个大输入框为主入口；空的“已有项目”区不占位 */
+.pj-empty:has(#pj-empty-note:empty):has(#pj-list[hidden]){display:none}
+.pj-ask .pj-ask-l{font:600 var(--t-xl) var(--f-sans)}
+.pj-ask .pj-ask-row .in{height:56px;font-size:var(--t-lg);padding:0 var(--sp4)}
+.pj-ask .pj-ask-row .btn{height:56px;padding:0 var(--sp6)}
+.pj-alt{display:flex;gap:var(--sp2);margin-top:var(--sp3)}
+/* #73 本地服务断了：状态栏只留一句「本地服务未连接」 */
+html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
+/* #76 数字统一：大指标与曲线读数同一档（20px 等宽表格数字），参数值 16px 等宽表格数字 */
+.rd .v,.lab .lv{font:400 var(--t-xl)/28px var(--f-mono);letter-spacing:0;font-variant-numeric:tabular-nums}
+.rd .v small,.lab .lv small{font:400 var(--t-sm) var(--f-sans);margin-left:4px;color:var(--text-muted)}
+#plist .pv .in.num,#plist input[id^=pi-]{font:400 var(--t-lg)/24px var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.sugg .sg-concl{font-weight:600;margin-bottom:var(--sp2)}
+/* r9p4 大输入框不挤压提交按钮（1280–2560） */
+.pj-ask .pj-ask-row .in{flex:1 1 auto;min-width:0}
+.pj-ask .pj-ask-row .btn{flex:0 0 auto;white-space:nowrap;min-width:max-content}
+#banner .sd-x{margin-left:var(--sp2)}
+/* r9p4 结果卡 */
+.rc h4.it-verdict{margin:0 0 var(--sp3);font:600 var(--t-h)/28px var(--f-sans)}
+.rc .rc-cmp{display:flex;gap:var(--sp6);flex-wrap:wrap;margin-bottom:var(--sp3)}
+.rc .rc-m{display:flex;flex-direction:column;gap:var(--sp1)}
+.rc .rc-k{color:var(--text-muted);font-size:var(--t-sm)}
+.rc .rc-v{font:400 var(--t-lg)/24px var(--f-mono);font-variant-numeric:tabular-nums}
+.rc .rc-d{font:400 var(--t-sm)/16px var(--f-mono);color:var(--text-muted)}
+.rc .rc-ps{display:flex;flex-wrap:wrap;gap:var(--sp2) var(--sp4);margin-bottom:var(--sp2)}
+.rc .rc-ps i{font-style:normal;color:var(--text-muted)}
+.rc .rc-det{color:var(--text-muted);font-size:var(--t-sm)}
+.rc .rc-det p{margin:var(--sp1) 0}
+.rc .rc-same{margin:0 0 var(--sp3);color:var(--text-muted)}
+/* r9p4 板子下拉：中文全名不截断（sans 字体，宽度随内容） */
+.conn select#port{max-width:none;width:auto;min-width:max-content;font-family:var(--f-sans);field-sizing:content}
+.theme-sw .ts-l{font-size:var(--t-sm);margin-left:var(--sp1)}
+/* r9p4 页头条已删：提交按钮回到输入框右侧，固定不被挤压 */
+.theme-sw{white-space:nowrap}
+.life{flex-wrap:wrap;row-gap:var(--sp1)}
+.rc .rc-cur{margin:0 0 var(--sp2);font:400 var(--t-lg)/24px var(--f-mono);font-variant-numeric:tabular-nums}
+.life{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:20px}
+.life span{white-space:nowrap;overflow:visible;text-overflow:clip}
+.life{display:flex!important;flex-wrap:wrap;column-gap:0}
+.life span{flex:none}

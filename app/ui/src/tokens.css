@@ -5,7 +5,7 @@
 :root{
   --f-sans:"Bricolage Grotesque","Noto Sans SC Dz","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
   --f-mono:"Geist Mono","Noto Sans SC Dz",Consolas,monospace;
-  --t-xs:12px; --t-sm:12px; --t-md:14px; --t-lg:16px; --t-h:20px; --t-xl:20px;   /* 字号 4 级 12/14/16/20 */
+  --t-xs:12px; --t-sm:14px; --t-md:14px; --t-lg:16px; --t-h:20px; --t-xl:20px;   /* 字号 4 级 12/14/16/20 */
   --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
   --r-xs:4px; --r-sm:4px; --r:8px; --r-lg:8px;
   --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:48px; --h-sb:28px; --w-rail:0px; --w-nav:200px; --w-nav-folded:56px; --h-nav-item:32px; --w-left:280px; --w-side:320px; --w-lab:136px;
@@ -30,7 +30,7 @@
   --accent:#0D74CE; --accent-hover:#0B68B9; --accent-active:#0A5DA6; --accent-subtle:#E6F1FB; --accent-text:#0D74CE;
   --success:#1A7F4B; --success-subtle:#E9F6EF;
   --warning:#9A5B00; --warning-subtle:#FFF4E0;
-  --danger:#CD2B31;  --danger-hover:#B8252B; --danger-subtle:#FDECEC;
+  --danger:#CD2B31;  --danger-hover:#B8252B; --danger-subtle:#FDECEC; --estop-bar:#A11B22; --on-estop:#FFFFFF;
   --info:#2550C7;    --info-subtle:#EDF2FE;
   --chart-1:#2E5BDB;--chart-2:#E06A00;--chart-3:#0F9488;--chart-4:#AB6400;--chart-5:#12A594;--chart-6:#656A73;
   --chart-grid:#ECEEF1;--chart-axis:#656A73;
@@ -47,7 +47,7 @@
   --accent:#0D74CE; --accent-hover:#1F84DC; --accent-active:#0B68B9; --accent-subtle:#10243A; --accent-text:#70B8FF;
   --success:#4CC38A; --success-subtle:#132A1F;
   --warning:#F5B544; --warning-subtle:#2E2410;
-  --danger:#FF6B6E;  --danger-hover:#FF8587; --danger-subtle:#3A1517;
+  --danger:#FF6B6E;  --danger-hover:#FF8587; --danger-subtle:#3A1517; --estop-bar:#A11B22; --on-estop:#FFFFFF;
   --info:#86A8FF;    --info-subtle:#1A2440;
   --chart-1:#6E93FF;--chart-2:#FF9A4D;--chart-3:#3CCBB8;--chart-4:#FFC53D;--chart-5:#0BD8B6;--chart-6:#A3A8B2;
   --chart-grid:#24272B;--chart-axis:#9196A0;
@@ -63,7 +63,7 @@
 :root,[data-theme=light],[data-theme=dark]{
   --accent-solid:#0D74CE; --danger-solid:#CE2C31;   /* 浅深统一：白字对比 4.77 / 5.21 */
   --f-sans:var(--font-sans); --f-mono:var(--font-mono);
-  --t-xs:var(--fs-12); --t-sm:var(--fs-12); --t-md:var(--fs-14); --t-lg:var(--fs-16); --t-h:var(--fs-20); --t-xl:var(--fs-20);
+  --t-xs:var(--fs-12); --t-sm:var(--fs-14); --t-md:var(--fs-14); --t-lg:var(--fs-16); --t-h:var(--fs-20); --t-xl:var(--fs-20);
   --sp1:var(--sp-1); --sp2:var(--sp-2); --sp3:var(--sp-3); --sp4:var(--sp-4); --sp5:var(--sp-5); --sp6:var(--sp-6);
   --r-xs:var(--radius-sm); --r-sm:var(--radius-sm); --r:var(--radius-md); --r-lg:var(--radius-lg);
   --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:48px; --h-sb:28px; --w-rail:0px; --w-nav:200px; --w-nav-folded:56px; --h-nav-item:32px; --w-left:280px; --w-side:320px; --w-lab:136px;
@@ -84,4 +84,15 @@
   --ch1:var(--chart-1); --ch2:var(--chart-3); --ch3:var(--chart-4); --ch4:var(--chart-6); --ch5:var(--chart-2); --ch6:var(--chart-5); --ch7:var(--chart-1); --ch8:var(--chart-6);
   --f-mono:"Geist Mono",var(--font-mono);
   --setpoint:var(--text-primary);
+}
+
+/* r9p3 大屏（≥1600px）：字号上一级、间距 ×1.25（仍为 4 的倍数）、侧栏加宽 */
+@media (min-width:1600px){
+  :root{
+    --t-xs:14px; --t-sm:16px; --t-md:16px; --t-lg:20px; --t-h:20px; --t-xl:20px;
+    --sp2:12px; --sp3:16px; --sp4:20px; --sp5:32px; --sp6:40px;
+    --h-row:40px; --h-ctl:40px; --h-top:56px; --h-sb:32px; --w-nav:232px; --w-left:340px; --w-side:400px; --h-nav-item:40px;
+    --wa-font-size-m:16px; --wa-font-size-s:16px; --wa-font-size-xs:14px;
+  }
+  body{line-height:24px}
 }
