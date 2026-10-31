@@ -46,7 +46,7 @@ console.log("✓ batch1 (iterate / flash nag / theme)");
 (() => {
   const m = new IterModel(true);
   m.onEvent({ type: "iterate.started", limits: { time_s: 180, rounds: 20 } }, 0);
-  if (m.text(0) !== "第 1/20 轮 · 剩余 3:00") throw new Error("N from limits");
+  if (m.text(0) !== "第 1/20 轮，预算还剩 180 s") throw new Error("N from limits");
   m.onEvent({ type: "iterate.stopped", reason: "pass", best: { iter: 3, params: { kp: 1 }, pass: { all: true } } }, 0);
   if (m.applyId() !== null) throw new Error("no card yet");
   if (!m.onEvent({ type: "agent_action", tool: "iterate_apply_best", id: 42 }, 0) || m.applyId() !== 42) throw new Error("card id");
