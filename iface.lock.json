@@ -1548,6 +1548,7 @@
    "dzstep.h: float abs_tol;",
    "dzstep.h: float u_max;",
    "dzstep.h: int8_t u_max_param;",
+   "dzstep.h: float max_step;",
    "dzstep.h: } dzstep_ch_t;",
    "dzstep.h: typedef struct { bool active;",
    "dzstep.h: uint8_t ch, mode;",
@@ -1568,8 +1569,8 @@
    "dzstep.h: void dzstep_finish(dzstep_t *s, bool aborted, uint8_t cause, uint8_t seq, dzframe_t *out);",
    "dzstep.h: int dzstep_selftest(void);"
   ],
-  "hash": "d06be059532d4e9a",
-  "version": "0.13.0"
+  "hash": "506fe54ffe28d823",
+  "version": "0.14.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

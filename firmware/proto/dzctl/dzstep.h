@@ -50,7 +50,7 @@ typedef struct {
     float abs_tol;           /**< 绝对容差（物理单位） */
     float u_max;             /**< 饱和判定的输出上限；u_max_param ≥ 0 时用该参数的当前值 */
     int8_t u_max_param;      /**< 参数序号，−1 = 用常数 u_max */
-    float max_step;          /**< 物理上限：单次阶跃 |目标 − 当前设定值| 的最大值（link.step.max_step；0 = 不限），超了回 status 1 */
+    float max_step;          /**< 0.14.0 物理上限：单次阶跃 |目标 − 当前设定值| 的最大值（link.step.max_step；0 = 不限），超了回 status 1 */
 } dzstep_ch_t;
 
 typedef struct {

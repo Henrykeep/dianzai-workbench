@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.13.0"
+#define DZCTL_VERSION "0.14.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
