@@ -24,6 +24,9 @@ ROOT      := $(CURDIR)
 # 用户板卡 / 工程不进仓库（#29）：$(DZ_BOARDS_DIR)/<板>、$(DZBENCH_HOME)/projects/<工程> 优先，其次仓库内置 boards/、apps/、examples/（只读）
 DZBENCH_HOME  ?= $(HOME)/.dzbench
 DZ_BOARDS_DIR ?= $(DZBENCH_HOME)/boards
+# Windows 上环境变量是 C:\Users\...：make 里一律用正斜杠（反斜杠路径进目标/依赖会出 "multiple target patterns"）
+override DZBENCH_HOME  := $(subst \,/,$(DZBENCH_HOME))
+override DZ_BOARDS_DIR := $(subst \,/,$(DZ_BOARDS_DIR))
 BOARD_FOUND := $(firstword $(wildcard $(DZ_BOARDS_DIR)/$(BOARD)/board.yaml boards/$(BOARD)/board.yaml))
 BOARD_YML := $(if $(BOARD_FOUND),$(BOARD_FOUND),boards/$(BOARD)/board.yaml)
 APP_DIR   ?= $(firstword $(wildcard $(DZBENCH_HOME)/projects/$(APP) apps/$(APP) examples/$(APP)))
