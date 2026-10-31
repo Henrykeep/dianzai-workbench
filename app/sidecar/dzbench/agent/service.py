@@ -107,7 +107,7 @@ class AgentService:
             "score_items": lambda path=None: steptools.score_items(self, path),
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
-            "tune_autopilot": self.tune_autopilot,
+            "tune_autopilot": self._tune_autopilot_agent,
             "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
@@ -124,6 +124,9 @@ class AgentService:
     def project_open(self, code: str) -> dict:
         """与 op project.open 同一校验；错误按 原因 + 怎么解决 返回给模型。进度推送由侧车轮询 progress.changed 负责。"""
         from .. import project
+        if self._is_example(code):
+            return {"error": "example_readonly", "message": f"{code} 是内置例题（只读），不能当你的项目用",
+                    "fix": "调 quick_start（用户那句话原文）以它为模板新建一个项目目录", "fix_action": None}
         try:
             return {"project": project.open_project(self.gw.root, code)}
         except project.ProjectError as e:
@@ -265,8 +268,21 @@ class AgentService:
         port = self.s.port or ""
         return (port.startswith("sim:") and not port.endswith("+hw")) or bool(getattr(self.s, "replay", None))
 
+    EXAMPLE_WRITES = ("flow_accept", "project_chain", "project_apply")
+
+    def _is_example(self, code) -> bool:
+        """代号落在仓库内置 examples/（用户目录里没有同名项目）= 例题，只读。"""
+        try:
+            d = paths.project_dir(self.gw.root, str(code))
+        except Exception:  # noqa: BLE001
+            return False
+        return d.parent == pathlib.Path(self.gw.root) / "examples"
+
     def gate(self, tool: str, args: dict, run):
         """loop 每次调工具都经过这里：auto 直接跑；log 跑完记审计；human 变成待点击的动作卡；forbid 拒绝。"""
+        if tool in self.EXAMPLE_WRITES and args.get("code") and self._is_example(args["code"]):   # #55：例题只读，开局一律新建
+            raise GatewayError("example_readonly", f"{args['code']} 是内置例题（只读），不能在上面做题",
+                               "调 quick_start（用户那句话原文）以它为模板新建一个项目目录")
         t = risk.tier(tool, self.sim)
         if t == risk.FORBID:
             risk.audit(tool, args, t, "denied")
@@ -312,6 +328,12 @@ class AgentService:
     def quick_start(self, text: str) -> dict:
         """一句话起项目：解析 → ①–⑤ 整链预览（只写暂存区）→ 一张确认卡（方案 + 引脚表）。
         用户点确认 → 写入项目 → 连仿真板 → 一键起步调参 → 评分。返回 action_id 给界面。"""
+        ex = steptools.quick_example(self.gw.root, text)
+        if ex:                                                        # #55：说的是内置例题 → 复制成新项目目录（例题只读，不复用）
+            code = steptools.fresh_code(self.gw.root, ex.split("_")[0] if "_" in ex else ex)
+            card = self.gate("project_fork", {"example": ex, "code": code}, lambda: None)
+            return {"spec": {"code": code, "example": ex, "sim": "sim:" + ex}, "action_id": card.get("action_id"),
+                    "note": f"确认卡已出：以内置例题 {ex} 为模板新建项目 {code}（新目录，例题本身不动）；确认后自动建项目、上仿真、自动迭代调参。不要再调别的工具建项目。"}
         sp = steptools.quick_spec(text)
         sp["code"] = steptools.fresh_code(self.gw.root, sp["code"])     # 新建一律落新目录，不复用旧项目/示例（#39）
         d = steptools._flow(self.gw.root).home / sp["code"]; d.mkdir(parents=True, exist_ok=True)
@@ -324,9 +346,39 @@ class AgentService:
         return {"spec": sp, "chain": ch, "action_id": card.get("action_id"),
                 "note": "确认卡已出（含方案与引脚表）；用户点确认后自动写项目、上仿真、调参、评分。不要再调 project_apply。"}
 
+    def project_fork(self, example: str, code: str) -> dict:
+        """“以例题为模板新建”卡被确认：examples/<example> 整个复制到 $DZBENCH_HOME/projects/<code>（新目录），设为当前项目，
+        连该例题的仿真板，跑自动迭代（结束出“采用最好参数”卡）。记忆按 新项目 + 板子 记（不再落 _none）。"""
+        import shutil
+        from .. import project
+        src = pathlib.Path(self.gw.root) / "examples" / example
+        if not src.is_dir():
+            raise GatewayError("no_example", f"没有内置例题 {example}", "先 project_list 看有哪些")
+        code = steptools.fresh_code(self.gw.root, code)               # 卡挂着期间可能又建了同名
+        dst = paths.projects_dir() / code
+        shutil.copytree(src, dst, symlinks=True)
+        project.set_current(self.gw.root, code)
+        out: dict = {"project": code, "path": str(dst), "from_example": example}
+        if not self.s.port:
+            self.s.connect("sim:" + example, 115200, log=False)
+            t0 = time.monotonic()
+            while (self.s.schema_hash is None or not self.s.params) and time.monotonic() - t0 < 10:
+                time.sleep(0.05)
+        out["sim"] = self.s.port
+        st = (self.s.schema.step if self.s.schema else None) or []
+        if self.sim and st:
+            rng = float(st[0].get("range") or 1.0)
+            out["iterate"] = self._iterate_start_agent(target=round(rng / 4, 4))
+        elif self.sim:                                                 # 例题固件没有板上阶跃（link.step 为空）→ 退回 tune_autopilot，同样出最好参数卡
+            out["tune"] = self._tune_autopilot_agent(rounds=4)
+        out["best_card"] = (self.iter_result or {}).get("best_card")
+        return out
+
     def _quick_after(self, code: str, written: dict) -> dict:
         """确认后接着跑：仿真板 → 一键起步调参 → 评分（仿真里都是 log 级，不再出卡）。"""
         sp = self.quick.pop(code)
+        from .. import project
+        project.set_current(self.gw.root, code)                       # #55：新项目即当前项目 → 记忆按 项目 + 板子 记
         if not self.s.port:
             self.s.connect(sp["sim"], 115200, log=False)
             t0 = time.monotonic()
@@ -475,7 +527,27 @@ class AgentService:
         return {"status": "applied", "iter": iter, "params_hash": params_hash, "applied": applied,
                 "next_zh": "已写入最好一轮参数；需要掉电保持就点“保存参数”"}
 
-    CARD_ONLY = {"iterate_apply_best": iterate_apply_best}       # 只由服务端出卡、模型调不到的动作（不进工具表）
+    CARD_ONLY = {"iterate_apply_best": iterate_apply_best, "project_fork": project_fork}       # 只由服务端出卡、模型调不到的动作（不进工具表）
+
+    def _local_hash(self, over: dict | None = None) -> str | None:
+        """按参数表顺序算的 CRC32（与 step_result.params_hash 同口径）；参数没读全 = None。"""
+        from .iterate import params_hash
+        full = dict(self.s.params) | {k: float(v) for k, v in (over or {}).items()}
+        order = [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
+        return f"{params_hash(order, full):08x}" if order and all(n in full for n in order) else None
+
+    def _tune_autopilot_agent(self, **args) -> dict:
+        """板子不支持 step_result（没有 link.step，如 2026H 仿真）时的退路：tune_autopilot 跑完同样以“采用最好参数”卡收尾（#53）。"""
+        r = self.tune_autopilot(**args)
+        b = r.get("best_round") if isinstance(r, dict) else None
+        if not b or not b.get("gains"):
+            return r
+        h = self._local_hash(b["gains"])
+        res = {"type": "tune.stopped", "reason": "autopilot",
+               "best": {"iter": b.get("round"), "params": dict(b["gains"]), "params_hash": h, "metrics": b.get("metrics")}}
+        res["best_card"] = self._best_card(res)
+        self.iter_result = res
+        return r | {"best_card": res["best_card"], "instruction": "已出“采用最好参数”确认卡；最终回复总结最好一轮并让用户点卡确认，不要以提问结束。"}
 
     def _best_card(self, res: dict) -> int | None:
         """迭代停止（任何原因）且有最好一轮 → 出“采用最好参数”卡（always human）。"""
@@ -488,7 +560,8 @@ class AgentService:
 
     def _iter_emit(self, e: dict) -> None:
         if e.get("type") == "iterate.round" and e.get("valid"):
-            self.memory().add("iterate", iter=e["iter"], params=e["params"], score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
+            self.memory().add("iterate", iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
+                              score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
         self.emit(e)
 
     def _iter_run(self, it) -> None:
@@ -827,6 +900,7 @@ class AgentService:
             verdict["rolled_back"] = self.rollback_best(_auto=True)
         self.last_verdict = verdict
         self.memory().add("verdict", round=verdict.get("round"), action=verdict.get("action"), gains=self._gains(),
+                          params_hash=self._local_hash(),                 # #39：每轮（含第 0 轮）都带本地算的参数 CRC32
                           overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
         self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
         return {"verdict": verdict, "metrics": m.as_dict()}

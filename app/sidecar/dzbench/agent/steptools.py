@@ -278,6 +278,25 @@ QUICK_KINDS = {   # 题型 → 仿真对象、阶跃指标模板
 QUICK_MCU = [(r"f1|f103|c8t6", "stm32f103c8t6"), (r"f407|f4|vet6|天空星", "stm32f407vet6"), (r"vgt6", "stm32f407vgt6")]
 
 
+def quick_example(root, text: str) -> str | None:
+    """#55：一句话说的是某道内置例题（如“2026 年 H 题 车载平衡滚球”）→ 例题代号；对不上 = None。
+    只用来“以例题为模板新建”，例题目录本身只读、永远不当用户项目用。"""
+    import re as _re
+    t = (text or "").replace(" ", "")
+    ex = pathlib.Path(root) / "examples"
+    if not ex.is_dir():
+        return None
+    for d in sorted(ex.iterdir()):
+        rq = (_yaml(d / "requirements.yaml").get("problem") or {}) if (d / "requirements.yaml").exists() else {}
+        code, title = str(rq.get("code") or ""), str(rq.get("title") or "")
+        m = _re.match(r"(\d{4})([A-Z])$", code)
+        hit_code = bool(m) and (code in t or (m.group(1) in t and _re.search(m.group(2) + "题", t)))
+        hit_title = bool(title) and (title in t or sum(1 for w in _re.findall(r"[\u4e00-\u9fff]{2}", title) if w in t) >= 3)
+        if hit_code or hit_title:
+            return d.name
+    return None
+
+
 def quick_spec(text: str) -> dict:
     """一句话 → 题型 + 主控 + 仿真对象 + 题目原文草稿。认不出题型就报错（先只支持电机速度/位置环）。"""
     import hashlib
