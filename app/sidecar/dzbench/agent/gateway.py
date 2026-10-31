@@ -379,6 +379,21 @@ class Gateway:
         rows = [dict(zip(("commit", "time", "title"), l.split("\t", 2))) for l in out.splitlines() if l.count("\t") >= 2] if rc == 0 else []
         return rows[:n]
 
+    WRITE_ZH = {"pending": "待确认写入", "applying": "正在写入", "rejected": "写入被拒绝", "failed": "写入失败（已恢复原文件）",
+                "written": "已写入（未提交）", "committed": "已写入并已提交"}
+    GIT_ZH = {"": "还没到提交这一步", "pending": "提交卡待确认", "committing": "正在提交", "rejected": "用户拒绝提交",
+              "failed": "提交失败", "committed": "已提交"}
+
+    def change_states(self) -> list[dict]:
+        """#99 只读：每张改代码卡的真实状态（写文件卡 change + 提交卡 commit_confirm_request）。Agent 描述状态前必须先查这里。"""
+        out = []
+        for c in self.changes.values():
+            out.append({"id": c.id, "title": c.title, "files": list(c.files), "write_status": c.status, "commit_status": c.git_status,
+                        "commit": c.commit or None,
+                        "status_zh": f"#{c.id} {c.title}：{self.WRITE_ZH.get(c.status, c.status)}；提交：{self.GIT_ZH.get(c.git_status, c.git_status)}"
+                                     + (f"（{c.commit[:8]}）" if c.commit else "")})
+        return out
+
     def pending(self) -> list[dict]:
         return [c.card() for c in self.changes.values() if c.status == "pending"] + \
                [c.git_card() for c in self.changes.values() if c.git_status == "pending"]

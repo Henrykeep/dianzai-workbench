@@ -6,6 +6,7 @@ fail = 这条流程走不通；warn = 某些功能不可用（如没探针只能
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import pathlib
 import shutil
@@ -27,7 +28,25 @@ def _ver(cmd: list[str]) -> str | None:
         return None
 
 
-def run(repo: str | None = None, which=shutil.which, probes=None) -> list[dict]:
+def project_chip(project: str | None) -> str | None:
+    """#87：芯片按打开的项目声明（scheme.yaml mcu，其次项目 dzbench.json flash.target），不看工作台根目录。"""
+    if not project:
+        return None
+    d = pathlib.Path(project)
+    try:
+        import yaml
+        m = (yaml.safe_load((d / "scheme.yaml").read_text("utf-8")) or {}).get("mcu") if (d / "scheme.yaml").is_file() else None
+        if m:
+            return str(m)
+    except Exception:  # noqa: BLE001  声明读不出来按未声明
+        pass
+    try:
+        return ((json.loads((d / "dzbench.json").read_text("utf-8")) or {}).get("flash") or {}).get("target") if (d / "dzbench.json").is_file() else None
+    except (OSError, ValueError):
+        return None
+
+
+def run(repo: str | None = None, which=shutil.which, probes=None, project: str | None = None) -> list[dict]:
     out: list[dict] = []
     # 1 Python 依赖
     for mod, name, need, fix in (("serial", "pyserial（串口）", True, "pip install pyserial"),
@@ -58,13 +77,15 @@ def run(repo: str | None = None, which=shutil.which, probes=None) -> list[dict]:
         out.append(_item("keil", "Keil UV4", "ok" if ok else "fail", uv4 if ok else f"配置的路径不存在：{uv4}",
                          "" if ok else "在 ~/.dzbench/machine.json 的 build.keil_uv4 写对 UV4.exe 路径（通常 C:\\Keil_v5\\UV4\\UV4.exe）"))
     # 3 器件包 / 目标
-    target = (cfg.get("flash") or {}).get("target")
+    target = project_chip(project) if project else (cfg.get("flash") or {}).get("target")
     if not target:
         out.append(_item("target", "烧录目标 flash.target", "warn", "没配置", "dzbench.json 里写 flash.target，如 mspm0g3507 / stm32f407vetx"))
     elif target.lower().startswith("mspm0"):
         p = find_pack(target)
-        out.append(_item("pack", "MSPM0 器件包（DFP）", "ok" if p else "fail", str(p) if p else f"找不到 {M0_PACK}",
+        out.append(_item("pack", "MSPM0 器件包（DFP）", "ok" if p else "warn", str(p) if p else f"找不到 {M0_PACK}（只影响烧录）",
                          "" if p else "运行 tools/fetch_third_party.sh m0pack，或联网 pyocd pack install mspm0g3507，或设 DZBENCH_PACK=包路径"))
+        if not p:
+            out[-1]["blocks"] = ["flash"]                  # #87：缺器件包只挡烧录这一步，不挡项目 / 仿真
     # 3b 调试后端（flash.tool：pyocd / openocd / jlink / probe-rs，见 dzbench/probes.py）
     from .probes import tool_status
     ts = tool_status(cfg.get("flash") or {})

@@ -47,7 +47,7 @@ class Server:
         self.sender = Sender(self.session, self.emit)
         from .progress import Progress
         from . import doctor as _doctor
-        self.progress = Progress(self.session, self.svc, lambda: _doctor.run(str(self.svc.gw.root)))
+        self.progress = Progress(self.session, self.svc, lambda: _doctor.run(str(self.svc.gw.root), project=self.svc._project_path()))   # #87：按打开的项目查
         self.svc.progress_src = self.progress
         self.recovered = lastsession.take_unclean()      # 上次侧车是不是崩了
         # 缺口 #25：Agent（LLM 长调用）独占一个线程，按顺序排队；不占默认线程池，绝不在事件循环里跑。

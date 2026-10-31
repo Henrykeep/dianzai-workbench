@@ -12,3 +12,4 @@ import dzstep  # noqa: E402,F401
 
 STEP_ID, REJECT_ID = dzstep.STEP_ID, dzstep.REJECT_ID
 HB_ITER_BUSY = dzstep.HB_ITER_BUSY
+HB_SENSOR_SAT = dzstep.HB_SENSOR_SAT

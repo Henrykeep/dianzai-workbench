@@ -9,6 +9,8 @@ import time
 
 import pytest
 
+from dzbench.agent import service as S
+
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
 
@@ -44,8 +46,27 @@ def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatc
         rounds = [e for e in ev if e.get("type") == "iterate.round"]
         assert rounds, [e.get("type") for e in ev][-10:]
         assert svc.iter_result and svc.iter_result.get("reason") != "error", svc.iter_result
-        names = set(p["roles"].values())
-        assert names <= {q["name"] for q in svc.iterate_plan(target=tgt)["params"]}
+        plan = svc.iterate_plan(target=tgt, dur_ms=1500)
+        assert set(p["roles"].values()) <= {q["name"] for q in plan["params"]}       # 参数名全从握手读
+        assert plan["abs_tol"] == pytest.approx(0.01 * st["sensor_range"])           # 没写 abs_tol：量程的 1%
+        assert "fallback" not in plan
+        # 不给 dur_ms：真会话上实测阶跃时序（不退默认）
+        auto = svc.iterate_plan(dur_ms=None, _default_target=True)
+        assert "fallback" not in auto and 200 <= auto["dur_ms"] <= 30000, auto
+        assert abs(auto["target"]) <= (st.get("max_step") or 1e9) + 1e-9
+        # #109：超过 max_step 拒绝，带 message_zh / fix_action
+        if st.get("max_step"):
+            with pytest.raises(S.GatewayError) as e:
+                svc.iterate_plan(target=float(st["max_step"]) * 1.5, dur_ms=1500)
+            assert e.value.code == "step_too_large" and e.value.fix_action == "lower_step"
+        # 实测失败：退到量程 1/4（再夹 max_step），并写明退了什么
+        def boom():
+            raise RuntimeError("测不出")
+        monkeypatch.setattr(svc, "measure_step_timing", boom)
+        fb = svc.iterate_plan(dur_ms=None, _default_target=True)
+        assert "span_quarter" in fb["fallback"] and "dur_default" in fb["fallback"] and fb["fix_action"] == "measure_step_timing"
+        assert "测不出" in fb["message_zh"] and "1/4" in fb["message_zh"]
+        assert fb["target"] == pytest.approx(min(st["sensor_range"] / 4, st.get("max_step") or 1e9))
     finally:
         s.disconnect()
         shutil.rmtree(ROOT / "build/host-sim" / p["name"], ignore_errors=True)
