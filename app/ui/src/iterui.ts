@@ -1,5 +1,6 @@
 import { coarseTagHtml } from "./plant";
 import { reasonZh, reasonKind } from "./reasoncodes";
+import { isUnchanged } from "./metriccard";
 import { REASON_KIND_F } from "./fieldmap";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
 import { ampLine, ampText, MC_F, DOWNSCALE_ZH, RETEST_F, DECL_STEP_F, ADOPT_F } from "./fieldmap";
@@ -223,6 +224,7 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   const part = isAmpReduced(r), dis = o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"';
   const blk = part ? retestBlock(r, o.schema) : null;
   const btn = part ? `<wa-button variant="brand" size="small" id="it-rerun"${blk ? " disabled" : ""}>按题面幅度复测</wa-button>` + (o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-partial="1"${dis}>仍采用这组参数</wa-button>` : "")
+    : isUnchanged(r) ? ""   // 初值已满足题面、没改参：不给「采用」
     : o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${dis}>采用这组参数</wa-button>` : "";
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";

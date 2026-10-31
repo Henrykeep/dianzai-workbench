@@ -10,6 +10,11 @@ use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
+// 侧车连不上时的数据表自检：只跑这一个脚本、只用这几个解释器（与 app/ui/src/fieldmap.ts SELFCHECK_F 一致）
+const SELFCHECK_SCRIPT: &str = "app/sidecar/selfcheck_data.py";
+const SELFCHECK_PY_WIN: &str = "python/python.exe";
+const SELFCHECK_PY_VENV: &str = ".venv/bin/python";
+const SELFCHECK_PY_SYS: [&str; 2] = ["python3.12", "python3"];
 const EXIT_PORT_IN_USE: i32 = 3; // 与 dzbench/__main__.py 一致
 const MAX_RESTARTS: usize = 5;
 const RESTART_WINDOW: Duration = Duration::from_secs(60);
@@ -89,6 +94,49 @@ fn clear_last_session() {
     }
 }
 
+/// 安装目录 = 可执行文件所在目录；开发版退回仓库根（CARGO_MANIFEST_DIR/../..）
+fn install_dirs() -> Vec<std::path::PathBuf> {
+    let mut v = Vec::new();
+    if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+        v.push(d);
+    }
+    v.push(std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")));
+    v
+}
+
+/// 只运行固定的自检脚本（不接受前端任何参数），返回它 stdout 的 JSON 文本 {ok, items}
+#[tauri::command]
+fn run_selfcheck() -> Result<String, String> {
+    for base in install_dirs() {
+        let script = base.join(SELFCHECK_SCRIPT);
+        if !script.is_file() {
+            continue;
+        }
+        let mut pys: Vec<std::ffi::OsString> = Vec::new();
+        if cfg!(windows) {
+            pys.push(base.join(SELFCHECK_PY_WIN).into_os_string());
+        } else {
+            let venv = base.join(SELFCHECK_PY_VENV);
+            if venv.is_file() {
+                pys.push(venv.into_os_string());
+            }
+            for p in SELFCHECK_PY_SYS {
+                pys.push(p.into());
+            }
+        }
+        for py in pys {
+            if let Ok(out) = std::process::Command::new(&py).arg(&script).current_dir(&base).output() {
+                let s = String::from_utf8_lossy(&out.stdout).to_string();
+                if !s.trim().is_empty() {
+                    return Ok(s);
+                }
+            }
+        }
+        return Err("no_python".into());
+    }
+    Err("no_script".into())
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -98,6 +146,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![run_selfcheck])
         .setup(|app| {
             app.manage(Sidecar { child: Mutex::new(None), exiting: AtomicBool::new(false) });
             supervise(app.handle().clone());

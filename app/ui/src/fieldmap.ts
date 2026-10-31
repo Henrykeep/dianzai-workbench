@@ -233,11 +233,22 @@ export const DECL_STEP_F = { list: "step", max: "max_step" } as const;
 export const ADOPT_F = { verified: "verified", why: "unverified_reason", ampReduced: "amp_reduced" } as const;
 
 // 数据文件兜底不静默：缺失 / 格式错 分开说
-export const DATA_FIX_ZH = "修复：运行 python -m dzbench selfcheck-data";
+export const DATA_FIX_ZH = "点『运行自检』查看原因";
+export const DATA_FIX_DEV = "（开发：python -m dzbench selfcheck-data）";   // 命令只在开发模式显示
+// 自检：op selfcheck_data → {ok, items:[{file, status: ok|missing|invalid, message_zh, fix_action}]}；本地服务连不上时 Tauri 命令 run_selfcheck（只跑安装目录里固定的脚本，见 src-tauri/src/main.rs SELFCHECK_*）
+export const SELFCHECK_F = { op: "selfcheck_data", tauriCmd: "run_selfcheck", ok: "ok", items: "items", file: "file", status: "status", msg: "message_zh", fix: "fix_action", script: "app/sidecar/selfcheck_data.py", pyWin: "python/python.exe", pyVenv: ".venv/bin/python" } as const;
+export const SELFCHECK_ST_ZH: Record<string, string> = { ok: "正常", missing: "缺失", invalid: "格式错误" };
+export const SELFCHECK_FILE_ZH: Record<string, string> = { "roles.json": "角色表", "reason_codes.json": "原因表" };
+export const SELFCHECK_FIX_ZH: Record<string, [string, string]> = { reinstall: ["重新安装", "用最新的芯台安装包重新安装一次（会保留工程和设置），装完重开芯台再点『运行自检』。"], update: ["更新", "更新到最新版芯台后重开，再点『运行自检』。"] };
 export const dataNoticeZh = (what: string, st: "ok" | "missing" | "bad") => st === "ok" ? "" : `${what}${st === "missing" ? "缺失" : "格式错误"}，已使用内置列表。${DATA_FIX_ZH}`;
 // 状态栏短句：「原因表缺失，已用内置列表 · 修复：python -m dzbench selfcheck-data」
-export const reasonStatusText = (t: string) => !t ? "" : /不一致/.test(t) ? t : `${t.split(/[，（]/)[0]}，已用内置列表 · 修复：${DATA_FIX_ZH.replace(/^修复：运行 /, "")}`;
+export const reasonStatusText = (t: string) => t;   // 状态栏原样显示提示，旁边放「运行自检」按钮
 // 握手里的数据表（暂定名）：data_tables {roles:{sha256, content}, reason_codes:{sha256, content}}
 export const DATA_TABLES_F = { obj: "data_tables", sha: "sha256", content: "content", roles: "roles", reasons: "reason_codes" } as const;
 // reason_codes.json kind ∈ round | abort | stop | diverge（events.md #139）
 export const REASON_KIND_F = { kind: "kind", diverge: "diverge", abort: "abort" } as const;
+// 指标卡补充（暂定名）：causes[{code, evidence: strong|medium|weak, basis_zh}] + 卡级 verdict_zh；unchanged:true + 每项 margin；stop_reason converged|budget_exhausted|at_limit（+ stop_reason_zh）
+export const MC_X_F = { causes: "causes", code: "code", ev: "evidence", basis: "basis_zh", verdictZh: "verdict_zh", unchanged: "unchanged", margin: "margin", marginZh: "margin_zh", stop: "stop_reason", stopZh: "stop_reason_zh", name: "name", unit: "unit", value: "value" } as const;
+export const EVIDENCE_ZH: Record<string, string> = { strong: "证据强", medium: "证据中等", weak: "证据弱" };
+export const MC_STOP_ZH: Record<string, string> = { converged: "已收敛：再调也没有明显改进", budget_exhausted: "预算用完：轮数或时间到了，结果不一定是最好", at_limit: "参数到了声明的上下限，再往外调被挡住" };
+export const UNCHANGED_ZH = "初值已满足题面，本次没有改动参数";

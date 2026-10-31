@@ -10,42 +10,44 @@ const raw = readFileSync("../../docs/dev/roles.json", "utf8"), sha = createHash(
 const req = { missing: ["g1"], suggested: {}, reason: "" };
 const card = () => roleCardHtml(req, { phase: "idle", left: 1 });
 // 构建闸门
-assert.deepEqual(buildCheck(raw, null), []);                                   // 真 roles.json 合格；原因表缺失暂时放行
-assert.deepEqual(buildCheck(null, null), ["docs/dev/roles.json 缺失"]);
-assert.deepEqual(buildCheck('{"schema_version":2,"roles":[]}', null), ["docs/dev/roles.json 格式错误"]);
-assert.deepEqual(buildCheck("{bad", null), ["docs/dev/roles.json 格式错误"]);
+assert.deepEqual(buildCheck(raw, null, false), []);
+assert.deepEqual(buildCheck(raw, readFileSync("../../docs/dev/reason_codes.json", "utf8")), []);   // 两个真文件都合格
+assert.deepEqual(buildCheck(null, null, false), ["docs/dev/roles.json 缺失"]);
+assert.deepEqual(buildCheck('{"schema_version":2,"roles":[]}', null, false), ["docs/dev/roles.json 格式错误"]);
+assert.deepEqual(buildCheck("{bad", null, false), ["docs/dev/roles.json 格式错误"]);
+assert.deepEqual(buildCheck(raw, null), ["docs/dev/reason_codes.json 缺失"]);
 assert.deepEqual(buildCheck(raw, '{"x":{}}'), ["docs/dev/reason_codes.json 格式错误"]);   // 原因表在就必须合格
 assert.deepEqual(buildCheck(raw, null, true), ["docs/dev/reason_codes.json 缺失"]);        // 开关打开后缺失也红
-assert.equal(REQUIRE_REASON_CODES, false);   // TODO：reason_codes.json 进仓库后改成 true（datatables.ts 一处）
+assert.equal(REQUIRE_REASON_CODES, true);   // 5ce00ab 起 reason_codes.json 在仓库里
 assert.match(readFileSync("vite.config.ts", "utf8"), /buildCheck\(roles, reasons\)[\s\S]*throw new Error/);
 // 握手之前：不提示
 setRoleCodes(JSON.parse(raw), sha); ROLES_T.reset();
 assert.equal(roleCodesNotice(), ""); assert.doesNotMatch(card(), /role-data/);
 // 握手没带数据表 → 用打包副本 + 提示
-ROLES_T.onHandshake({ hash: "h" }); assert.equal(roleCodesNotice(), "本地服务未提供角色表，已使用界面内置列表"); assert.match(card(), /本地服务未提供角色表/);
+ROLES_T.onHandshake({ hash: "h" }); assert.equal(roleCodesNotice(), "本地服务未提供角色表，已使用内置列表。点『运行自检』查看原因"); assert.match(card(), /本地服务未提供角色表[\s\S]*data-selfcheck>运行自检/);
 assert.equal(roleCodes().length, validRoles(raw)!.length);
 // 握手带了且 sha 一致 → 用本地服务内容，无提示（content 可以是对象或 JSON 字符串）
 ROLES_T.onHandshake({ data_tables: { roles: { sha256: sha.toUpperCase(), content: raw } } }); assert.equal(roleCodesNotice(), ""); assert.doesNotMatch(card(), /role-data/);
 // sha 不一致 → 提示，仍用本地服务内容
 ROLES_T.onHandshake({ data_tables: { roles: { sha256: "00", content: { schema_version: 1, roles: [{ code: "X", zh: "新" }] } } } });
-assert.equal(roleCodesNotice(), "界面与本地服务的角色表不一致，请重装或更新"); assert.deepEqual(roleCodes(), [["X", "新"]]);
+assert.equal(roleCodesNotice(), "界面与本地服务的角色表不一致，请重装或更新。点『运行自检』查看原因"); assert.deepEqual(roleCodes(), [["X", "新"]]);
 // 本地服务内容不合格（版本 / 缺 zh / 乱码）→ 打包副本 + 提示
 for (const c of [{ schema_version: 2, roles: [{ code: "P", zh: "比例" }] }, { schema_version: 1, roles: [{ code: "P" }] }, "{oops"]) {
   ROLES_T.onHandshake({ data_tables: { roles: { sha256: sha, content: c } } });
-  assert.match(roleCodesNotice(), /^本地服务的角色表格式错误，已使用界面内置列表。修复：运行 python -m dzbench selfcheck-data$/); assert.equal(roleCodes().length, validRoles(raw)!.length);
+  assert.match(roleCodesNotice(), /^角色表格式错误，已使用内置列表。点『运行自检』查看原因$/); assert.equal(roleCodes().length, validRoles(raw)!.length);
 }
 // 本地服务给了 null（文件缺失 / 损坏）
-ROLES_T.onHandshake({ data_tables: { roles: null, reason_codes: null } }); assert.match(roleCodesNotice(), /^本地服务的角色表缺失或损坏，已使用界面内置列表。修复/); assert.equal(roleCodes().length, validRoles(raw)!.length);
+ROLES_T.onHandshake({ data_tables: { roles: null, reason_codes: null } }); assert.match(roleCodesNotice(), /^角色表缺失，已使用内置列表。点『运行自检』查看原因$/); assert.equal(roleCodes().length, validRoles(raw)!.length);
 ROLES_T.reset(); assert.equal(roleCodesNotice(), "");
 // 原因表：同样几种情况；打包里没有文件时，「缺失」只在开发模式提示
 REASONS_T.setBundled(null); REASONS_T.reset(); assert.equal(reasonCodesNotice(true), "");
-REASONS_T.onHandshake({}); assert.equal(reasonCodesNotice(false), "本地服务未提供原因表，已使用界面内置列表");
-assert.equal(reasonStatusText(reasonCodesNotice(false)), "本地服务未提供原因表，已用内置列表 · 修复：python -m dzbench selfcheck-data");
+REASONS_T.onHandshake({}); assert.equal(reasonCodesNotice(false), "本地服务未提供原因表，已使用内置列表。点『运行自检』查看原因");
+assert.match(reasonCodesNotice(true), /（开发：python -m dzbench selfcheck-data）$/);   // 命令只在开发模式
 REASONS_T.onHandshake({ data_tables: { reason_codes: { sha256: "ab", content: { diverged: { zh: "发散了", kind: "diverged" } } } } });
 assert.equal(reasonCodesNotice(false), ""); assert.equal(reasonCodesNotice(true), "界面打包里没有原因表（仅开发模式提示）"); assert.equal(reasonZh("diverged", {}), "发散了");
 REASONS_T.setBundled({ diverged: { zh: "发散" } }, "cd"); REASONS_T.onHandshake({ data_tables: { reason_codes: { sha256: "ab", content: { diverged: { zh: "发散了" } } } } });
-assert.equal(reasonCodesNotice(), "界面与本地服务的原因表不一致，请重装或更新"); assert.equal(reasonStatusText(reasonCodesNotice()), "界面与本地服务的原因表不一致，请重装或更新");
-REASONS_T.onHandshake({ data_tables: { reason_codes: { sha256: "cd", content: [1] } } }); assert.match(reasonCodesNotice(), /^本地服务的原因表格式错误/); assert.equal(reasonZh("diverged", {}), "发散");
+assert.equal(reasonCodesNotice(), "界面与本地服务的原因表不一致，请重装或更新。点『运行自检』查看原因");
+REASONS_T.onHandshake({ data_tables: { reason_codes: { sha256: "cd", content: [1] } } }); assert.match(reasonCodesNotice(), /^原因表格式错误/); assert.equal(reasonZh("diverged", {}), "发散");
 REASONS_T.setBundled(null); REASONS_T.reset();
 // 生产包不带开发提示：DEV 来自 import.meta.env
 assert.match(readFileSync("src/reasoncodes.ts", "utf8"), /import\.meta as any\)\.env\?\.DEV/);

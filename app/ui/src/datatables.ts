@@ -1,7 +1,7 @@
 // 角色表 / 原因表：校验规则 + 运行时来源（握手 data_tables 优先，界面打包的副本兜底）+ 提示文案。纯逻辑，vite.config 和测试都用。
-import { ROLES_FILE_F, DATA_TABLES_F, DATA_FIX_ZH } from "./fieldmap";
+import { ROLES_FILE_F, DATA_TABLES_F, DATA_FIX_ZH, DATA_FIX_DEV } from "./fieldmap";
 // 打开这个开关：reason_codes.json 缺失也让构建失败（后端把文件提交进仓库后改成 true，只改这一处）
-export const REQUIRE_REASON_CODES = false;
+export const REQUIRE_REASON_CODES = true;   // 5ce00ab 起 reason_codes.json 已进仓库
 export type RoleList = [string, string][];
 export type ReasonMap = Record<string, { zh: string; kind?: string }>;
 const parse = (c: unknown) => { if (typeof c !== "string") return c; try { return JSON.parse(c); } catch { return undefined; } };
@@ -43,12 +43,13 @@ export class DataTable<T> {
   reset() { this.hs = "pending"; this.hsVal = null; }
   value(): T { return (this.hs === "ok" || this.hs === "mismatch") && this.hsVal ? this.hsVal : this.bundled ?? this.fallback; }
   notice(dev = false): string {
+    const tail = `${DATA_FIX_ZH}${dev ? DATA_FIX_DEV : ""}`;
     switch (this.hs) {
       case "pending": return "";
-      case "absent": return `本地服务未提供${this.what}，已使用界面内置列表`;
-      case "srvmissing": return `本地服务的${this.what}缺失或损坏，已使用界面内置列表。${DATA_FIX_ZH}`;
-      case "bad": return `本地服务的${this.what}格式错误，已使用界面内置列表。${DATA_FIX_ZH}`;
-      case "mismatch": return `界面与本地服务的${this.what}不一致，请重装或更新`;
+      case "absent": return `本地服务未提供${this.what}，已使用内置列表。${tail}`;
+      case "srvmissing": return `${this.what}缺失，已使用内置列表。${tail}`;
+      case "bad": return `${this.what}格式错误，已使用内置列表。${tail}`;
+      case "mismatch": return `界面与本地服务的${this.what}不一致，请重装或更新。${tail}`;
       default: return this.devMissingNotice && dev && !this.bundled ? `界面打包里没有${this.what}（仅开发模式提示）` : "";
     }
   }

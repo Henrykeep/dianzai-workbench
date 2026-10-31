@@ -1145,5 +1145,18 @@ function openDeclField(key: string) {
 import { reasonCodesNotice, REASONS_T } from "./reasoncodes";
 import { ROLES_T } from "./rolecodes";
 import { reasonStatusText } from "./fieldmap";
-function renderDataNotice() { const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.textContent = reasonStatusText(t); el.title = t; } }
+import { runSelfcheck, selfcheckHtml, fixGuideZh, SELFCHECK_BTN_HTML } from "./selfcheck";
+function renderDataNotice() { const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.innerHTML = t ? `${esc(reasonStatusText(t))} ${SELFCHECK_BTN_HTML}` : ""; el.title = t; } }
+// 「运行自检」：任何提示里的按钮都走这里（事件委托）
+const tauriInvoke = () => { const t = (window as any).__TAURI_INTERNALS__; return t?.invoke ? (cmd: string) => t.invoke(cmd) : null; };
+document.addEventListener("click", async ev => {
+  const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-selfcheck]"), fx = (ev.target as HTMLElement).closest<HTMLElement>("[data-sc-fix]");
+  if (fx) { const g = document.getElementById("sc-guide"); if (g) { g.hidden = false; g.textContent = fixGuideZh(fx.dataset.scFix!); } return; }
+  if ((ev.target as HTMLElement).id === "sc-x") { document.getElementById("sc-host")?.remove(); return; }
+  if (!b) return;
+  let host = document.getElementById("sc-host"); if (!host) { host = document.createElement("div"); host.id = "sc-host"; host.className = "sc-host"; document.body.appendChild(host); }
+  host.innerHTML = selfcheckHtml(null);
+  const r = await runSelfcheck({ connected: !!S.status?.connected, call: op => call(op), invoke: tauriInvoke() });
+  host.innerHTML = selfcheckHtml(r);
+});
 renderDataNotice();

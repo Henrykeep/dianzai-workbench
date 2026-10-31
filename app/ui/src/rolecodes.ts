@@ -10,4 +10,5 @@ try {
 } catch { /* 兜底表 */ }
 export const setRoleCodes = (o: unknown, sha: string | null = null) => ROLES_T.setBundled(o, sha);   // 测试 / tsx 用
 export const roleCodes = (): readonly RoleCode[] => ROLES_T.value();
-export const roleCodesNotice = () => ROLES_T.notice();
+const DEV = (() => { try { return !!(import.meta as any).env?.DEV; } catch { return false; } })();
+export const roleCodesNotice = (dev = DEV) => ROLES_T.notice(dev);
