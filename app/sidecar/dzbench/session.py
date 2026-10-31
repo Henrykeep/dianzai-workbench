@@ -108,6 +108,7 @@ class Session:
         self.selftest_at: str | None = None       # 自检完成时间（ISO，本机时区）
         self.selftest_ph: int | None = None       # 自检时的参数 hash；与当前 params_hash 不同 → stale
         self.estop_cause: dict | None = None     # dzctl 0.8.0 心跳里的急停原因（estop_cause_dict），没急停 = None
+        self.sensor_sat_at: float | None = None  # #102：最近一次心跳带 bit18 SENSOR_SAT 的 monotonic 时刻（bit18 不锁存，这里记住；旧固件永远 None）
         self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
         self.h_supported = False                 # 本次连接里板子回过 'H'（dzctl 0.12.0+）
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
@@ -588,6 +589,8 @@ class Session:
                         if len(payload) == 32:       # 0.6.x 后续：28 字节尾 + u32 clear_t_ms（解除时的板上时刻）；40+ 字节的 28.. 是自检，不算
                             self._hb_clear_t_ms = struct.unpack_from("<I", payload, 28)[0] or None
                         self._confirm_clear(w)
+                        if w & (1 << 18):
+                            self.sensor_sat_at = time.monotonic()
                         if w != self.hb_status:
                             was = self.hb_status or 0
                             self.hb_status = w
@@ -1473,7 +1476,7 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
-HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存", 1 << 17: "迭代中"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存", 1 << 17: "迭代中", 1 << 18: "被控量到量程"}
 
 
 # dzctl 0.11.0 dzctl_selftest_item_t（0.12.0 起应用可注册 6..32 的自定义项）：心跳 selftest_mask 的 bit (code−1)

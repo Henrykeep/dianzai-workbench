@@ -27,6 +27,7 @@ REJECT_REASON = {1: "range", 2: "type", 3: "state", 4: "step"}
 ABORT_HOST_STOP = 0x80
 PARAM_ACK_REJECTED = 5
 HB_ITER_BUSY = 1 << 17
+HB_SENSOR_SAT = 1 << 18   # dzctl 0.15.0 DZCTL_HB_SENSOR_SAT：被控量在量程边界，实时、不锁存；旧固件恒 0
 
 RESULT_FMT = "<BBBBHHIIfffIIffffBBH"   # 56 字节
 assert struct.calcsize(RESULT_FMT) == 56

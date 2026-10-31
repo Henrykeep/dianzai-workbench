@@ -225,3 +225,9 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - 心跳超时急停的 `estop_cause` / `estop state:"latched"`：`cause:"hb_timeout"`、`message_zh:"心跳超时 <实测间隔> ms"`、`gap_ms`、`threshold_ms`（可为 null）、`detail_zh`、`fix_action:"estop_clear"`（一键解除）。
 - `$DZBENCH_HOME/estop_latch.json` 每条记录：`source`、`detail`、`t`（epoch s）、`latched_at`（ISO 本机时间带时区，如 `2026-10-31T21:58:03+0800`）、`reason`（原因码，如 `hb_timeout`）、`gap_ms`、`threshold_ms`、`cause`。锁存持久化是设计行为，只有人点解除才清。
 - 侧车重启 / 重连恢复锁存：`estop_cause` 与 `tx_locked` 事件、`estop` 阻塞项都带 `restored:true`、`fix_action:"estop_clear"`，`message_zh` 形如 `21:58 心跳超时 1001 ms，已锁存`。
+
+### #102 被控量到量程（dzctl 0.15.0 心跳 bit18 `DZCTL_HB_SENSOR_SAT`）
+- status 的 `hb_flags` 多一项「被控量到量程」（实时、不锁存；旧固件恒无）。
+- 自动迭代每轮记录 `sensor_sat: bool`（该轮阶跃期间任一心跳带 bit18）；到量程的轮不算稳定。
+- `iterate.stopped` 加 `sensor_sat: bool`（最后一轮到量程）；没有稳定轮或最后一轮到量程 → `best: null`，`message_zh: "发散，未找到稳定参数"`。
+- 急停阈值 `threshold_ms` 取握手 `wd_timeout_ms`（固件 fw-wd，默认 1500）；握手未上报为 null。

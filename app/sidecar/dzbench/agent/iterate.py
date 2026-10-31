@@ -167,6 +167,7 @@ class Iterator:
                "local_hash": f"{local:08x}", "source": "firmware",
                **{k: r.get(k) for k in ("ss_err_pct", "overshoot_pct", "settle_ms", "rise_ms", "metric_mode", "u_sat_ratio", "n", "band")},
                "unit": "abs" if r.get("metric_mode") == "abs" else "%"}
+        rec["sensor_sat"] = bool(r.get("sensor_sat"))     # #102：到量程的数据不可信，不算稳定
         rec["target"] = self.plan["target"]               # 相对口径 ss_err % → 物理单位要用 |sp − y0|
         if r.get("start_y") is not None:
             rec["start_y"] = r["start_y"]
@@ -209,13 +210,14 @@ class Iterator:
     @staticmethod
     def stable(r: dict) -> bool:
         """#102：有效且没发散（相对口径超调 ≤ UNSTABLE_OVERSHOOT）才算稳定一轮。"""
-        return bool(r) and bool(r.get("valid")) and not (r.get("metric_mode") == "rel" and (r.get("overshoot_pct") or 0) > UNSTABLE_OVERSHOOT)
+        return bool(r) and bool(r.get("valid")) and not r.get("sensor_sat") and not (r.get("metric_mode") == "rel" and (r.get("overshoot_pct") or 0) > UNSTABLE_OVERSHOOT)
 
     def _stopped(self, reason: str, msg: str) -> dict:
-        best = self.best if self.best is not None and self.stable(self.best) else None
-        if best is None and any(r["valid"] for r in self.rounds) and not any(self.stable(r) for r in self.rounds):
+        last_sat = bool(self.rounds and self.rounds[-1].get("sensor_sat"))
+        best = self.best if self.best is not None and self.stable(self.best) and not last_sat else None
+        if (best is None and any(r["valid"] for r in self.rounds) and not any(self.stable(r) for r in self.rounds)) or last_sat:
             msg = "发散，未找到稳定参数"                              # #102：没有稳定的一轮就不给“最好参数”
-        out = {"type": "iterate.stopped", "reason": reason, "message_zh": msg, "rounds": len([r for r in self.rounds if r["valid"]]),
+        out = {"type": "iterate.stopped", "reason": reason, "sensor_sat": last_sat, "message_zh": msg, "rounds": len([r for r in self.rounds if r["valid"]]),
                "best": None if not best else {"iter": best["iter"], "params": best["params"], "params_hash": best["params_hash"],
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
                                               "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
@@ -455,6 +457,7 @@ class SessionIO:
     def step(self, it: int, ch: int, target: float, dur_ms: int) -> dict:
         from ..session import LinkError
         back = self.return_to_start(ch, it, target)
+        t0 = time.monotonic()
         try:
             self.s.step_start(ch, it, target, dur_ms)
         except LinkError as e:
@@ -462,4 +465,5 @@ class SessionIO:
         r = self.s.step_wait(it, dur_ms / 1000.0 + 2.0)
         if r is None:
             raise IterError("no_result", "板子没发 step_result")
-        return dict(r) | back
+        sat = getattr(self.s, "sensor_sat_at", None)
+        return dict(r) | back | {"sensor_sat": sat is not None and sat >= t0}   # #102 bit18：这一轮里被控量到过量程边界
