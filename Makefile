@@ -289,6 +289,8 @@ check:
 	$(PY) tools/check_ascii_paths.py
 	$(PY) tools/check_ui_layout.py --selftest
 	$(PY) tools/check_ui_layout.py
+	$(PY) tools/check_ui_generic.py --selftest
+	$(PY) tools/check_ui_generic.py
 	$(PY) tools/check_copy.py --selftest
 	$(PY) tools/check_copy.py
 	$(PY) tools/check_deps.py

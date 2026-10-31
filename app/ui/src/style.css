@@ -1074,3 +1074,51 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .life span{white-space:nowrap;overflow:visible;text-overflow:clip}
 .life{display:flex!important;flex-wrap:wrap;column-gap:0}
 .life span{flex:none}
+/* r9p6：分隔点挂在前一项末尾，换行后第二行绝不以「·」开头 */
+.life span+span::before{content:none!important}
+.life span:not(:last-child)::after{content:" · ";color:var(--faint);white-space:pre}
+.hb-flag{font-style:normal}
+.lq{margin:0 var(--sp2);font-size:var(--t-xs);font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
+.lq-warn{color:var(--warn)}.lq-bad{color:var(--crit)}.lq-off{color:var(--dim)}
+.loop-line{padding:0 var(--sp5) var(--sp1);font-size:var(--t-sm);color:var(--muted);font-variant-numeric:tabular-nums}
+.sd-rc{margin-left:var(--sp4);font-size:var(--t-xs);font-variant-numeric:tabular-nums;opacity:.85}
+.pal{width:560px;max-width:90vw;margin:16vh auto 0;padding:0;border:1px solid var(--line);border-radius:8px;background:var(--s1,var(--bg));color:var(--ink);box-shadow:var(--shadow-3)}
+.pal::backdrop{background:var(--bg);opacity:.6}
+.pal-q{width:100%;box-sizing:border-box;border:0;border-bottom:1px solid var(--line);border-radius:8px 8px 0 0;padding:16px;font-size:var(--t-lg);background:transparent;color:inherit;outline:none}
+.pal-l{list-style:none;margin:0;padding:8px;max-height:360px;overflow:auto}
+.pal-l li{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:8px 16px;border-radius:4px;font-size:var(--t-md);cursor:pointer}
+.pal-l li.on{background:var(--acc-bg);color:var(--acc-t)}
+.pal-l li.none{color:var(--dim);cursor:default}
+.pal-l li i{font-style:normal;font-size:var(--t-xs);color:var(--dim)}
+.pal-l kbd{font:400 var(--t-xs)/16px var(--f-mono);padding:0 4px;border:1px solid var(--line);border-radius:4px;color:var(--muted)}
+.pal-f{margin:0;padding:8px 16px;border-top:1px solid var(--line);font-size:var(--t-xs);color:var(--dim)}
+.chart-tip{position:absolute;pointer-events:none;z-index:5;padding:8px;border:1px solid var(--line);border-radius:4px;background:var(--s2);color:var(--ink);font:400 var(--t-xs)/16px var(--f-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+.chart-tip b{font-weight:600}.chart-tip i{display:inline-block;width:8px;height:8px;border-radius:999px;margin-right:4px;font-style:normal}
+.lab .nm{cursor:pointer}.lane.off .lc{opacity:.25}
+.zoom-hint{position:absolute;right:16px;top:8px;z-index:4;font-size:var(--t-xs);color:var(--muted);background:var(--s2);padding:0 8px;border-radius:4px}
+.rc .rc-why{margin:0 0 var(--sp2);font-size:var(--t-sm);color:var(--muted)}
+/* r9p6 通用指标卡 */
+.mc{display:block;margin-top:var(--sp4)}
+.mc-top{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+.mc-top h4{margin:0;font-size:var(--t-lg);font-weight:600}
+.mc-sum{font-size:var(--t-xs);color:var(--muted);font-variant-numeric:tabular-nums}
+.mc-kb{margin:4px 0 0;font-size:var(--t-xs);color:var(--dim)}
+.mc-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.mc-it{padding:8px 16px;border:1px solid var(--line);border-radius:8px}
+.mc-it.fail{border-color:var(--crit)}
+.mc-h{display:flex;align-items:center;gap:8px}
+.mc-n{font-size:var(--t-md);font-weight:600}
+.mc-cl{font-size:var(--t-xs);color:var(--muted);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+.mc-v{margin-left:auto;font-size:var(--t-xs);font-weight:600;padding:0 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.mc-v.pass{color:var(--ink)}.mc-v.fail{color:var(--crit);border-color:var(--crit)}
+.mc-spec{margin:4px 0;font-size:var(--t-sm);color:var(--muted)}
+.mc-row{display:flex;flex-wrap:wrap;gap:16px;font-size:var(--t-lg);font-variant-numeric:tabular-nums}
+.mc-row i{font-style:normal;font-size:var(--t-xs);color:var(--dim);margin-right:4px}
+.mc-src{font-size:var(--t-xs);color:var(--muted);align-self:center}
+.mc-meth,.mc-basis,.mc-cal{margin:4px 0 0;font-size:var(--t-xs);color:var(--muted)}
+.mc-warn{margin:4px 0 0;font-size:var(--t-xs);color:var(--crit)}
+.mc-k{font-size:var(--t-xs);color:var(--dim)}
+.mc-tune{margin-top:8px}
+.mc-ev{display:inline-block;margin-top:4px;font-size:var(--t-xs);color:var(--acc-t)}
+.mc-exp{display:flex;gap:8px;margin-left:16px}
+.mc-steps{margin-top:4px;font-size:var(--t-xs);color:var(--muted)}.mc-steps ol{margin:4px 0 0;padding-left:16px}

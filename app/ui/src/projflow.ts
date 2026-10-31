@@ -19,7 +19,7 @@ export function editItems(items: ReqItem[], rows: { id: string; part: string; sc
 }
 export const STEPS_FLOW = ["req", "scheme", "import", "alloc", "gen"] as const;
 
-// 题号默认从 PDF 文件名猜：“H题_xxx.pdf” → 当年 + H（2026H）；猜不出就留空让人填。
+// 题号默认从 PDF 文件名猜：“H题_xxx.pdf” → 当年 + H（如 2026 年 H 题）；猜不出就留空让人填。
 export function codeFromName(fn: string, year = new Date().getFullYear()): string {
   const m = /(?:^|[^A-Za-z])([A-Za-z])\s*题/.exec(fn) || /^(\d{4}[A-Za-z])/.exec(fn);
   return m ? (m[1].length === 1 ? `${year}${m[1].toUpperCase()}` : m[1].toUpperCase()) : "";

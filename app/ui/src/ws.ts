@@ -8,6 +8,7 @@ export class Link {
   private wait = new Map<number, (m: Msg) => void>();
   private subs: ((m: Msg) => void)[] = [];
   open = false;
+  downSince: number | null = null; attempts = 0; nextAt: number | null = null;   // r9p6 横幅重连细节
   onState: (open: boolean) => void = () => {};
 
   constructor(private url: string) { this.dial(); }
@@ -15,8 +16,10 @@ export class Link {
   private dial() {
     const ws = new WebSocket(this.url);
     this.ws = ws;
-    ws.onopen = () => { this.open = true; this.onState(true); };
+    ws.onopen = () => { this.open = true; this.downSince = null; this.attempts = 0; this.nextAt = null; this.onState(true); };
     ws.onclose = () => {
+      if (this.downSince == null) this.downSince = Date.now();
+      this.attempts++; this.nextAt = Date.now() + 800;
       this.open = false; this.onState(false);
       this.wait.forEach(r => r({ type: "reply", ok: false, error: { code: "ws_closed", message: "与本地服务的连接断了", fix: "本地服务会自动重启/重连；仍不行重开程序" } }));
       this.wait.clear();

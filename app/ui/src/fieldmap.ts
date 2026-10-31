@@ -64,3 +64,60 @@ export function toCompare(src: any): CompareRaw | null {
   if (!r0.length && !b.length && !c[COMPARE_F.unchanged]) return null;
   return { round0: r0, best: b, unchanged: c[COMPARE_F.unchanged] === true, note: str(c[COMPARE_F.note]) };
 }
+// r9p6 通用化：指标单位按后缀推断（任何题目都适用，不认识的单位原样显示，不猜换算）
+export const unitOfKey = (k: string): string => METRIC_F.find(m => m[0] === k)?.[2] ?? (/_pct$/.test(k) ? "%" : /_ms$/.test(k) ? "ms" : /_s$/.test(k) ? "s" : /_rpm$/.test(k) ? "rpm" : /_deg$/.test(k) ? "°" : "");
+export const metricZh = (k: string): string => METRIC_ZH[k] ?? k;
+// 环层级（议题 A，app.yaml loop.level / loop.inner，后端经 schema.loops 下发）：任意层数，缺字段退回「—」
+export const LOOP_F = { list: "loops", name: "name", level: "level", inner: "inner", locked: "locked" } as const;
+export type Loop = { name: string; level: number | null; inner: string; locked: string[] };
+export function toLoops(schema: any): Loop[] {
+  const a = schema?.[LOOP_F.list]; if (!Array.isArray(a)) return [];
+  return a.map((o: any) => ({ name: str(o?.[LOOP_F.name]) || "—", level: num(o?.[LOOP_F.level]) ?? null, inner: str(o?.[LOOP_F.inner]), locked: Array.isArray(o?.[LOOP_F.locked]) ? o[LOOP_F.locked].map(String) : [] }));
+}
+// 心跳状态位（hb_flags 后端已转中文；reset 可能是 "#12" 这种未知码）
+export const HB_F = { flags: "hb_flags", reset: "reset" } as const;
+// r9p6 通用指标卡 metrics_card（后端 #82 草案，字段名未定稿：改名只改这里）
+export const MC_F = {
+  obj: "metrics_card", kind: "task_kind", kindBasis: "task_kind_basis", items: "items",
+  name: "name", clause: "clause", spec: "spec_text", target: "target", cmp: "cmp", thr: "threshold", unit: "unit",
+  measured: "measured", value: "value", method: "method", n: "n", unc: "uncertainty",
+  verdict: "verdict", verdictZh: "verdict_zh", basis: "pass_basis", source: "source", evidence: "evidence",
+  tuning: "tuning", calib: "calibration", coeffs: "coeffs", signal: "signal_source",
+  how: "method", manualSteps: "manual_steps", procedure: "procedure", entry: "manual_entry", eValue: "value", eBy: "by", eAt: "at", srcNote: "source_note",
+} as const;
+// 指标卡导出：CSV / xlsx 由后端生成，前端只调这个 op（op 名未定稿，改名只改这里）
+export const MC_EXPORT_OP = "metrics_export";
+export type TaskKind = "control" | "measure" | "power" | "other";
+export type McItem = {
+  name: string; clause: string; spec: string;
+  target: { cmp: string; thr: number | null; unit: string } | null;
+  measured: { value: number | null; unit: string; method: string; n: number | null } | null;
+  unc: number | null; verdict: "pass" | "fail" | "unknown"; verdictZh: string; basis: string;
+  source: "sim" | "real" | "calibrated" | "manual" | ""; srcNote: string; evidence: string; tuning: any | null;
+  how: "auto" | "manual" | ""; manualSteps: string[]; procedure: string[]; entry: { value: number | null; by: string; at: string } | null;
+  calib: { coeffs: number[]; signal: string } | null;
+};
+export type MetricsCard = { kind: TaskKind; kindBasis: string; items: McItem[] };
+const strList = (v: unknown): string[] => Array.isArray(v) ? v.map(y => typeof y === "string" ? y : "").filter(Boolean) : typeof v === "string" && v ? [v] : [];
+export function toMetricsCard(src: any): MetricsCard | null {
+  const o = src?.[MC_F.obj] ?? src?.args?.[MC_F.obj] ?? src?.preview?.[MC_F.obj];
+  if (!o || !Array.isArray(o[MC_F.items])) return null;
+  const k = str(o[MC_F.kind]), kind: TaskKind = k === "control" || k === "measure" || k === "power" ? k : "other";
+  const items: McItem[] = o[MC_F.items].filter((x: any) => x && typeof x === "object").map((x: any) => {
+    const t = x[MC_F.target], m = x[MC_F.measured], v = x[MC_F.verdict], src0 = str(x[MC_F.source]), c = x[MC_F.calib];
+    return {
+      name: str(x[MC_F.name]), clause: str(x[MC_F.clause]), spec: str(x[MC_F.spec]),
+      target: t && typeof t === "object" ? { cmp: str(t[MC_F.cmp]), thr: num(t[MC_F.thr]) ?? null, unit: str(t[MC_F.unit]) } : null,
+      measured: m && typeof m === "object" ? { value: num(m[MC_F.value]) ?? null, unit: str(m[MC_F.unit]), method: str(m[MC_F.method]), n: num(m[MC_F.n]) ?? null } : null,
+      unc: num(x[MC_F.unc]) ?? null,
+      verdict: v === "pass" || v === "fail" ? v : "unknown", verdictZh: str(x[MC_F.verdictZh]), basis: str(x[MC_F.basis]),
+      source: src0 === "sim" || src0 === "real" || src0 === "calibrated" || src0 === "manual" ? src0 : "", srcNote: str(x[MC_F.srcNote]), evidence: str(x[MC_F.evidence]),
+      how: x[MC_F.how] === "auto" || x[MC_F.how] === "manual" ? x[MC_F.how] : "",
+      manualSteps: strList(x[MC_F.manualSteps]), procedure: strList(x[MC_F.procedure]),
+      entry: x[MC_F.entry] && typeof x[MC_F.entry] === "object" ? { value: num(x[MC_F.entry][MC_F.eValue]) ?? null, by: str(x[MC_F.entry][MC_F.eBy]), at: str(x[MC_F.entry][MC_F.eAt]) } : null,
+      tuning: x[MC_F.tuning] && typeof x[MC_F.tuning] === "object" ? x[MC_F.tuning] : null,
+      calib: c && typeof c === "object" ? { coeffs: Array.isArray(c[MC_F.coeffs]) ? c[MC_F.coeffs].filter((y: unknown) => num(y) != null) : [], signal: str(c[MC_F.signal]) } : null,
+    };
+  });
+  return { kind, kindBasis: str(o[MC_F.kindBasis]), items };
+}

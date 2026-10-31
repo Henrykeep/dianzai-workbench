@@ -1,3 +1,4 @@
+import { DEFAULT_EXAMPLE } from "./examples";
 // 项目页第一入口：一句话需求 → 交给 Agent 建工程。未配置大模型时输入框照常显示，提交后引导去配置。
 export function initPjAsk(call: (op: string, a?: any) => Promise<any>, go: (s: any) => void) {
   const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -14,8 +15,8 @@ export function initPjAsk(call: (op: string, a?: any) => Promise<any>, go: (s: a
   };
   // 「从示例开始」：例题只读，复制出一个新项目（op project_switch_example，回 project_forked 由 main 显示）
   $("pj-sample").onclick = async () => {
-    st.textContent = "正在从示例 2026H_ball 新建项目…";
-    try { const r = await call("project_switch_example", { example: "2026H_ball" }); st.textContent = r?.message_zh ?? `已基于示例新建 ${r?.project ?? ""}`; }
+    st.textContent = `正在从示例 ${DEFAULT_EXAMPLE} 新建项目…`;
+    try { const r = await call("project_switch_example", { example: DEFAULT_EXAMPLE }); st.textContent = r?.message_zh ?? `已基于示例新建 ${r?.project ?? ""}`; }
     catch { st.textContent = ""; }
     go("项目");
   };
