@@ -116,6 +116,8 @@ def check_value(name: str, raw, p: dict | None = None) -> float:
         t = raw.strip()
         if not t or any(c in t for c in ",，xX_"):
             raise _invalid(name, "不是十进制数", p)
+        if not t.isascii():                                   # #60：float() 收全角/其他文字的数字（'１'、'٣'），这里一律拒
+            raise _invalid(name, "含全角或非 ASCII 字符，只收半角数字", p)
         try:
             v = float(t)
         except ValueError:
