@@ -22,7 +22,10 @@
 - 急停锁存中（`tx_locked`）拒绝：`error.code = "estop_locked"`，`fix_action = "estop_clear"`，`extra.reason = "state"`。
 - 按 link_schema 校验，从不钳位：`name` 不是设定值 → `invalid_param`（`reject: "name"`）；非十进制数 / NaN / Inf → `invalid_param`；有 `link.step` 通道且 `|value| > range` → `invalid_param`（`reject: "range"`）。
 - `status.sp_before_latch`：锁存那一刻冻结的急停前主设定值（`link.step[0].sp` 槽位，没有则第 0 槽；取锁存前最后一帧遥测，因为固件锁存时把设定值清零），解除后仍保留供「恢复急停前目标」；`setpoint_set` 成功后变 `null`。没有设定值字段 / 没收到过遥测时为 `null`。
-- 板上阶跃实验进行中下发目标会让这一轮以 cause 0x80 中止（见 iterate.md）。
+- 阶跃实验进行中（心跳 bit17）拒绝且不发：`error.code = "iter_busy"`，`fix_action = "stop_iteration"`，`message_zh` 「阶跃实验进行中，结束或停止后再设定目标」；不中止本轮。
+- 设定值通道 `hold`（`latched` | `timeout`，app.yaml link 设定值通道上的字段，侧车原样透传；**缺省按 `timeout`**）：先看 `link.step` 里 `sp` 同槽的条目，再看遥测字段本身。
+  `hold = timeout` 的通道（板子按 cmd_timeout 自己把目标清零）拒绝且不发：`error.code = "hold_timeout"`，`fix_action = "restart_experiment"`，`message_zh` 「这块板子的目标不会保持，重新开始实验即可」。侧车**不做**保活重发。
+- 透传位置：`schema` 摘要的 `setpoints: [{name, slot, ref_for, hold}]`（另带 `step`），`status.setpoints` 同结构。
 
 ## 自动迭代 `iterate.*`（#38）
 
@@ -56,3 +59,16 @@
 - 自动流程（`quick_start`、Agent 步骤）不读写这两个开关。
 - 入口登记：`docs/dev/entrypoints.yaml` 的 `enable_cloud`（`at: toolbox:设置`，`human_only: true`，`ops: [set_cloud_enabled]`），不进 `script_ops`。
 - 守护测试：`app/sidecar/tests/test_cloud_guard.py`。
+
+### J-Link 工具识别（#49）
+
+`flash.tool = jlink` 时只认 SEGGER J-Link：路径里有 `SEGGER` 直接认；否则跑 `<exe> -?`（stdin 关闭、5 s 超时）要求输出含 `SEGGER`。
+Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏感地撞名）。只找到 Java jlink 时：
+`code = "jlink_not_segger"`，`fix_action = "install_jlink"`，`message_zh` 「找到的 jlink 是 Java 工具，不是 SEGGER J-Link，请安装 J-Link 软件包」；
+自检 `tool_status` 与 `list_probes_for("jlink")` 的返回同样带 `fix_action` / `message_zh`。完全找不到也给 `install_jlink`。
+
+### 急停 `board_t_ms` / 连上即已急停
+
+- 心跳尾部（0.6.0 起，偏移 16–27，共 28 字节）`u32 cause, u32 t_ms, f32 value`：`t_ms` 是锁存时的板上时刻 → `latched` 事件的 `board_t_ms`（`status.estop_cause.board_t_ms` 同值）。
+- 32 字节心跳在 28 处再带 `u32 clear_t_ms` → `cleared` 事件的 `board_t_ms`；28 字节心跳的 cleared 不带 `board_t_ms`。按长度解析（40+ 字节的 28.. 是自检，不当 clear_t_ms）。
+- 连上时板子已急停（bit10 一开始就是 1，或按端口/身份恢复了锁存、没有上升沿）：第一帧带原因的心跳也推一次 `latched`（带 `cause` / `cause_zh` / `board_t_ms`），每次连接只推一次。

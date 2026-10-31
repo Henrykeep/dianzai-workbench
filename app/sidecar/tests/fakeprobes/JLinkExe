@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import os, sys
+if sys.argv[1:] == ["-?"]:
+    print("SEGGER J-Link Commander V7.94e (Compiled Nov 29 2023 13:41:57)"); sys.exit(0)
 open(os.environ["FAKEPROBE_LOG"], "a").write("jlink " + " ".join(sys.argv[1:]) + "\n")
 script = open(sys.argv[sys.argv.index("-CommandFile") + 1]).read()
 open(os.environ["FAKEPROBE_LOG"], "a").write(script)

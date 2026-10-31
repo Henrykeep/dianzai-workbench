@@ -56,7 +56,7 @@ def test_open_bad_code(sv, code, err):
 def test_open_missing_project(sv):
     with pytest.raises(LinkError) as ei:
         op(sv, op="project.open", code="nope")
-    assert ei.value.code == "project_not_found" and "projects/nope" in ei.value.message
+    assert ei.value.code == "project_not_found" and "projects/nope" in ei.value.message.replace("\\", "/")
     assert ei.value.fix_action == "project_list"
     with pytest.raises(LinkError):
         op(sv, op="project.open", code="notes.txt")         # 文件不是项目目录

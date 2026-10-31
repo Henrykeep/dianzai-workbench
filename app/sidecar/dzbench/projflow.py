@@ -165,6 +165,15 @@ def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
 SYSCFG_VER = "sysconfig_1.28.0"
 
 
+def make_env() -> dict:
+    """给 make（及会调 make 的 keil_inject）的环境：目录变量转正斜杠（as_posix），Windows 的 C:\\ 反斜杠路径 make 认不了。"""
+    env = dict(os.environ)
+    for k in ("DZBENCH_HOME", "DZ_BOARDS_DIR"):
+        if env.get(k):
+            env[k] = pathlib.PureWindowsPath(env[k]).as_posix() if os.name == "nt" else env[k]
+    return env
+
+
 def syscfg_cli_name() -> str:
     """TI SysConfig CLI 的入口脚本名：Windows 是 sysconfig_cli.bat，其他平台 sysconfig_cli.sh。"""
     return "sysconfig_cli.bat" if os.name == "nt" or sys.platform.startswith("win") else "sysconfig_cli.sh"
@@ -319,7 +328,7 @@ class Flow:
 
     def _run(self, args: list, cwd: pathlib.Path | None = None) -> dict:
         cmd = [os.environ.get("DZBENCH_PYTHON") or sys.executable, *map(str, args)]
-        p = subprocess.run(cmd, cwd=cwd or self.repo, capture_output=True, text=True, timeout=300)
+        p = subprocess.run(cmd, cwd=cwd or self.repo, capture_output=True, text=True, timeout=300, env=make_env())
         shown = " ".join(str(a) for a in args)
         return {"cmd": "python3 " + shown, "rc": p.returncode, "out": (p.stdout + p.stderr)[-20000:]}
 
@@ -500,7 +509,7 @@ class Flow:
 
     def build_ide(self, board: str, app: str) -> dict:
         """生成后顺手：arm-none-eabi-gcc 交叉编译验证 + 各 IDE 工程（EIDE 全部；MSPM0 另出 CCS projectspec 与 Keil）。"""
-        p = subprocess.run(["make", f"BOARD={board}", f"APP={app}"], cwd=self.repo, capture_output=True, text=True, timeout=900)
+        p = subprocess.run(["make", f"BOARD={board}", f"APP={app}"], cwd=self.repo, env=make_env(), capture_output=True, text=True, timeout=900)
         b = {"cmd": f"make BOARD={board} APP={app}", "rc": p.returncode, "out": (p.stdout + p.stderr)[-6000:]}
         ide = []
         if not p.returncode:
