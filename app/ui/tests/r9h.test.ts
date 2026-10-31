@@ -11,7 +11,7 @@ assert.equal(estopLine({ reason: "heartbeat_lost", reason_zh: "心跳超时", ga
 // 手动急停不带 measured/threshold → 不显示这两个槽
 assert.equal(estopLine({ reason: "manual", latched_at: new Date(2026, 0, 1, 8, 7).getTime() }, {}).line, "08:07 手动急停，已锁存");
 // 心跳：threshold_ms null → 阈值后端未给
-assert.equal(estopLine({ reason: "heartbeat_lost", reason_zh: "心跳超时", latched_at: new Date(2026, 0, 1, 8, 7).getTime(), measured_ms: 1601, threshold_ms: null }, {}).line, "08:07 心跳超时 1601 ms（阈值后端未给），已锁存");
+assert.equal(estopLine({ reason: "heartbeat_lost", reason_zh: "心跳超时", latched_at: new Date(2026, 0, 1, 8, 7).getTime(), measured_ms: 1601, threshold_ms: null }, {}).line, "08:07 心跳超时 1601 ms，已锁存");
 // #129 降幅测试：verdict partial / amp_reduced → 绝不显示通过，warning_zh 原文琥珀色警告
 const dv = toVerdict({ verdict: "partial", verdict_zh: "未验题面幅度", amp_reduced: true, warning_zh: "按 50% 幅度测试，未验题面幅度" });
 assert.equal(dv.v, "unknown"); assert.equal(dv.warn, "按 50% 幅度测试，未验题面幅度");

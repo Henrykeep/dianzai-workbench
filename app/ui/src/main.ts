@@ -1,4 +1,4 @@
-import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, type RoleReq } from "./roles";
+import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, roleLeft, roleReply, type RoleReq, type RoleUi } from "./roles";
 import { ROLE_F, ROLE_CONFIRM_OP } from "./fieldmap";
 import { applyBrand } from "./brand";
 import { lastRound } from "./round";
@@ -413,20 +413,23 @@ function pending() {
   return pendingOf(S.schema?.params ?? [], S.edit, S.applied);
 }
 const pos = (p: Param, v: number) => p.max > p.min ? String(Math.min(Math.max((v - p.min) / (p.max - p.min), 0), 1)) : "0";
-let ROLE_REQ: RoleReq | null = null, roleSent = false;
+let ROLE_REQ: RoleReq | null = null, roleUi: RoleUi = { phase: "idle", left: 0 };
+let ROLE_PICKS: Record<string, string> = {};   // #135 用户选的角色存在状态里，参数列表重画（状态推送）不丢
+const rolePicked = () => { const p: Record<string, string> = { ...ROLE_PICKS }; document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { if (x.value) p[x.dataset.roleN!] = x.value; }); return p; };
 function renderRoleCard() {
   const el = document.getElementById("role-host"); if (!el) return;
-  el.innerHTML = roleCardHtml(ROLE_REQ, roleSent);
-  const ok = document.getElementById("role-ok"), rt = document.getElementById("role-retry");
+  if (ROLE_REQ && (roleUi.phase === "idle" || roleUi.phase === "error")) roleUi = { ...roleUi, left: roleLeft(ROLE_REQ, rolePicked()) };
+  el.innerHTML = roleCardHtml(ROLE_REQ, roleUi);
+  document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { x.onchange = () => { if (x.value) ROLE_PICKS[x.dataset.roleN!] = x.value; renderRoleCard(); }; x.classList.toggle("role-empty", !x.value); });
+  const ok = document.getElementById("role-ok") as HTMLButtonElement | null, rt = document.getElementById("role-retry");
   if (ok) ok.onclick = async () => {
-    const picked: Record<string, string> = {};
-    document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { if (x.value) picked[x.dataset.roleN!] = x.value; });
-    const roles = ROLE_REQ && collectRoles(ROLE_REQ, picked);
-    if (!roles) return toast({ code: "", message: "还有参数没选角色", fix: "每个高亮的参数都选一个角色" });
-    const r = await call(ROLE_CONFIRM_OP, { roles }).catch(() => null);
-    if (r) { roleSent = true; renderRoleCard(); }
+    if (roleUi.phase === "sending" || !ROLE_REQ) return;   // #135 只发一次
+    const roles = collectRoles(ROLE_REQ, rolePicked()); if (!roles) return renderRoleCard();
+    ok.disabled = true; roleUi = { phase: "sending", left: 0 }; renderRoleCard();
+    const r = await call(ROLE_CONFIRM_OP, { roles }).catch((e: any) => ({ message_zh: e?.message_zh ?? e?.message }));
+    roleUi = roleReply(r); renderRoleCard();
   };
-  if (rt) rt.onclick = () => { ROLE_REQ = null; roleSent = false; renderParams(); $("it-go").click(); };
+  if (rt) rt.onclick = () => { ROLE_REQ = null; ROLE_PICKS = {}; roleUi = { phase: "idle", left: 0 }; renderParams(); $("it-go").click(); };
 }
 function renderParams() {
   queueMicrotask(renderRoleCard);   // 角色卡挂在 plist 里，等 innerHTML 换完再画
@@ -436,7 +439,7 @@ function renderParams() {
   // 设计 v9：每行只显示名字、数值、刻度尺；说明 / 单位 / 量程收进悬停提示（title）
   const tip = (p: Param) => [p.desc, `量程 ${fmt(p.min, p)} … ${fmt(p.max, p)}${p.unit ? " " + p.unit : ""}`, `默认 ${fmt(p.default, p)}`].filter(Boolean).join("\n");
   $("plist").innerHTML = ps.length ? `<div id="role-host"></div>` + `<div class="p-lock" id="p-lock" hidden>${ITER_LOCK_ZH} · 参数暂不可改，结束或停止迭代后再调</div>` + `<div class="p-unread" id="p-unread" hidden><span>灰色为固件默认值，尚未从板子读取</span><button class="btn sm ghost" type="button" id="p-unread-go">从板子读取参数</button></div>` + ps.map(p => `<div class="prow${ROLE_REQ?.missing.includes(p.name) ? " role-miss" : ""}" id="row-${p.name}" title="${esc(tip(p))}">
-    <div class="pr"><span class="kk"><span class="k" title="${esc(p.name)}">${esc(p.name)}</span>${roleCellHtml(p.name, ROLE_REQ, (p as any)[ROLE_F.paramRole])}${paramDesc(p) ? `<span class="pdesc">${esc(paramDesc(p))}</span>` : ""}</span><span class="bv" id="pb-${p.name}"></span>
+    <div class="pr"><span class="kk"><span class="k" title="${esc(p.name)}">${esc(p.name)}</span>${roleCellHtml(p.name, ROLE_REQ, (p as any)[ROLE_F.paramRole], ROLE_PICKS)}${paramDesc(p) ? `<span class="pdesc">${esc(paramDesc(p))}</span>` : ""}</span><span class="bv" id="pb-${p.name}"></span>
       <span class="pv"><input class="in num" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off" aria-label="${esc(p.name)}${p.unit ? "（" + esc(p.unit) + "）" : ""}">${p.unit ? `<span class="u">${esc(p.unit)}</span>` : ""}</span></div>
     <wa-slider class="psl" id="sl-${p.name}" data-n="${p.name}" min="${p.min}" max="${p.max}" step="${p.max > p.min ? (p.max - p.min) / 200 : 1}" value="${p.default}" size="small" aria-label="${esc(p.name)}"></wa-slider>
     <div class="rng" aria-hidden="true"><span>${fmt(p.min, p)}</span><span>${fmt(p.max, p)}</span></div><div class="p-rej" id="rej-${p.name}" hidden></div></div>`).join("")
@@ -848,7 +851,7 @@ function onBoardForIter(port: string | null | undefined) { if (iterPort !== unde
 setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
   { const pv = toPlant((m as any)?.[PLANT_F.obj]); if (pv) paintPlant(pv); }
-  { const rq = toRoleReq(m); if (rq) { ROLE_REQ = rq; roleSent = false; renderParams(); } }
+  { const rq = toRoleReq(m); if (rq) { ROLE_REQ = rq; ROLE_PICKS = {}; roleUi = { phase: "idle", left: 0 }; renderParams(); } }
   if (IT.onEvent(m, performance.now())) { if (m.type === "iterate.round") FN.onUserChange(); renderIter(); }
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   if (m.metrics_card && !String(m.type).startsWith("iterate")) { const h = metricCardHtml(m), e = $("mc-card"); e.innerHTML = h; e.hidden = !h; }   // r9p6 测量 / 电源题：独立推送的指标卡

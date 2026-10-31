@@ -1,4 +1,4 @@
-import { ESTOP_F, MISSING_ZH, ESTOP_CAUSES, LATCH_AT_MISSING_ZH } from "./fieldmap";
+import { ESTOP_F, ESTOP_CAUSES, ESTOP_GENERIC_ZH, ESTOP_GAP_UNKNOWN_ZH, ESTOP_HB_ZH } from "./fieldmap";
 // 急停提示（问题池 #25 / #28）。来源由本地服务在事件里给 source：heartbeat_lost | firmware:<cause> | ui | selftest。
 // 前三种用固定文案；firmware:<cause> 优先用 status.estop_cause.message_zh；都没有时写「急停已触发，原因未上报」，详情给最近一次心跳时间。
 // 心跳超时（watchdog 事件）与急停分开提示，不混成一句。
@@ -35,7 +35,7 @@ export function latchedOf(st: { tx_locked?: boolean } | undefined, prev: boolean
   return typeof st?.tx_locked === "boolean" ? st.tx_locked : prev;
 }
 
-// r9f 横幅一行：「<HH:MM> <reason_zh> <measured> ms（阈值 <threshold> ms），已锁存」；缺字段写「后端未给」
+// 横幅一行：「[HH:MM ]<原因>[ <实测> ms（阈值 <阈值> ms）|（间隔未知）]，已锁存」；缺的字段整段省略（#132）
 const pick = (os: any[], ks: readonly string[]) => { for (const o of os) for (const k of ks) { const v = o?.[k]; if (v != null && v !== "") return v; } return undefined; };
 const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 export function estopRestored(...os: any[]): boolean { return os.some(o => o?.[ESTOP_F.restored] === true || o?.[ESTOP_F.source] === ESTOP_F.restoredSrc); }
@@ -47,24 +47,26 @@ export function estopCause(ev: any, status: any): string {
   }
   return "";
 }
-// #119 锁存时刻只认后端 latched_at（ms / s / ISO 串）；没有就写「锁存时间后端未给」，不拿页面看到的时刻冒充
+// #119 锁存时刻只认后端 latched_at（ms / s / ISO 串）；没有就不写时间（#132），不拿页面看到的时刻冒充
 export function latchTime(v: unknown): number | null {
   if (typeof v === "number" && Number.isFinite(v)) return v < 1e12 ? v * 1000 : v;
   if (typeof v === "string" && v.trim()) { const t = Date.parse(v); return Number.isFinite(t) ? t : null; }
   return null;
 }
-// #118/#120：每个槽要么数，要么「后端未给」，不混；手动急停只「HH:MM 手动急停，已锁存」
+// #132：缺值最多一句「（间隔未知）」；手动急停只「HH:MM 手动急停，已锁存」
 export function estopLine(ev: any, status: any): { line: string; restored: boolean; cause: string; fix: string } {
   const os = [ev, status?.estop, status, status?.estop_cause], restored = estopRestored(...os), cause = estopCause(ev, status), spec = ESTOP_CAUSES[cause];
   const t = latchTime(pick(os, ESTOP_F.at));
-  const r0 = pick(os, ESTOP_F.reason), reason = spec?.label ?? (typeof r0 === "string" && r0.trim() ? r0.trim() : MISSING_ZH);
-  const n = (v: unknown, u: string) => typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)} ${u}` : MISSING_ZH;
-  const f = spec?.fields ?? [];
-  const parts: string[] = [];
-  if (f.includes("measured")) parts.push(n(pick(os, ESTOP_F.measured), "ms"));
-  if (f.includes("threshold")) { const th = pick(os, ESTOP_F.threshold); parts.push(typeof th === "number" && Number.isFinite(th) ? `（阈值 ${Math.round(th)} ms）` : `（阈值${MISSING_ZH}）`); }   // threshold_ms null → 阈值后端未给
+  const r0 = pick(os, ESTOP_F.reason), f = spec?.fields ?? [];
+  const reason = spec?.label ?? (typeof r0 === "string" && r0.trim() ? r0.trim() : f.length ? ESTOP_HB_ZH : ESTOP_GENERIC_ZH);
+  const ms = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)} ms` : "";
+  let tail = "";
+  if (f.includes("measured")) {   // 实测有 → 「1601 ms」，阈值有才加「（阈值 1500 ms）」；实测没有 → 只一句「（间隔未知）」
+    const m = ms(pick(os, ESTOP_F.measured)), th = f.includes("threshold") ? ms(pick(os, ESTOP_F.threshold)) : "";
+    tail = m ? ` ${m}${th ? `（阈值 ${th}）` : ""}` : ESTOP_GAP_UNKNOWN_ZH;
+  }
   const fx = pick(os, [ESTOP_F.fix]);
-  return { restored, cause, fix: typeof fx === "string" ? fx : "", line: `${t != null ? hhmm(t) : LATCH_AT_MISSING_ZH} ${reason}${parts.length ? " " + parts.join("") : ""}，已锁存` };
+  return { restored, cause, fix: typeof fx === "string" ? fx : "", line: `${t != null ? hhmm(t) + " " : ""}${reason}${tail}，已锁存` };
 }
 // 解除两步：第一次点 → 「确认解除？」+「取消」，再点才发；5 s 不点自动退回
 export const CLEAR_CONFIRM_MS = 5000;

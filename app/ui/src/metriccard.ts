@@ -62,7 +62,7 @@ export function metricCardHtml(src: any): string {
   <p class="mc-spec">${esc(it.spec || "题目原文未提供")}</p>
   <div class="mc-row num"><span><i>目标</i>${esc(targetText(it))}</span><span><i>实测</i><b>${esc(measuredText(it))}</b></span><span class="mc-src ${it.source || "none"}">${esc(SOURCE_LABEL[it.source])}${it.srcNote ? ` · ${esc(it.srcNote)}` : ""}</span></div>
   ${meth ? `<p class="mc-meth">${esc(meth)}</p>` : ""}${ent}${steps("人工测量步骤", it.manualSteps)}${steps("评审测试步骤", it.procedure)}${basis ? `<p class="mc-basis">依据：${esc(basis)}</p>` : ""}
-  ${it.amp ? `<p class="mc-amp num">题面幅度 ${esc(it.amp.spec)}，实测幅度 ${esc(it.amp.tested)}</p>` : ""}${it.warningZh ? `<p class="mc-warn partial">${esc(it.warningZh)}</p>` : ""}
+  ${it.amp ? `<p class="mc-amp num">${esc(`题面幅度 ${it.amp.spec}，实测幅度 ${it.amp.tested}`)}</p>` : ""}${it.warningZh ? `<p class="mc-warn partial">${esc(it.warningZh)}</p>` : ""}
   ${warn.map(w => `<p class="mc-warn">${esc(w)}</p>`).join("")}
   ${it.tuning ? tuningHtml(it.tuning) : ""}${calibHtml(it.calib)}
   ${it.evidence ? `<a class="mc-ev" href="#" data-evidence="${esc(it.evidence)}" title="${esc(it.evidence)}">打开录波</a>` : ""}

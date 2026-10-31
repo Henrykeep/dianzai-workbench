@@ -1,5 +1,5 @@
 // r9p6 批次 2：状态位白话、链路质量、重连倒计时、命令面板、环层级 —— 纯函数，界面只调用这里
-import { HB_F, toLoops, type Loop } from "./fieldmap";
+import { HB_F, SENSOR_SAT_ZH, toLoops, type Loop } from "./fieldmap";
 import type { Cell } from "./hbstrip";
 const DASH = "—";
 const fin = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -12,6 +12,7 @@ export function statusWords(st: any): { reset: string; flags: string[] } {
   const code = typeof r === "string" ? /^#(\d+)$/.exec(r) : null;
   const reset = r == null || r === "" ? "" : code ? `未知复位原因（代码 ${code[1]}）` : RESET_PLAIN[r] ?? String(r);
   const flags = (Array.isArray(st?.[HB_F.flags]) ? st[HB_F.flags] : []).map((f: unknown) => FLAG_PLAIN[String(f)] ?? (/^(bit|0x|#)?\d+$/i.test(String(f)) ? `未知状态位 ${f}` : String(f)));
+  if (st?.[HB_F.sat] === true && !flags.includes(SENSOR_SAT_ZH)) flags.push(SENSOR_SAT_ZH);   // 实时：每次 status 重算，false 即消失
   return { reset, flags };
 }
 

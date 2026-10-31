@@ -12,7 +12,7 @@ import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 import { modelLister, type El } from "./llmcfg";
 import { toCommitReq, commitCardHtml, mountCommitCard, showDeclined, commitResult, committedHtml } from "./commitcard";
 import { keepPending, dropPending, loadPending } from "./commitstore";
-import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, COMMIT_OP, COMMIT_USER_F, COMMIT_SENT_F, COMMIT_SENT_ZH, writeScopeNote } from "./fieldmap";
+import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, COMMIT_OP, COMMIT_USER_F, COMMIT_SENT_F, COMMIT_SENT_ZH, WRITTEN_ZH, writeScopeNote } from "./fieldmap";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -119,8 +119,9 @@ export function initAgent(call: Call) {
     let d = cards.get(c.id);
     if (!d) { d = add(""); cards.set(c.id, d); }
     const diff = esc(c.diff).split("\n").map(l => `<span class="${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : ""}">${l}</span>`).join("\n");
-    const st: Record<string, string> = { pending: "待确认", applying: "门禁运行中…", written: "已写入，待保存到工程版本", committed: "已提交", failed: "未通过，已还原", rejected: "已拒绝", reverted: "已回滚" };
+    const st: Record<string, string> = { pending: "待确认", applying: "门禁运行中…", written: WRITTEN_ZH, committed: "已提交", failed: "未通过，已还原", rejected: "已拒绝", reverted: "已回滚" };
     d.className = "card change " + c.status;
+    if (c.status === "written") { wroteAt = Date.now(); queueMicrotask(focusPendingCommit); }   // #133
     if (c.status === "committed" && (c.files || []).some((f: string) => /\.ya?ml$/.test(f)))   // 流程条“定稿”只认真正提交了参数 yaml
       window.dispatchEvent(new CustomEvent("dz-final", { detail: c.commit }));
     d.innerHTML = `<div class="hd"><span class="dotk file"></span><span class="t">${esc(c.title)}</span><span class="lbl">${esc(({ app: "应用代码", fw: "固件", firmware: "固件", docs: "文档", config: "配置" } as Record<string, string>)[c.layer] ?? "")}${c.source === "agent" ? " · Agent 提议" : ""}</span></div>
@@ -166,6 +167,12 @@ export function initAgent(call: Call) {
   const commitCards = new Map<string, HTMLElement>();
   const goFix = (a: string) => runAction(a, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
   const ss = (() => { try { return window.sessionStorage; } catch { return null; } })();
+  // #133 写入成功后把最新一张待保存卡滚到眼前并聚焦按钮；卡晚到（写入后 2 分钟内）也一样
+  let wroteAt = 0;
+  function focusPendingCommit() {
+    const all = [...document.querySelectorAll<HTMLElement>(".card.commit.pending")], el = all[all.length - 1]; if (!el) return;
+    el.scrollIntoView?.({ block: "center", behavior: "smooth" }); el.querySelector<HTMLButtonElement>('button[data-cc="ok"]:not([disabled])')?.focus({ preventScroll: true });
+  }
   function renderCommit(m: Msg, restored = false) {
     const c = toCommitReq(m);
     if (commitCards.has(c.id)) { const el = commitCards.get(c.id)!; if (!restored) { el.classList.remove("restored"); el.querySelector(".cc-restored")?.remove(); } return onCommitResult(m); }   // 同一 request_id 再推一次 = 状态更新（#111 去重）
@@ -176,6 +183,7 @@ export function initAgent(call: Call) {
     commitCards.set(c.id, d);
     mountCommitCard(d, c, (_op, args) => (args?.[COMMIT_OP.approve] === false ? (d.dataset.userDecl = "1") : keepPending(ss, { ...m, [COMMIT_SENT_F]: true }), call("commit_confirm", args)).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id, ...(args?.[COMMIT_OP.approve] === false ? { [COMMIT_USER_F]: true, [COMMIT_DECL_F.code]: r?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.declined } : {}) }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
     if (commitResult(m).state !== "pending") onCommitResult(m);
+    else if (!restored && Date.now() - wroteAt < 120000) focusPendingCommit();
   }
   function onCommitResult(m0: any) {
     const id = m0?.[COMMIT_F.id] != null ? String(m0[COMMIT_F.id]) : "";

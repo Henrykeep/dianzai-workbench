@@ -77,7 +77,8 @@
   --sh-card:none; --sh-pop:var(--shadow-3);
   --acc:var(--accent-solid); --acc-t:var(--accent-text); --acc-ink:var(--text-on-accent); --acc-bg:var(--accent-subtle); --focus:var(--focus-ring);
   --go:var(--accent-solid); --go-ink:var(--text-on-accent);
-  --ok:var(--text-secondary); --warn:var(--text-secondary); --info:var(--text-secondary); --off:var(--text-muted); --crit:var(--danger);
+  --ok:var(--text-secondary); --warn:var(--warning);   /* #134 琥珀色：浅色 #9A5B00 / 深色 #F5B544，对比度达标 */
+  --info:var(--text-secondary); --off:var(--text-muted); --crit:var(--danger);
   --ok-bg:transparent; --warn-bg:transparent; --crit-bg:var(--danger-subtle);
   --estop:var(--danger-solid); --estop-ink:#FFFFFF; --estop-bg:var(--danger-subtle);
   --band:var(--accent-subtle);

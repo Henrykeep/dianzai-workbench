@@ -80,7 +80,8 @@ export function toLoops(schema: any): Loop[] {
   return a.map((o: any) => ({ name: str(o?.[LOOP_F.name]) || "—", level: num(o?.[LOOP_F.level]) ?? null, inner: str(o?.[LOOP_F.inner]), locked: Array.isArray(o?.[LOOP_F.locked]) ? o[LOOP_F.locked].map(String) : [] }));
 }
 // 心跳状态位（hb_flags 后端已转中文；reset 可能是 "#12" 这种未知码）
-export const HB_F = { flags: "hb_flags", reset: "reset" } as const;
+export const HB_F = { flags: "hb_flags", reset: "reset", sat: "sensor_sat" } as const;   // sensor_sat：status 实时布尔（暂定，等 events.md），不锁存
+export const SENSOR_SAT_ZH = "传感器饱和";
 // r9p6 通用指标卡 metrics_card（后端 #82 草案，字段名未定稿：改名只改这里）
 export const MC_F = {
   obj: "metrics_card", kind: "task_kind", kindBasis: "task_kind_basis", items: "items",
@@ -89,7 +90,7 @@ export const MC_F = {
   verdict: "verdict", verdictZh: "verdict_zh", basis: "pass_basis", source: "source", evidence: "evidence",
   tuning: "tuning", calib: "calibration", coeffs: "coeffs", signal: "signal_source",
   how: "method", manualSteps: "manual_steps", procedure: "procedure", entry: "manual_entry", eValue: "value", eBy: "by", eAt: "at", srcNote: "source_note",
-  ampReduced: "amp_reduced", ampSpec: "amp_spec", ampTested: "amp_tested", warning: "warning_zh", partial: "partial",   // #129 降幅测试
+  ampReduced: "amp_reduced", ampSpec: "amp_spec", ampTested: "amp_tested", ampUnit: "amp_unit", warning: "warning_zh", partial: "partial",   // #129 降幅测试
   model: "model",   // 每项 model:{estimate, basis}，后端从 app.yaml plant 抄来；子字段名同 PLANT_F
 } as const;
 // 指标卡导出：CSV / xlsx 由后端生成，前端只调这个 op（op 名未定稿，改名只改这里）
@@ -109,11 +110,16 @@ export type McItem = {
 export type MetricsCard = { kind: TaskKind; kindBasis: string; items: McItem[] };
 const strList = (v: unknown): string[] => Array.isArray(v) ? v.map(y => typeof y === "string" ? y : "").filter(Boolean) : typeof v === "string" && v ? [v] : [];
 // 幅度：数 / {value, unit} / 字符串；数没带单位时借 target / measured 的单位
-function ampText(a: unknown, x: any): string {
-  const un = str(a && typeof a === "object" ? (a as any)[MC_F.unit] : "") || str(x?.[MC_F.target]?.[MC_F.unit]) || str(x?.[MC_F.measured]?.[MC_F.unit]);
+export function ampText(a: unknown, x: any): string {
+  const un = str(a && typeof a === "object" ? (a as any)[MC_F.unit] : "") || str(x?.[MC_F.ampUnit]) || str(x?.[MC_F.target]?.[MC_F.unit]) || str(x?.[MC_F.measured]?.[MC_F.unit]);
   const v = a && typeof a === "object" ? (a as any)[MC_F.value] : a;
   if (typeof v === "number" && Number.isFinite(v)) return `${+v.toPrecision(5)}${un ? " " + un : ""}`;
   return typeof v === "string" && v.trim() ? v.trim() : MISSING_ZH;
+}
+// #134 「题面幅度 X，实测幅度 Y」：两个都没给 → ""
+export function ampLine(x: any): string {
+  if (x?.[MC_F.ampSpec] == null && x?.[MC_F.ampTested] == null) return "";
+  return `题面幅度 ${ampText(x[MC_F.ampSpec], x)}，实测幅度 ${ampText(x[MC_F.ampTested], x)}`;
 }
 export function toMetricsCard(src: any): MetricsCard | null {
   const o = src?.[MC_F.obj] ?? src?.args?.[MC_F.obj] ?? src?.preview?.[MC_F.obj];
@@ -172,7 +178,10 @@ export const PORT_DIR_F = ["app_dir"] as const;
 export const pickStr = (o: any, keys: readonly string[]): string => { for (const k of keys) { const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); } return ""; };
 
 // #101 r9f：台账一轮（iterate.round 事件 / 阶跃实验收尾）——暂定字段名，后端定稿改这里
-export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", kind: "kind", manual: "manual_step", diverged: "diverged" } as const;
+export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", kind: "kind", manual: "manual_step", diverged: "diverged", sat: "sensor_sat", aborted: "aborted", status: "status", why: "reason_zh" } as const;
+// #131 结果卡停止原因：无效轮数用后端 invalid_streak（暂定名），没有就数台账；发散只认 diverged / sensor_sat / 后端 reason；中止带后端原因
+export const STOP_F = { invalidN: "invalid_streak", diverged: "diverged", sat: "sensor_sat", why: ["reason_zh", "message_zh"], abortCodes: ["aborted", "stopped", "abort"], invalidCodes: ["invalid", "invalid_streak"], divCodes: ["diverged", "unstable"] } as const;
+export const ABORT_ZH = "中止", NO_ROUND_ZH = "没有可用的一轮";
 
 // #110 r9f：拒绝 / 失败原因按序找：reason_zh → message_zh → detail（顶层、data、error 里都找）——暂定，后端定稿改这里
 export const COMMIT_REASON_KEYS = ["reason_zh", "message_zh", "detail"] as const;
@@ -188,9 +197,11 @@ export const LATCH_AT_MISSING_ZH = "锁存时间后端未给";
 
 // r9g 急停横幅按原因显示字段（唯一一张表）：cause 取事件 source / kind / status.estop_cause.cause（去掉 firmware: 前缀）
 // fields = 这种原因天然带的数值；label = 固定文案（有就不读 reason_zh）。表里没有的原因：只显示原因文字
+// #132 缺值文案：缺时间 / 缺原因 / 缺数值都不写「后端未给」；缺原因 → 「急停」，心跳类缺实测间隔 → 一句「（间隔未知）」
+export const ESTOP_GENERIC_ZH = "急停", ESTOP_GAP_UNKNOWN_ZH = "（间隔未知）", ESTOP_HB_ZH = "心跳超时";
 export const ESTOP_CAUSES: Record<string, { label?: string; fields: readonly ("measured" | "threshold")[] }> = {
   ui: { label: "手动急停", fields: [] }, button: { label: "手动急停", fields: [] }, key: { label: "手动急停", fields: [] }, manual: { label: "手动急停", fields: [] },
-  heartbeat_lost: { fields: ["measured", "threshold"] }, hb_lost: { fields: ["measured", "threshold"] },
+  heartbeat: { fields: ["measured", "threshold"] }, heartbeat_lost: { fields: ["measured", "threshold"] }, hb_lost: { fields: ["measured", "threshold"] },
   hb_timeout: { fields: ["measured", "threshold"] }, watchdog: { fields: ["measured", "threshold"] }, "2": { fields: ["measured", "threshold"] },
 };
 
@@ -198,13 +209,17 @@ export const ESTOP_CAUSES: Record<string, { label?: string; fields: readonly ("m
 export const VERDICT_ZH: Record<string, string> = { pass: "通过", fail: "未通过", unknown: "未判定", partial: "未验题面幅度" };
 // #122 提交动作统一叫法
 export const COMMIT_BTN_ZH = "保存到工程版本";
+// #133 两步先后：写入成功后提示 + 把待保存卡带到眼前；提交卡副标题
+export const WRITTEN_ZH = "已写入文件，还没保存到工程版本", COMMIT_SUB_ZH = "把刚写入的文件存成一个版本，可回滚";
 export const COMMIT_SENT_F = "__sent";   // #117 sessionStorage 里标记：已点确认、等后端结果
 export const COMMIT_SENT_ZH = "已发出，等后端结果";
 // #116 最好一轮在台账里是无效 / 发散：不显示、不给「采用」
 export const NO_STABLE_ZH = "发散，未找到稳定参数";
 // 参数角色确认：自动整定回 needs-manual + fix_action confirm_roles，带 missing[参数名] / suggested{名: 角色}；握手参数表可带 role（只读显示）
 export const ROLE_F = { fix: "fix_action", confirm: "confirm_roles", missing: "missing", suggested: "suggested", reason: "reason_zh", paramRole: "role" } as const;
-export const ROLE_CONFIRM_OP = "confirm_roles";   // 暂定 op 名，后端定稿后只改这里
+export const ROLE_CONFIRM_OP = "confirm_roles";   // 定稿：confirm_roles {roles:{name: code}} → {ok, roles} 或 {message_zh, fix_action}
+export const ROLE_REPLY_F = { ok: "ok", roles: "roles", msg: "message_zh", fix: "fix_action" } as const;
+export const ROLE_SENDING_ZH = "已发出，等后端结果";
 export const ROLE_CODES = [["P", "比例"], ["I", "积分"], ["D", "微分"], ["FF", "前馈"], ["LIM", "限幅"], ["other", "其他"]] as const;
 export const ROLE_NO_FLASH_ZH = "改角色不用重新烧录", ROLE_LIM_ZH = "不参与整定";   // 角色来源：握手 / link_schema params[i].role（P|I|D|FF|LIM|other|null）
 export const ROLE_SUGGEST_ZH = "建议，待确认", ROLE_BTN_ZH = "确认角色", ROLE_RETRY_ZH = "重试整定";
