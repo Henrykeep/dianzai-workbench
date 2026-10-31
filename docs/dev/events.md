@@ -94,3 +94,10 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 模型服务出可重试错误（429 / 5xx / 网络）时，每次自动重试前推一条：`{attempt, max, wait_s, code, why, message_zh}`。
 `message_zh` 直接给用户看（例：「模型服务暂时不可用（HTTP 503），1.6 秒后自动重试（第 2/4 次），不用重发」）；`why` 是服务原话（已截断、打码）。
 502/503/504 最多重试 `RETRIES_5XX = 4` 次（退避 0.8→1.6→3.2→6.4 s），其余按 `retries`（默认 2）；用尽后照常推 `agent_error`（`message` 末尾写明“已自动重试 N 次仍失败”）+ `agent_unreachable`，不会无声挂住。
+
+## 模型服务忙 `type: "llm_retry"`（502 / 503 / 504）
+
+仅 502/503/504 时，与 `agent_retry` 同一时刻再推一条：`{attempt, max, wait_s, code, fix_action, message_zh}`。
+- `attempt` / `max`：第几次 / 最多几次（`RETRIES_5XX = 4`）；`wait_s`：本次等待秒数（退避，单次 ≤ 30 s）。
+- `fix_action: "switch_local_model"`：界面据此给「换成本地模型」按钮（打开模型设置，选本地/局域网的 OpenAI 兼容服务）。
+- 429 和断网不发 `llm_retry`（不是服务端忙，换模型未必有用），只有 `agent_retry`。
