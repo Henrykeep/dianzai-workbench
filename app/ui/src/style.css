@@ -860,3 +860,9 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .pg-head .pg-grp,.pg-head .pg-grp>*,.pg-head .pg-extra>.lbl{flex:none;white-space:nowrap}
 /* #41：急停解除后的一行中性历史（不是红条、没有按钮） */
 .alerts.al-hist{background:transparent;color:var(--muted);box-shadow:inset 0 0 0 1px var(--line);font-weight:400}
+
+/* #62 自动迭代结果卡（= 本地服务的“采用最好参数”确认卡，只此一张） */
+.it-card{margin:0 var(--sp5) var(--sp3);padding:var(--sp3) var(--sp4);border:1px solid var(--line);border-radius:var(--r);background:var(--s1);display:flex;flex-wrap:wrap;gap:var(--sp2) var(--sp5);align-items:flex-start}
+.it-card h4{margin:0;width:100%;font-size:var(--t-md)}
+.it-card .it-col{display:flex;flex-direction:column;gap:4px;min-width:180px}
+.it-card .it-act{margin-left:auto;display:flex;gap:var(--sp2);align-items:center}

@@ -28,6 +28,7 @@ import { saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFail
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
 import { FlashNag, stripFlash } from "./flashnag";
+import { IterModel, cardView, iterTarget, APPLY_LABEL } from "./iterui";
 import { holdOf, restoreAllowed, restoreClick } from "./sprestore";
 import { clearedEvent, latchHead, portsWithSession, clearBtnHidden } from "./r8pre";
 import { bannerHint, clearedLine, EstopSpans, RestoreTarget } from "./estophist";
@@ -681,8 +682,41 @@ $("import").onclick = async () => {
 $("chans").innerHTML = emptyState("activity", "连上后列出通道");
 $("props").innerHTML = AGENT_IDLE;
 function userChangedParams() { FN.onUserChange(); renderBoard(S.status); }
+// #62 自动迭代（WS op iterate_start / iterate_cancel / iterate_status，见 docs/dev/events.md）
+const IT = new IterModel(true);
+function renderIter() {
+  IT.setSim(String(S.status.port ?? "").startsWith("sim:"));
+  const b = IT.button(), go = $<HTMLButtonElement>("it-go");
+  go.querySelector("span")!.textContent = b.label; go.dataset.op = b.op;
+  $("it-txt").textContent = IT.text(performance.now());
+  const c = $("it-card");
+  if (IT.s.phase !== "done") { c.hidden = true; c.innerHTML = ""; return; }
+  const v = cardView(IT.s.result), id = IT.applyId();
+  c.hidden = false;
+  c.innerHTML = `<h4>${esc(v.title)}</h4><div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
+    `<div class="it-col">${v.gaps.map(g => `<span>${esc(g)}</span>`).join("")}</div><div class="it-col"><span>${esc(v.reason)}</span>${v.next ? `<span class="hint">${esc(v.next)}</span>` : ""}</div>` +
+    `<span class="it-act">${v.canWrite ? `<button class="btn sm" id="it-write" ${id == null ? "disabled title=\"等本地服务出确认卡…\"" : ""}>${APPLY_LABEL}</button>` : ""}<button class="btn sm" id="it-x">收起</button></span>`;
+  const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
+  c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
+  const w = c.querySelector<HTMLButtonElement>("#it-write");
+  if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
+    w.disabled = true;
+    const r = await call("agent_action_decide", { id, accept: true }).catch(() => null);
+    if (r?.status === "done") { done(); userChangedParams(); toast("已采用最好参数", "ok", 4000); IT.reset(); } else w.disabled = false;
+    renderIter();
+  };
+}
+$("it-go").onclick = async () => {
+  if ($("it-go").dataset.op === "cancel") { await call("iterate_cancel").catch(() => {}); return; }
+  const target = iterTarget(spLast);
+  if (target == null) return toast({ code: "", message: "还不知道阶跃目标", fix: "先在「更多实验」里做一次阶跃实验，自动迭代按这个目标继续" });
+  const r = await call("iterate_start", { target }).catch(() => null);
+  if (r) { IT.onStartReply(r, performance.now()); renderIter(); }
+};
+const syncIter = () => link.rpc("iterate_status", {}).then(r => { IT.onStatus(r, performance.now(), +(localStorage.getItem("dz.iter.done") ?? NaN)); renderIter(); }, () => {});
+setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
-  if (m?.type === "iterate.round") FN.onUserChange();
+  if (IT.onEvent(m, performance.now())) { if (m.type === "iterate.round") FN.onUserChange(); renderIter(); }
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   switch (m.type) {
     case "telem": {
@@ -713,7 +747,7 @@ link.onState = async open => {
   conn.set({ sidecar: open });
   if (!open && S.status.connected) renderStatus({ ...S.status });   // 状态栏同步成未连接
   if (!open) return;
-  const h = await link.rpc("hello");
+  const h = await link.rpc("hello"); void syncIter();   // 重连 / 刷新：补自动迭代状态
   if ((h as any)?.link) { onLinkState((h as any).link); showLink((h as any).link); }
   if (h && "project" in (h as any)) void proj.show((h as any).project ?? null);
   S.ports = h.ports; renderPorts(false);

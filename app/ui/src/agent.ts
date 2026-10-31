@@ -1,5 +1,6 @@
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
+import { retryText, clearsRetry, LOCAL_LABEL } from "./llmretry";
 import { dropFlashBlockers, isFlashNotice } from "./flashnag";
 import { Msg } from "./ws";
 import { runAction, resolveFix } from "./progress";
@@ -638,8 +639,22 @@ export function initAgent(call: Call) {
     c.querySelector<HTMLElement>("[data-r=retry]")!.onclick = () => { c.remove(); $<HTMLInputElement>("ag-in").value = m.text; $<HTMLFormElement>("ag-form").requestSubmit(); };
   }
 
+  // llm_retry：同一轮只一条，原地更新
+  let retryEl: HTMLElement | null = null;
+  function onRetry(m: any) {
+    const html = `<span class="lbl">大模型</span>${esc(retryText(m))}<div class="act"><button class="btn sm">${LOCAL_LABEL}</button></div>`;
+    if (retryEl?.isConnected) retryEl.innerHTML = html; else retryEl = add(html, "msg bot llm-retry");
+    retryEl.querySelector("button")!.onclick = () => {
+      const fa = m.fix_action as string | undefined, f = resolveFix(fa);
+      if (fa && f?.kind === "run") return runAction(fa, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
+      document.getElementById("ag-cfg")?.click();   // 本地服务没给可执行的 fix_action：打开模型设置（本地 Ollama 一栏）
+      document.getElementById("cfg-ol")?.scrollIntoView({ block: "nearest" });
+    };
+  }
   return {
     onMsg(m: Msg) {
+      if (m.type === "llm_retry") onRetry(m);
+      else if (retryEl && clearsRetry(m.type)) { retryEl.remove(); retryEl = null; }
       if (typeof m.type === "string" && m.type.startsWith("agent_")) watch.touch(performance.now());
       if (m.type === "agent_error") { gate.error(); watch.stop(); live?.remove(); showCard(errorCard(m as any)); }
       if (m.type === "agent_delta") onDelta(m.text);
@@ -652,7 +667,7 @@ export function initAgent(call: Call) {
       if (m.type === "agent_tune_pending") renderTune(m);
       if (m.type === "agent_journal") renderJournal(m.items);
       if (m.type === "change") renderChange(m);
-      if (m.type === "agent_action") renderAction(m);
+      if (m.type === "agent_action" && m.tool !== "iterate_apply_best") renderAction(m);   // “采用最好参数”只在调参页结果卡出一次（main.ts #it-card）
       if (m.type === "tune_round") renderRound(m);
       if (m.type === "sweep_result") renderSweep(m);
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
