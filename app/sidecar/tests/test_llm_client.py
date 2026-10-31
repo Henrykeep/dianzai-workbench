@@ -259,3 +259,20 @@ def test_env_overrides_for_any_openai_compatible_relay(cfgdir, monkeypatch):
     monkeypatch.setenv("DZBENCH_MODEL", "some-flash")
     c = llm.load_config()
     assert (c["provider"], c["base_url"], c["model"]) == ("custom", "https://relay.example/v1", "some-flash")
+
+
+def test_503_no_provider_retries_with_message_then_clear_error(cfgdir, monkeypatch):
+    """r8 llm_503：服务商一直 503（No provider …）→ 每次重试都推带人话的 agent_retry（第 i/N 次、几秒后），
+    退避递增、总等待有上限；用尽后抛出明确错误（写明已重试几次），不会无声挂住。"""
+    waits = []
+    monkeypatch.setattr(llm.time, "sleep", waits.append)
+    srv, url, log = serve(lambda h, b: (503, "json", {"error": {"message": 'No provider for "m1" is available right now'}}))
+    ev = []
+    with pytest.raises(llm.LLMError) as e:
+        llm.OpenAICompat(cfg(url), on_event=ev.append, stream=False).chat([{"role": "user", "content": "x"}])
+    srv.shutdown()
+    rs = [x for x in ev if x["type"] == "agent_retry"]
+    assert [r["attempt"] for r in rs] == [1, 2, 3, 4] and all(r["max"] == 4 and r["code"] == 503 for r in rs)
+    assert all("暂时不可用" in r["message_zh"] and "自动重试" in r["message_zh"] for r in rs)
+    assert waits == sorted(waits) and waits[0] < waits[-1] and sum(waits) <= 30
+    assert "503" in e.value.message and "已自动重试 4 次" in e.value.message and len(log) == 5

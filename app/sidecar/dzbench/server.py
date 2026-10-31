@@ -282,6 +282,16 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
+        if op == "iterate_start" or op == "iterate_cancel" or op == "iterate_status":   # #62 界面“自动迭代”入口：与 Agent 工具同一实现；实机 iterate_start 出批量确认卡（agent_action），确认走 agent_action_decide
+            try:
+                if op == "iterate_start":
+                    return await run(None, lambda: self.svc.iterate_start(**{k: m[k] for k in ("target", "params", "dur_ms", "ch") if m.get(k) is not None}))
+                if op == "iterate_cancel":
+                    return await run(None, self.svc.iterate_cancel)
+                th = getattr(self.svc, "iter_thread", None)
+                return {"running": bool(th and th.is_alive()), "result": getattr(self.svc, "iter_result", None)}
+            except GatewayError as e:
+                raise LinkError(e.code, getattr(e, "message", "") or str(e), e.fix, getattr(e, "fix_action", None)) from None
         if op == "quick_start":     # 一句话起项目：{"op":"quick_start","text":"两轮车速度环，STM32F1"} → 一张确认卡；确认走 agent_action_decide
             from .projflow import FlowError
             try:

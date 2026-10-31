@@ -12,7 +12,8 @@ AXIS = {"name": "imu_axis", "type": "u8", "min": 0, "max": 5}
 
 
 @pytest.mark.parametrize("raw", ["abc", "", "  ", None, "0x10", "1,5", "1_0", True, "nan", "NaN", "inf", "-inf",
-                                 float("nan"), math.inf, "1e30", "-1e30", 9, -0.1, [1], {"v": 1}])
+                                 float("nan"), math.inf, "1e30", "-1e30", 9, -0.1, [1], {"v": 1},
+                                 "１", "０.５", "1．5", "٣", "1e1０"])  # #60 全角 / 非 ASCII 数字
 def test_rejects(raw):
     with pytest.raises(LinkError) as e:
         check_value("kp", raw, KP)
@@ -21,7 +22,7 @@ def test_rejects(raw):
     assert "例如" in d["fix"]
 
 
-@pytest.mark.parametrize("raw,v", [("0.5", 0.5), (" 1 ", 1.0), (2, 2.0), (0, 0.0), ("1e-3", 0.001), ("１", 1.0)])
+@pytest.mark.parametrize("raw,v", [("0.5", 0.5), (" 1 ", 1.0), (2, 2.0), (0, 0.0), ("1e-3", 0.001)])
 def test_accepts(raw, v):
     assert check_value("kp", raw, KP) == v
 

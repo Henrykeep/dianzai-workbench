@@ -43,7 +43,7 @@ try:
     got = keil_inject.rel(ROOT / "firmware/algo/pid/pid.c", pathlib.Path(tempfile.gettempdir()))
 finally:
     keil_inject.os.path.relpath = _orig
-ok = got == str((ROOT / "firmware/algo/pid/pid.c").resolve()).replace("/", "\\")
+ok = got == (ROOT / "firmware/algo/pid/pid.c").resolve().as_posix() and "\\" not in got   # 跨盘符：正斜杠绝对路径（Keil、make 都认）
 print(("✓" if ok else "✗"), "跨盘符 relpath 失败退回绝对路径：", got)
 fail += not ok
 ok = keil_inject.rel(ROOT / "a/b.c", ROOT / "x") == "..\\a\\b.c"

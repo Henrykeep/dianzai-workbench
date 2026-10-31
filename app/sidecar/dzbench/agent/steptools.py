@@ -244,16 +244,47 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
     return {"code": code, "steps": steps, "batch": batch, "stopped_at": None}
 
 
+def slug(name: str) -> str:
+    """项目目录名：只用 ASCII 小写字母/数字/连字符（Windows 路径、Keil、make 都不怕）。中文名转不出字母时用 proj-<哈希>。"""
+    import hashlib
+    import re
+    import unicodedata
+    a = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    a = re.sub(r"[^a-z0-9]+", "-", a.lower()).strip("-")
+    if not a or (not str(name).isascii() and len(a) < 2):
+        a = (a + "-" if a else "proj-") + hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
+    return a[:40].strip("-")
+
+
 def fresh_code(root, code: str) -> str:
-    """新建项目的代号：已有同名目录（用户项目或内置示例）就加 -2、-3…，保证落在一个全新的目录。"""
+    """新建项目的目录名（#39/#55）：ASCII slug（如 2026h-ball-3）；与已有用户项目或内置示例（按 slug 比）重名就加 -2、-3…，
+    保证落在一个全新的目录。中文显示名另存 project.yaml 的 display_name（set_display_name）。"""
+    ex = pathlib.Path(root) / "examples"
+    taken = {slug(e.name) for e in ex.iterdir()} if ex.is_dir() else set()
+
     def used(c):
-        return (paths.projects_dir() / c).exists() or (pathlib.Path(root) / "examples" / c).exists()
-    if not used(code):
-        return code
+        return (paths.projects_dir() / c).exists() or (ex / c).exists() or c in taken
+    base = slug(code)
+    if not used(base):
+        return base
     i = 2
-    while used(f"{code}-{i}"):
+    while used(f"{base}-{i}"):
         i += 1
-    return f"{code}-{i}"
+    return f"{base}-{i}"
+
+
+def set_display_name(d, name: str) -> None:
+    """project.yaml 里记显示名（可以是中文）；目录名始终是 ASCII slug。没有 project.yaml 就建一个最小的。"""
+    import json
+    p = pathlib.Path(d) / "project.yaml"
+    line = f"display_name: {json.dumps(str(name), ensure_ascii=False)}"
+    if not p.exists():
+        p.write_text(f"schema_version: 1\nname: {pathlib.Path(d).name}\n{line}\n", encoding="utf-8")
+        return
+    lines = [x for x in p.read_text(encoding="utf-8").splitlines() if not x.startswith("display_name:")]
+    k = next((i + 1 for i, x in enumerate(lines) if x.startswith("name:")), len(lines))
+    lines.insert(k, line)
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def project_apply(root, code: str, batch: list) -> dict:
@@ -276,6 +307,25 @@ QUICK_KINDS = {   # 题型 → 仿真对象、阶跃指标模板
             "req": "（1）位置设定值阶跃后 1.5 s 内稳定，稳态误差不大于 0.05。\n（2）超调量不大于 15%。"},
 }
 QUICK_MCU = [(r"f1|f103|c8t6", "stm32f103c8t6"), (r"f407|f4|vet6|天空星", "stm32f407vet6"), (r"vgt6", "stm32f407vgt6")]
+
+
+def quick_example(root, text: str) -> str | None:
+    """#55：一句话说的是某道内置例题（如“2026 年 H 题 车载平衡滚球”）→ 例题代号；对不上 = None。
+    只用来“以例题为模板新建”，例题目录本身只读、永远不当用户项目用。"""
+    import re as _re
+    t = (text or "").replace(" ", "")
+    ex = pathlib.Path(root) / "examples"
+    if not ex.is_dir():
+        return None
+    for d in sorted(ex.iterdir()):
+        rq = (_yaml(d / "requirements.yaml").get("problem") or {}) if (d / "requirements.yaml").exists() else {}
+        code, title = str(rq.get("code") or ""), str(rq.get("title") or "")
+        m = _re.match(r"(\d{4})([A-Z])$", code)
+        hit_code = bool(m) and (code in t or (m.group(1) in t and _re.search(m.group(2) + "题", t)))
+        hit_title = bool(title) and (title in t or sum(1 for w in _re.findall(r"[\u4e00-\u9fff]{2}", title) if w in t) >= 3)
+        if hit_code or hit_title:
+            return d.name
+    return None
 
 
 def quick_spec(text: str) -> dict:

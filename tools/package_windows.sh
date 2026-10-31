@@ -29,6 +29,7 @@ echo "== 2/5 侧车 dzbench.exe（wine + PyInstaller）"
   --distpath "$(zpath "$WORK/pyi")" --workpath "$(zpath "$WORK/pyiw")" --specpath "$(zpath "$WORK")" \
   --add-data "$(zpath "$ROOT/third_party/packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack");packs" \
   --paths "$(zpath "$ROOT/app/sidecar")" --paths "$(zpath "$ROOT/host/python")" --paths "$(zpath "$ROOT/third_party/vendored/stm32_mcp_discovery")" \
+  --paths "$(zpath "$ROOT/tools")" --hidden-import dzstep \
   --hidden-import serial.tools.list_ports --collect-submodules pypdf "$(zpath "$ROOT/app/sidecar/dzbench_entry.py")")
 cp "$WORK/pyi/dzbench.exe" "$STAGE/dzbench.exe"
 

@@ -1,7 +1,17 @@
 """SysConfig CLI 按平台找：Windows → sysconfig_cli.bat，POSIX → .sh；找不到 → missing_deps + fetch_deps。"""
+import os
+import types
+
 import pytest
 
 from dzbench import projflow
+
+
+def _as_os(monkeypatch, name):
+    """只让 projflow 看到的 os.name 变（代理模块）；不动全局 os.name，否则 Windows 上 pathlib 会去实例化 PosixPath。"""
+    proxy = types.SimpleNamespace(**{k: getattr(os, k) for k in dir(os) if not k.startswith("__")})
+    proxy.name = name
+    monkeypatch.setattr(projflow, "os", proxy)
 
 
 @pytest.fixture
@@ -16,8 +26,7 @@ def fake_repo(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("osname,plat,want", [("nt", "win32", "sysconfig_cli.bat"), ("posix", "linux", "sysconfig_cli.sh"), ("posix", "darwin", "sysconfig_cli.sh")])
 def test_picks_platform_script(fake_repo, monkeypatch, osname, plat, want):
-    if osname != "nt":                                                  # 改 os.name="nt" 会让 pathlib 实例化 WindowsPath：Windows 只改 sys.platform
-        monkeypatch.setattr(projflow.os, "name", osname)
+    _as_os(monkeypatch, osname)
     monkeypatch.setattr(projflow.sys, "platform", plat)
     (fake_repo / "sysconfig_cli.bat").write_text("@echo off\n")
     (fake_repo / "sysconfig_cli.sh").write_text("#!/bin/sh\n")
@@ -34,7 +43,7 @@ def test_windows_with_only_sh_is_missing(fake_repo, monkeypatch):
 
 
 def test_home_fallback_and_env_override(fake_repo, tmp_path, monkeypatch):
-    monkeypatch.setattr(projflow.os, "name", "posix")
+    _as_os(monkeypatch, "posix")
     monkeypatch.setattr(projflow.sys, "platform", "linux")
     h = tmp_path / "home/ti/sysconfig_1.28.0"
     h.mkdir(parents=True)
