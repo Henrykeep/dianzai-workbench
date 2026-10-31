@@ -1,4 +1,5 @@
 import { coarseTagHtml } from "./plant";
+import { reasonZh } from "./reasoncodes";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
 import { ampLine, ampText, MC_F, DOWNSCALE_ZH } from "./fieldmap";
 import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH, STOP_F, ABORT_ZH, NO_ROUND_ZH } from "./fieldmap";
@@ -101,7 +102,7 @@ export function stopReasonZh(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all
     if (!k) for (const q of [...inRun(rs, run)].reverse()) { if (q.valid) break; k++; }
     return k > 1 ? `连续 ${k} 轮无效` : k === 1 ? "1 轮无效" : "无效";
   }
-  return REASON_ZH[r.reason] ?? (r.reason ? `其他（${r.reason}）` : "未上报");
+  return reasonZh(r.reason, REASON_ZH);   // #139 文件优先，兜底表其次，都没有写「未知原因」，不露英文码
 }
 export function cardView(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): { verdict: { v: string; text: string }; title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
   const part = !!r.verdict?.warn, amp = ampLine(r);   // #134 降幅：标题写幅度，不出「最好一组 / 达标」措辞

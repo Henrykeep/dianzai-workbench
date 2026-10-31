@@ -61,7 +61,7 @@ for (const [reason, re] of [["saturation", /饱和/], ["delay_too_large", /延�
     assert.ok(!/it-verdict pass/.test(h) && !/>达标</.test(h), "不可行不能长得像达标");
   }
 }
-assert.match(cardView({ reason: "weird_code", best: null } as any).reason, /其他（weird_code）/);
+assert.match(cardView({ reason: "weird_code", best: null } as any).reason, /未知原因/);
 
 // 10) 通用指标卡：控制 / 测量 / 电源
 const mc = (kind: string, items: any[]) => ({ metrics_card: { task_kind: kind, items } });

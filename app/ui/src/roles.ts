@@ -34,7 +34,7 @@ export function roleCardHtml(req: RoleReq | null, st: RoleUi | boolean = { phase
   const s: RoleUi = typeof st === "boolean" ? { phase: st ? "sent" : "idle", left: 0 } : st;
   const btn = s.phase === "sent" ? `<button class="btn" id="role-retry">${ROLE_RETRY_ZH}</button>`
     : `<button class="btn primary" id="role-ok"${s.phase === "sending" || s.left > 0 || (s.phase === "error" && s.same !== false) ? " disabled" : ""}>${s.phase === "sending" ? ROLE_SENDING_ZH : ROLE_BTN_ZH}</button>` +
-      (s.left > 0 && s.phase !== "sending" ? `<span class="role-left">${roleLeftZh(s.left)}</span>` : s.phase === "error" && s.same !== false ? `<span class="role-left">改一下角色再确认</span>` : "");
+      (s.left > 0 && s.phase !== "sending" ? `<span class="role-left">${roleLeftZh(s.left)}</span>` : s.phase === "error" && s.same !== false ? `<span class="role-left">请修改角色后再确认</span>` : "");
   return `<div class="card role-card" id="role-card"><b>需要确认参数角色</b><p class="role-why">${esc(req.reason || MISSING_ZH)}</p>` +
     `<p class="role-nf">${ROLE_NO_FLASH_ZH}</p><p>待确认：${req.missing.map(esc).join("、") || MISSING_ZH}</p>` +
     (s.phase === "error" && s.msg ? `<p class="role-err">${esc(s.msg)}</p>` : "") + btn + `</div>`;
