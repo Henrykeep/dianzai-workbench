@@ -12,7 +12,7 @@ import sys
 REL = pathlib.Path("docs") / "dev"
 # 文件名 → (必需, 认的 schema_version, 中文名)。reason_codes.json 生成后自动纳入检查（未生成前不算缺）。
 FILES = {"roles.json": (True, 1, "参数角色取值表"),
-         "reason_codes.json": (False, 1, "原因码表")}
+         "reason_codes.json": (False, None, "原因码表")}   # 原因码表（gen_link 生成）没有 schema_version：是 JSON 对象就认
 
 
 def roots() -> list[pathlib.Path]:
@@ -47,7 +47,7 @@ def load(name: str) -> tuple[dict | None, dict | None]:
         d = json.loads(f.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return bad(f"{zh} {name} 读不出来或不是合法 JSON，请重新安装工作台")
-    if not isinstance(d, dict) or d.get("schema_version") != ver:
+    if not isinstance(d, dict) or (ver is not None and d.get("schema_version") != ver):
         v = d.get("schema_version") if isinstance(d, dict) else None
         return bad(f"{zh} {name} 的版本 {v!r} 本地服务不认识（只认 {ver}），请重新安装同一版本的工作台")
     return d, None

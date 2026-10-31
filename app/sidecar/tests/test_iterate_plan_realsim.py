@@ -30,7 +30,7 @@ def test_randplant_declaration_passes_gen_link(seed, tmp_path):
 @pytest.mark.parametrize("seed", [3, 101, 3008, 3010])
 def test_iterate_plan_accepts_any_randplant_declaration(seed, home):
     """真 randplant 对象 → 真 host-sim 仿真板 → 真 Session + AgentService：iterate_plan 走真的 measure_step_timing。
-    测出时序就用实测；测不出按默认时长 / 量程 1/4，并在 timing_reason_zh 里写明是回退。"""
+    测出时序就用实测；测不出按默认时长 / 量程 1/4，并在 fallback / message_zh 里写明退了什么。"""
     import sys as _sys
     _sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[3] / "tools"))
     import randplant
@@ -52,18 +52,20 @@ def test_iterate_plan_accepts_any_randplant_declaration(seed, home):
         span = st.get("range") if st.get("range") is not None else st.get("sensor_range")
         plan = svc.iterate_plan(_default_target=True)
         o = svc.measure_step_timing()                       # 按端口缓存：就是 iterate_plan 用的那一次
-        assert {q["name"] for q in plan["params"]} >= set(p["roles"].values()) - {None}
+        tune = {n for r, n in p["roles"].items() if n and str(r).upper() in ("P", "I", "D", "FF")}   # 限幅 / 其它角色不进调参
+        assert {q["name"] for q in plan["params"]} >= tune, (plan["params"], p["roles"])
         assert plan["abs_tol"] == pytest.approx(0.01 * float(span))
         if o.get("step_dur_ms"):
             assert plan["dur_ms"] == int(o["step_dur_ms"])
         else:
-            assert plan["dur_ms"] == 2000 and plan["timing_source"] == "fallback" and "默认 2000 ms" in plan["timing_reason_zh"], plan
+            assert plan["dur_ms"] == 2000 and "dur_default" in plan["fallback"] and "默认 2000 ms" in plan["message_zh"], plan
         if o.get("step_target") is not None:
             assert plan["target"] == pytest.approx(float(o["step_target"]))
         else:
-            assert plan["target"] == pytest.approx(round(float(span) / 4, 4)) and "量程 1/4" in plan["timing_reason_zh"], plan
-        if plan["timing_source"] == "measured":
-            assert plan["timing_reason_zh"] == "阶跃时序按仿真实测"
+            assert "span_quarter" in plan["fallback"] and "量程的 1/4" in plan["message_zh"], plan
+            assert plan["fix_action"] == "measure_step_timing"
+        if o.get("step_dur_ms") and o.get("step_target") is not None:
+            assert "fallback" not in plan and "message_zh" not in plan
         vals = {q["name"]: q.get("default", q.get("min", 0.0)) for q in s.schema.params}
         assert Iterator.card(plan, vals, [q["name"] for q in s.schema.params], True)
         if st.get("max_step"):

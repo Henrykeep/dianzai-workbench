@@ -46,13 +46,6 @@ def guess_pairs(fields: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-def guess_gain(params: list[str], kind: str) -> str | None:
-    for p in params:
-        if p == kind or p.endswith("_" + kind):
-            return p
-    return None
-
-
 from .iterate import INVALID_ZH, step_invalid  # noqa: E402  唯一的有效性判定（台账 / 卡 / 提议 / 迭代共用）
 
 
@@ -144,7 +137,7 @@ class AgentService:
             "score_items": lambda path=None: steptools.score_items(self, path),
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
-            "tune_autopilot": self._tune_autopilot_agent,
+            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run, "confirm_roles": self.confirm_roles,
             "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
@@ -546,39 +539,58 @@ class AgentService:
         steps = sch.step
         if not steps or not 0 <= int(ch) < len(steps):
             raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "固件升到 dzctl 0.13.0 并在 app.yaml 加 link.step")
-        names = list(params or [k for k in self._gains() if k in sch.param_index] or self._tunable(sch))
+        names = list(params or AgentService._tunable(sch))      # 不按名字猜：握手声明了 role 的去掉 LIM/other，没声明 = 全部可调参数
         bad = [n for n in names if n not in sch.param_index]
         if bad or not names:
             raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
         st = steps[int(ch)]
         span = st.get("range") if st.get("range") is not None else st.get("sensor_range")
-        o = self.measure_step_timing() if (dur_ms is None or (target is None and _default_target)) else {}
-        # #94：主线和直接 iterate_start 同一个时序来源（stepident 实测；实机返回 {} 用默认）
-        src, why = "given", []
-        if dur_ms is None:
-            if o.get("step_dur_ms"):
-                dur_ms, src = int(o["step_dur_ms"]), "measured"
-            else:
-                dur_ms, src = 2000, "fallback"
-                why.append("阶跃时长没测出来，按默认 2000 ms")
-        if target is None and _default_target:
-            if o.get("step_target") is not None:
-                target = float(o["step_target"])
-            else:
-                target, src = round(float(span or 1.0) / 4, 4), "fallback"
-                why.append(f"阶跃目标没测出来，按量程 1/4 = {target:g}" if span else "阶跃目标没测出来、也没声明量程，按 1/4 = 0.25")
+        fallback, why = [], []
+        if dur_ms is None or (target is None and _default_target):
+            # #94：主线和直接 iterate_start 同一个时序来源（stepident 实测）；测不出来就退到默认，并在结果里写明退了什么
+            meas = getattr(self, "measure_step_timing", None)
+            try:
+                o = meas() if callable(meas) else {}
+                if not callable(meas):
+                    why.append("这块板子的会话不支持实测阶跃时序")
+                elif not o:
+                    w = self.__dict__.get("_step_timing", {}).get(str(getattr(self.s, "port", "") or "") + "#why") or {}
+                    why.append(w.get("message_zh") or w.get("why_zh") or ("实机不自动探测（要人确认）" if not getattr(self, "sim", True) else "探测阶跃没辨识出时序（响应太慢或太小）"))
+            except Exception as e:  # noqa: BLE001  实测失败不挡迭代：退默认 + 说明
+                o = {}
+                why.append(f"实测阶跃时序失败（{getattr(e, 'message', None) or e}）")
+            if dur_ms is None:
+                if o.get("step_dur_ms"):
+                    dur_ms = int(o["step_dur_ms"])
+                else:
+                    dur_ms, _ = 2000, fallback.append("dur_default")
+            if target is None and _default_target:
+                if o.get("step_target") is not None:
+                    target = float(o["step_target"])
+                elif span:
+                    target = round(float(span) / 4, 6)
+                    fallback.append("span_quarter")
+                    if st.get("max_step") is not None and target > float(st["max_step"]):
+                        target, _ = float(st["max_step"]), fallback.append("max_step")
         if target is None:
             raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {float(span):g} 的 1/4" if span else "按题面给的阶跃幅度")
         ms = st.get("max_step")
-        if ms is not None and abs(float(target)) > float(ms):                   # #109：超过执行器能承受的单次最大阶跃
+        from ..tuning.steplimit import step_block
+        if step_block(target, ms, ch):                                           # #109：超过执行器能承受的单次最大阶跃（与 #129 retest_blocked_by 同一判定）
             raise GatewayError("step_too_large", f"阶跃 {float(target):g} 超过工程声明的单次最大阶跃 max_step = {float(ms):g}",
                                f"把阶跃目标改到 ±{float(ms):g} 以内，或核实后改 link.step.max_step", {"fix_action": "lower_step", "max_step": float(ms)})
         tol = st.get("abs_tol")
         if tol is None:                                                          # 新声明只写物理上限：容差 = 传感器量程的 ABS_TOL_FRAC
             tol = float(span) * self.ABS_TOL_FRAC if span else None
-        return {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(tol) if tol is not None else None,
-                "params": [dict(sch.params[sch.param_index[n]]) for n in names],
-                "timing_source": src, "timing_reason_zh": "；".join(why) or ("阶跃时序按仿真实测" if src == "measured" else "")}
+        out = {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(tol) if tol is not None else None,
+               "params": [dict(sch.params[sch.param_index[n]]) for n in names]}
+        if fallback:
+            zh = {"dur_default": "时长用默认 2000 ms", "span_quarter": f"目标用量程的 1/4（{float(span):g} / 4）" if span else "",
+                  "max_step": "再夹到 max_step"}
+            out["fallback"] = fallback
+            out["message_zh"] = "；".join(why + [zh[f] for f in fallback if zh.get(f)]) + "（没用实测值，结果仅供参考）"
+            out["fix_action"] = "measure_step_timing"
+        return out
 
     ABS_TOL_FRAC = 0.01                                          # 没声明 abs_tol：稳态容差 = 传感器量程 × 1%
 
@@ -588,7 +600,8 @@ class AgentService:
         out = []
         for p in sch.params:
             lo, hi = p.get("min"), p.get("max")
-            if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and hi > lo and str(p.get("type", "f32")) in ("f32", "f64", "float", "double"):
+            if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and hi > lo and str(p.get("type", "f32")) in ("f32", "f64", "float", "double") \
+                    and p.get("role") not in ("LIM", "other"):
                 out.append(p["name"])
         return out
 
@@ -634,7 +647,7 @@ class AgentService:
         return res
 
     def iterate_apply_best(self, params: dict, iter: int | None = None, params_hash: str | None = None,  # noqa: A002
-                           ss_err: dict | None = None, compare: dict | None = None, verdict: str | None = None, verdict_zh: str | None = None) -> dict:   # ss_err / compare 只给卡上显示
+                           ss_err: dict | None = None, compare: dict | None = None, verdict: str | None = None, verdict_zh: str | None = None, **_card) -> dict:   # ss_err / compare / items / amp_* 只给卡上显示
         """“采用最好参数”卡被人确认：把最好一轮的参数写回板子（逐个 set_param，校验/限幅/急停锁都在 Session）。"""
         applied = {}
         cur = self.s.params
@@ -1012,17 +1025,22 @@ class AgentService:
         return {"ok": True, "result": self.iter_result}
 
     def autotune_run(self, spec_text: str = "", ch: int = 0, seed: int = 0) -> dict:
-        """通用整定（与 tools/tunegate.py 同一份 tuning.autotune）：参数名 / 范围 / max_delta / 量程 / max_step 全从握手读。"""
+        """通用整定（与 tools/tunegate.py 同一份 tuning.autotune）：参数角色 / 范围 / max_delta / 量程 / max_step 全从握手读。
+        角色没声明 → 不按名字猜着跑：回 needs_human（roles_unconfirmed + 建议），人确认（confirm_roles 写回 app.yaml）后才跑。"""
         from ..tuning import autotune as at
-        from ..tuning.session_board import SessionBoard, roles
+        from ..tuning.session_board import SessionBoard, declared, suggest
         sch = self.s.schema
         if not sch or not sch.step:
             raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "在 app.yaml 加 link.step（sensor_range / max_step）")
         if not self.sim:
             raise GatewayError("hw_needs_human", "实机自动整定会连续写参数，要走批量确认", "用“自动迭代”（iterate_start）出确认卡")
-        rl = roles(sch, guess_gain)
-        if "kp" not in rl:
-            raise GatewayError("no_roles", "认不出哪个参数是比例增益", role_hint_zh())
+        rl, missing = declared(sch)
+        if missing or "kp" not in rl:
+            miss = missing or [p["name"] for p in sch.params]
+            return {"verdict": "needs_human", "reason": "roles_unconfirmed", "missing": miss, "suggested": suggest(sch),
+                    "message_zh": f"这些参数没声明作用（app.yaml link.params.<名>.role ∈ {'/'.join(link_roles())}）："
+                                  + "、".join(miss) + "；不按参数名猜，建议只按结构给（u_max 指向的 = LIM），确认后才整定",
+                    "fix": "核对建议的角色后点“确认角色”（写回 app.yaml，重新生成握手表）；" + role_hint_zh(), "fix_action": "confirm_roles"}
         by = {p["name"]: p for p in sch.params}
         decl = [{"role": r, "name": n, "min": float(by[n]["min"]), "max": float(by[n]["max"]), "max_delta": by[n].get("max_delta")}
                 for r, n in rl.items()]
@@ -1031,7 +1049,65 @@ class AgentService:
         u_max = float(self.s.params.get(um, 1.0)) if isinstance(um, str) else float(um or (sch.d.get("limits") or {}).get("u_max") or 1.0)
         dt = float(st.get("sample_s") or (sch.d.get("telemetry") or {}).get("period_ms", 10) / 1000)
         link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
+        link["ch"] = int(ch)
+        link["unit"] = next((f.get("unit") or None for f in sch.fields if f["name"] == st.get("y")), None)   # #140：被阶跃信号声明的单位，没写 = null
         return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
+
+    def confirm_roles(self, roles: dict, app_dir: str | None = None) -> dict:
+        """人确认过的参数角色写进 app.yaml link.params.<名>.role（只改这几行，不重排文件）。"""
+        ROLES = link_roles()                                   # #136 同一份枚举（gen_link 校验什么就收什么）
+        bad = {n: r for n, r in (roles or {}).items() if r not in ROLES}
+        if not roles or bad:
+            raise GatewayError("bad_role", f"确认参数角色失败：角色只能是 {'/'.join(ROLES)}，收到 {bad or '空的角色表'}；没有写 app.yaml",
+                               "每个参数选一个角色后再点“确认角色”", {"fix_action": "confirm_roles"})
+        sch = getattr(getattr(self, "s", None), "schema", None)
+        if sch and sch.params:
+            unk = sorted(set(roles) - {p["name"] for p in sch.params})
+            if unk:
+                raise GatewayError("bad_param", f"确认参数角色失败：板子握手参数表里没有参数 {'、'.join(unk)}；没有写 app.yaml",
+                                   "用 list_params 看参数名，改对后再确认", {"fix_action": "confirm_roles"})
+            cur = {p["name"]: p.get("role") for p in sch.params}
+            if all(cur.get(n) == r for n, r in roles.items()):      # 与握手里现有角色相同：幂等，不改文件（重复点击无害）
+                return {"ok": True, "roles": roles, "unchanged": True, "message_zh": "角色与板上握手一致，无需改动"}
+        y = self._app_yaml(app_dir)
+        lines = y.read_text(encoding="utf-8").splitlines(keepends=True)
+        done = set()
+        for i, ln in enumerate(lines):
+            m = re.match(r"^(\s*)-\s*\{\s*name:\s*([\w.]+)\s*,(.*)\}\s*$", ln)
+            if m and m.group(2) in roles:
+                body = re.sub(r",\s*role:\s*[\w]+", "", m.group(3)).rstrip()
+                lines[i] = f"{m.group(1)}- {{ name: {m.group(2)},{body}, role: {roles[m.group(2)]} }}\n"
+                done.add(m.group(2))
+                continue
+            m = re.match(r"^(\s*)-\s*name:\s*([\w.]+)\s*$", ln)
+            if m and m.group(2) in roles:
+                ind = m.group(1) + "  "
+                j = i + 1
+                while j < len(lines) and lines[j].startswith(ind) and not lines[j].lstrip().startswith("-"):
+                    if lines[j].lstrip().startswith("role:"):
+                        lines[j] = ""
+                    j += 1
+                lines.insert(i + 1, f"{ind}role: {roles[m.group(2)]}\n")
+                done.add(m.group(2))
+        left = sorted(set(roles) - done)
+        if left:
+            raise GatewayError("bad_param", f"确认参数角色失败：app.yaml link.params 里没找到参数 {'、'.join(left)}；没有写 app.yaml",
+                               "用 list_params 看参数名，改对后再确认", {"fix_action": "confirm_roles"})
+        y.write_text("".join(lines), encoding="utf-8")
+        return {"ok": True, "app_yaml": str(y), "roles": roles,
+                "message_zh": "角色已写回 app.yaml；重新生成握手表（重编 / 重连仿真板）后生效", "fix_action": "rebuild"}
+
+    def _app_yaml(self, app_dir: str | None):
+        from .. import paths
+        from ..ports import sim_root
+        if app_dir:
+            d = pathlib.Path(app_dir)
+        else:
+            name = (self.s.port or "").removeprefix("sim:").split("+")[0]
+            d = next((x / name for x in (paths.projects_dir(), sim_root() / "apps", sim_root() / "examples") if name and (x / name / "app.yaml").exists()), None)
+        if not d or not (d / "app.yaml").exists():
+            raise GatewayError("no_app", "找不到这个应用的 app.yaml", "传 app_dir（工程目录）", {"fix_action": "confirm_roles"})
+        return d / "app.yaml"
 
     def tune_autopilot(self, rounds: int = 6) -> dict:
         """仅仿真：提议→采纳→阶跃→护栏判，直到护栏说 done/stop 或轮数用完；最后回到最好的一轮。实机每次写都要人点，不走这里。"""
@@ -1080,6 +1156,26 @@ class AgentService:
         card = self.gate("flow_accept", {"step": nxt, "code": code}, lambda: None)
         return {"next_step": nxt, "preview": pv, "action_id": card.get("action_id")}
 
+    ADOPT_TOOLS = ("iterate_apply_best", "autotune")
+
+    @staticmethod
+    def adoption_verified(card: dict) -> dict:
+        """#141：采纳的参数算不算“已验证”——只看服务端保存的卡（不认客户端传的标记）。partial / 降幅测的 → 未验证。"""
+        items = card.get("items") or []
+        reduced = bool(card.get("amp_reduced")) or any(isinstance(i, dict) and i.get("amp_reduced") for i in items)
+        if reduced or card.get("verdict") == "partial" or any(isinstance(i, dict) and i.get("verdict") == "partial" for i in items):
+            return {"verified": False, "unverified_reason": "amp_reduced"}
+        return {"verified": True, "unverified_reason": None}
+
+    def _adoption_record(self, a: dict) -> dict:
+        v = self.adoption_verified(a.get("args") or {})
+        rec = {"tool": a["tool"], "t": time.time(), "params": (a.get("args") or {}).get("params")} | v
+        self.__dict__.setdefault("adoptions", []).append(rec)       # 未验证的不进已验证档 / 封箱清单（verified_adoptions 只给 verified）
+        return v
+
+    def verified_adoptions(self) -> list[dict]:
+        return [r for r in self.__dict__.get("adoptions", []) if r["verified"]]
+
     def action_decide(self, aid: int, accept: bool) -> dict:
         a = self.actions.pop(aid, None)
         if not a:
@@ -1100,6 +1196,8 @@ class AgentService:
             out = {"id": aid, "status": "done", "result": (self.loop.handlers.get(a["tool"]) or self.CARD_ONLY[a["tool"]].__get__(self))(**args)}
             if a["tool"] == "flow_accept":
                 out["next"] = self._flow_next(args["code"])
+            if a["tool"] in self.ADOPT_TOOLS:
+                out |= self._adoption_record(a)
             return out
         except (FlashError, GuardError, LinkError) as e:
             raise LinkError(getattr(e, "code", "action"), e.message, getattr(e, "fix", "")) from e
@@ -1189,10 +1287,15 @@ class AgentService:
         return r | {"value": v, "guard": notes}
 
     def _gain_names(self) -> dict:
-        """{kp/ki/kd: 板上参数名}：step_test.gains 写明的优先（如 kp=pos_k），否则按名字猜。"""
-        names = [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
+        """{kp/ki/kd: 板上参数名}：step_test.gains 写明的优先（如 kp=pos_k），否则只认握手 params[i].role（#123，不按名字猜）。"""
+        from ..tuning.session_board import declared
+        sch = self.s.schema
+        names = [p["name"] for p in (sch.params if sch else [])]
         cfg = (self.step_cfg() or {}).get("gains") or {}
-        return {x: n for x in ("kp", "ki", "kd") if (n := cfg.get(x) if cfg.get(x) in names else (None if cfg else guess_gain(names, x)))}
+        if cfg:
+            return {x: cfg[x] for x in ("kp", "ki", "kd") if cfg.get(x) in names}
+        rl = declared(sch)[0] if sch else {}
+        return {x: rl[x] for x in ("kp", "ki", "kd") if x in rl}
 
     def _gains(self) -> dict:
         ks = list(self._gain_names().values())

@@ -209,6 +209,11 @@ def simc_pid(model: "LinModel", decl: list[dict], dt: float) -> dict | None:
     return _clip({k: v for k, v in p.items() if k in have}, decl)
 
 
+from .steplimit import step_block  # noqa: E402
+
+AMP_WARN_ZH = "按降幅测试，未验题面幅度"
+
+
 def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: int = 12) -> dict:
     """board：read_params() / write_param(name, v)（受 max_delta，超了拒写）/ step(amp, n) → (t, r, y, u)。"""
     import control  # noqa: F401  python-control：模型仿真 / 设计
@@ -259,9 +264,11 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     amp = float(timing.get("step_target") or probe * 5)
     if sp.get("amp"):                                           # 题面写了阶跃幅度 → 就按它判（判卷与题面同一个实验）
         amp = float(sp["amp"])
+    amp_spec = float(sp["amp"]) if sp.get("amp") else None
     lims = [x for x in (max_step, (0.5 * rng_phys) if rng_phys else None) if x]
     if lims and abs(amp) > min(lims):
         amp = math.copysign(min(lims), amp)
+    amp_reduced = amp_spec is not None and abs(amp) < abs(amp_spec) - 1e-12      # #129：题面幅度超 max_step / 量程，降幅测的
     settle = (idn["L"] + stepident.SETTLE_TC * idn["T"]) if idn and idn.get("ok") else n_probe * dt / 3
     n = int(min(max(round(3 * settle / dt), 300), 1500))      # 判卷窗口 = 3 × 实测调节时间（按拍数，与墙钟无关）
     if sp.get("settle_s"):                                      # 窗口至少盖住题面调节时间的 2 倍，否则“调节时间”判不了
@@ -323,9 +330,26 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         elif sat > 0.3:
             cat, why = "saturation", f"执行器 {sat * 100:.0f}% 时间顶在上限：饱和，再加增益也快不了"
         else:
-            cat, why = "not_reached", "模型与板上都没搜到满足题面的参数"
+            cat, why = "unconfirmed", "原因待确认：模型与板上都没搜到满足题面的参数，特征不足以归类"
         why += "；未达标：" + "、".join(bad)
-    return {"seed": seed, "verdict": verdict, "category": cat, "pass_basis": why, "spec": sp, "amp": amp, "n": n,
+    verdict_zh = {"pass": "达标", "fail": "未达标"}[verdict]
+    extra = {}
+    if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
+        extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None,
+                 "retest_blocked_by": step_block(amp_spec, max_step, int(link.get("ch") or 0), link.get("unit") or None),
+                 "warning_zh": AMP_WARN_ZH}
+        if verdict == "pass":
+            verdict, verdict_zh, why = "partial", "未验题面幅度", why + f"（按降幅 {amp:g} 测，题面 {amp_spec:g} 超 max_step / 量程）"
+    items = []
+    for k in ("ss_err_pct", "overshoot_pct", "settle_s"):        # metrics_card items[]
+        if sp.get(k) is None:
+            continue
+        v = "fail" if k in bad else ("partial" if amp_reduced else "pass")
+        items.append({"key": k, "spec": sp[k], "measured": bm.get(k), "verdict": v} | extra)
+    for it in items:
+        it["verdict_zh"] = {"pass": "达标", "fail": "未达标", "partial": "未验题面幅度"}[it["verdict"]]
+    return {"seed": seed, "verdict": verdict, "verdict_zh": verdict_zh, "category": cat, "pass_basis": why, "spec": sp, "amp": amp, "n": n,
+            "items": items, **extra,
             "timing": timing, "ident": info, "initial": {"params": {name[k]: v for k, v in p0.items()}, "metrics": m_init, "cost": cost(m_init)},
             "best": {"params": {name[k]: v for k, v in bp.items()}, "roles": bp, "metrics": bm, "cost": bc},
             "rounds": len(hist) - 1}

@@ -35,6 +35,6 @@ link:
     - { name: v_base,  type: float, default: 2.0,  min: 0,  max: 6,   unit: rps, desc: 直道基础轮速 }
     - { name: kp_line, type: float, default: 0.05, min: 0,  max: 0.5, unit: rps/mm, desc: 线位置比例 }
     - { name: kd_line, type: float, default: 0.0,  min: 0,  max: 0.05, desc: 线位置微分（每 mm/s） }
-    - { name: kp,      type: float, default: 0.08, min: 0,  max: 2,   desc: 轮速 PI }
-    - { name: ki,      type: float, default: 1.5,  min: 0,  max: 20 }
+    - { name: kp,      type: float, default: 0.08, min: 0,  max: 2,   desc: 轮速 PI, role: P }
+    - { name: ki,      type: float, default: 1.5,  min: 0,  max: 20, role: I }
     - { name: v_search, type: float, default: 1.0, min: 0, max: 4, max_delta: 1.0, unit: rps, desc: 丢线找线时的轮速 }

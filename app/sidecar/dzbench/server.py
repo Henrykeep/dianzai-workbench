@@ -290,6 +290,11 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
+        if op == "confirm_roles":                                 # 人确认的参数角色写回 app.yaml link.params.<名>.role
+            try:
+                return await run(None, lambda: self.svc.confirm_roles(m["roles"], m.get("app_dir")))
+            except GatewayError as e:
+                raise LinkError(e.code, e.message, e.fix, e.extra.get("fix_action")) from None
         if op == "autotune":                                      # #108 界面“通用整定”：与 tunegate 同一份 tuning.autotune
             try:
                 return await run(None, lambda: self.svc.autotune_run(**{k: m[k] for k in ("spec_text", "ch", "seed") if m.get(k) is not None}))
