@@ -4,7 +4,7 @@
 输入（app.yaml 或 project.yaml）：
   link:
     telemetry: { id: 2, period_ms: 20, fields: [ { name: t_ms, type: uint32, unit: ms }, ... ] }
-    params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, max_delta: 0.5, unit: "", desc: "" } ]   # 仅 app.yaml
+    params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, max_delta: 0.5, unit: "", desc: "", role: P } ]   # 仅 app.yaml；role 可选
                max_delta（dzctl 0.13.0）= 上位机单次写入最大改动量，超了板子拒绝（param_reject reason=step）；不写 = max − min
     step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, sensor_range: 720, max_step: 90 } ]   # 可选：#38 阶跃实验通道
                sp = 设定值槽位（DATA id=1 第几个 f32）；y / u = 遥测字段（u 可省）；u_max = 数或参数名；
@@ -36,6 +36,11 @@ C_TYPES = {"float": ("float", "DZCTL_F32", "f32"), "uint32": ("uint32_t", "DZCTL
 WIRE = {"float": "f32", "uint32": "u32", "int32": "i32", "uint16": "u16", "int16": "i16", "uint8": "u8", "bool": "u8"}
 TYPE_MAX = {"uint32": (0, 4294967295), "int32": (-2147483648, 2147483647), "uint16": (0, 65535),
             "int16": (-32768, 32767), "uint8": (0, 255), "bool": (0, 1)}
+
+
+# 参数角色（可选）：P 比例 / I 积分 / D 微分 / FF 前馈 / LIM 限幅 / other 其他。只给上位机（整定认增益用），不进哈希；
+# 没写 → link_schema.json 里 role: null，上位机不按参数名猜。
+ROLES = ("P", "I", "D", "FF", "LIM", "other")
 
 
 def fnv1a(data: bytes) -> int:
@@ -128,6 +133,8 @@ def check(spec: dict, params: list) -> list[str]:
     if len(spec.get("step") or []) > 4:
         errs.append("step 通道最多 4 个")
     for p in params:
+        if p.get("role") is not None and p.get("role") not in ROLES:
+            errs.append(f"参数 {p.get('name')}: role 只能是 {' / '.join(ROLES)}（写的是 {p.get('role')!r}；不确定就不写）")
         if "min" not in p or "max" not in p:
             errs.append(f"参数 {p['name']}: 缺 min/max（上位机写参数必须限幅）")
         elif p.get("max_delta") is not None and not 0 < float(p["max_delta"]) <= float(p["max"]) - float(p["min"]) + 1e-12:
@@ -167,6 +174,7 @@ def schema(spec: dict, params: list) -> dict:
     for p, src in zip(s["params"], params):
         p["default"] = src.get("default", 0)
         p["desc"] = src.get("desc", "")
+        p["role"] = src.get("role")             # 未声明 = null
         if src.get("protect"):                 # 保护阈值表的分类（堵转电流/倾倒角/限幅/断线停车…），只给界面
             p["protect"] = str(src["protect"])
     # 下面都只给上位机看（标定、验收、串级分层），不进哈希：改它们不用重烧固件

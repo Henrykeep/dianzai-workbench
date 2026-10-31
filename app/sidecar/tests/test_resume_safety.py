@@ -10,6 +10,7 @@ import time
 
 import pytest
 
+from conftest import wd_timeout_ms
 from dzbench._dzlink import DATA, HEARTBEAT, PARAM_SET, Parser, encode
 
 pytestmark = pytest.mark.needs_sim
@@ -82,7 +83,7 @@ def _run_kill_restart(board, home, estop: bool):
     try:
         ui = UI(port)
         ui.ok("connect", port=str(board.path), baud="auto")
-        ui.wait(lambda e: e["type"] == "schema")
+        wd_ms = wd_timeout_ms(ui.wait(lambda e: e["type"] == "schema"))
         time.sleep(0.6)
         ui.ok("send_data", id=1, hex=GO)                       # RUN：非零目标
         assert until(lambda: ((sp(board) or {}).get("sp_a") or 0) > 0.25), "命令应生效"
@@ -93,7 +94,7 @@ def _run_kill_restart(board, home, estop: bool):
         p.send_signal(signal.SIGKILL)
         p.wait()
         t_kill = time.monotonic()
-        time.sleep(1.5)                                         # 固件 1 s 没上位机心跳 → 急停并锁存
+        time.sleep(wd_ms / 1000 + 0.5)                          # 固件 wd_timeout_ms 没上位机心跳 → 急停并锁存
         safe = sp(board)
         p, port = _start(home)
         ui = UI(port)
