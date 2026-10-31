@@ -7,6 +7,14 @@ from dzbench.agent.gateway import Gateway
 from dzbench.agent.loop import AgentLoop
 
 
+
+def _accept_and_commit(g, cid):
+    """#88：写文件卡确认后，还要另点提交确认卡才会提交。"""
+    r = g.decide(cid, True)
+    if g.changes[cid].git_status == "pending":
+        r = g.commit_decide(cid, True)
+    return r
+
 def git(r, *a):
     subprocess.run(["git", *a], cwd=r, check=True, capture_output=True)
 
@@ -69,7 +77,7 @@ def test_memory_needs_accept(tmp_path):
     card = knowledge.propose_memory(gw, "左电机编码器方向反，已在 board.yaml 取反", "实测")
     assert knowledge.memory_text(r) == ""                       # 只是提议，没写
     lp = AgentLoop(FakeLLM([]), {}, memory=lambda: knowledge.memory_text(r))
-    res = gw.decide(card["id"], True)
+    res = _accept_and_commit(gw, card["id"])
     assert res["status"] == "committed", gw.changes[card["id"]].log
     assert "编码器方向反" in knowledge.memory_text(r)
     assert "编码器方向反" not in lp.messages[0]["content"]

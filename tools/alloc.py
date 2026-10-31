@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """第 3 步 资源分配：scheme.yaml（第 2 步）→ 资源需求 → 按芯片知识表自动分配 → board.yaml 草稿 + CubeMX 配置清单。
 
-  python3 tools/alloc.py examples/2026H_ball/scheme.yaml -o out/ [--app app.yaml] [--fixed 现有board.yaml] [--name 板名]
+  python3 tools/alloc.py examples/<例题>/scheme.yaml -o out/ [--app app.yaml] [--fixed 现有board.yaml] [--name 板名]
 
   需求：选定件在 tools/catalog/parts.yaml 里的 res（逻辑名按 docs/05 标签约定；scheme.yaml 的 names 可覆盖），
         外加 1 路 LINK 调试串口（scheme.yaml debug_link_uart: false 可关）。offboard 的能力不占主控资源。

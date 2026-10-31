@@ -6,7 +6,7 @@
     telemetry: { id: 2, period_ms: 20, fields: [ { name: t_ms, type: uint32, unit: ms }, ... ] }
     params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, max_delta: 0.5, unit: "", desc: "" } ]   # 仅 app.yaml
                max_delta（dzctl 0.13.0）= 上位机单次写入最大改动量，超了板子拒绝（param_reject reason=step）；不写 = max − min
-    step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, range: 720, abs_tol: 0.5 } ]   # 可选：#38 阶跃实验通道
+    step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, sensor_range: 720, max_step: 90 } ]   # 可选：#38 阶跃实验通道
                sp = 设定值槽位（DATA id=1 第几个 f32）；y / u = 遥测字段（u 可省）；u_max = 数或参数名；
                range = 该量量程，abs_tol = 绝对容差（物理单位，|阶跃幅度| < max(1% 量程, abs_tol) 时改用绝对口径）
                phys（可选）= { unit: cm, per_unit: 6 }：per_unit 个原生单位 = 1 个 unit（上位机把 step_result 换成题目单位）

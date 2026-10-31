@@ -16,9 +16,9 @@ SVG 不依赖 matplotlib（赛场电脑不一定能 pip），Word 2016+ / WPS �
   --params 参数快照（工作台"存快照"的 json）；没给就写"（未提供）"，不猜。
   --req overshoot<=10 / settling<=1.5 / sse<=2 / rise<=0.5 / osc<=1：按题目要求判"满足/不满足"，不给就不判。
 
-例：python3 tools/report.py runs/*.csv --y ball_x --sp ball_sp --source board \\
+例：python3 tools/report.py runs/*.csv --y y --sp sp --source board \\
         --params ~/.dzbench/snapshots/XXXX/定稿.json --req overshoot<=10 --req settling<=2 \\
-        --title "基本要求(2) 钢球定点" -o report/basic2
+        --title "基本要求(2) 定点" -o report/basic2
 """
 from __future__ import annotations
 

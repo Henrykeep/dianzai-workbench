@@ -11,7 +11,7 @@
   * 你的原工程目录只读，所有改动都在 boards/<板>/ 的副本里。
 
 用法：
-  python3 tools/import_project.py <CubeMX工程目录> [--name 板名] [--app car_2wd] [--accept-repair] [--force]
+  python3 tools/import_project.py <CubeMX工程目录> [--name 板名] [--app <应用>] [--accept-repair] [--force]
 结束时打印“还需要人做的事”清单（--report x.json 另存），tools/test_import_project.py 用它防回退。
 """
 from __future__ import annotations

@@ -188,3 +188,16 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 
 导出：后端出 CSV / xlsx，列与 `items` 字段一一对应（计划中，未实现）。
 门禁（#78 `tools/tunegate.py`）用 plant.json 真值对比 `measured` / `verdict` 判假达标。
+## 提交确认 `commit_confirm_request`（#88）
+
+写文件确认卡（`change`）带 `scope: "write_only"`：**只授权写文件**。`change_decide accept=true` 后写入 → 跑门禁 → `change.status = "written"`（不再直接 `committed`），并紧接推送：
+
+`{type:"commit_confirm_request", request_id, repo_root, branch, files:[{path, status}], message, message_zh, status}`
+
+- `files[].status`：`A` 新建 / `M` 修改。`message` 是将用的 git 提交信息（原文），`message_zh` 是给人看的一句话。
+- `status`：`pending` → `committed` / `rejected` / `failed`（结果会再推一次同一事件，外加更新后的 `change` 卡）。
+- 界面回复 WS op：`{"op":"commit_confirm","request_id":<id>,"approve":true|false}`。
+  - 批准：提交，返回 `{ok:true, ...change 卡（status=committed, commit=短哈希）}`。
+  - 拒绝或超时：不提交，返回 `{ok:false, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit", ...请求字段}`；文件仍留在工作区。提交本身失败时 `reason:"commit_failed"`。
+- Agent 发起的任何 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit"}`，不执行。
+- `pending` 列表里同时包含待批的 `commit_confirm_request`。
