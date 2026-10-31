@@ -1,4 +1,4 @@
-import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, type RoleReq } from "./roles";
+import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, roleLeft, roleReply, type RoleReq, type RoleUi } from "./roles";
 import { ROLE_F, ROLE_CONFIRM_OP } from "./fieldmap";
 import { applyBrand } from "./brand";
 import { lastRound } from "./round";
@@ -413,20 +413,22 @@ function pending() {
   return pendingOf(S.schema?.params ?? [], S.edit, S.applied);
 }
 const pos = (p: Param, v: number) => p.max > p.min ? String(Math.min(Math.max((v - p.min) / (p.max - p.min), 0), 1)) : "0";
-let ROLE_REQ: RoleReq | null = null, roleSent = false;
+let ROLE_REQ: RoleReq | null = null, roleUi: RoleUi = { phase: "idle", left: 0 };
+const rolePicked = () => { const p: Record<string, string> = {}; document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { if (x.value) p[x.dataset.roleN!] = x.value; }); return p; };
 function renderRoleCard() {
   const el = document.getElementById("role-host"); if (!el) return;
-  el.innerHTML = roleCardHtml(ROLE_REQ, roleSent);
-  const ok = document.getElementById("role-ok"), rt = document.getElementById("role-retry");
+  if (ROLE_REQ && (roleUi.phase === "idle" || roleUi.phase === "error")) roleUi = { ...roleUi, left: roleLeft(ROLE_REQ, rolePicked()) };
+  el.innerHTML = roleCardHtml(ROLE_REQ, roleUi);
+  document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { x.onchange = renderRoleCard; x.classList.toggle("role-empty", !x.value); });
+  const ok = document.getElementById("role-ok") as HTMLButtonElement | null, rt = document.getElementById("role-retry");
   if (ok) ok.onclick = async () => {
-    const picked: Record<string, string> = {};
-    document.querySelectorAll<HTMLSelectElement>("select.role-sel").forEach(x => { if (x.value) picked[x.dataset.roleN!] = x.value; });
-    const roles = ROLE_REQ && collectRoles(ROLE_REQ, picked);
-    if (!roles) return toast({ code: "", message: "还有参数没选角色", fix: "每个高亮的参数都选一个角色" });
-    const r = await call(ROLE_CONFIRM_OP, { roles }).catch(() => null);
-    if (r) { roleSent = true; renderRoleCard(); }
+    if (roleUi.phase === "sending" || !ROLE_REQ) return;   // #135 只发一次
+    const roles = collectRoles(ROLE_REQ, rolePicked()); if (!roles) return renderRoleCard();
+    ok.disabled = true; roleUi = { phase: "sending", left: 0 }; renderRoleCard();
+    const r = await call(ROLE_CONFIRM_OP, { roles }).catch((e: any) => ({ message_zh: e?.message_zh ?? e?.message }));
+    roleUi = roleReply(r); renderRoleCard();
   };
-  if (rt) rt.onclick = () => { ROLE_REQ = null; roleSent = false; renderParams(); $("it-go").click(); };
+  if (rt) rt.onclick = () => { ROLE_REQ = null; roleUi = { phase: "idle", left: 0 }; renderParams(); $("it-go").click(); };
 }
 function renderParams() {
   queueMicrotask(renderRoleCard);   // 角色卡挂在 plist 里，等 innerHTML 换完再画
@@ -848,7 +850,7 @@ function onBoardForIter(port: string | null | undefined) { if (iterPort !== unde
 setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
   { const pv = toPlant((m as any)?.[PLANT_F.obj]); if (pv) paintPlant(pv); }
-  { const rq = toRoleReq(m); if (rq) { ROLE_REQ = rq; roleSent = false; renderParams(); } }
+  { const rq = toRoleReq(m); if (rq) { ROLE_REQ = rq; roleUi = { phase: "idle", left: 0 }; renderParams(); } }
   if (IT.onEvent(m, performance.now())) { if (m.type === "iterate.round") FN.onUserChange(); renderIter(); }
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   if (m.metrics_card && !String(m.type).startsWith("iterate")) { const h = metricCardHtml(m), e = $("mc-card"); e.innerHTML = h; e.hidden = !h; }   // r9p6 测量 / 电源题：独立推送的指标卡
