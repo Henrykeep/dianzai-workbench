@@ -104,11 +104,15 @@ typedef struct {
 /** 设定值的声明量程限幅：±range/2（link.step[ch].range；没有声明 → 不限）。 */
 static inline float link_step_clamp_sp(uint8_t sp_idx, float v)
 {
+#if LINK_STEP_N > 0
     for (unsigned k = 0; k < (unsigned)LINK_STEP_N; k++) {
         if (g_link_step[k].sp_idx != sp_idx) continue;
         float h = 0.5f * g_link_step[k].range;
         return v > h ? h : (v < -h ? -h : v);
     }
+#else
+    (void)sp_idx;
+#endif
     return v;
 }
 
