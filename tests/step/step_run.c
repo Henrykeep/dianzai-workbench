@@ -5,6 +5,7 @@
  *   <ms> sp <v>                               设定值 DATA id=1（1 个 f32）
  *   <ms> estop | <ms> R | <ms> cmd <c>        急停 / 解除 / 单字节命令（如 U 扶正摆）
  *   <ms> param <idx> <value>                  PARAM_SET 写
+ *   <ms> relay <loop> <amp> <hyst> <timeout_s> | <ms> relaystop   0x7C 继电开始 / 停止
  *   <ms> end                                  结束
  * 上位机心跳每 50 ms 自动发。stdout 每个板发出的帧一行："<ms> <kind> <id> <payload hex>"。
  * 另：开头一行 "CRC <params_crc32>"（默认参数），用于 C↔Python 参数哈希对拍。 */
@@ -62,6 +63,13 @@ int main(void)
                    && dzframe_put_f32(&f, tg) && dzframe_put_u32(&f, dur));
         }
         else if (!strcmp(op, "stop")) f.id = DZSTEP_ID;
+        else if (!strcmp(op, "relay")) {      /* <ms> relay <loop> <amp> <hyst> <timeout_s>：0x7C 继电开始 */
+            unsigned lp; float a, h, t;
+            if (sscanf(line, "%*lld %*s %u %f %f %f", &lp, &a, &h, &t) != 4) return 3;
+            f.id = DZCTL_ID_RELAY;
+            (void)(dzframe_put_u8(&f, (uint8_t)lp) && dzframe_put_f32(&f, a) && dzframe_put_f32(&f, h) && dzframe_put_f32(&f, t));
+        }
+        else if (!strcmp(op, "relaystop")) f.id = DZCTL_ID_RELAY;
         else if (!strcmp(op, "sp")) { float v; if (sscanf(line, "%*lld %*s %f", &v) != 1) return 3; f.id = 1; dzframe_put_f32(&f, v); }
         else if (!strcmp(op, "vw")) { float v, w; if (sscanf(line, "%*lld %*s %f %f", &v, &w) != 2) return 3; f.id = 1; dzframe_put_f32(&f, v); dzframe_put_f32(&f, w); }
         else if (!strcmp(op, "estop")) f.id = DZCTL_ID_ESTOP;
