@@ -286,6 +286,8 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
+        if op == "project_from_plant":                            # #106 界面「按被控对象声明新建」
+            return await run(None, lambda: self.svc.project_from_plant(m["plant"], m.get("name")))
         if op == "confirm_roles":                                 # 人确认的参数角色写回 app.yaml link.params.<名>.role
             try:
                 return await run(None, lambda: self.svc.confirm_roles(m["roles"], m.get("app_dir")))

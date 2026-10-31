@@ -20,7 +20,7 @@ STEP_CN = {"req": "读题", "scheme": "方案", "import": "导入工程", "scrat
 
 
 # 卡片自带中文标题的 human 级工具（界面 c.title 优先于 agent.ts TOOL_CN）
-TITLED = {"iterate_start": "自动迭代调参", "autotune": "通用自动整定", "confirm_roles": "确认参数角色", "iterate_apply_best": "采用最好参数", "project_fork": "以例题为模板新建项目"}
+TITLED = {"iterate_start": "自动迭代调参", "autotune": "通用自动整定", "confirm_roles": "确认参数角色", "iterate_apply_best": "采用最好参数", "project_fork": "以例题为模板新建项目", "project_from_plant": "按被控对象声明新建"}
 
 def _read(p: pathlib.Path) -> str | None:
     try:

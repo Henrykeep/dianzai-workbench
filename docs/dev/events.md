@@ -304,3 +304,9 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 
 ## 采纳未验证的参数（#141）
 - `agent_action_decide` 采纳 `iterate_apply_best` / `autotune` 卡时，响应多 `verified: bool`、`unverified_reason`。卡（服务端保存的那份，不认客户端标记）verdict 为 `partial` 或任一 item `amp_reduced` → `verified:false, unverified_reason:"amp_reduced"`，不进已验证档 / 封箱清单；否则 `verified:true, unverified_reason:null`。
+
+## 题型与非控制类快速开始（#85）、按 plant: 声明新建（#106）
+- `quick_start` 的 `spec` 新增 `task_kind`（`control` / `measure` / `power` / `other`）和 `task_kind_reason`（命中的通用词，如「题面出现「频率、测量」→ 测量类」）。只按题面通用词判断，不认题号。
+- 非控制类：`spec.sim = null`、`kind = null`；确认卡照常出（①–⑤ 预览），确认后**不连仿真、不调参**，`task_kind` 写进工程 `project.yaml`，推 `{type:"metrics_card", task_kind, task_kind_reason, items[]}`（每项 `measured:null, verdict:"unknown", verdict_zh:"待测量"`；阈值抽不出 `target:null`），结果多 `next`。
+- 控制类但不是电机速度 / 位置环：报 `quick_kind`，fix 指向 `project_from_plant`。
+- 新 op / Agent 工具 `project_from_plant {plant, name?}`（风险档 log）：`plant` 为对象或 YAML 文本，按 `schema/plant.schema.json` 校验。不合规 → `{ok:false, reason:"plant_invalid", errors[], message_zh, fix_action:"edit_declaration"}`，不建目录；合规 → `$DZBENCH_HOME/projects/<slug>/app.yaml`（缺 link/requires 由 plantmodel scaffold 补），设为当前项目，推并返回 `{type:"project_created", via:"plant", project, path, sim_board:"sim:<目录名>", message_zh}`。

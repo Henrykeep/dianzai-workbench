@@ -137,7 +137,7 @@ class AgentService:
             "score_items": lambda path=None: steptools.score_items(self, path),
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
-            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run, "confirm_roles": self.confirm_roles,
+            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run, "confirm_roles": self.confirm_roles, "project_from_plant": self.project_from_plant,
             "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
@@ -448,6 +448,14 @@ class AgentService:
         from .. import project
         steptools.set_display_name(paths.project_dir(self.gw.root, code), sp.get("name") or sp.get("kind_cn") or code)
         project.set_current(self.gw.root, code)                       # #55：新项目即当前项目 → 记忆按 项目 + 板子 记
+        pdir = paths.project_dir(self.gw.root, code)
+        kind = sp.get("task_kind") or "control"
+        steptools.set_task_kind(pdir, kind)                            # #85 题型进工程声明，之后都按声明走
+        if kind != "control":                                         # 测量 / 电源 / 其他：不调参，出指标卡等选通道测量
+            card = self.metrics_card_skeleton(pdir, kind, sp.get("task_kind_reason"))
+            self.emit(card)
+            return {"written": written, "task_kind": kind, "metrics_card": card,
+                    "next": "选测量通道（wave_measure / fft）测出各项后回填指标卡；这类题不走调参"}
         if not self.s.port:
             self.s.connect(sp["sim"], 115200, log=False)
             t0 = time.monotonic()
@@ -459,6 +467,51 @@ class AgentService:
         items = (steptools._yaml(paths.project_dir(self.gw.root, code) / "requirements.yaml").get("items") or [])
         score = self.score_run(str(items[0]["id"]), n=1, band=sp["band"]) if items else {"error": "没有评分项"}
         return {"written": written, "sim": self.s.port, "tune": tune, "score": score}
+
+    @staticmethod
+    def metrics_card_skeleton(pdir, kind: str, reason: str | None = None) -> dict:
+        """#85 非控制类题的指标卡初稿：每条指标一项，未测 = verdict unknown（字段见 events.md metrics_card）。"""
+        req = steptools._yaml(pathlib.Path(pdir) / "requirements.yaml") if (pathlib.Path(pdir) / "requirements.yaml").exists() else {}
+        items = []
+        for it in req.get("items") or []:
+            ms = it.get("metrics") or [{"name": it.get("text") or it.get("id")}]
+            for m in ms:
+                tgt = {"op": m["op"], "value": m["value"], "unit": m.get("unit")} if "op" in m and "value" in m else None
+                items.append({"name": m.get("name"), "clause": f"要求({it.get('id')})", "spec_text": it.get("text") or "",
+                              "target": tgt, "measured": None, "uncertainty": None, "verdict": "unknown", "verdict_zh": "待测量",
+                              "pass_basis": "尚未测量：选通道后测量回填" + ("" if tgt else "；题面阈值没抽出，按默认判定")})
+        return {"type": "metrics_card", "task_kind": kind, "task_kind_reason": reason or "", "items": items}
+
+    def project_from_plant(self, plant, name: str | None = None) -> dict:
+        """#106 按被控对象声明（app.yaml plant: 段，schema/plant.schema.json）新建工程：校验 → 新目录写 app.yaml
+        （缺 link / requires 由 tools/plantmodel.py scaffold 按声明补）→ 设为当前项目。目录里有 plant: 即自动成为仿真板 sim:<目录名>（#100）。"""
+        import importlib.util
+        from .. import project
+        if isinstance(plant, str):
+            plant = __import__("yaml").safe_load(plant)
+            plant = plant.get("plant", plant) if isinstance(plant, dict) else plant
+        f = pathlib.Path(self.gw.root) / "tools" / "plantmodel.py"
+        spec = importlib.util.spec_from_file_location("dz_plantmodel", f)
+        pm = importlib.util.module_from_spec(spec); spec.loader.exec_module(pm)
+        errs = pm.validate(plant)
+        if errs:
+            return {"ok": False, "reason": "plant_invalid", "errors": errs, "fix_action": "edit_declaration",
+                    "message_zh": "被控对象声明不合规：" + "；".join(errs[:3]) + "；没有新建工程"}
+        import yaml as _y
+        nm = str(name or "plant")
+        code = steptools.fresh_code(self.gw.root, nm)
+        dst = paths.projects_dir() / code
+        dst.mkdir(parents=True, exist_ok=False)
+        (dst / "app.yaml").write_text(_y.safe_dump({"name": nm, "plant": plant}, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        pm.scaffold(dst / "app.yaml", dst)
+        steptools.set_display_name(dst, nm)
+        steptools.set_task_kind(dst, "control")
+        project.set_current(self.gw.root, code)
+        risk.audit("project_from_plant", {"code": code}, risk.LOG, "ui")
+        ev = {"type": "project_created", "via": "plant", "project": code, "path": str(dst), "sim_board": "sim:" + code,
+              "message_zh": f"已按被控对象声明新建 {code}，仿真板 sim:{code}"}
+        self.emit(ev)
+        return {"ok": True} | ev
 
     def project_apply(self, code: str) -> dict:
         r = self.chains.pop(code, None)

@@ -359,18 +359,66 @@ def quick_example(root, text: str) -> str | None:
     return None
 
 
+# #85 题型（task_kind）：按题面里的通用词判断，不认题号；先电源（功率变换）→ 测量 → 控制，都不像 = other
+TASK_KINDS = (
+    ("power", r"电源|逆变|整流|变换器|dc-?dc|ac-?dc|升压|降压|buck|boost|功率因数|pfc|效率|并网|充电|thd"),
+    ("measure", r"测量|测试仪|检测装置|分析仪|示波|频率计|幅值|频率|相位差|占空比|有效值|信号源|信号发生|采集|识别|谐波分析"),
+    ("control", r"控制|闭环|速度环|位置环|转速|角度|定位|跟踪|稳定|平衡|小车|电机|舵机|云台|悬浮|温度控制"),
+)
+TASK_KIND_ZH = {"control": "控制", "measure": "测量", "power": "电源", "other": "其他"}
+
+
+def task_kind_of(text: str) -> tuple[str, str]:
+    """一句话 / 题面 → (task_kind, 依据)。只看通用词，命中最多的类别胜；平票按 TASK_KINDS 顺序。"""
+    import re as _re
+    low = (text or "").lower()
+    best, hits = "other", []
+    for k, pat in TASK_KINDS:
+        h = sorted(set(_re.findall(pat, low)))
+        if len(h) > len(hits):
+            best, hits = k, h
+    return best, (f"题面出现「{'、'.join(hits[:4])}」→ {TASK_KIND_ZH[best]}类" if hits else "题面没有控制 / 测量 / 电源类的词 → 其他")
+
+
+def project_task_kind(d) -> str | None:
+    """工程声明里的 task_kind（project.yaml 优先，其次 requirements.yaml problem.task_kind）；没写 = None。"""
+    d = pathlib.Path(d)
+    for f, path in (("project.yaml", ()), ("requirements.yaml", ("problem",))):
+        y = _yaml(d / f) if (d / f).exists() else {}
+        for k in path:
+            y = (y or {}).get(k) or {}
+        v = (y or {}).get("task_kind")
+        if v in TASK_KIND_ZH:
+            return v
+    return None
+
+
+def set_task_kind(d, kind: str) -> None:
+    p = pathlib.Path(d) / "project.yaml"
+    lines = [x for x in p.read_text(encoding="utf-8").splitlines() if not x.startswith("task_kind:")] if p.exists() else ["schema_version: 1", f"name: {pathlib.Path(d).name}"]
+    lines.append(f"task_kind: {kind}")
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def quick_spec(text: str) -> dict:
     """一句话 → 题型 + 主控 + 仿真对象 + 题目原文草稿。认不出题型就报错（先只支持电机速度/位置环）。"""
     import hashlib
     import re as _re
     t = (text or "").strip()
     low = t.lower()
+    task_kind, why = task_kind_of(t)
+    mcu = mcu_from_text(text) or next((m for pat, m in QUICK_MCU if _re.search(pat, low)), "stm32f103c8t6")   # 写了完整型号就用原样
+    code = "Q" + hashlib.sha1(t.encode()).hexdigest()[:6]
+    if task_kind != "control":                                   # #85 测量 / 电源 / 其他：不走调参，确认后出指标卡（选通道 → 测量）
+        zh = TASK_KIND_ZH[task_kind]
+        problem = f"{t}\n一、任务\n{t}（{zh}类），主控 {mcu.upper()}。\n二、要求\n基本要求\n（1）{t}\n"
+        return {"code": code, "task_kind": task_kind, "task_kind_reason": why, "kind": None, "kind_cn": zh, "mcu": mcu,
+                "sim": None, "band": None, "problem": problem}
     kind = "pos" if _re.search(r"位置|角度|定位|pos", low) else "speed" if _re.search(r"速度|转速|速度环|speed|两轮|小车|电机", low) else None
     if not kind:
         from ..projflow import FlowError
-        raise FlowError("quick_kind", "一句话起项目目前只支持电机速度环 / 位置环", "例：“两轮车速度环，STM32F1”")
-    mcu = mcu_from_text(text) or next((m for pat, m in QUICK_MCU if _re.search(pat, low)), "stm32f103c8t6")   # 写了完整型号就用原样
+        raise FlowError("quick_kind", "控制类一句话起项目目前只有电机速度环 / 位置环的模板",
+                        "其他被控对象：用「按被控对象声明新建」（project_from_plant，写 plant: 声明）")
     k = QUICK_KINDS[kind]
-    code = "Q" + hashlib.sha1(t.encode()).hexdigest()[:6]
     problem = f"{t}\n一、任务\n设计电机{k['cn']}闭环控制系统，主控 {mcu.upper()}。\n二、要求\n基本要求\n{k['req']}\n"
-    return {"code": code, "kind": kind, "kind_cn": k["cn"], "mcu": mcu, "sim": k["sim"], "band": k["band"], "problem": problem}
+    return {"code": code, "task_kind": "control", "task_kind_reason": why, "kind": kind, "kind_cn": k["cn"], "mcu": mcu, "sim": k["sim"], "band": k["band"], "problem": problem}

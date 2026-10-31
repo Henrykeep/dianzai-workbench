@@ -314,8 +314,51 @@ def test_quick_start_one_sentence_e2e(repo, tmp_path):
         svc.s.disconnect()
     assert _tree(repo) == tree0                                                                 # #29：quick_start 后仓库树不变
     assert _git_status() == git0                                                                # 真仓库（软链目标）也没多 / 改一个文件
+    from dzbench.agent import steptools
+    assert steptools.quick_spec("做一个温度报警器")["task_kind"] != "control"     # #85 非控制题不再报错，走指标卡
     with pytest.raises(Exception):
-        svc.quick_start("做一个温度报警器")
+        svc.quick_start("温度控制箱闭环")                                          # 控制类但没有模板 → 指向 plant: 声明新建
+
+
+def test_task_kind_quick_spec_generic():
+    """#85：题型只按通用词判断（不认题号），非控制类不给仿真对象、不走调参。"""
+    from dzbench.agent import steptools
+    for text, kind in (("两轮车速度环，STM32F1", "control"), ("设计一个简易频率计，测量信号频率和幅值", "measure"),
+                       ("DC-DC 升压电源，效率不低于 85%", "power"), ("做一个智能垃圾桶", "other")):
+        sp = steptools.quick_spec(text)
+        assert sp["task_kind"] == kind and sp["task_kind_reason"], (text, sp)
+        assert (sp["sim"] is None) == (kind != "control")
+
+
+def test_measure_quick_start_metrics_card(repo, tmp_path):
+    """#85：测量题一句话起项目 → 确认后不连仿真、不调参，题型写进 project.yaml，推 metrics_card（每项 verdict unknown）。"""
+    svc, ev = _svc(repo, FakeLLM([]))
+    try:
+        r = svc.quick_start("设计一个简易频率计，测量信号频率和幅值，STM32F407")
+        assert r["spec"]["task_kind"] == "measure" and r["action_id"], r
+        out = svc.action_decide(r["action_id"], True)["result"]
+        assert out["task_kind"] == "measure" and "tune" not in out and not svc.s.port, out
+        mc = [e for e in ev if e.get("type") == "metrics_card"]
+        assert mc and mc[-1]["task_kind"] == "measure" and all(i["verdict"] == "unknown" for i in mc[-1]["items"])
+        from dzbench.agent import steptools
+        assert steptools.project_task_kind(_proj(tmp_path) / r["spec"]["code"]) == "measure"
+    finally:
+        svc.s.disconnect()
+
+
+def test_project_from_plant(repo, tmp_path):
+    """#106：按 plant: 声明新建工程 → 新目录 app.yaml（scaffold 补 link）→ 出现在仿真板列表；声明不合规 → 不建、给中文原因。"""
+    from dzbench import ports
+    svc, ev = _svc(repo, FakeLLM([]))
+    bad = svc.project_from_plant({"order": 2, "unit": "m", "estimate": True, "gain": 1.0, "tau_s": [0.1]})
+    assert bad["ok"] is False and bad["reason"] == "plant_invalid" and bad["fix_action"] == "edit_declaration" and bad["errors"]
+    assert not any(_proj(tmp_path).glob("*")) if _proj(tmp_path).exists() else True
+    ok = svc.project_from_plant("plant:\n  order: 1\n  unit: m\n  estimate: coarse\n  gain: 2.0\n  tau_s: [0.2]\n", name="热箱")
+    pd = pathlib.Path(ok["path"])
+    doc = yaml.safe_load((pd / "app.yaml").read_text(encoding="utf-8"))
+    assert ok["ok"] and doc["plant"]["gain"] == 2.0 and "link" in doc and (pd / "app_main.c").exists()
+    assert ok["sim_board"] == "sim:" + ok["project"] and ok["project"] in ports.sim_apps()
+    assert any(e.get("type") == "project_created" and e.get("via") == "plant" for e in ev)
 
 
 def test_same_pending_card_not_duplicated(repo):
