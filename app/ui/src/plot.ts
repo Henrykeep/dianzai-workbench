@@ -33,7 +33,8 @@ export class Plot {
   t0: number | null = null;      // 阶跃锚点（绝对时间）；有它时时间刻度相对 t0
   cur: [number | null, number | null] = [null, null];   // A/B 光标（绝对时间）
   view: number | null = null;    // 非空 = 视图中心钉在这个时间（心跳条/时间线点过来）；恢复运行时清掉
-  marks: { t: number; tag: string; color: string }[] = [];   // 事件竖线（timeline.ts）
+  marks: { t: number; tag: string; color: string }[] = [];
+  spans: { a: number; b: number | null }[] = [];   // 急停锁存 → 解除区间：样本压暗（estophist.ts）   // 事件竖线（timeline.ts）
   annot: { i: number; tPeak: number; yPeak: number; mp: number; ts: number | null; tsv: number } | null = null;   // 本轮 Mp / ts 尺寸标注
   ghost: Ghost | null = null;    // 余辉：上一轮相对 t0 的数据
   layout: Layout = "split";
@@ -73,6 +74,7 @@ export class Plot {
     return [...by.values()];
   }
   setCursor(k: 0 | 1, x: number | null) { this.cur[k] = x; this.repaint(); window.dispatchEvent(new Event("dz-cursor")); }
+  setSpans(s: { a: number; b: number | null }[]) { this.spans = s; this.repaint(); }
   setMarks(m: { t: number; tag: string; color: string }[]) { this.marks = m; this.repaint(); }
   jumpTo(x: number) { this.view = x; this.redraw(); this.setCursor(0, x); }
   inBuffer(x: number) { return this.t.length > 0 && x >= this.t[0] && x <= this.t[this.t.length - 1]; }
@@ -136,6 +138,8 @@ export class Plot {
       if (an.ts != null) { const tx = X(an.ts); if (inX(tx)) { c.strokeStyle = css("--muted"); c.setLineDash([2 * devicePixelRatio, 3 * devicePixelRatio]); c.beginPath(); c.moveTo(tx, top); c.lineTo(tx, top + height); c.stroke(); c.setLineDash([]);
         lab(tx + 4 * devicePixelRatio, top + height - 8 * devicePixelRatio, `ts ${an.tsv < 1 ? (an.tsv * 1000).toFixed(0) + " ms" : an.tsv.toFixed(2) + " s"}`); } }
     }
+    for (const s of this.spans) { const a = Math.max(X(s.a), left), b = Math.min(s.b == null ? left + width : X(s.b), left + width);
+      if (b > a) { c.globalAlpha = .6; c.fillStyle = css("--bg"); c.fillRect(a, top, b - a, height); c.globalAlpha = 1; } }
     for (const m of this.marks) vline(m.t, css(m.color), [1, 3], m.tag);
     if (this.t0 != null) vline(this.t0, css("--warn"), [3, 3], "t0");
     if (A != null) vline(A, css("--acc-t"), [], "A");
