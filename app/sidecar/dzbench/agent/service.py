@@ -108,7 +108,7 @@ class AgentService:
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
             "tune_autopilot": self.tune_autopilot,
-            "iterate_start": self.iterate_start, "iterate_stop": self.iterate_stop,
+            "iterate_start": self.iterate_start, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
@@ -461,7 +461,7 @@ class AgentService:
             self.iter_result = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
             self.emit(self.iter_result)
 
-    def iterate_stop(self) -> dict:
+    def iterate_cancel(self) -> dict:
         it = getattr(self, "iterator", None)
         if it is None:
             return {"ok": False, "message_zh": "没有正在进行的自动迭代"}

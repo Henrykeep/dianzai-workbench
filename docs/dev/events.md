@@ -16,6 +16,18 @@
 - 没连板子 / 回放时的急停回包不是状态事件（无 `state`）：键集合固定为 `type` `ok` `reason` `message_zh`（代码 `Session.ESTOP_REPLY_KEYS`），`ok=false`，`reason` 为 `no_board`（没连板子，只弹提示、不进告警条）或 `replay`（回放中）。不再有 `sent` / `message` / `nolink` / `src`。
 - 前端对旧格式（`sent` / `message`）与新格式都兼容。
 
+## 只下发目标 `op: "setpoint_set"` 与 `status.sp_before_latch`
+
+- 请求 `{op:"setpoint_set", name, value}`：只发 DATA id=1（设定值槽位 = 遥测里带 `ref_for` 的字段，按出现顺序；其他槽位保持遥测当前值），**不跑阶跃实验**。成功返回 `{name, value, slot}`。
+- 急停锁存中（`tx_locked`）拒绝：`error.code = "estop_locked"`，`fix_action = "estop_clear"`，`extra.reason = "state"`。
+- 按 link_schema 校验，从不钳位：`name` 不是设定值 → `invalid_param`（`reject: "name"`）；非十进制数 / NaN / Inf → `invalid_param`；有 `link.step` 通道且 `|value| > range` → `invalid_param`（`reject: "range"`）。
+- `status.sp_before_latch`：锁存那一刻冻结的急停前主设定值（`link.step[0].sp` 槽位，没有则第 0 槽；取锁存前最后一帧遥测，因为固件锁存时把设定值清零），解除后仍保留供「恢复急停前目标」；`setpoint_set` 成功后变 `null`。没有设定值字段 / 没收到过遥测时为 `null`。
+- 板上阶跃实验进行中下发目标会让这一轮以 cause 0x80 中止（见 iterate.md）。
+
+## 自动迭代 `iterate.*`（#38）
+
+`iterate.started` / `iterate.round` / `iterate.param_reject` / `iterate.stopped`，字段见 `docs/dev/iterate.md` 第 7 节。阶跃开始被拒：`step_estop`（带 `fix_action: "estop_clear"`）、`step_busy`、`step_bad_arg`、`step_unsupported`、`step_offline`。
+
 ## 模型列表 `op: "agent_models"` 的返回
 
 键集合固定为 `ok` `models` `reason` `fix_action` `message_zh`（代码：`llm.MODELS_KEYS`；测试断言精确一致，不再有 `message`）。成功时 `reason` / `fix_action` 为 `null`。

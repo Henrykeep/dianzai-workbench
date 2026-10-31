@@ -107,7 +107,7 @@ def _run_kill_restart(board, home, estop: bool):
         # 锁存：绕过侧车直接塞运动命令，板子仍不动
         board.proc.stdin.write(encode(DATA, 1, 0, bytes.fromhex(GO)))
         time.sleep(0.3)
-        assert sp(board)["sp_a"] == 0.0, "急停应仍锁存，只有人按 R 才解"
+        assert sp(board)["sp_a"] == 0.0, "急停应仍锁存，只有人点“解除急停”才解"
         ui.close()
         return safe
     finally:

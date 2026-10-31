@@ -140,7 +140,9 @@ def test_websocket_server(home):
                 got.add(json.loads(await ws.recv())["type"])
             assert {"telem", "status", "schema"} <= got
             await asyncio.sleep(0.5)
-            p = await rpc(op="propose", name="kp", value=7, reason="test")
+            over = await rpc(op="propose", name="kp", value=7, reason="test")   # 超出 link_schema 范围：拒绝，不钳位（#40）
+            assert not over["ok"] and over["error"]["code"] == "invalid_param", over
+            p = await rpc(op="propose", name="kp", value=2.0, reason="test")
             assert p["ok"] and p["data"][0]["status"] == "pending_user_confirmation"
             assert srv.session.params["kp"] == pytest.approx(0.08), "提议不能直接生效"
             d = await rpc(op="proposal_decide", id=p["data"][0]["id"], accept=True)

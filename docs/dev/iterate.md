@@ -106,5 +106,5 @@
 - 校验以 `link_schema.json`（app.yaml `link.params`）为准：类型、[min, max]、单步 `max_delta`（缺省 = max − min）；本地先拒（`invalid_param`，`reject: step`），从不钳位。急停中、心跳 bit17 置位时不写参数（`param_locked`）。
 - `params_hash` 取 step_result 里的 CRC32；本地按参数表顺序算同一个值核对，不一致记 `hash_mismatch`。心跳尾部的 params_hash 仍是 FNV（0.12），两者不混用。
 - `metric_mode = abs` 时 `overshoot_pct` / `ss_err_pct` 是物理单位（记录里 `unit: "abs"`），按 `link.step.abs_tol` 判稳态误差；超调只记录不判。
-- 代码：`dzbench/agent/iterate.py`（`Iterator` 引擎 + `SessionIO`）、`AgentService.iterate_start / iterate_stop`（工具同名；实机 human 级出批量卡，仿真 log 级）、`Session.step_start / step_wait / step_stop / iter_busy`。测试：`tests/test_iterate.py`（mock step_result + car_2wd 仿真真固件）。
+- 代码：`dzbench/agent/iterate.py`（`Iterator` 引擎 + `SessionIO`）、`AgentService.iterate_start / iterate_cancel`（工具同名；实机 human 级出批量卡，仿真 log 级）、`Session.step_start / step_wait / step_stop / iter_busy`。测试：`tests/test_iterate.py`（mock step_result + car_2wd 仿真真固件）。
 - 事件：`iterate.started {plan, start, start_hash, limits}`、`iterate.round`（第 2 节字段 + `local_hash` `unit` `band` `changed`）、`iterate.param_reject {name, value, reason}`、`iterate.stopped {reason, message_zh, rounds, best{iter, params, params_hash, metrics, pass, gaps}, next_zh}`；`reason` ∈ pass / budget_time / budget_rounds / estop / stopped / invalid / no_improve / unstable / blocked / error。

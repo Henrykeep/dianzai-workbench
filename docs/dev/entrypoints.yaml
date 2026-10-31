@@ -53,7 +53,7 @@ actions:
   - {id: cal_polarity, label: 极性自检,         at: step:标定,   ui: calwiz,     ops: [polarity_check]}
   - {id: cal_sensors,  label: 传感器标定,       at: step:标定,   ui: cal-props,  ops: [wave_measure, propose, proposal_decide]}
   # ── 调参 ──
-  - {id: params,       label: 参数编辑与下发,   at: step:调参,   ui: p-send,     ops: [param_set, param_read_all]}
+  - {id: params,       label: 参数编辑与下发,   at: step:调参,   ui: p-send,     ops: [param_set, setpoint_set, param_read_all]}
   - {id: snap_save,    label: 存快照,           at: step:调参,   ui: snap-save,  ops: [snapshot_save, snapshot_list]}
   - {id: restore,      label: 回到…,            at: step:调参,   ui: p-def,      ops: [params_restore, tune_best]}
   - {id: step_test,    label: 阶跃实验,         at: step:调参,   ui: ag-step,    ops: [tune_step_test]}
@@ -90,7 +90,7 @@ actions:
 
 # 同一个 op 被多个动作用、且不算重复入口的（每个写清楚为什么）
 shared_ops:
-  cmd: 板端单字符命令通道：解除急停 R、存 flash W、手发命令共用一条帧，动作各不相同
+  cmd: 板端单字符命令通道：解除急停（'R'）、存 flash（'W'）、手发命令共用一条帧，动作各不相同
   replay_ctl: 回放控制；时间线点一条 = 跳到那一刻（同一回放，不是第二个入口）
   replay: 导入后直接回放
   wave_measure: 工具箱“波形测量”和标定向导录一段求平均用同一个只读测量
@@ -109,7 +109,7 @@ script_ops:
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）
 agent_tools:
-  step:调参: [read_telemetry, list_params, step_analysis, propose_param_change, tune_context, observe, run_step_test, run_sweep_test, bode_predict, rollback_best, tune_autopilot]
+  step:调参: [read_telemetry, list_params, step_analysis, propose_param_change, tune_context, observe, run_step_test, run_sweep_test, bode_predict, rollback_best, tune_autopilot, iterate_start, iterate_cancel]
   step:烧录: [flash, flash_rollback, build, build_log, board_memory]
   always:排障: [decode_hardfault, read_symbol]
   step:项目: [repo_map, remember, list_files, read_file, propose_edit, update_plan, project_state, progress_get, flow_preview, flow_accept, project_chain, project_apply, quick_start]

@@ -214,6 +214,8 @@ class Server:
             return await run(None, s.blackbox)
         if op == "send_data":
             return s.send_data(int(m["id"]), bytes.fromhex(m.get("hex", "")))
+        if op == "setpoint_set":                   # 只下发目标值，不跑阶跃（界面「恢复急停前目标」等）
+            return await run(None, s.setpoint_set, m.get("name", ""), m.get("value"))
         if op == "param_set":
             return await run(None, s.set_param, m["name"], m.get("value"))   # 原样交给 set_param 校验（#40）
         if op == "param_read_all":

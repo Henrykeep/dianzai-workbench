@@ -133,6 +133,9 @@ class Session:
         self.step_ack: dict | None = None
         self.step_results: list[dict] = []
         self.last_reject: dict | None = None
+        self._sp_live: dict[str, float] = {}   # 未锁存时遥测里的设定值（ref_for 字段）；锁存后不再更新
+        self.sp_before_latch: float | None = None   # 急停前主设定值（界面「恢复急停前目标」）；setpoint_set 成功后清掉
+        self._sp_frozen = False
         self.clear_pending_at: float | None = None   # 发了 'R'、等固件心跳 bit10 清零确认的起点（monotonic）
         self.estop_requested_at: float | None = None
         self.estop_source: str | None = None  # 当前锁存的来源：ui / agent / heartbeat_lost / firmware:<cause> / selftest / latch_restored
@@ -378,7 +381,7 @@ class Session:
                     return {"resumed": False, "reason": "user_action"}
                 try:
                     r = self.connect(port, baud)
-                    self.emit({"type": "resumed", "port": port, "message": f"本地服务重启后已自动连回 {port}（急停仍锁着，确认安全后按 R）"})
+                    self.emit({"type": "resumed", "port": port, "message": f"本地服务重启后已自动连回 {port}（急停仍锁着，确认安全后点“解除急停”）"})
                     return {"resumed": True, **r}
                 except LinkError:
                     with self.lock:
@@ -578,6 +581,9 @@ class Session:
                 if v is not None:
                     t = v["t_ms"] / 1000.0 if "t_ms" in v else now - self.t_connect
                     with self.lock:
+                        if not self.tx_locked:
+                            self._sp_live = {n: float(v[n]) for n in self.setpoint_names() if n in v}
+                            self._sp_frozen = False
                         self.samples.append((t, v))
                         self._new.append((t, v))
                         while self.samples and self.samples[-1][0] - self.samples[0][0] > self.history_s:
@@ -949,7 +955,9 @@ class Session:
         if a is None:
             raise LinkError("step_no_ack", "板子没回阶跃应答（固件早于 dzctl 0.13.0？）", "升级固件后重试")
         if a["status"] != "started":
-            raise LinkError("step_" + str(a["status"]), self.STEP_ACK_ZH.get(a["status"], f"阶跃被拒 {a['status']}"), "", None, {"ack": a})
+            est = a["status"] == "estop"
+            raise LinkError("step_" + str(a["status"]), self.STEP_ACK_ZH.get(a["status"], f"阶跃被拒 {a['status']}"),
+                            "确认安全后在界面点“解除急停”" if est else "", "estop_clear" if est else None, {"ack": a})
         return a
 
     def step_wait(self, it: int, timeout: float) -> dict | None:
@@ -996,11 +1004,58 @@ class Session:
         ms = round((time.monotonic() - self.clear_pending_at) * 1000)
         self.clear_pending_at = None
         latch.clear(self.port, self.board_uid)
+        if self.tx_locked and not self._sp_frozen:
+            self._freeze_sp()
         was, self.tx_locked, self.estop_source = self.tx_locked, False, None
         self.estop_cause = None
         if was:
             self.emit({"type": "tx_locked", "on": False})
             self.emit(self.estop_ev("cleared", "ui", message_zh="已由人工解除急停", latency_ms=ms))
+
+    def setpoint_names(self) -> list[str]:
+        """设定值槽位（DATA id=1 第 i 个 f32）= 遥测里带 ref_for 的字段，按出现顺序（与 gen_link link.step.sp 同口径）。"""
+        if not self.schema:
+            return []
+        return [f["name"] for f in self.schema.fields if f.get("ref_for")]
+
+    def _primary_sp(self) -> str | None:
+        names = self.setpoint_names()
+        st = self.schema.step if self.schema else []
+        i = int(st[0].get("sp", 0)) if st else 0
+        return names[i] if 0 <= i < len(names) else (names[0] if names else None)
+
+    def _freeze_sp(self) -> None:
+        """锁存那一刻冻结急停前主设定值（固件锁存时把设定值清零，所以取锁存前最后一帧遥测）。"""
+        n = self._primary_sp()
+        self.sp_before_latch = self._sp_live.get(n) if n else None
+        self._sp_frozen = True
+
+    def setpoint_set(self, name: str, raw) -> dict:
+        """只下发设定值（DATA id=1），不跑阶跃实验。急停中拒绝；按 link_schema 校验，不合法 invalid_param，从不钳位。
+        其他槽位保持遥测里的当前值。成功后清 sp_before_latch。"""
+        from .schema import _invalid, check_value
+        if self.tx_locked:
+            raise LinkError("estop_locked", "急停中不下发目标", "确认安全后在界面点“解除急停”，再下发目标", "estop_clear", {"reason": "state"})
+        if self.iter_busy():
+            raise LinkError("iter_busy", "阶跃实验进行中，结束或停止后再设定目标", "等这一轮结束或点“停止迭代”", "stop_iteration",
+                            {"reason": "busy", "message_zh": "阶跃实验进行中，结束或停止后再设定目标"})
+        names = self.setpoint_names()
+        if name not in names:
+            raise _invalid(name, f"不是设定值（可选：{'、'.join(names) or '无'}）", None, "name")
+        v = check_value(name, raw, None)
+        slot = names.index(name)
+        rng = next((float(c["range"]) for c in (self.schema.step or []) if int(c.get("sp", -1)) == slot and c.get("range") is not None), None)
+        if rng is not None and abs(v) > rng:
+            raise _invalid(name, f"超出范围（|值| ≤ {rng:g}，link.step.range）", None, "range")
+        with self.lock:
+            vals = [float(self._sp_live.get(n, 0.0)) for n in names]
+        vals[slot] = v
+        if not self.send_data(1, struct.pack(f"<{len(vals)}f", *vals)):
+            raise LinkError("not_connected", "没连板子", "")
+        with self.lock:
+            self._sp_live[name] = v
+            self.sp_before_latch, self._sp_frozen = None, False
+        return {"name": name, "value": v, "slot": slot}
 
     def _check_tx(self) -> None:
         if self.tx_locked:
@@ -1231,6 +1286,9 @@ class Session:
             marks, self._pending_marks = list(self._pending_marks), []
             st.update(hb_status_dict(self.hb_status))
             st["estop_cause"] = self._estop_cause_view()
+            if self.tx_locked and not self._sp_frozen:
+                self._freeze_sp()
+            st["sp_before_latch"] = self.sp_before_latch
             st["run_mode"] = run_mode_dict(self.hb_status)
             st["selftest"] = self.selftest_snapshot()
             st["params_saved"] = None if self.params_hash is None or self.hb_status is None else not (self.hb_status & (1 << 16))

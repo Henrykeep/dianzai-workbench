@@ -141,7 +141,7 @@ TOOLS = [
      "直到连续 2 轮达标或预算（180 s；实机 8 轮 / 仿真 20 轮）用完；停下时报告最好一组参数和各项差距。params 缺省 = 增益参数",
      "input_schema": {"type": "object", "properties": {"params": {"type": "array", "items": {"type": "string"}}, "target": {"type": "number"},
                                                        "dur_ms": {"type": "integer"}, "ch": {"type": "integer"}}, "required": ["target"]}},
-    {"name": "iterate_stop", "description": "立即停止自动迭代（板上本轮中止，参数停在当前值）", "input_schema": {"type": "object", "properties": {}}},
+    {"name": "iterate_cancel", "description": "立即停止自动迭代（板上本轮中止，参数停在当前值）", "input_schema": {"type": "object", "properties": {}}},
     {"name": "tune_autopilot", "description": "仅仿真：自动 提议→阶跃→护栏判 连跑到通过或 N 轮，报告最好一轮。实机不可用",
      "input_schema": {"type": "object", "properties": {"rounds": {"type": "integer"}}}},
 ]
@@ -159,7 +159,7 @@ MODES = {
     "general": {"name": "通用", "tools": None, "prompt": ""},
     "diagnose": {"name": "诊断（只读）", "tools": _READ,
                  "prompt": "当前是【诊断】模式：只读，不提议任何修改。给出证据链（数据/文件/符号），区分【实测】【源码】【推断】；证据不足就列出需要实板验证的项。"},
-    "tune": {"name": "调参", "tools": _READ | {"propose_param_change", "run_step_test", "rollback_best", "run_sweep_test", "bode_predict", "tune_autopilot", "iterate_start", "iterate_stop",
+    "tune": {"name": "调参", "tools": _READ | {"propose_param_change", "run_step_test", "rollback_best", "run_sweep_test", "bode_predict", "tune_autopilot", "iterate_start", "iterate_cancel",
                                                "score_run", "score_save", "score_writeback"},
              "prompt": "当前是【调参】模式：先 board_memory + tune_context，再每轮只改一个参数，改完用实验验证。不改代码。"},
     "edit": {"name": "改代码", "tools": _READ | {"propose_edit", "build", "flash", "flash_rollback", "flow_preview", "flow_accept", "project_chain", "project_apply"},
