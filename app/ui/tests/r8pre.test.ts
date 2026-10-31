@@ -1,6 +1,6 @@
 // r8 预检修复 1–6
 import { clearedEvent, CLEARED_EV_TEXT, CLEAR_WHERE, CLEARED_MSG, CLEARED_ACT, STALE_V, StaleReads, portsWithSession, latchCauseText, latchHead } from "../src/r8pre.ts";
-import { resolveFix, infer } from "../src/progress.ts";
+import { resolveFix, infer, ACTIONS } from "../src/progress.ts";
 import { blockedCard } from "../src/receipt.ts";
 import { CLEARED_TEXT, RETUNE } from "../src/estopbtn.ts";
 import { clearedLine } from "../src/estophist.ts";
@@ -21,6 +21,7 @@ ok(b.message.includes(CLEAR_WHERE), "页头/导航文字指向红条与顶栏");
 ok(resolveFix("connect", () => true)?.kind === "run", "其它动作不受影响");
 // 3 灰条与解除提示同一句、一个动作
 ok(CLEARED_MSG === "设定值已清零，重新开始实验即可" && CLEARED_TEXT === CLEARED_MSG && clearedLine(0).includes(CLEARED_MSG), "同一句");
+ok(CLEARED_ACT.action === "step_test" && ACTIONS.step_test.ui === "ag-step" && resolveFix("step_test", () => true)?.kind === "run", "重新开始实验 = 阶跃实验（tune_step_test），不是自整定");
 ok(RETUNE === CLEARED_ACT && !/需重新开始调参/.test(clearedLine(0) + CLEARED_TEXT), "不再有「需重新开始调参」");
 // 4 解除后大字「—（需重新实验）」，新 t0 到达后恢复
 ok(STALE_V === "—（需重新实验）", "文案");

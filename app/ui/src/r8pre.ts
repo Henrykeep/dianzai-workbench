@@ -11,7 +11,7 @@ export const CLEAR_ONLY_AT = new Set(["estop_clear"]);
 export const CLEAR_WHERE = "在红条或顶栏点「解除急停」";
 // 3 解除后灰条与右下提示合成一句、一个动作
 export const CLEARED_MSG = "设定值已清零，重新开始实验即可";
-export const CLEARED_ACT = { label: "重新开始实验", action: "tune_relay" } as const;
+export const CLEARED_ACT = { label: "重新开始实验", action: "step_test" } as const;   // 阶跃实验（ag-step → tune_step_test），不是自整定
 // 4 解除后调参页大字：新阶跃结果到之前一律「—（需重新实验）」
 export const STALE_V = "—（需重新实验）";
 export class StaleReads {

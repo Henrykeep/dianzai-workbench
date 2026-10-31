@@ -29,7 +29,7 @@ if (sent.slice(before).some(x => MOTION.test(x.m.op) || x.m.op !== "estop")) thr
 if (sent.length !== before || tuned) throw "解除后不得自动发任何请求";
 if (shown.text !== "设定值已清零，重新开始实验即可" || CLEARED_TEXT !== shown.text || shown.btn.label !== "重新开始实验") throw "解除提示";
 shown.go(); if (tuned !== 1) throw "人点「重新调参」才发起";
-if (RETUNE.action !== "tune_relay") throw "重新调参入口";
+if (RETUNE.action !== "step_test") throw "重新开始实验 = 阶跃实验";
 console.log(`estopbtn ok click→send ${dt.toFixed(3)} ms`);
 // 事件处理：状态只看 state；不带 state 的旧 {sent:true} 不改状态
 {
