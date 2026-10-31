@@ -1165,3 +1165,9 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .gd li .n,.ag-guide .n{font-size:16px;width:24px;height:24px}
 /* #114 r9g：按“文字含数字”审计（不按 class）漏掉的 12–14px：阶跃读数差值 / 时间线条目 / 参数说明 / 验收汇总 / 台账轮号 / t0 按钮 */
 .dt,.tl-e,.tl-e *,.pdesc,.kk>span.pdesc,.rc-det>p,.acc-sum,.ledger td.hn,#t0-mark{font-size:16px !important}
+/* 参数角色确认：待确认行高亮；下拉 + 「建议，待确认」；握手 role 只读 */
+.prow.role-miss{outline:2px solid var(--warn,#c80);outline-offset:2px;border-radius:4px;background:color-mix(in srgb,var(--warn,#c80) 8%,transparent)}
+.role-pick{display:inline-flex;gap:8px;align-items:center;margin-left:8px}.role-sel{font-size:16px}
+.role-sg{font-size:14px;color:var(--warn,#c80)}.role-ro{margin-left:8px;font-size:14px;opacity:.75}
+.role-card{margin:0 0 12px;padding:12px;border:1px solid var(--warn,#c80);border-radius:8px}.role-card p{margin:8px 0}
+.role-lim{margin-left:8px;font-size:14px;opacity:.75}

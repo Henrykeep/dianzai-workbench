@@ -187,3 +187,9 @@ export const COMMIT_SENT_F = "__sent";   // #117 sessionStorage 里标记：已�
 export const COMMIT_SENT_ZH = "已发出，等后端结果";
 // #116 最好一轮在台账里是无效 / 发散：不显示、不给「采用」
 export const NO_STABLE_ZH = "发散，未找到稳定参数";
+// 参数角色确认：自动整定回 needs-manual + fix_action confirm_roles，带 missing[参数名] / suggested{名: 角色}；握手参数表可带 role（只读显示）
+export const ROLE_F = { fix: "fix_action", confirm: "confirm_roles", missing: "missing", suggested: "suggested", reason: "reason_zh", paramRole: "role" } as const;
+export const ROLE_CONFIRM_OP = "confirm_roles";   // 暂定 op 名，后端定稿后只改这里
+export const ROLE_CODES = [["P", "比例"], ["I", "积分"], ["D", "微分"], ["FF", "前馈"], ["LIM", "限幅"], ["other", "其他"]] as const;
+export const ROLE_NO_FLASH_ZH = "改角色不用重新烧录", ROLE_LIM_ZH = "不参与整定";   // 角色来源：握手 / link_schema params[i].role（P|I|D|FF|LIM|other|null）
+export const ROLE_SUGGEST_ZH = "建议，待确认", ROLE_BTN_ZH = "确认角色", ROLE_RETRY_ZH = "重试整定";
