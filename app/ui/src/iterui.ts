@@ -1,4 +1,5 @@
 import { coarseTagHtml } from "./plant";
+import { LEDGER, bestValid, fromRoundEvent, type LedgerRound } from "./ledgerbus";
 import { pickStr, RESULT_PORT_F, RESULT_CLEAR_EV } from "./fieldmap";
 import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
@@ -69,8 +70,13 @@ export function compareRaw(c: CompareRaw): string[][] {
     return [METRIC_ZH[a.key] ?? a.key, `${n(x)} ${a.unit}`, `${n(y)} ${u}`, d === 0 ? "—" : `${d < 0 ? "↓" : "↑"} ${n(Math.abs(d))} ${u}${x ? `（${pct > 0 ? "+" : ""}${pct}%）` : ""}`, d < 0 ? "good" : d > 0 ? "bad" : ""];
   });
 }
-export function cardView(r: Stopped): { verdict: { v: string; text: string }; title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
-  const b = r.best ?? null, basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
+// #101 r9f：stopped 没带 best 时用台账里最好的有效一轮（同一份数据，卡片不和台账矛盾）
+export function ledgerBest(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): Best | null {
+  if (r.best) return r.best;
+  const lb = bestValid(rs); return lb ? { iter: lb.n, params: lb.params, metrics: lb.metrics } : null;
+}
+export function cardView(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): { verdict: { v: string; text: string }; title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
+  const b = ledgerBest(r, rs), basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
   return {
     compare: r.compare && !r.compare.unchanged ? compareRaw(r.compare) : b && !zero ? compareRows(r.base, b.metrics) : [],
     title: !b ? "没有可用的一轮" : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
@@ -94,7 +100,8 @@ export class IterModel {
     else this.s = { ...this.s, limits: l } as IterState;
   }
   onEvent(m: any, now: number): boolean {
-    if ((RESULT_CLEAR_EV as readonly string[]).includes(m?.type)) { this.reset(); return true; }
+    if ((RESULT_CLEAR_EV as readonly string[]).includes(m?.type)) { this.reset(); LEDGER.reset(); return true; }
+    if (m?.type === "iterate.round") { const lr = fromRoundEvent(m); if (lr) LEDGER.push(lr); }
     if (m?.type === "iterate.started") { const l = m.limits?.rounds ? { time_s: m.limits.time_s, rounds: m.limits.rounds } : this.s.limits; this.base = null; this.s = { phase: "running", limits: l, t0: now, iter: 0 }; return true; }
     if (m?.type === "iterate.round" && +m.iter === 0) this.base = roundMetrics(m);
     if (m?.type === "iterate.round") { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; (this.s as any).iter = Math.max((this.s as any).iter, +m.iter || 0); return true; }
