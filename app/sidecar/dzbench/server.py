@@ -286,6 +286,11 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
+        if op == "autotune":                                      # #108 界面“通用整定”：与 tunegate 同一份 tuning.autotune
+            try:
+                return await run(None, lambda: self.svc.autotune_run(**{k: m[k] for k in ("spec_text", "ch", "seed") if m.get(k) is not None}))
+            except GatewayError as e:
+                raise LinkError(e.code, e.message, e.fix, e.extra.get("fix_action")) from None
         if op == "iterate_start" or op == "iterate_cancel" or op == "iterate_status":   # #62 界面“自动迭代”入口：与 Agent 工具同一实现；实机 iterate_start 出批量确认卡（agent_action），确认走 agent_action_decide
             try:
                 if op == "iterate_start":

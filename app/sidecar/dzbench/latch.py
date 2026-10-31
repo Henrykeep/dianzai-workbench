@@ -64,6 +64,9 @@ def set(port: str | None, uid: int | None, source: str, detail: str = "", cause:
                 rec[k] = cause[k]
         if cause:
             rec["cause"] = cause
+        old = next((d[k] for k in ks if isinstance(d.get(k), dict)), None)
+        if old:                                            # 已锁存：保留最初时刻（侧车重启后再报急停不改写），只补缺的字段；只有 clear() 重置
+            rec = {**rec, **{k: v for k, v in old.items() if v is not None}}
         for k in ks:
             d[k] = rec
         _save(d)

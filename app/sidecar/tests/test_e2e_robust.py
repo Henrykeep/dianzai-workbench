@@ -15,6 +15,8 @@ import time
 
 import pytest
 
+from conftest import wd_timeout_ms
+
 pytestmark = pytest.mark.needs_sim  # 原 skipif 条件统一放在 conftest.SIM_OK
 
 SIDECAR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,21 +70,6 @@ def side():
     for u in uis:
         u.close()
     st.stop()
-
-
-def wd_timeout_ms(schema_evt) -> int:
-    """板子用的 link_schema.json 里的看门狗超时（fw-wd 起有 wd_timeout_ms）；旧固件没有该字段时按 1000 ms。"""
-    import json
-    sch = schema_evt.get("schema") or {}
-    v = sch.get("wd_timeout_ms")
-    if not v and sch.get("path"):
-        try:
-            with open(sch["path"], encoding="utf-8") as f:
-                d = json.load(f)
-            v = d.get("wd_timeout_ms") or (d.get("link") or {}).get("wd_timeout_ms")
-        except (OSError, ValueError):
-            v = None
-    return int(v) if v else 1000
 
 
 def drive(ui, board):
@@ -148,16 +135,16 @@ def test_sidecar_killed_and_restarted(board, home):
         wait_port(port)
         ui = UI(port)
         ui.ok("connect", port=str(board.path), baud="auto")
-        ui.wait(lambda e: e["type"] == "schema")
+        wd_ms = wd_timeout_ms(ui.wait(lambda e: e["type"] == "schema"))
         time.sleep(0.6)
         drive(ui, board)
         p.send_signal(signal.SIGKILL)                             # 崩溃 / 任务管理器结束
         p.wait()
         ui.close()
-        time.sleep(1.4)
+        time.sleep(wd_ms / 1000 + 0.4)                           # 看门狗超时 + 余量（原 1 s 时为 1.4 s）
         direct_go(board)
         time.sleep(0.3)
-        assert board_sp(board) == 0.0, "侧车没了 1 s，板子自己急停并锁存"
+        assert board_sp(board) == 0.0, f"侧车没了 {wd_ms} ms（看门狗超时），板子自己急停并锁存"
 
         # 第二个侧车抢同一个端口：退出码 3 + 中文说明（外壳据此不再重启）
         p = subprocess.Popen(cmd, env=env, cwd=SIDECAR)

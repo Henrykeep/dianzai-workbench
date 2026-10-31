@@ -5,6 +5,7 @@
 
     python tools/plantmodel.py check <app.yaml|dir>...     校验 plant:（schema/plant.schema.json + 语义）
     python tools/plantmodel.py gen <app.yaml> -o plant_sim.c
+    python tools/plantmodel.py doctor     离线依赖自检：JSON {ok, missing, install_cmd}（tools/pydeps.py）
     python tools/plantmodel.py scaffold <app.yaml> --out <dir>   没有控制代码的新题：补通用 PID 回路 app_main.c
                                                                   和通用 link:（sp/y/u、kp/ki/kd/u_max、step）
 
@@ -20,13 +21,17 @@ import math
 import pathlib
 import sys
 
-import numpy as np
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import pydeps  # noqa: E402
+
+if __name__ == "__main__" and sys.argv[1:2] == ["doctor"]:
+    sys.exit(pydeps.doctor_main())
+pydeps.require("control", "numpy")
+
+import numpy as np  # noqa: E402
 import yaml
 
-try:
-    import control
-except ImportError:  # pragma: no cover
-    sys.exit("缺 python-control：pip install -r app/sidecar/requirements.txt")
+import control  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "schema" / "plant.schema.json"

@@ -27,12 +27,16 @@ import shutil
 import subprocess
 import sys
 
-import numpy as np
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import pydeps  # noqa: E402
 
-try:
-    import control
-except ImportError:  # pragma: no cover
-    sys.exit("缺 python-control：pip install -r app/sidecar/requirements.txt")
+if __name__ == "__main__" and sys.argv[1:2] == ["doctor"]:
+    sys.exit(pydeps.doctor_main())
+pydeps.require("control", "numpy")
+
+import numpy as np  # noqa: E402
+
+import control  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -50,7 +54,10 @@ INFEASIBLE = {"saturation": "执行器饱和：满输出也到不了目标附近
               "delay_too_large": "纯滞后相对时间常数太大：调节时间要求比滞后本身还紧",
               "unstable_zero": "右半平面零点（非最小相位）：先反向再回来，调节时间要求做不到",
               "no_stable_gain": "可调参数范围内找不到闭环稳定的一组",
-              "steady_state_error": "可调参数里没有积分作用，比例增益又受稳定性限制，稳态误差下不来"}
+              "steady_state_error": "可调参数里没有积分作用，比例增益又受稳定性限制，稳态误差下不来",
+              "spec_too_tight": "可调参数范围内细搜也做不到题面要求（不是饱和/滞后/零点这类结构原因）"}
+ROLE_ORDER = ("P", "I", "D", "FF", "LIM")
+UNSURE = 1.5      # 细搜最好违约比在 (1, UNSURE] 之间：不敢说做不到 → feasible: "unknown"
 
 
 def _r(x: float, n: int = 6) -> float:
@@ -245,7 +252,147 @@ def gen(seed: int, order: str = "1-3", kind: str = "any") -> dict:
     ref = search(p)
     p["reference"] = ref
     p.update(_spec(p, rng, bad, ref))
+    _verify_feasible(p)
     return p
+
+
+def judge_metrics(y: np.ndarray, sp: float, dt: float) -> dict:
+    """与判卷（dzbench.tuning.autotune.metrics）同一口径：尾段 15% 均值对目标的误差、对目标的超调、进入并保持在
+    目标 ±5% 幅度内的时刻（最后一拍还在带外 = inf）。y: (M, K)。"""
+    K = y.shape[1]
+    a = abs(sp)
+    fin = np.isfinite(y).all(1) & (np.abs(y) < 1e8).all(1)
+    ss = np.abs(y[:, int(0.85 * K):].mean(1) - sp) / a * 100
+    os_ = np.maximum(0.0, (np.sign(sp) * (y - sp)).max(1) / a * 100)
+    out = np.abs(sp - y) > 0.05 * a
+    last = np.where(out.any(1), K - np.argmax(out[:, ::-1], 1), 0)
+    settle = np.where(out[:, -1], np.inf, last * dt)
+    inf = np.full(len(y), np.inf)
+    return {"ss_err_pct": np.where(fin, ss, inf), "overshoot_pct": np.where(fin, os_, inf), "settle_s": np.where(fin, settle, inf)}
+
+
+def _targets(p: dict) -> dict:
+    amp = p["reference"]["step_amp"]
+    t = {"稳态误差": ("ss_err_pct", 100.0 / abs(amp)), "超调量": ("overshoot_pct", 1.0), "调节时间": ("settle_s", 1.0)}
+    return {t[it["name"]][0]: it["target"]["value"] * t[it["name"]][1] for it in p["items"]}
+
+
+def _ratios(m: dict, tg: dict) -> dict:
+    return {k: m[k] / max(v, 1e-12) for k, v in tg.items()}
+
+
+def _violation(m: dict, tg: dict) -> np.ndarray:
+    """max(实测/题面)：≤1 = 这组参数满足全部条目。"""
+    return np.max(np.vstack(list(_ratios(m, tg).values())), 0)
+
+
+def refine(p: dict, tg: dict, seed: int, budget: int = 3000) -> tuple[float, dict | None]:
+    """在声明的参数范围内细搜（随机 + 交叉熵收缩，对数尺度，含饱和/死区/滞后/传感器限幅/采样周期，即固件同一模型），
+    目标：最小化 max(实测/题面)。返回 (最好违约比, 最好那组参数按角色)。与粗网格独立，判 feasible 用它。"""
+    roles, rg = p["roles"], p["ranges"]
+    dims = [r for r in ROLE_ORDER if r in roles]
+    rng = np.random.default_rng(seed * 7919 + 17)
+    sp = p["reference"]["step_amp"]
+    T = max(p["horizon_s"], 900 * p["dt_s"])
+    lo = {r: (rg[roles[r]][0] if r == "LIM" else rg[roles[r]][1] * 1e-6) for r in dims}
+    hi = {r: rg[roles[r]][1] for r in dims}
+
+    def to_gains(z: np.ndarray, zero: np.ndarray) -> np.ndarray:
+        G = np.zeros((len(z), 5)); G[:, 4] = 1.0
+        for j, r in enumerate(dims):
+            k = ROLE_ORDER.index(r)
+            if r == "LIM":
+                G[:, k] = np.clip(z[:, j], lo[r], hi[r])
+            else:
+                G[:, k] = np.where(zero[:, j], 0.0, np.exp(np.clip(z[:, j], np.log(lo[r]), np.log(hi[r]))))
+        return G
+
+    def ev(G):
+        return _violation(judge_metrics(simulate(p, G, sp, T), sp, p["dt_s"]), tg)
+
+    n0 = budget // 2
+    z = np.column_stack([rng.uniform(lo[r], hi[r], n0) if r == "LIM" else rng.uniform(np.log(lo[r]), np.log(hi[r]), n0) for r in dims])
+    zero = np.column_stack([(rng.random(n0) < 0.25) & (r not in ("P", "LIM")) for r in dims])
+    G = to_gains(z, zero); v = ev(G)
+    best_v, best_G = float(v.min()), G[int(v.argmin())]
+    sig = np.array([0.25 * (hi[r] - lo[r]) if r == "LIM" else 1.5 for r in dims])
+    rounds, n1 = 5, max(1, (budget - n0) // 5)
+    for _ in range(rounds):
+        if best_v <= 1.0:
+            break
+        el = np.argsort(v)[:20]
+        zi, ze = z[el][rng.integers(0, len(el), n1)], zero[el][rng.integers(0, len(el), n1)]
+        z = zi + rng.normal(0, 1, zi.shape) * sig
+        flip = rng.random(ze.shape) < 0.1
+        zero = np.where(flip, ~ze, ze) & np.array([r not in ("P", "LIM") for r in dims])
+        G = to_gains(z, zero); v = ev(G)
+        if v.min() < best_v:
+            best_v, best_G = float(v.min()), G[int(v.argmin())]
+        sig = sig * 0.6
+    return best_v, {roles[r]: _r(float(best_G[ROLE_ORDER.index(r)]), 6) for r in dims}
+
+
+def classify(p: dict, worst: dict | None = None) -> str:
+    """按模型结构给“做不到”的原因（与粗网格无关）。worst：细搜最好那组的逐条违约比（找出卡住的是哪一条）。
+    饱和（稳态下满输出到不了，可证明）> 滞后 ≥ τ > 强右半平面零点（1/z ≥ 0.5τ 且 ≥ 滞后）> 卡在稳态误差且没有积分作用
+    > 右半平面零点（1/z ≥ 0.1τ 且 ≥ 滞后）> 纯滞后 ≥ 0.5τ > 其余（范围内细搜也达不到题面）。数值上的伪零点（|z| > 1e6/τ）不算。"""
+    amp = p["reference"]["step_amp"]
+    tg = _targets(p)
+    worst = worst or {}
+    ss_abs = tg.get("ss_err_pct", 100.0) / 100 * abs(amp)
+    if not p["integrator"] and p["gain"] * max(0.0, p["sat"] - p["deadzone"]) < abs(amp) - ss_abs:
+        return "saturation"
+    no_int = "I" not in p["roles"] and not p["integrator"]
+    tau, delay = p["tau_s"], p["delay_s"]
+    num = np.asarray(p["tf"]["num"], float)
+    z = np.roots(num) if len(num) > 1 and np.any(num) else np.array([])
+    rhp = [float(x.real) for x in z if x.real > 1e-9 and abs(x) < 1e6 / tau]
+    if delay >= tau:                                          # 滞后比时间常数还长：比例增益、调节时间都被它卡住
+        return "delay_too_large"
+    if rhp and 1.0 / min(rhp) >= max(0.5 * tau, delay):
+        return "unstable_zero"
+    if no_int and worst and max(worst, key=worst.get) == "ss_err_pct":
+        return "steady_state_error"
+    if rhp and 1.0 / min(rhp) >= max(0.1 * tau, delay):
+        return "unstable_zero"
+    if delay >= 0.5 * tau:
+        return "delay_too_large"
+    if no_int and worst.get("ss_err_pct", 0) > 1.0:
+        return "steady_state_error"
+    return "spec_too_tight"
+
+
+def _verify_feasible(p: dict) -> None:
+    """#124：粗网格判的“做不到”不算数。细搜找到满足全部条目的一组 → feasible:true（参考答案换成这组）；
+    只有模型能证明（饱和）或细搜离题面还差得远（违约比 > UNSURE）才 feasible:false；中间地带 = "unknown"。
+    原因类别一律按模型结构重判（classify），不沿用注入时的标签。"""
+    p["feasibility"] = {"method": "coarse_grid", "violation": None, "witness": p["reference"]["best"]["params"] if p["feasible"] else None}
+    if p["feasible"]:
+        return
+    tg = _targets(p)
+    v, w = refine(p, tg, p["seed"])
+    G = np.zeros((1, 5)); G[0, 4] = 1.0
+    for r, nm in p["roles"].items():
+        G[0, ROLE_ORDER.index(r)] = w[nm]
+    sp = p["reference"]["step_amp"]
+    T = max(p["horizon_s"], 900 * p["dt_s"])
+    m = judge_metrics(simulate(p, G, sp, T), sp, p["dt_s"])
+    worst = {k: float(x[0]) for k, x in _ratios(m, tg).items()}
+    cat = classify(p, worst)
+    p["feasibility"] = {"method": "refine", "violation": _r(v, 4), "witness": w if v <= 1.0 else None}
+    if v <= 1.0:
+        p.update(feasible=True, reason_category=None, reason="")
+        p["reference"]["best"] = {"ss_err": _r(float(m["ss_err_pct"][0]) / 100 * abs(sp), 4),
+                                  "overshoot_pct": _r(float(m["overshoot_pct"][0]), 4),
+                                  "settle_s": _r(float(m["settle_s"][0]), 4), "params": w}
+        p["reference"]["horizon_s"] = _r(T, 4)
+        for it in p["items"]:
+            it["verdict_expected"] = "pass"
+            it["reference"] = {"稳态误差": p["reference"]["best"]["ss_err"], "超调量": p["reference"]["best"]["overshoot_pct"],
+                               "调节时间": p["reference"]["best"]["settle_s"]}[it["name"]]
+        return
+    proven = cat == "saturation"
+    p.update(feasible=False if (proven or v > UNSURE) else "unknown", reason_category=cat, reason=INFEASIBLE[cat])
 
 
 def _fmt(v: float) -> str:
@@ -290,8 +437,8 @@ def _spec(p: dict, rng, bad: str, ref: dict) -> dict:
 def app_yaml(p: dict) -> str:
     u = p["unit"]; r = p["ranges"]; i = p["init"]; md = p["max_delta"]
     lim = p["roles"].get("LIM")
-    params = "\n".join(f"    - {{ name: {nm}, type: float, default: {i[nm]}, min: {r[nm][0]}, max: {r[nm][1]}, max_delta: {md[nm]} }}"
-                       for nm in p["roles"].values())
+    params = "\n".join(f"    - {{ name: {nm}, type: float, default: {i[nm]}, min: {r[nm][0]}, max: {r[nm][1]}, max_delta: {md[nm]}, role: {ro} }}"
+                       for ro, nm in p["roles"].items())
     return f"""# 由 tools/randplant.py --seed {p['seed']} 生成：随机被控对象（只在 host-sim 上跑）。不要手改，重新生成。
 name: {p['name']}
 version: 1.0.0

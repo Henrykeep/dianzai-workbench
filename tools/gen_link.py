@@ -4,7 +4,7 @@
 输入（app.yaml 或 project.yaml）：
   link:
     telemetry: { id: 2, period_ms: 20, fields: [ { name: t_ms, type: uint32, unit: ms }, ... ] }
-    params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, max_delta: 0.5, unit: "", desc: "" } ]   # 仅 app.yaml
+    params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, max_delta: 0.5, unit: "", desc: "", role: P } ]   # 仅 app.yaml；role 可选
                max_delta（dzctl 0.13.0）= 上位机单次写入最大改动量，超了板子拒绝（param_reject reason=step）；不写 = max − min
     step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, sensor_range: 720, max_step: 90 } ]   # 可选：#38 阶跃实验通道
                sp = 设定值槽位（DATA id=1 第几个 f32）；y / u = 遥测字段（u 可省）；u_max = 数或参数名；
@@ -36,6 +36,11 @@ C_TYPES = {"float": ("float", "DZCTL_F32", "f32"), "uint32": ("uint32_t", "DZCTL
 WIRE = {"float": "f32", "uint32": "u32", "int32": "i32", "uint16": "u16", "int16": "i16", "uint8": "u8", "bool": "u8"}
 TYPE_MAX = {"uint32": (0, 4294967295), "int32": (-2147483648, 2147483647), "uint16": (0, 65535),
             "int16": (-32768, 32767), "uint8": (0, 255), "bool": (0, 1)}
+
+
+# 参数角色（可选）：P 比例 / I 积分 / D 微分 / FF 前馈 / LIM 限幅 / other 其他。只给上位机（整定认增益用），不进哈希；
+# 没写 → link_schema.json 里 role: null，上位机不按参数名猜。
+ROLES = ("P", "I", "D", "FF", "LIM", "other")
 
 
 def fnv1a(data: bytes) -> int:
@@ -123,11 +128,16 @@ def check(spec: dict, params: list) -> list[str]:
             errs.append("actuator 只能写 {u_min, u_max, sat} 数值（执行器物理限值，进握手帧）")
         elif act.get("u_min") is not None and act.get("u_max") is not None and not act["u_min"] < act["u_max"]:
             errs.append("actuator.u_min 须 < u_max")
+    wd = spec.get("watchdog_ms", WD_DEFAULT_MS)
+    if isinstance(wd, bool) or not isinstance(wd, int) or not 300 <= wd <= 60000:
+        errs.append("watchdog_ms 是整数毫秒，300–60000（默认 1500：上位机每 250 ms 发心跳，留 6 个周期余量）")
     if spec.get("relay", True) not in (True, False, "on", "off"):
         errs.append("relay 只能是 on / off（默认 on：模板带 0x7C 继电输出接管）")
     if len(spec.get("step") or []) > 4:
         errs.append("step 通道最多 4 个")
     for p in params:
+        if p.get("role") is not None and p.get("role") not in ROLES:
+            errs.append(f"参数 {p.get('name')}: role 只能是 {' / '.join(ROLES)}（写的是 {p.get('role')!r}；不确定就不写）")
         if "min" not in p or "max" not in p:
             errs.append(f"参数 {p['name']}: 缺 min/max（上位机写参数必须限幅）")
         elif p.get("max_delta") is not None and not 0 < float(p["max_delta"]) <= float(p["max"]) - float(p["min"]) + 1e-12:
@@ -167,6 +177,7 @@ def schema(spec: dict, params: list) -> dict:
     for p, src in zip(s["params"], params):
         p["default"] = src.get("default", 0)
         p["desc"] = src.get("desc", "")
+        p["role"] = src.get("role")             # 未声明 = null
         if src.get("protect"):                 # 保护阈值表的分类（堵转电流/倾倒角/限幅/断线停车…），只给界面
             p["protect"] = str(src["protect"])
     # 下面都只给上位机看（标定、验收、串级分层），不进哈希：改它们不用重烧固件
@@ -179,11 +190,16 @@ def schema(spec: dict, params: list) -> dict:
     num = lambda v: None if v is None else float(v)
     rng = st0.get("range") if st0.get("range") is not None else st0.get("sensor_range")
     s["limits"] = {"u_min": num(act.get("u_min")), "u_max": num(act.get("u_max")), "sat": num(act.get("sat")), "range": num(rng)}
+    # 链路看门狗：多久收不到上位机帧就急停锁存；握手里报给上位机（横幅/提示读它，不写死）
+    s["wd_timeout_ms"] = int(spec.get("watchdog_ms", WD_DEFAULT_MS))
     s["relay"] = spec.get("relay", True) not in (False, "off")
     for k in ("accept", "loops", "protect_fixed"):
         if spec.get(k):
             s[k] = spec[k]
     return s
+
+
+WD_DEFAULT_MS = 1500
 
 
 def max_delta(p: dict) -> float:
@@ -211,6 +227,7 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
         h.append('#include "project_gen.h"')
     h += ["", f"#define LINK_SCHEMA_HASH 0x{sch['hash']:08X}u", f"#define LINK_TELEM_ID {sch['telemetry']['id']}u",
           f"#define LINK_TELEM_PERIOD_MS {sch['telemetry']['period_ms']}u", f"#define LINK_N_PARAMS {len(params)}u",
+          f"#define LINK_WD_TIMEOUT_MS {sch['wd_timeout_ms']}u   /* link.yaml watchdog_ms：上位机掉线判定 */",
           f"#define LINK_RELAY_EN {1 if sch['relay'] else 0}   /* link.yaml relay: off → 0x7C 不接管输出 */", "",
           "typedef struct {"]
     h += [f"    {C_TYPES[f['type']][0]} {f['name']};  /**< {f.get('unit', '')} */" for f in fields] or ["    uint8_t unused_;"]

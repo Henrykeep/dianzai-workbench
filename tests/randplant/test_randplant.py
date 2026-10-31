@@ -42,11 +42,11 @@ def check_truth(p: dict) -> str:
         return "link.step 不许写 range / abs_tol"
     if not (p["spec_text"].startswith("阶跃幅度") and "稳态误差不超过" in p["spec_text"]):
         return "spec_text 不是题面式一句话"
-    if p["feasible"] == bool(p["reason_category"]) or (not p["feasible"] and not p["reason"]):
+    if (p["feasible"] is True) == bool(p["reason_category"]) or (p["feasible"] is not True and not p["reason"]):
         return "feasible / reason_category 不一致"
     if not p["items"] or any(not {"name", "clause", "target", "verdict_expected"} <= set(it) for it in p["items"]):
         return "items 缺字段"
-    if p["feasible"]:
+    if p["feasible"] is True:
         b = p["reference"]["best"]
         vals = {"稳态误差": b["ss_err"], "超调量": b["overshoot_pct"], "调节时间": b["settle_s"]}
         if any(vals[it["name"]] > it["target"]["value"] for it in p["items"]):
@@ -83,7 +83,7 @@ def main() -> int:
             print(f"✗ [randplant] 通用链路检查失败 {nf}/{n}：{tag}"); fail += 1; continue
         exe = tsr.ROOT / "build/host-sim" / p["name"] / "step_run"
         schema = json.loads((tsr.ROOT / "build/host-sim" / p["name"] / "linkgen/link_schema.json").read_text())
-        pn = p["roles"]["P"]                                   # 比例参数的名字是随机的，角色只在 plant.json 里
+        pn = p["roles"]["P"]                                   # 比例参数的名字是随机的；角色在 plant.json 和 app.yaml 的 role 里
         ik = [q["name"] for q in schema["params"]].index(pn)
         kp, q = p["init"][pn], schema["params"][ik]
         d = min(0.5 * kp, 0.9 * q["max_delta"])               # ±50%，但不越过声明的 max_delta / 量程（否则板子按规矩拒绝）

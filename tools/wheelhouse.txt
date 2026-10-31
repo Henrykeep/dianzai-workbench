@@ -1,0 +1,8 @@
+# 离线依赖清单（#112）：Windows 安装包里的 wheelhouse/ 按这份打（tools/package_windows.sh），
+# 安装时只从本地装：pip install --no-index --find-links <安装目录>/wheelhouse -r <安装目录>/wheelhouse/requirements.txt
+# 不走网络。版本钉死；改版本 = 改这里 + 重打包。
+control==0.10.2  # python-control（BSD-3）：对象模型、随机对象 rss/pade
+scipy==1.18.1  # BSD-3：control 的依赖
+numpy==2.3.5  # BSD-3
+sysidentpy==0.9.0  # BSD-3：阶跃录波辨识 ARX
+uncertainties==3.2.3  # BSD-3：不确定度传播
