@@ -66,3 +66,9 @@
 Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏感地撞名）。只找到 Java jlink 时：
 `code = "jlink_not_segger"`，`fix_action = "install_jlink"`，`message_zh` 「找到的 jlink 是 Java 工具，不是 SEGGER J-Link，请安装 J-Link 软件包」；
 自检 `tool_status` 与 `list_probes_for("jlink")` 的返回同样带 `fix_action` / `message_zh`。完全找不到也给 `install_jlink`。
+
+### 急停 `board_t_ms` / 连上即已急停
+
+- 心跳尾部（0.6.0 起，偏移 16–27，共 28 字节）`u32 cause, u32 t_ms, f32 value`：`t_ms` 是锁存时的板上时刻 → `latched` 事件的 `board_t_ms`（`status.estop_cause.board_t_ms` 同值）。
+- 32 字节心跳在 28 处再带 `u32 clear_t_ms` → `cleared` 事件的 `board_t_ms`；28 字节心跳的 cleared 不带 `board_t_ms`。按长度解析（40+ 字节的 28.. 是自检，不当 clear_t_ms）。
+- 连上时板子已急停（bit10 一开始就是 1，或按端口/身份恢复了锁存、没有上升沿）：第一帧带原因的心跳也推一次 `latched`（带 `cause` / `cause_zh` / `board_t_ms`），每次连接只推一次。
