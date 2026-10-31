@@ -83,7 +83,7 @@ def main() -> int:
             print(f"✗ [randplant] 通用链路检查失败 {nf}/{n}：{tag}"); fail += 1; continue
         exe = tsr.ROOT / "build/host-sim" / p["name"] / "step_run"
         schema = json.loads((tsr.ROOT / "build/host-sim" / p["name"] / "linkgen/link_schema.json").read_text())
-        pn = p["roles"]["P"]                                   # 比例参数的名字是随机的，角色只在 plant.json 里
+        pn = p["roles"]["P"]                                   # 比例参数的名字是随机的；角色在 plant.json 和 app.yaml 的 role 里
         ik = [q["name"] for q in schema["params"]].index(pn)
         kp, q = p["init"][pn], schema["params"][ik]
         d = min(0.5 * kp, 0.9 * q["max_delta"])               # ±50%，但不越过声明的 max_delta / 量程（否则板子按规矩拒绝）
