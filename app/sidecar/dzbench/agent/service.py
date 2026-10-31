@@ -1227,7 +1227,8 @@ class AgentService:
             lst = (self.s.schema.step if self.s.schema else None) or []
             if lst:                                                     # 板上阶跃（0x7B）
                 c = lst[0]
-                rng = float(c.get("range") or 0.0) or None
+                hs = getattr(self.s, "handshake", None) or {}           # 握手帧带 u_min/u_max/sat/range（工程声明；没声明为 null）
+                rng = float(c.get("range") or hs.get("range") or 0.0) or None
                 time.sleep(1.0)                                         # 起跳前 1 s 录噪声底 / 起点
                 w0 = self.s.window(1.0)
                 pre = [float(x[1][c["y"]]) for x in w0 if c.get("y") in x[1]]
@@ -1236,7 +1237,7 @@ class AgentService:
                 if why:
                     self.emit({"type": "event", "kind": "probe_amp", "message_zh": why, "fix_action": "在 app.yaml link.step 写 range / u_max"})
                 umax = None
-                um = c.get("u_max")
+                um = c.get("u_max") if c.get("u_max") is not None else hs.get("u_max")
                 if isinstance(um, (int, float)):
                     umax = float(um)
                 elif um and w0 and um in w0[-1][1]:

@@ -1,14 +1,9 @@
 # #80 存量登记（只减不增）。格式：路径<TAB>规则<TAB>条数<TAB>负责人/说明。清掉一处就把条数调小，删到 0 就删行。
 app/sidecar/dzbench/agent/steptools.py	example_obj	1	后端 #78（randplant --kind pos 上来后替换 sim:motor_pos）
-app/ui/src/batch1.ts	example_obj	1	前端开发者 #81
-app/ui/src/batch1.ts	problem_code	1	前端开发者 #81
-app/ui/src/main.ts	example_obj	1	前端开发者 #81
-app/ui/src/main.ts	problem_code	2	前端开发者 #81
-app/ui/src/pjask.ts	problem_code	2	前端开发者 #81
-app/ui/src/projflow.ts	problem_code	1	前端开发者 #81
 firmware/algo/ball_beam/ball_beam.c	example_obj	19	嵌入式开发-2 #79：通用球杆算法库按例题对象命名，需改名/归档到 examples
 firmware/algo/ball_beam/ball_beam.h	example_obj	15	嵌入式开发-2 #79：通用球杆算法库按例题对象命名，需改名/归档到 examples
 firmware/drivers/battery/battery.c	problem_code	1	嵌入式开发-2 #79
 firmware/framework/persist/persist.c	problem_code	1	嵌入式开发-2 #79
 firmware/framework/safety/safety.h	problem_code	1	嵌入式开发-2 #79
 firmware/proto/dzctl/dzctl.h	problem_code	1	嵌入式开发-2 #79
+app/ui/src/examples.ts	problem_code	2	前端开发者 #81（integration 合入的新文件，待前端清）
