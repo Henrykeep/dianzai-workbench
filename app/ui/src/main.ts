@@ -1,3 +1,4 @@
+import { applyBrand } from "./brand";
 import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
@@ -776,7 +777,7 @@ $("doctor").onclick = async () => {
 createIcons({ icons: { Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } });
 // 对话框原来写在右栏 <aside> 里：分页后右栏在 项目/烧录/标定/封箱 页隐藏，自检、赛前检查等对话框跟着看不见 → 统一挪到 body 下
 document.querySelectorAll("dialog").forEach(d => document.body.append(d));
-initChrome();
+initChrome(); applyBrand();
 conn.on(c => {
   if (!c.board) {   // 侧车停或板子 lost/disconnected：状态栏左侧、速率、连接按钮同步切换，清掉旧速率
     $("ro-link").textContent = c.sidecar ? "未连接" : "本地服务无响应";

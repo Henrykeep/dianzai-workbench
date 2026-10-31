@@ -1,4 +1,4 @@
-# 电赛工作台 —— 顶层构建
+# 芯台 —— 顶层构建
 #
 #   make                      # = make BOARD=host-sim APP=motor_speed_demo，在电脑上编译
 #   make run                  # 编译并运行仿真（仅 host-sim）

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://local/dianzai-workbench/board.schema.json",
-  "title": "电赛工作台 板卡描述文件 board.yaml",
+  "title": "芯台 板卡描述文件 board.yaml",
   "description": "描述一块开发板：芯片、时钟、工具链、以及应用可用的逻辑资源到物理引脚/外设的映射。上层代码只认 resources 里的逻辑名。值为字符串 \"TODO\" 表示待用户确认，validate_board.py 默认给警告，--strict 时报错。",
   "type": "object",
   "additionalProperties": false,
