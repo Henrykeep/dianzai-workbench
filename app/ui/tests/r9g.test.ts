@@ -54,6 +54,8 @@ const t = new Date(2026, 9, 31, 9, 5).getTime();
 assert.equal(estopLine({ source: "heartbeat_lost", at_ms: t, reason_zh: "心跳超时", measured_ms: 1001, threshold_ms: 1000 }, {}, null).line, "09:05 心跳超时 1001 ms（阈值 1000 ms），已锁存");
 assert.equal(estopLine({ kind: "watchdog", at_ms: t, reason_zh: "心跳超时" }, {}, null).line, `09:05 心跳超时 ${MISSING_ZH} ms（阈值 ${MISSING_ZH} ms），已锁存`);   // 该有的字段缺了才写后端未给
 assert.equal(estopLine({}, { estop_cause: { cause: "firmware:hb_timeout", message_zh: "心跳超时" }, measured_ms: 1200, threshold_ms: 1000 }, null).line, `${MISSING_ZH} 心跳超时 1200 ms（阈值 1000 ms），已锁存`);
+assert.equal(estopLine({ source: "heartbeat_lost", at_ms: t, reason_zh: "心跳超时", measured_ms: 1600 }, { handshake: { wd_timeout_ms: 1500 } }, null).line, "09:05 心跳超时 1600 ms（阈值 1500 ms），已锁存");   // 阈值 = 握手 wd_timeout_ms
+assert.equal(estopLine({}, { estop_cause: { code: 2, message_zh: "心跳超时" }, wd_timeout_ms: 1500, measured_ms: 1501 }, null).line, `${MISSING_ZH} 心跳超时 1501 ms（阈值 1500 ms），已锁存`);   // cause 码 2
 // 手动急停：只有时间 + 手动急停，没有间隔 / 阈值槽
 assert.equal(estopLine({ source: "ui", reason_zh: "手动急停：上位机发出急停指令" }, {}, t).line, "09:05 手动急停，已锁存");
 const mr = estopLine({ source: "ui", restored: true }, {}, t); assert.equal(mr.line, `${MISSING_ZH} 手动急停，已锁存`); assert.ok(mr.restored);

@@ -42,14 +42,14 @@ export function estopRestored(...os: any[]): boolean { return os.some(o => o?.[E
 // localAt：界面自己看到锁存的时刻；从上次恢复的锁存不用它（那不是锁存发生的时刻）
 export function estopCause(ev: any, status: any): string {
   const c = status?.estop_cause;
-  for (const v of [ev?.[ESTOP_F.source], ev?.kind, typeof c === "string" ? c : c?.cause]) {
-    const k = typeof v === "string" ? v.replace(/^firmware:/, "") : "";
+  for (const v of [ev?.[ESTOP_F.source], ev?.kind, typeof c === "string" ? c : c?.cause, c?.code]) {
+    const k = typeof v === "string" ? v.replace(/^firmware:/, "") : typeof v === "number" ? String(v) : "";
     if (k && k !== ESTOP_F.restoredSrc && k !== "estop" && ESTOP_CAUSES[k]) return k;
   }
   return "";
 }
 export function estopLine(ev: any, status: any, localAt: number | null): { line: string; restored: boolean; cause: string } {
-  const os = [ev, status, status?.estop_cause], restored = estopRestored(...os), cause = estopCause(ev, status), spec = ESTOP_CAUSES[cause];
+  const os = [ev, status, status?.estop_cause, status?.handshake], restored = estopRestored(...os), cause = estopCause(ev, status), spec = ESTOP_CAUSES[cause];
   const at = pick(os, ESTOP_F.at), t = typeof at === "number" && Number.isFinite(at) ? at : restored ? null : localAt;
   const r0 = pick(os, ESTOP_F.reason), reason = spec?.label ?? (typeof r0 === "string" && r0.trim() ? r0.trim() : MISSING_ZH);
   const n = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)}` : MISSING_ZH;

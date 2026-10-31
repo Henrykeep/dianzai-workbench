@@ -166,7 +166,7 @@ export const USER_DECLINED_ZH = "你已取消写入";
 export const COMMIT_STORE_KEY = "dz.commitPending";   // #111 sessionStorage：刷新后恢复待确认的提交卡
 
 // r9f 急停横幅：事件 / status 里的字段——暂定名，后端定稿改这里；缺了显示 MISSING_ZH，不编
-export const ESTOP_F = { at: ["at_ms", "ts_ms", "since"], reason: ["reason_zh", "message_zh"], measured: ["measured_ms", "gap_ms"], threshold: ["threshold_ms", "timeout_ms"], restored: "restored", source: "source", restoredSrc: "latch_restored" } as const;
+export const ESTOP_F = { at: ["at_ms", "ts_ms", "since"], reason: ["reason_zh", "message_zh"], measured: ["measured_ms", "gap_ms"], threshold: ["wd_timeout_ms", "threshold_ms", "timeout_ms"]   /* 定稿：握手 wd_timeout_ms（fw-wd，默认 1500）；后两个暂留兜底 */, restored: "restored", source: "source", restoredSrc: "latch_restored" } as const;
 export const MISSING_ZH = "后端未给";
 
 // r9g 急停横幅按原因显示字段（唯一一张表）：cause 取事件 source / kind / status.estop_cause.cause（去掉 firmware: 前缀）
@@ -174,5 +174,5 @@ export const MISSING_ZH = "后端未给";
 export const ESTOP_CAUSES: Record<string, { label?: string; fields: readonly ("measured" | "threshold")[] }> = {
   ui: { label: "手动急停", fields: [] }, button: { label: "手动急停", fields: [] }, key: { label: "手动急停", fields: [] },
   heartbeat_lost: { fields: ["measured", "threshold"] }, hb_lost: { fields: ["measured", "threshold"] },
-  hb_timeout: { fields: ["measured", "threshold"] }, watchdog: { fields: ["measured", "threshold"] },
+  hb_timeout: { fields: ["measured", "threshold"] }, "2": { fields: ["measured", "threshold"] }   /* 心跳超时 cause 码 2 */, watchdog: { fields: ["measured", "threshold"] },
 };
