@@ -32,3 +32,20 @@ export function guide(hasProject: boolean, connected: boolean, tuned: boolean): 
 }
 // 自动迭代进度：「第 2/8 轮，预算还剩 150 s」
 export const iterProgress = (iter: number, rounds: number, leftS: number) => `第 ${Math.min(Math.max(iter, 1), rounds)}/${rounds} 轮，预算还剩 ${Math.max(0, Math.ceil(leftS))} s`;
+// r9p3 去掉界面上的英文状态码：固件枚举名 → 中文（原文进悬停）
+export const ENUM_ZH: Record<string, string> = { idle: "空闲", running: "运行中", run: "运行中", estop: "急停", fault: "故障", error: "故障", ready: "就绪", stopped: "已停止", stop: "已停止", calib: "标定中", init: "初始化", boot: "启动中", hold: "保持", step: "阶跃中", safe: "安全态", stall: "堵转" };
+export const enumZh = (s: string) => ENUM_ZH[s.toLowerCase()] ?? s;
+// 原因来源 → 中文
+export const SOURCE_ZH: Record<string, string> = { ui: "在工作台上按了急停", button: "在工作台上按了急停", key: "在工作台上按了急停", board: "板子上报", firmware: "板子上报", hb_timeout: "心跳超时", watchdog: "心跳超时", host: "上位机停止", agent: "Agent 发起", sidecar: "本地服务", link: "连接中断", stall: "堵转保护", limit: "限位触发" };
+export const sourceZh = (s?: string | null) => !s ? "本地服务未上报" : SOURCE_ZH[s] ?? (/^[\x00-\x7f]+$/.test(s) ? "其他来源" : s);
+// 仿真启动中：sim_starting {state:start|ready, elapsed_s?}
+export const simStartText = (elapsedS: number) => `仿真启动中 · 已 ${Math.max(0, Math.round(elapsedS))} s`;
+// 锁存期间要真禁用的写入按钮（会改板子 / 发运动 / 写参数）
+export const WRITE_IDS = ["p-send", "p-def", "it-go", "it-write", "tb-save", "seal-mode", "fw-flash", "ag-step", "ag-relay", "ag-search", "ag-guard", "lines-btn", "pre-bbtn"];
+export const WRITE_SEL = WRITE_IDS.map(i => "#" + i).join(",") + ",[data-write],.act-ok,.ag-accept,.snap-apply,.psl,input[id^=pi-],input[id^=pt-]";
+export const ESTOP_WHY = "急停已锁存：先在红条上点「解除」";
+// 纯 DOM 操作也放这里，便于测试（传入 root）
+export function lockWritesIn(root: ParentNode, on: boolean) {
+  if (on) root.querySelectorAll<any>(WRITE_SEL).forEach(e => { if (!e.dataset.estop) { e.dataset.estopTitle = e.title || ""; e.dataset.estop = e.disabled ? "was" : "1"; } e.disabled = true; e.title = ESTOP_WHY; });
+  else root.querySelectorAll<any>("[data-estop]").forEach(e => { e.disabled = e.dataset.estop === "was"; e.title = e.dataset.estopTitle ?? ""; delete e.dataset.estop; delete e.dataset.estopTitle; });
+}

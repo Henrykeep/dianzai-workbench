@@ -1017,11 +1017,11 @@ body{font-variant-numeric:tabular-nums}
 /* 去掉一层：各页 h3 下的重复说明（页头一句话已说明这一页做什么） */
 .page > h3 + p.hint,.page > .pg-hd > p.hint{display:none}
 /* r9p2 急停锁存：整条实心红、白字；屏上只剩红色（工作区与侧栏去色） */
-.alerts.latched{background:var(--estop-bg);color:var(--on-estop);box-shadow:none;border-radius:0;margin:0}
+.alerts.latched{background:var(--estop-bar);color:var(--on-estop);box-shadow:none;border-radius:0;margin:0}
 .alerts.latched .al-h,.alerts.latched .al-t,.alerts.latched .al-fix{color:var(--on-estop)}
-.alerts.latched .al-n{background:var(--on-estop);color:var(--estop-bg)}
+.alerts.latched .al-n{background:var(--on-estop);color:var(--estop-bar)}
 .alerts.latched .btn{background:transparent;color:var(--on-estop);border:1px solid var(--on-estop)}
-.alerts.latched #al-r{background:var(--on-estop);color:var(--estop-bg);font-weight:600}
+.alerts.latched #al-r{background:var(--on-estop);color:var(--estop-bar);font-weight:600}
 html.estop-latched .work,html.estop-latched .side,html.estop-latched .nav,html.estop-latched .status{filter:grayscale(1)}
 /* r9p2 每屏 ≤3 个蓝：心跳条异常格、项目步骤序号、RAM≠默认 标记、引导卡当前步改灰阶层级 */
 .hbstrip i.hb-warn,.hbstrip i.hb-bad{background:var(--ink)}
@@ -1036,3 +1036,9 @@ html.estop-latched .work,html.estop-latched .side,html.estop-latched .nav,html.e
   .page.pj > *,.page[data-page="烧录"] > *,.page[data-page="标定"] > *,.page[data-page="封箱"] > *,.page[data-page="评分"] > *,.page[data-page="模块"] > *{max-width:960px;margin-left:auto;margin-right:auto}
   .prow .k,.prow .in,.prow .in.num{font-size:var(--t-lg)}
 }
+/* r9p3 首页：一个大输入框为主入口；空的“已有项目”区不占位 */
+.pj-empty:has(#pj-empty-note:empty):has(#pj-list[hidden]){display:none}
+.pj-ask .pj-ask-l{font:600 var(--t-xl) var(--f-sans)}
+.pj-ask .pj-ask-row .in{height:56px;font-size:var(--t-lg);padding:0 var(--sp4)}
+.pj-ask .pj-ask-row .btn{height:56px;padding:0 var(--sp6)}
+.pj-alt{display:flex;gap:var(--sp2);margin-top:var(--sp3)}

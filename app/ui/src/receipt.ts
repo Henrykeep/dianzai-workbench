@@ -1,3 +1,4 @@
+import { sourceZh } from "./batch1";
 // 消息回执（问题池 #25）：发消息带 msg_id → 立即「已发送」；本地服务回 agent_ack {msg_id, state}
 // queued →「已送达」，running →「处理中」，blocked（reason: estop）→ 提示卡「已急停，请先解除」；3 s 无 ack →「未送达」+「重发」。
 // 收到这条消息的回答也算已送达（兼容还没推 ack 的本地服务）。
@@ -57,8 +58,8 @@ export function newBlockers<T extends { code: string }>(prev: Set<string>, cur: 
 export type Notice = { blocker_code: string; what: string; source?: string; suggestion?: string; fix_action?: string | null; human_only?: boolean };
 export function noticeView(n: Notice) {
   return {
-    head: n.human_only ? "结论：需要人工确认后才能继续" : "结论：处理后即可继续",
-    lines: [`发生了什么：${n.what}`, `原因来自：${n.source || "本地服务未上报"}`, `建议：${n.suggestion || "按下方按钮处理"}`],
+    head: n.human_only ? "系统提示 · 结论：需要人工确认后才能继续" : "系统提示 · 结论：处理后即可继续",
+    lines: [`发生了什么：${n.what}`, `原因来自：${sourceZh(n.source)}`, `建议：${n.suggestion || "按下方按钮处理"}`],
     tag: n.human_only ? "需人工确认" : "",
   };
 }

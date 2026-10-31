@@ -30,7 +30,7 @@
   --accent:#0D74CE; --accent-hover:#0B68B9; --accent-active:#0A5DA6; --accent-subtle:#E6F1FB; --accent-text:#0D74CE;
   --success:#1A7F4B; --success-subtle:#E9F6EF;
   --warning:#9A5B00; --warning-subtle:#FFF4E0;
-  --danger:#CD2B31;  --danger-hover:#B8252B; --danger-subtle:#FDECEC; --estop-bg:#A11B22; --on-estop:#FFFFFF;
+  --danger:#CD2B31;  --danger-hover:#B8252B; --danger-subtle:#FDECEC; --estop-bar:#A11B22; --on-estop:#FFFFFF;
   --info:#2550C7;    --info-subtle:#EDF2FE;
   --chart-1:#2E5BDB;--chart-2:#E06A00;--chart-3:#0F9488;--chart-4:#AB6400;--chart-5:#12A594;--chart-6:#656A73;
   --chart-grid:#ECEEF1;--chart-axis:#656A73;
@@ -47,7 +47,7 @@
   --accent:#0D74CE; --accent-hover:#1F84DC; --accent-active:#0B68B9; --accent-subtle:#10243A; --accent-text:#70B8FF;
   --success:#4CC38A; --success-subtle:#132A1F;
   --warning:#F5B544; --warning-subtle:#2E2410;
-  --danger:#FF6B6E;  --danger-hover:#FF8587; --danger-subtle:#3A1517; --estop-bg:#A11B22; --on-estop:#FFFFFF;
+  --danger:#FF6B6E;  --danger-hover:#FF8587; --danger-subtle:#3A1517; --estop-bar:#A11B22; --on-estop:#FFFFFF;
   --info:#86A8FF;    --info-subtle:#1A2440;
   --chart-1:#6E93FF;--chart-2:#FF9A4D;--chart-3:#3CCBB8;--chart-4:#FFC53D;--chart-5:#0BD8B6;--chart-6:#A3A8B2;
   --chart-grid:#24272B;--chart-axis:#9196A0;

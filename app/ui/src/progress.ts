@@ -8,7 +8,7 @@ export type State = "todo" | "doing" | "done" | "blocked";
 export type BlockerCode = "no_board" | "missing_deps" | "gains_zero" | "estop" | "selftest_fail" | "params_not_saved";
 // 7 步旅程：id 与后端 progress.get 的 steps[].id 一致；page = 进入时打开的内部页
 export const JOURNEY = [
-  { id: "req", title: "读题定方案", pages: ["项目"] }, { id: "project", title: "建工程", pages: ["烧录"] },
+  { id: "req", title: "选题与方案", pages: ["项目"] }, { id: "project", title: "建工程", pages: ["烧录"] },
   { id: "sim", title: "仿真", pages: ["联调"] }, { id: "bringup", title: "上板联调", pages: ["模块", "标定"] },
   { id: "tune", title: "调参", pages: ["调参"] }, { id: "score", title: "评分", pages: ["评分"] }, { id: "seal", title: "封箱", pages: ["封箱"] },
 ] as const;
@@ -89,7 +89,7 @@ export async function fetchProgress(call: (op: string) => Promise<any>, c: Ctx):
 
 // 每页顶部「一句话说明 + 一个主按钮」：说明这一步做什么、做完产出什么；按钮与 progress.next 同源
 export const PURPOSE: Record<StepId, string> = {
-  req: "把题目或需求整理成需求表与技术方案；产出 requirements.yaml、scheme.yaml。",
+  req: "把题目或需求整理成需求表与技术方案，确认后写进工程。",
   project: "生成或导入工程并编译、烧录到目标板；产出可运行的固件。",
   sim: "在仿真板上跑通控制回路，确认信号与参数结构；产出可用的参数初值。",
   bringup: "逐个模块上板收发并完成标定；产出极性、零偏等标定值。",

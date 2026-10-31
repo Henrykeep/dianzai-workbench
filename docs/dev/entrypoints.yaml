@@ -6,7 +6,7 @@
 # at 写法：step:<步> | toolbox:<类> | always:<常驻件> | nav:<导航件> | page:<旅程 id>（页内具名区域，index.html 用 data-region 标）| <区域>:（独立区域，在 regions 里声明，如告警条 alerts:）。
 #   ui = index.html 里的元素 id；独立区域入口写区域选择器 [data-region="<区域>"]（区域固定在 index.html，里面的按钮由 ts 生成）。dynamic: true = 由 ts 动态生成、无固定位置（尽量不用）。
 
-# 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（读题定方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
+# 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（选题与方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
 always:    [急停, 连接, 排障]

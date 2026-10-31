@@ -4,6 +4,7 @@ import "./tokens.css";
 import "./style.css";
 import "./wa";
 import { SWITCH_EX_OP, FORKED_F } from "./fieldmap";
+import { enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
 import "./entry-data";
@@ -70,15 +71,14 @@ const hb = initHbStrip($("hbstrip"), jumpAt);
 const AL = new Alerts();
 let clearedHide = 0;
 let latchAt: number | null = null, writesLocked = false, latchBase = 0;   // 告警计数按锁存段：每次新锁存从 1 数起
-const ESTOP_WHY = "急停已锁存：先在红条上点「解除」";
-// 锁存期间真正禁用（不只是去色）：所有会改板子 / 发运动 / 写参数的按钮
-const WRITE_IDS = ["p-send", "p-def", "it-go", "it-write", "tb-save", "seal-mode", "fw-flash", "ag-step", "ag-relay", "ag-search", "ag-guard", "lines-btn", "pre-bbtn"];
-const WRITE_SEL = WRITE_IDS.map(i => "#" + i).join(",") + ",[data-write],.act-ok,.ag-accept,.snap-apply,#plist .psl,#plist input.in";
 function lockWrites(on: boolean) {
-  if (on) document.querySelectorAll<any>(WRITE_SEL).forEach(e => { if (!e.dataset.estop) { e.dataset.estopTitle = e.title || ""; e.dataset.estop = e.disabled ? "was" : "1"; } e.disabled = true; e.title = ESTOP_WHY; });
-  else if (writesLocked) { document.querySelectorAll<any>("[data-estop]").forEach(e => { e.disabled = e.dataset.estop === "was"; e.title = e.dataset.estopTitle ?? ""; delete e.dataset.estop; delete e.dataset.estopTitle; }); syncParams(); renderIter(); }
+  if (on) lockWritesIn(document, true);
+  else if (writesLocked) { lockWritesIn(document, false); syncParams(); renderIter(); }
   writesLocked = on;
 }
+setInterval(() => { if (writesLocked) lockWritesIn(document, true); }, 300);   // 参数行会重建：锁存期间持续补禁用
+void WRITE_IDS;
+const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   // 锁存只认本地服务上报（S.latched ← status.tx_locked），断开 / 重连都不由前端清（#20）
@@ -87,6 +87,8 @@ function renderAlerts() {
   $("estop").classList.toggle("locked", latched);
   if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); const nn = document.getElementById("sp-restore-note"); if (nn) nn.textContent = ""; showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
+  // r9p3：解除后的急停记录收进时间线，不在告警条里留着；首页从不显示已解除的告警
+  if (!latched && (!l.some(e => e.kind !== "estop") || curPage() === "项目")) { el.hidden = true; el.innerHTML = ""; el.classList.remove("latched", "al-hist"); document.documentElement.classList.remove("estop-latched"); lockWrites(false); return; }
   el.classList.remove("al-hist"); el.classList.toggle("latched", latched);
   document.documentElement.classList.toggle("estop-latched", latched);   // 锁存时全屏只留红色：其余区域去色
   if (latched && latchAt == null) { latchAt = Date.now(); latchBase = Math.max(0, l.length - 1); } if (!latched) latchAt = null;
@@ -107,7 +109,7 @@ function renderAlerts() {
   el.innerHTML = `<span class="al-n">${Math.max(l.length - latchBase, 1)}</span>${head}` +
     (l.length > 1 ? `<span class="al-more">${l.filter(e => !isE(e) && !isW(e)).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
     `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除</button>` : "") +
-    (l.length ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
+    (l.length && !latched ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
   if (shownCleared) markClearedShown();
   // 横幅只给正在发生的危险：已解除且没有别的告警时，降成一行中性提示，800 ms 后收起
   el.classList.toggle("cleared", shownCleared && !wd);
@@ -185,7 +187,7 @@ function resolveEstop() {
   S.latched = false; resolveEstopAlerts(AL);
   { const r = document.getElementById("cmd-r"); if (r) { r.classList.remove("attn"); r.hidden = true; } } $("estop").classList.remove("locked");
   renderAlerts(); purgeEstopBlockers(document); agent.resolveEstop?.();
-  if (estopHist) markClearedShown();
+ 
   if (estopHist && tl.all().at(-1)?.kind !== "estop_clear") tl.add(clearedEvent(tl.all(), null, plot.now()));   // r8pre：时间线最新一条是中性「急停已解除」
   ana.invalidate();
   showRestore(); tl.refresh();
@@ -363,7 +365,7 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
   });
   S.enums.forEach(f => {
     const el = document.getElementById(`ev-${f.name}`), v = S.enumVal[f.name];
-    if (el && v != null) { const name = f.enum![v] ?? String(v); el.textContent = name; el.className = `mono st-${name}`; }
+    if (el && v != null) { const name = f.enum![v] ?? String(v); el.textContent = enumZh(name); el.title = name; el.className = `mono st-${name}`; }
   });
   // schema 里标了 pin 的枚举字段放到顶栏（视觉链路、通信、模式……由题目自己声明，界面不认字段名）
   for (const f of S.enums) {
@@ -374,7 +376,7 @@ setInterval(() => {   // 读数 10 Hz 足够，别跟着 60 Hz 抖
       return v == null ? "" : ` · ${Math.round(v)}${S.plotted[k].unit ? " " + S.plotted[k].unit : ""}`;
     }).join("");
     const el = document.getElementById(`pin-${f.name}`);
-    if (el) el.innerHTML = `<b class="st-${name}">${esc(name)}</b><i>${esc(extra.replace(/^ · /, ""))}</i>`;
+    if (el) el.innerHTML = `<b class="st-${name}" title="${esc(name)}">${esc(enumZh(name))}</b><i>${esc(extra.replace(/^ · /, ""))}</i>`;
   }
 }, 100);
 
@@ -680,15 +682,15 @@ function renderStatus(st: Msg) {
   renderGuide(!!st.connected);
   if (S.latched) lockWrites(true);
   lockParams(iterLocked(st.hb_flags, IT.s.phase === "running"));
-  $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
+  $("ro-schema").innerHTML = st.schema ? `<i>${st.schema_ok ? "协议已识别" : "协议未知"}</i>` : "—";
   // 心跳 status 字（dzctl 0.5.0）：复位原因 + 安全态/堵转/急停标志；旧固件没有 → 不显示
   const hbf: string[] = (st.hb_flags ?? []).filter((f: string) => f !== "参数未保存");   // #63 只在「保存参数」旁提示
-  $("ro-schema").title = st.reset ? `板子复位原因：${st.reset}${hbf.length ? "；" + hbf.join("、") : ""}` : "";
+  $("ro-schema").title = (st.schema ? `协议 ${st.schema}` : "") + (st.reset ? `；板子复位原因：${st.reset}${hbf.length ? "；" + hbf.join("、") : ""}` : "");
   if (hbf.length) $("ro-schema").innerHTML += `<i class="hb-flag">${esc(hbf.join("·"))}</i>`;
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
   if (st.log && st.log !== S.lastLog) { S.lastLog = st.log; loadLogs(); }   // 新开的记录马上出现在回放列表
-  $("st-log").textContent = st.replay ? `回放 ${(st.replay_progress * 100).toFixed(0)}%` : st.log ? `记录到 ${st.log}` : "未记录";
+  $("st-log").textContent = st.replay ? `回放 ${(st.replay_progress * 100).toFixed(0)}%` : st.log ? "记录中" : "未记录"; $("st-log").title = st.log ? `记录到 ${st.log}` : "";
   $("st-hint").textContent = [st.hint, st.clients > 1 ? `另有 ${st.clients - 1} 个窗口也连着本地服务：参数以最后一次下发为准，急停哪个窗口按都有效` : ""].filter(Boolean).join("  ·  ");
   $("rp").hidden = !st.replay;
   if (st.replay) {
@@ -810,6 +812,7 @@ link.on(m => {
     case "agent_notice": if ((m as any).blocker_code === CLEARED_NOTICE) showCleared(); break;   // 与 cleared 事件合并成一张卡
     case "link.state": onLinkState(m as any); showLink(m as any); break;
     case "seeked": plot.clear(); break;
+    case "sim_starting": simStarting(m); break;
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
     case "param_reject": showReject(m); break;
@@ -895,14 +898,22 @@ conn.on(c => {
     $("led").className = "led";
     $("connect").innerHTML = "连接 <kbd>⌃O</kbd>"; $("connect").classList.add("pri");
   }
-  $<HTMLButtonElement>("ag-send").disabled = !c.sidecar;
+  $<HTMLButtonElement>("ag-send").disabled = !c.sidecar || $<HTMLInputElement>("ag-in").disabled;
   $("st-ws").textContent = c.sidecar ? "本地服务 已连接" : "本地服务 未连接";
   $("banner").hidden = c.sidecar;
   $("banner").innerHTML = "本地服务无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
 });
 // link.state reason 横幅（中性/告警）+ 端口下拉高亮；急停锁存告警在 #alerts，独立于连接状态，重连后照常显示
 let lkMsg: any = null, lkSince: number | null = null, lkNext: number | null = null, lkNextAt = 0;
+let simT0: number | null = null;
+function simStarting(m: any) {
+  if (m.state === "start") simT0 = Date.now() - (+m.elapsed_s || 0) * 1000; else simT0 = null;
+  $<HTMLButtonElement>("connect").disabled = simT0 != null; $("connect").title = simT0 != null ? "仿真板正在编译启动，好了自动连上" : "";
+  renderLinkTag();
+}
+setInterval(() => { if (simT0 != null) renderLinkTag(); }, 1000);
 function renderLinkTag() {
+  if (simT0 != null) { const e = $("ro-lk"); e.textContent = simStartText((Date.now() - simT0) / 1000); e.className = "ltag busy"; return; }
   const t = linkTag(lkMsg, lkSince, Date.now(), lkNext != null ? lkNext - (Date.now() - lkNextAt) / 1000 : null), e = $("ro-lk");
   e.textContent = t.text; e.className = "ltag " + t.tone;
 }
