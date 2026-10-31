@@ -296,7 +296,19 @@ class Session:
                    and not port.startswith((SIM_PREFIX, "replay:")))
             if can:
                 old, self.tr, self.reconnecting = self.tr, None, True
+            # #57：仿真进程没了（被杀 / 崩溃）→ 传输层摘掉，唯一状态源 link.state 走 disconnected（reason=sim_exited），
+            # status.connected 跟着变 false；不自动重起仿真（那等于偷偷换了一块新板），用户点“连接”再起
+            dead = (not can and not stale and self.tr is not None and port.startswith(SIM_PREFIX))
+            if dead:
+                old, self.tr, self.down_reason = self.tr, None, "sim_exited"
         if stale:
+            return
+        if dead:
+            try:
+                old.close()
+            except Exception:  # noqa: BLE001
+                pass
+            self.emit(LinkError("link_lost", f"仿真板已退出：{msg}", "点“连接”重新启动仿真板").as_dict())
             return
         if not can:
             self.emit(LinkError("link_lost", f"连接断开：{msg}", "检查 USB 线/供电；板子复位后点“连接”重连").as_dict())
