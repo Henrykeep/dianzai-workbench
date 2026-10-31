@@ -1,4 +1,4 @@
-"""#78 门禁骨架：替身对象可复现、假达标必红、题面指标抽取、固定种子冒烟。随机大批量在 tools/tunegate.py。"""
+"""#78 门禁骨架：randplant 对象可复现、假达标必红、题面指标抽取、固定种子冒烟。随机大批量在 tools/tunegate.py。"""
 import json
 import pathlib
 import sys
@@ -7,17 +7,17 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "tools"))
-import randplant_standin as RP  # noqa: E402
+import tunegate_plant as RP  # noqa: E402
 import tunegate as TG  # noqa: E402
 
 from dzbench.tuning import autotune as AT  # noqa: E402
 
 
-def test_standin_is_reproducible_and_marked(tmp_path):
+def test_plant_is_reproducible_and_from_randplant(tmp_path):
     a, b = RP.make(42, "any", str(tmp_path / "a")), RP.make(42, "any", str(tmp_path / "b"))
     assert json.dumps(a["plant"], sort_keys=True) == json.dumps(b["plant"], sort_keys=True)
     p = json.loads((tmp_path / "a" / "plant.json").read_text("utf-8"))
-    assert p["standin"] is True and "reference" in p and isinstance(p["feasible"], bool)
+    assert p["source"] == "tools/randplant.py" and "reference" in p and isinstance(p["feasible"], bool)
     assert {f.name for f in (tmp_path / "a").iterdir()} >= {"app.yaml", "link.yaml", "spec.txt", "plant.json"}
 
 
@@ -34,7 +34,7 @@ def test_parse_spec():
     assert AT.parse_spec("让它转起来")["note_zh"] == "按默认判定"
 
 
-INFEASIBLE_SEED = 1001      # 替身里 cause=saturation 的对象（test_infeasible_seed_is_infeasible 守着）
+INFEASIBLE_SEED = 1018      # cause=saturation 的对象（test_infeasible_seed_is_infeasible 守着）
 
 
 def _infeasible_seed():

@@ -4,7 +4,7 @@
   - feasible:false 对象：verdict 必须是 fail/unknown，原因类别对得上（saturation / delay / nonminimum_phase）；给 pass = 红。
 失败一律打印 seed，`tunegate.py --seed N` 单独复现。
 
-对象来源：tools/randplant.py（嵌入式开发-2，sim:randplant-<seed> 板）存在就用它；还没推上来 → 用 tools/randplant_standin.py（STAND-IN，Python 仿真板）。
+对象来源：tools/randplant.py（嵌入式开发-2）经 tools/tunegate_plant.py 转成整定输入 + Python 仿真板。
 整定只读 app.yaml / link.yaml / spec.txt，plant.json 只给判卷用。
 """
 from __future__ import annotations
@@ -25,16 +25,10 @@ NEAR_REF = 1.5      # 最好一轮真值代价 ≤ reference × 1.5 + 0.02
 NEAR_ABS = 0.02
 
 
-def source() -> str:
-    return "randplant" if (ROOT / "tools" / "randplant.py").exists() else "standin"
-
-
 def one(seed: int, kind: str) -> dict:
     import yaml
     from dzbench.tuning import autotune as AT
-    if source() == "randplant":
-        raise SystemExit("tools/randplant.py 已存在：sim:randplant-<seed> 板的 Session 适配还没接（#78 第二步），先接上再跑门禁")
-    import randplant_standin as RP
+    import tunegate_plant as RP
     with tempfile.TemporaryDirectory() as d:
         RP.make(seed, kind, d)
         app = yaml.safe_load(open(f"{d}/app.yaml", encoding="utf-8"))
@@ -83,7 +77,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", default=None)
     a = ap.parse_args(argv)
     seeds = [a.seed] if a.seed is not None else [(a.seed0 if a.seed0 is not None else int(time.time()) % 100000) * 1000 + i for i in range(a.n)]
-    print(f"tunegate：对象来源 = {source()}{'（STAND-IN，randplant 未推）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
+    print(f"tunegate：对象来源 = tools/randplant.py；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
     rs = []
     for s in seeds:
         try:
