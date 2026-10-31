@@ -1,4 +1,4 @@
-import { fireEstop, onEstopEvent, ESTOP_LABEL, traces, latchCleared, onCleared, CLEARED_TEXT, RETUNE } from "../src/estopbtn.ts";
+import { fireEstop, handleEstopMsg, latchedCause, clearedOnce, CLEARED_NOTICE, onEstopEvent, ESTOP_LABEL, traces, latchCleared, onCleared, CLEARED_TEXT, RETUNE, markClearClick, markClearedShown } from "../src/estopbtn.ts";
 import { Link } from "../src/ws.ts";
 // 假 WS：记录 send 时刻
 const sent: { t: number; m: any }[] = [];
@@ -31,3 +31,52 @@ if (shown.text !== "已解除，电机保持静止，需重新开始调参" || C
 shown.go(); if (tuned !== 1) throw "人点「重新调参」才发起";
 if (RETUNE.action !== "tune_relay") throw "重新调参入口";
 console.log(`estopbtn ok click→send ${dt.toFixed(3)} ms`);
+// 事件处理：状态只看 state；不带 state 的旧 {sent:true} 不改状态
+{
+  const log: string[] = []; const ui = { setPhase: (p: string) => log.push("p:" + p), showCleared: () => log.push("cleared"), toast: (_t: string, k: string) => log.push("t:" + k) };
+  handleEstopMsg({ type: "estop", sent: true, message: "旧回包" } as any, ui as any);
+  if (log.length) throw "旧 {sent:true} 不得改状态/弹提示 " + log;
+  handleEstopMsg({ type: "estop", state: "requested", sent: true } as any, ui as any);
+  handleEstopMsg({ type: "estop", state: "latched" } as any, ui as any);
+  if (log.join() !== "p:requested,p:latched") throw "requested/latched " + log;
+  log.length = 0; const n0 = sent.length;
+  handleEstopMsg({ type: "estop", state: "cleared" } as any, ui as any);
+  if (log.join() !== "p:idle,cleared" || sent.length !== n0) throw "cleared 只提示，不发请求 " + log;
+  log.length = 0;
+  handleEstopMsg({ type: "estop", sent: false, nolink: true, message: "没连板子" } as any, ui as any);
+  if (log.join() !== "t:crit,p:idle") throw "未送达要告警 " + log;
+  log.length = 0;
+  handleEstopMsg({ type: "estop", state: "requested", sent: false } as any, ui as any);
+  if (!log.includes("t:crit")) throw "写串口失败要告警";
+  handleEstopMsg({ type: "estop", state: "latched", source: "firmware:stall", cause: "stall", message_zh: "左轮堵转" } as any, ui as any);
+  if (latchedCause()?.cause !== "stall" || latchedCause()?.message_zh !== "左轮堵转") throw "latched 载荷里的原因";
+  handleEstopMsg({ type: "estop", state: "cleared" } as any, ui as any);
+  if (latchedCause() !== null) throw "cleared 后清原因";
+  // 解除提示只出现一次：cleared 事件 + tx_locked 回落 + agent_notice(estop_cleared) 三路同时到
+  let cards = 0; const once = clearedOnce(() => cards++);
+  handleEstopMsg({ type: "estop", state: "cleared" } as any, { ...ui, showCleared: () => once.fire() } as any);
+  if (latchCleared(true, false)) once.fire();
+  if ({ blocker_code: CLEARED_NOTICE }.blocker_code === "estop_cleared") once.fire();
+  if (cards !== 1) throw "解除卡出现 " + cards + " 次";
+  once.reset(); once.fire(); if (cards !== 2) throw "再次锁存后应能重新提示";
+  // 新约定：requested 只带 ok + message_zh
+  { const toasts: string[] = []; const u = { ...ui, toast: (t: string) => toasts.push(t) };
+    handleEstopMsg({ type: "estop", state: "requested", ok: true, message_zh: "急停已发送" } as any, u as any);
+    if (toasts.length) throw "ok:true 不弹告警";
+    handleEstopMsg({ type: "estop", state: "requested", ok: false, message_zh: "急停没有送达，请直接断电" } as any, u as any);
+    if (toasts.join() !== "急停没有送达，请直接断电") throw "ok:false 要按 message_zh 告警 " + toasts; }
+  console.log("estop handler ok");
+}
+// 解除计时：clear_click → cleared_shown，差值 clear_to_cleared_ms（performance.now 口径）；只记第一次渲染
+{
+  if (markClearedShown() !== null && traces.at(-1)!.clear_click == null) throw "未点解除不应打 cleared_shown";
+  const t = markClearClick();
+  if (t.clear_click == null || t.cleared_shown != null) throw "clear_click 打点";
+  const s0 = performance.now(); while (performance.now() - s0 < 2) { /* 等 2 ms */ }
+  const r = markClearedShown()!;
+  if (r !== t || r.cleared_shown! < r.clear_click! || !(r.clear_to_cleared_ms! >= 1.5) || Math.abs(r.clear_to_cleared_ms! - (r.cleared_shown! - r.clear_click!)) > 0.01) throw "clear_to_cleared_ms " + JSON.stringify(r);
+  const first = r.cleared_shown; markClearedShown(); if (t.cleared_shown !== first) throw "只记第一次渲染";
+  if ((globalThis as any).__dzEstop !== traces) throw "写入 window.__dzEstop";
+  markClearClick(); if (t.cleared_shown != null || t.clear_to_cleared_ms != null) throw "再次解除应重置";
+  console.log("estop clear timing ok");
+}

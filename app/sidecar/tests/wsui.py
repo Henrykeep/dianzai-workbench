@@ -62,6 +62,7 @@ class UI:
     def __init__(self, port: int):
         self.ws = ws_connect(f"ws://127.0.0.1:{port}", max_size=2**22).__enter__()
         self.events: list[dict] = []
+        self.rx_t: list[float] = []        # 与 events 一一对应的到达时刻（time.monotonic），测时延用
         self.replies: dict[int, dict] = {}
         self.cv = threading.Condition()
         self.rid = itertools.count(1)
@@ -77,6 +78,7 @@ class UI:
                         self.replies[m["rid"]] = m
                     elif m.get("type") != "telem":
                         self.events.append(m)
+                        self.rx_t.append(time.monotonic())
                     self.cv.notify_all()
         except Exception:  # noqa: BLE001
             pass

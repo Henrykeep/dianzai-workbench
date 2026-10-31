@@ -40,3 +40,31 @@ export async function switchMode(rpc: Rpc, mode: string, confirm: (text: string)
 }
 export const estopMessage = (st: BoardStatus) => st.estop_cause?.message_zh || null;
 export const selftestFailures = (st: BoardStatus) => (st.selftest && !st.selftest.pass ? st.selftest.failed_items.map(i => i.message_zh) : []);
+
+// run_selftest 出错：no_board → 「未连接板子」+「连接」（fix_action connect）；selftest_timeout → 「自检超时」+「重试」
+export type SelftestErrView = { text: string; btn: { label: string; action: "connect" | "retry" } | null };
+export function selftestErrView(e: { code?: string; message?: string; fix?: string; fix_action?: string } | null | undefined): SelftestErrView {
+  if (e?.code === "no_board") return { text: "未连接板子", btn: { label: "连接", action: "connect" } };
+  if (e?.code === "selftest_timeout") return { text: "自检超时", btn: { label: "重试", action: "retry" } };
+  return { text: [e?.message, e?.fix].filter(Boolean).join(" · ") || "读取自检失败", btn: null };
+}
+
+// 封箱页只读：最近一次自检的结果与时间（封箱前检查项）。
+// 是否「请重新自检」以本地服务给的 selftest.stale 为准，前端不推算；未通过也提示。字段未上线（stale 缺失）时只显示结果和时间。
+export const RESELFTEST = "请重新自检";
+export type SealSelftest = { text: string; when: string; need: boolean; why: string };
+export function atMs(at: unknown): number | null {
+  if (typeof at === "number" && isFinite(at)) return at < 1e11 ? at * 1000 : at;
+  if (typeof at === "string" && at) { const t = Date.parse(at); return isNaN(t) ? null : t; }
+  return null;
+}
+type SelftestSnap = NonNullable<Selftest> & { at?: string | number; params_hash_at?: string; stale?: boolean };
+export function sealSelftestView(st: BoardStatus, seenAtMs: number | null, fmt = (t: number) => new Date(t).toLocaleTimeString("zh-CN", { hour12: false })): SealSelftest {
+  const s = st.selftest as SelftestSnap | null | undefined;
+  if (!s) return { text: "尚未自检", when: "", need: false, why: "" };
+  const at = atMs(s.at) ?? seenAtMs;   // at：主机墙钟（带时区 ISO 8601；兼容秒 / 毫秒数字）；没有或解析不了时用界面收到的时刻
+  const when = at ? fmt(at) : "";
+  if (!s.pass) return { text: "自检未通过", when, need: true, why: `${s.failed_items.length} 项未通过` };
+  if (s.stale === true) return { text: "自检通过", when, need: true, why: "自检之后参数已修改" };
+  return { text: "自检通过", when, need: false, why: "" };
+}

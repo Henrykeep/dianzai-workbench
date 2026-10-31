@@ -30,7 +30,7 @@ export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; 
   project_flow: { step: "项目", ui: "pflow" }, project_ask: { step: "项目", ui: "pj-ask-go" }, flash: { step: "烧录", ui: "fw-flash" },
   build: { step: "烧录", ui: "fw-build", label: "编译" }, cal_polarity: { step: "标定", ui: "calwiz", label: "极性自检" },
   tune_relay: { step: "调参", ui: "ag-relay", label: "自整定" }, params: { step: "调参", ui: "p-send", label: "下发参数" },
-  params_flash: { step: "调参", ui: "tb-save", label: "保存参数" }, run_selftest: { step: "封箱", ui: "seal-selftest", label: "读取自检" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
+  params_flash: { step: "调参", ui: "tb-save", label: "保存参数" }, run_selftest: { step: "调参", ui: "seal-selftest", label: "读取自检" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
   fetch_deps: { ui: "doctor", label: "安装依赖" },   // missing_deps：自检对话框里按提示安装
 };
 // fix_action → 按钮：可执行 / 未就绪（置灰「等待固件支持」）/ 未登记（置灰写明原因）。不出现点了没反应的按钮
@@ -92,7 +92,7 @@ export const PURPOSE: Record<StepId, string> = {
   project: "生成或导入工程并编译、烧录到目标板；产出可运行的固件。",
   sim: "在仿真板上跑通控制回路，确认信号与参数结构；产出可用的参数初值。",
   bringup: "逐个模块上板收发并完成标定；产出极性、零偏等标定值。",
-  tune: "用阶跃实验与自整定调整参数；产出满足指标的一组参数。",
+  tune: "先读取板上自检确认硬件状态，再通过自整定或阶跃实验调整参数，达标后保存参数到 Flash；产出满足指标的一组参数。",
   score: "按评分项逐项实测并保存证据；产出每项的测试记录与得分。",
   seal: "赛前全绿检查并持久化参数；产出写入 Flash 与 yaml 的定稿参数。",
 };
@@ -100,14 +100,17 @@ export const ACTION_LABEL: Record<string, string> = {
   project_flow: "开始读需求", project_ask: "新建工程", flash: "烧录固件", connect: "连接目标板", params: "下发参数",
   score: "开始评分", precontest: "开始检查", tune_relay: "自整定", estop_clear: "解除急停", doctor: "运行自检",
 };
-export function pageHead(p: Progress): { text: string; label: string; action?: string; goto?: StepId } {
-  const cur = p.steps.find(s => s.id === p.current)!;
+// view = 当前打开的页（引导文案跟页走，不跟进度的 current 走，避免串页）；resident = 本页页头已常驻的入口 ui id（主按钮与之重复时不再画）
+export function viewStep(step: string | undefined): StepId | undefined { return JOURNEY.find(j => (j.pages as readonly string[]).includes(step ?? ""))?.id; }
+export function pageHead(p: Progress, view?: StepId, resident: string[] = []): { text: string; label: string; action?: string; goto?: StepId; hidden?: boolean } {
+  const cur = p.steps.find(s => s.id === (view ?? p.current)) ?? p.steps.find(s => s.id === p.current)!;
   const text = PURPOSE[cur.id];
-  if (p.next && p.next.title === cur.title) return { text, label: ACTION_LABEL[p.next.action] ?? "开始", action: p.next.action };
+  const dup = (a: string) => { const ui = ACTIONS[a]?.ui; return !!ui && resident.includes(ui); };
+  if (p.next && p.next.title === cur.title) return dup(p.next.action) ? { text, label: "", hidden: true } : { text, label: ACTION_LABEL[p.next.action] ?? "开始", action: p.next.action };
   const nx = p.next && p.steps.find(s => s.title === p.next!.title);
   if (nx) return { text, label: `前往${nx.title}`, goto: nx.id };
   // 接口的 next 也可能是“先解决阻塞”（title 不是步骤名，如「运行自检…」）：按钮直接给这个动作
-  if (p.next?.action) { const f = resolveFix(p.next.action, () => true); if (f?.kind === "run") return { text, label: f.label, action: p.next.action }; }
+  if (p.next?.action) { const f = resolveFix(p.next.action, () => true); if (f?.kind === "run") return dup(p.next.action) ? { text, label: "", hidden: true } : { text, label: f.label, action: p.next.action }; }
   return { text, label: "已完成" };
 }
 const LABEL: Record<State, string> = { todo: "未开始", doing: "进行中", done: "已完成", blocked: "已阻塞" };
@@ -137,12 +140,14 @@ export function render(p: Progress, go: (s: Step) => void) {
   document.querySelectorAll<HTMLElement>("#steps [data-blocked]").forEach(n => { if (!(n.nextElementSibling as HTMLElement | null)?.classList.contains("nav-blk")) delete n.dataset.blocked; });
   const ph = document.getElementById("pg-head");
   if (ph) {
-    const hd = pageHead(p);
-    const extra = document.getElementById("pg-tune");   // 调参页「保存参数」常驻在页头，重画时保留
+    const view = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step);
+    const extra = document.getElementById("pg-tune");   // 调参页「读取自检」「保存参数」常驻在页头，重画时保留
+    const resident = view === "tune" && extra ? [...extra.querySelectorAll<HTMLElement>("button[id]")].map(e => e.id) : [];
+    const hd = pageHead(p, view, resident);
     ph.innerHTML = `<p class="pg-t"></p><button class="btn pri" type="button"></button>`;
     if (extra) ph.querySelector("p")!.after(extra);
     ph.querySelector("p")!.textContent = hd.text;
-    const b = ph.querySelector<HTMLButtonElement>(":scope > button.pri")!   /* 不能取第一个 button：调参页常驻的「保存参数」也在页头 */; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto;
+    const b = ph.querySelector<HTMLButtonElement>(":scope > button.pri")!   /* 不能取第一个 button：调参页常驻的「保存参数」也在页头 */; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto; b.hidden = !!hd.hidden;   // 与页头常驻入口重复：只留入口表登记的那个
     b.onclick = () => { if (hd.action) runAction(hd.action, go); else if (hd.goto) go(JOURNEY.find(j => j.id === hd.goto)!.pages[0] as Step); };
   }
   const h = document.getElementById("step-hint"); if (!h) return;

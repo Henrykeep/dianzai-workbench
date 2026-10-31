@@ -303,7 +303,10 @@ def test_step_start_refuses_when_board_reports_estop():
 
 @pytest.mark.needs_sim
 def test_estop_clear_sends_only_R_and_notifies(home):
-    """解除急停：只发 'R'，不重发运动/设定值、不恢复调参；推 estop cleared + 固定 agent_notice（fix_action=tune_relay）。"""
+    """解除急停：只发 'R'，不重发运动/设定值、不恢复调参；推 estop cleared + 固定 agent_notice（fix_action=tune_relay），只一次。
+
+    等待方式：先 mark 再发操作（事件可能早于 RPC 回复到达——高负载下 latched 常比 estop 的回复先到，
+    旧写法 wait(..., ui.mark()) 在回复之后才取 mark，会把已到的 latched 跳过而超时），超时给足 10 s。"""
     from dzbench._dzlink import DATA
     st = ServerThread()
     ui = UI(st.port)
@@ -312,8 +315,9 @@ def test_estop_clear_sends_only_R_and_notifies(home):
         ui.ok("connect", port="sim:car_2wd")
         _wait_status(ui, lambda e: e.get("alive"))
         time.sleep(0.6)
+        m0 = ui.mark()                     # 先取 mark，再发急停
         ui.ok("estop", src="急停按钮")
-        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 3, ui.mark())
+        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 10, m0)
         sent = []
         orig = s._send
 
@@ -324,13 +328,17 @@ def test_estop_clear_sends_only_R_and_notifies(home):
         s._send = spy
         m = ui.mark()
         ui.ok("cmd", c="R")
-        ev = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "cleared", 2, m)
+        ev = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "cleared", 10, m)
         assert {"seq", "t", "source"} <= ev.keys()
-        nt = ui.wait(lambda e: e.get("type") == "agent_notice" and e.get("blocker_code") == "estop_cleared", 2, m)
+        nt = ui.wait(lambda e: e.get("type") == "agent_notice" and e.get("blocker_code") == "estop_cleared", 10, m)
         assert nt["what"] == "已解除，电机保持静止，需重新开始调参" and nt["fix_action"] == "tune_relay"
         time.sleep(1.5)                    # 再看 1.5 s：除 'R' 外没有任何 DATA 帧（主机心跳不是 DATA）
         assert sent == [(0x7E, b"R")], sent
         assert not s.tx_locked
+        later = ui.events[m:]
+        assert sum(e.get("type") == "agent_notice" and e.get("blocker_code") == "estop_cleared" for e in later) == 1   # 通知只一次
+        assert sum(e.get("type") == "estop" and e.get("state") == "cleared" for e in later) == 1
+        assert not [e for e in later if str(e.get("type", "")).startswith(("tune", "autopilot"))], "解除后不得恢复调参"
     finally:
         ui.close(); st.stop()
 
@@ -382,3 +390,27 @@ def test_estop_event_keys_match_contract():
     for st, (need, opt) in Session.ESTOP_EVENT_KEYS.items():
         for k in need | opt:
             assert f"`{k}`" in doc, (st, k)                       # 约定文档与代码一致
+
+
+def test_cleared_only_after_firmware_bit10_clears():
+    """解除只以固件心跳 bit10 清零为准：发 R 后、bit10 仍为 1 的心跳期间不解锁、不推 cleared；第一帧 bit10=0 才推，且只推一次。"""
+    import struct
+    ev = []
+    s = Session(emit=ev.append)
+    s.port, s.board_uid = "sim:x", None
+    s._send = lambda *a, **k: True
+    hb = lambda w: s._on_heartbeat(struct.pack("<IIII", 0x1234, 0, 0, w))   # noqa: E731
+    s._uid_marked = True
+    s.last_hb = 1.0
+    hb(1 << 10)
+    assert s.tx_locked
+    ev.clear()
+    assert s.cmd("R")
+    for _ in range(3):
+        hb(1 << 10)                                  # 固件还没处理 R：照旧锁着
+    assert s.tx_locked and not [e for e in ev if e.get("state") == "cleared"]
+    hb(0)
+    hb(0)
+    cl = [e for e in ev if e.get("type") == "estop" and e.get("state") == "cleared"]
+    assert not s.tx_locked and len(cl) == 1 and cl[0]["latency_ms"] >= 0
+    assert set(cl[0]) <= Session.ESTOP_EVENT_KEYS["cleared"][0] | Session.ESTOP_EVENT_KEYS["cleared"][1]

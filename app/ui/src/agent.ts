@@ -462,6 +462,7 @@ export function initAgent(call: Call) {
   }
   function onNotice(n: Notice) {
     if (!n?.blocker_code) return;
+    if (n.blocker_code === "estop_cleared") return;   // 解除提示由主界面统一一张卡（estopbtn.clearedOnce），这里不重复
     const fallback = notes.get(n.blocker_code)?.dataset.src !== "notice" && notes.has(n.blocker_code);
     if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复
     seenBlk.add(n.blocker_code);
