@@ -118,6 +118,11 @@ def build(svc, tool: str, args: dict) -> dict | None:
     from . import steptools
     root = pathlib.Path(svc.gw.root)
     where = "仿真" if svc.sim else "实机"
+    if tool == "iterate_start":
+        try:
+            return svc.iterate_card(args)
+        except Exception as e:  # noqa: BLE001
+            return {"title": "自动迭代调参", "error": str(e)}
     if tool == "project_apply":
         c = svc.chains.get(args.get("code")) or {}
         home = steptools._flow(root).home

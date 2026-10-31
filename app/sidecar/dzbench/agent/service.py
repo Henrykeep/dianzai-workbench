@@ -8,6 +8,7 @@ import pathlib
 import math
 import struct
 import time
+import threading
 
 from .. import config as cfg_mod
 from .. import elfsym, hardfault, keil
@@ -107,6 +108,7 @@ class AgentService:
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
             "tune_autopilot": self.tune_autopilot,
+            "iterate_start": self.iterate_start, "iterate_stop": self.iterate_stop,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
@@ -406,6 +408,73 @@ class AgentService:
         return scoring.writeback(self, m | {"confirm": True, "sha": d.get("sha")}) if d.get("sha") else d
 
     # -------------------------------------------------------------- 仿真自动调参
+    # -------------------------------------------------------------- #38 自动迭代（板上阶跃 step_result）
+    def iterate_plan(self, params: list | None = None, target: float | None = None, dur_ms: int = 2000, ch: int = 0) -> dict:
+        """按 link_schema.json 拼迭代方案：参数的 [min, max] / max_delta、阶跃通道（link.step）。"""
+        sch = self.s.schema
+        if not sch:
+            raise GatewayError("no_schema", "还没识别出参数表", "先连上板子等心跳")
+        steps = sch.step
+        if not steps or not 0 <= int(ch) < len(steps):
+            raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "固件升到 dzctl 0.13.0 并在 app.yaml 加 link.step")
+        names = list(params or self._gains().keys())
+        bad = [n for n in names if n not in sch.param_index]
+        if bad or not names:
+            raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
+        st = steps[int(ch)]
+        if target is None:
+            raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {st['range']:g} 的 1/4")
+        return {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(st["abs_tol"]),
+                "params": [dict(sch.params[sch.param_index[n]]) for n in names]}
+
+    def iterate_card(self, args: dict) -> dict:
+        from .iterate import Iterator, SessionIO
+        plan = self.iterate_plan(**args)
+        io = SessionIO(self.s)
+        return Iterator.card(plan, io.read_params(), io.order(), self.sim)
+
+    def iterate_start(self, **args) -> dict:
+        """一张批量确认卡（参数范围 / max_delta / 起始值 + hash / 预算）→ 人点一次 → 后台自动迭代到达标或停止条件。"""
+        self.iterate_plan(**args)                                # 先校验，错了不出卡
+
+        def run():
+            from .iterate import Iterator, SessionIO
+            th = getattr(self, "iter_thread", None)
+            if th and th.is_alive():
+                raise GatewayError("iterate_running", "已经在自动迭代", "先点“停止迭代”")
+            it = Iterator(SessionIO(self.s), self.iterate_plan(**args), self.sim, emit=self._iter_emit)
+            self.iterator, self.iter_result = it, None
+            self.iter_thread = threading.Thread(target=self._iter_run, args=(it,), daemon=True, name="iterate")
+            self.iter_thread.start()
+            return {"status": "started", "budget": {"time_s": it.budget_s, "rounds": it.max_rounds}}
+        return self.gate("iterate_start", args, run)
+
+    def _iter_emit(self, e: dict) -> None:
+        if e.get("type") == "iterate.round" and e.get("valid"):
+            self.memory().add("iterate", iter=e["iter"], params=e["params"], score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
+        self.emit(e)
+
+    def _iter_run(self, it) -> None:
+        try:
+            self.iter_result = it.run()
+        except Exception as e:  # noqa: BLE001  后台线程不能把异常漏掉
+            self.iter_result = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
+            self.emit(self.iter_result)
+
+    def iterate_stop(self) -> dict:
+        it = getattr(self, "iterator", None)
+        if it is None:
+            return {"ok": False, "message_zh": "没有正在进行的自动迭代"}
+        it.stop()
+        try:
+            self.s.step_stop()
+        except Exception:  # noqa: BLE001
+            pass
+        th = getattr(self, "iter_thread", None)
+        if th:
+            th.join(5)
+        return {"ok": True, "result": self.iter_result}
+
     def tune_autopilot(self, rounds: int = 6) -> dict:
         """仅仿真：提议→采纳→阶跃→护栏判，直到护栏说 done/stop 或轮数用完；最后回到最好的一轮。实机每次写都要人点，不走这里。"""
         if not self.sim:

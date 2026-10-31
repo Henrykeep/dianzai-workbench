@@ -99,3 +99,12 @@
 - `iterate.started` `{plan, limits, stop}`
 - `iterate.round` 第 2 节字段
 - `iterate.stopped` `{reason, best, rounds}`
+
+## 7. 本地服务实现（dzctl 0.13.0 实帧）
+
+- 帧编解码直接用 `tools/dzstep.py`（`dzbench/stepproto.py` 引入），与固件 `dzstep.c` 同口径：DATA 0x7B 开始（12 B：ch, 0, iter, target, dur_ms 200–30000；空载荷 = 停止，结果 aborted、cause 0x80）、应答 4 B（0 已开始 / 1 参数错 / 2 急停中 / 3 忙 / 4 不支持 / 5 脱机）、step_result 56 B；DATA 0x7A param_reject（1 range / 2 type / 3 state / 4 step）；PARAM_ACK status 5 = 被拒。
+- 校验以 `link_schema.json`（app.yaml `link.params`）为准：类型、[min, max]、单步 `max_delta`（缺省 = max − min）；本地先拒（`invalid_param`，`reject: step`），从不钳位。急停中、心跳 bit17 置位时不写参数（`param_locked`）。
+- `params_hash` 取 step_result 里的 CRC32；本地按参数表顺序算同一个值核对，不一致记 `hash_mismatch`。心跳尾部的 params_hash 仍是 FNV（0.12），两者不混用。
+- `metric_mode = abs` 时 `overshoot_pct` / `ss_err_pct` 是物理单位（记录里 `unit: "abs"`），按 `link.step.abs_tol` 判稳态误差；超调只记录不判。
+- 代码：`dzbench/agent/iterate.py`（`Iterator` 引擎 + `SessionIO`）、`AgentService.iterate_start / iterate_stop`（工具同名；实机 human 级出批量卡，仿真 log 级）、`Session.step_start / step_wait / step_stop / iter_busy`。测试：`tests/test_iterate.py`（mock step_result + car_2wd 仿真真固件）。
+- 事件：`iterate.started {plan, start, start_hash, limits}`、`iterate.round`（第 2 节字段 + `local_hash` `unit` `band` `changed`）、`iterate.param_reject {name, value, reason}`、`iterate.stopped {reason, message_zh, rounds, best{iter, params, params_hash, metrics, pass, gaps}, next_zh}`；`reason` ∈ pass / budget_time / budget_rounds / estop / stopped / invalid / no_improve / unstable / blocked / error。

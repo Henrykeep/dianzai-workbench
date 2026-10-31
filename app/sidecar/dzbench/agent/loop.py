@@ -42,7 +42,7 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
 
 READ_ONLY = {"read_file", "list_files", "repo_map", "list_params", "read_telemetry", "step_analysis", "board_memory", "read_symbol",
              "build_log", "project_state", "score_items", "tune_context"}
-PARAM_WRITES = {"propose_param_change", "tune_autopilot", "swarm_search", "rollback_best"}
+PARAM_WRITES = {"propose_param_change", "tune_autopilot", "iterate_start", "swarm_search", "rollback_best"}
 READ_CAP = 8                                   # 一轮里只读工具的上限（r4 验收：读了十几次才动手）
 BIG_TASK = re.compile(r"新建|从零|建项目|建工程|一路做|做到.*(跑通|调好)|整个项目")
 
@@ -137,6 +137,11 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"item": {"type": "string"}}, "required": ["item"]}},
     {"name": "score_writeback", "description": "评分：把结果回写到 requirements.yaml 该项（dir=证据目录）",
      "input_schema": {"type": "object", "properties": {"item": {"type": "string"}, "dir": {"type": "string"}, "note": {"type": "string"}}, "required": ["item"]}},
+    {"name": "iterate_start", "description": "自动迭代调参（#38，板上阶跃 step_result）：一张批量确认卡后自己连续 改参→阶跃→判定，"
+     "直到连续 2 轮达标或预算（180 s；实机 8 轮 / 仿真 20 轮）用完；停下时报告最好一组参数和各项差距。params 缺省 = 增益参数",
+     "input_schema": {"type": "object", "properties": {"params": {"type": "array", "items": {"type": "string"}}, "target": {"type": "number"},
+                                                       "dur_ms": {"type": "integer"}, "ch": {"type": "integer"}}, "required": ["target"]}},
+    {"name": "iterate_stop", "description": "立即停止自动迭代（板上本轮中止，参数停在当前值）", "input_schema": {"type": "object", "properties": {}}},
     {"name": "tune_autopilot", "description": "仅仿真：自动 提议→阶跃→护栏判 连跑到通过或 N 轮，报告最好一轮。实机不可用",
      "input_schema": {"type": "object", "properties": {"rounds": {"type": "integer"}}}},
 ]
@@ -154,7 +159,7 @@ MODES = {
     "general": {"name": "通用", "tools": None, "prompt": ""},
     "diagnose": {"name": "诊断（只读）", "tools": _READ,
                  "prompt": "当前是【诊断】模式：只读，不提议任何修改。给出证据链（数据/文件/符号），区分【实测】【源码】【推断】；证据不足就列出需要实板验证的项。"},
-    "tune": {"name": "调参", "tools": _READ | {"propose_param_change", "run_step_test", "rollback_best", "run_sweep_test", "bode_predict", "tune_autopilot",
+    "tune": {"name": "调参", "tools": _READ | {"propose_param_change", "run_step_test", "rollback_best", "run_sweep_test", "bode_predict", "tune_autopilot", "iterate_start", "iterate_stop",
                                                "score_run", "score_save", "score_writeback"},
              "prompt": "当前是【调参】模式：先 board_memory + tune_context，再每轮只改一个参数，改完用实验验证。不改代码。"},
     "edit": {"name": "改代码", "tools": _READ | {"propose_edit", "build", "flash", "flash_rollback", "flow_preview", "flow_accept", "project_chain", "project_apply"},

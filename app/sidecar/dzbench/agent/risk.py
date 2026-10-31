@@ -21,12 +21,13 @@ RISK: dict[str, str] = {
     "build": LOG, "reset": LOG, "propose_param_change": LOG, "propose_edit": LOG, "remember": LOG, "observe": LOG,
     "flash": HUMAN, "flash_rollback": HUMAN, "erase": HUMAN, "mem_write": HUMAN, "run_step_test": HUMAN, "run_sweep_test": HUMAN, "rollback_best": HUMAN,
     "flow_accept": HUMAN, "project_apply": HUMAN, "score_run": HUMAN, "score_save": HUMAN, "score_writeback": HUMAN,                          # 写仓库（requirements/scheme/boards/alloc/build、Keil 工程）
-    "open_loop_test": HUMAN,                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）
+    "open_loop_test": HUMAN,
+    "iterate_start": HUMAN, "iterate_stop": AUTO,   # #38：实机一张批量卡；停止随时可以                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）
     "swarm_search": FORBID,                        # 群体/随机搜索：实机永远不给，仿真降为 log
     "raw_cmd": FORBID, "disable_estop": FORBID, "unlock_rdp": FORBID, "estop": FORBID,
 }
 # 仿真里不动真东西：这几项降为 log
-SIM_RELAX = {"run_step_test": LOG, "run_sweep_test": LOG, "rollback_best": LOG, "swarm_search": LOG, "score_run": LOG}
+SIM_RELAX = {"iterate_start": LOG, "run_step_test": LOG, "run_sweep_test": LOG, "rollback_best": LOG, "swarm_search": LOG, "score_run": LOG}
 
 
 def tier(tool: str, sim: bool) -> str:

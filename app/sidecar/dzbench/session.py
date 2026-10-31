@@ -25,12 +25,13 @@ from .logfile import RX, TX, LogWriter
 from . import ports as _ports
 from .ports import PortOpenError, explain_open_error, identity, probe_baud
 from .schema import check_value
+from .stepproto import dzstep, STEP_ID as ID_STEP, REJECT_ID as ID_REJECT, HB_ITER_BUSY
 from .replay import ReplayTransport
 from .schema import Schema, find_by_hash
 from .transport import SIM_PREFIX, Transport, open_transport
 
 ID_CMD, ID_ESTOP = 0x7E, 0x7F
-ACK_STATUS = {0: "ok", 1: "clamped", 2: "bad_id", 3: "bad_len", 4: "bad_value"}
+ACK_STATUS = {0: "ok", 1: "clamped", 2: "bad_id", 3: "bad_len", 4: "bad_value", 5: "rejected"}   # 5 = dzctl 0.13.0 被拒（回读值 = 旧值）
 HB_TIMEOUT_S = 2.0          # = linkstate.LOST_AFTER_S；板子心跳 500 ms，任一合法帧都算活着
 
 
@@ -128,6 +129,10 @@ class Session:
         self.flash_saved_writes = -1         # 黑匣子报“参数已存进 flash / 上电读了 flash”时的 param_writes；-1 = 没见过
         self.run_mode: str | None = None     # 板子运行模式 tethered / standalone；固件上报后才有，否则 None
         self.tx_locked = False               # 急停后锁住侧车的一切主动发送；只有人点“解除急停”才解（重连/侧车重启都不解，见 latch.py）
+        self.step_cv = threading.Condition()   # #38 阶跃应答 / step_result / param_reject（收线程写，调用方等）
+        self.step_ack: dict | None = None
+        self.step_results: list[dict] = []
+        self.last_reject: dict | None = None
         self.clear_pending_at: float | None = None   # 发了 'R'、等固件心跳 bit10 清零确认的起点（monotonic）
         self.estop_requested_at: float | None = None
         self.estop_source: str | None = None  # 当前锁存的来源：ui / agent / heartbeat_lost / firmware:<cause> / selftest / latch_restored
@@ -464,6 +469,13 @@ class Session:
                 self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
                 self.relay_ack = payload[0]
+            elif kind == DATA and id_ == ID_STEP and len(payload) in (4, 56):
+                self._on_step(payload)
+            elif kind == DATA and id_ == ID_REJECT and len(payload) >= 10:
+                r = dzstep.decode_param_reject(payload)
+                with self.step_cv:
+                    self.last_reject = r
+                self.emit({"type": "param_reject", **r})
             else:
                 self._locked(lambda k=kind, i=id_, pl=payload, n=now: self._on_frame_locked(k, i, pl, n))
 
@@ -899,6 +911,63 @@ class Session:
         a = getattr(self, "relay_ack", None)
         return {"ok": a == 0, "status": a, "why": "板子没回执（固件早于 dzctl 0.7.0？）" if a is None else self.RELAY_STATUS.get(a, str(a))}
 
+    # ------------------------------------------------------------ #38 阶跃实验（dzctl 0.13.0 DATA 0x7B）
+    STEP_ACK_ZH = {"bad_arg": "开始帧参数不对（通道 / 时长 200–30000 ms）", "estop": "板子急停中", "busy": "板上已有阶跃实验在跑",
+                   "unsupported": "这个应用没配阶跃通道（app.yaml link.step）", "offline": "板子在脱机模式"}
+
+    def iter_busy(self) -> bool:
+        """心跳 bit17 DZCTL_HB_ITER_BUSY：板上阶跃实验进行中。"""
+        w = self.hb_status
+        return bool(w is not None and w & HB_ITER_BUSY)
+
+    def _on_step(self, payload: bytes) -> None:
+        with self.step_cv:
+            if len(payload) == 4:
+                self.step_ack = dzstep.decode_step_ack(payload)
+            else:
+                r = dzstep.decode_step_result(payload)
+                self.step_results.append(r)
+                del self.step_results[:-16]
+            self.step_cv.notify_all()
+        if len(payload) == 56:
+            self.emit({"type": "step_result", **self.step_results[-1]})
+
+    def step_start(self, ch: int, it: int, target: float, dur_ms: int, wait_s: float = 0.5) -> dict:
+        """开始一轮板上阶跃（12 B：ch, 0, iter, target, dur_ms）。急停中 / 板子不支持等直接报错。"""
+        import math
+        if not 200 <= int(dur_ms) <= 30000 or not math.isfinite(float(target)):
+            raise LinkError("bad_step", f"阶跃参数不对：dur_ms={dur_ms} target={target}", "dur_ms 200–30000，target 是有限数")
+        with self.step_cv:
+            self.step_ack = None
+        if not self._send(DATA, ID_STEP, dzstep.encode_step_start(int(ch), int(it), float(target), int(dur_ms)), check=True):
+            raise LinkError("not_connected", "没连板子", "")
+        t_end = time.monotonic() + wait_s
+        with self.step_cv:
+            while self.step_ack is None and time.monotonic() < t_end:
+                self.step_cv.wait(0.02)
+            a = self.step_ack
+        if a is None:
+            raise LinkError("step_no_ack", "板子没回阶跃应答（固件早于 dzctl 0.13.0？）", "升级固件后重试")
+        if a["status"] != "started":
+            raise LinkError("step_" + str(a["status"]), self.STEP_ACK_ZH.get(a["status"], f"阶跃被拒 {a['status']}"), "", None, {"ack": a})
+        return a
+
+    def step_wait(self, it: int, timeout: float) -> dict | None:
+        """等 iter = it 的 step_result（开始之后到的那一帧）。"""
+        t_end = time.monotonic() + timeout
+        with self.step_cv:
+            while time.monotonic() < t_end:
+                r = next((x for x in reversed(self.step_results) if x["iter"] == it), None)
+                if r is not None:
+                    self.step_results.remove(r)
+                    return r
+                self.step_cv.wait(0.05)
+        return None
+
+    def step_stop(self) -> bool:
+        """空载荷 = 停止（板子发 aborted、cause 0x80 的结果）。急停中也能发（停止只会更安全）。"""
+        return self._send(DATA, ID_STEP)
+
     def relay_stop(self) -> bool:
         return self._send(DATA, ID_RELAY)
 
@@ -981,10 +1050,25 @@ class Session:
         """verify=True：写完再单独读一次，和 ACK 报的生效值比对（llm-pid-tuner 的“回读比对”，MIT）。
         Agent 落地参数、恢复快照时用；拖滑条不用（多一次往返）。"""
         sch = self.schema
-        v = sch.check(name, value) if sch else check_value(name, value)     # #40：不合法直接 invalid_param，不再悄悄钳位
+        # #40/#38：按 link_schema.json 校验（范围、类型、单步 max_delta），不合法直接 invalid_param，从不钳位
+        v = sch.check(name, value, self.params.get(name)) if sch else check_value(name, value)
+        if self.tx_locked:
+            raise LinkError("param_locked", "急停中不写参数", "确认安全后点“解除急停”再改", None, {"reason": "state"})
+        if self.iter_busy():
+            raise LinkError("param_locked", "板上阶跃实验进行中（参数锁定）", "等这一轮结束或点“停止迭代”", None, {"reason": "state"})
+        with self.step_cv:
+            self.last_reject = None
         applied, status = self._param_rpc(name, struct.pack("<f", v))
         self.param_writes += 1
         out = {"name": name, "requested": v, "applied": applied, "status": status}
+        if status == "rejected":                  # 板子拒绝（0.13.0）：PARAM_ACK 5 + param_reject 帧
+            t_end = time.monotonic() + 0.1
+            with self.step_cv:
+                while self.last_reject is None and time.monotonic() < t_end:
+                    self.step_cv.wait(0.02)
+                rj = self.last_reject
+            out["reason"] = (rj or {}).get("reason")
+            return out
         if verify:
             rb = self.read_param(name)
             out["readback"] = rb
@@ -1199,7 +1283,7 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
-HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存", 1 << 17: "迭代中"}
 
 
 # dzctl 0.11.0 dzctl_selftest_item_t（0.12.0 起应用可注册 6..32 的自定义项）：心跳 selftest_mask 的 bit (code−1)

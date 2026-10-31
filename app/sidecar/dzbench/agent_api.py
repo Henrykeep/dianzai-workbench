@@ -50,7 +50,7 @@ class AgentTools:
     def propose_param_change(self, name: str, value: float, reason: str, source: str = "agent") -> dict:
         if not self.s.schema or name not in self.s.schema.param_index:
             raise LinkError("bad_param", f"没有参数 {name}")
-        v, clamped = self.s.schema.clamp(name, float(value))
+        v, clamped = self.s.schema.check(name, value), False      # 不合法直接 invalid_param，不钳位（#38/#40）
         with self.lock:
             pid = next(self._ids)
             p = {"type": "proposal", "id": pid, "name": name, "value": v, "clamped": clamped,
