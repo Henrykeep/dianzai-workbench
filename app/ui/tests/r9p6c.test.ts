@@ -129,6 +129,8 @@ import { forkFirstExample } from "../src/pjask";
 // fw-plant a4161a3：plant.estimate / basis 标签；粗估模型下的结果标「仅仿真粗估」；单位原样
 import { toPlant, plantTagHtml, isCoarse, coarseTagHtml } from "../src/plant";
 import { resultCardHtml } from "../src/iterui";
+import { metricCardHtml } from "../src/metriccard";
+import { toMetricsCard } from "../src/fieldmap";
 {
   const c = toPlant({ plant: { order: 1, unit: "°C", u_unit: "%", estimate: "coarse", basis: "题面(2)：加热 60 s 升 10 °C" } })!;
   assert.equal(c.tag, "粗估");
@@ -138,12 +140,17 @@ import { resultCardHtml } from "../src/iterui";
   assert.match(plantTagHtml(i, esc), /对象模型：已辨识 · rpm/);
   assert.match(plantTagHtml(toPlant({ estimate: "identified" }), esc), /title="后端未给依据"/);
   assert.equal(toPlant({ plant: { unit: "m" } }), null); assert.equal(plantTagHtml(null, esc), "");
-  assert.ok(isCoarse({ plant_estimate: "coarse" }) && isCoarse({ plant_coarse: true }) && isCoarse({ plant: { estimate: "coarse" } }));
-  assert.ok(!isCoarse({ plant_estimate: "identified" }) && !isCoarse({}));
-  assert.match(coarseTagHtml({ plant_coarse: true }), /仅仿真粗估/);
+  const mc = (est: string, basis = "题面(2)粗估") => ({ metrics_card: { task_kind: "control", items: [{ name: "温度稳态误差", verdict: "pass", model: { estimate: est, basis } }, { name: "超调", verdict: "pass" }] } });
+  assert.ok(isCoarse(mc("coarse")) && !isCoarse(mc("identified")) && !isCoarse({}) && !isCoarse({ plant: { estimate: "coarse" } }));
+  assert.match(coarseTagHtml(mc("coarse")), /title="题面\(2\)粗估">仅仿真粗估/); assert.equal(coarseTagHtml(mc("identified")), "");
+  assert.match(coarseTagHtml(mc("coarse", "")), /title="后端未给依据"/);
   const card = (x: any) => resultCardHtml({ reason: "pass", verdict: "pass", verdict_zh: "达标", ...x } as any, esc, { canApply: false, applyReady: false });
-  assert.match(card({ plant_estimate: "coarse" }), /仅仿真粗估/); assert.ok(!/仅仿真粗估/.test(card({})));
-  for (const f of ["src/plant.ts", "src/main.ts", "src/iterui.ts"]) assert.ok(!/"(estimate|basis|plant_estimate|plant_coarse)"/.test(readFileSync(f, "utf8")), f + " 不写字段名");
+  assert.match(card(mc("coarse")), /仅仿真粗估/); assert.ok(!/仅仿真粗估/.test(card(mc("identified")))); assert.ok(!/仅仿真粗估/.test(card({})));
+  const mh = metricCardHtml(mc("coarse"));
+  assert.equal((mh.match(/仅仿真粗估/g) ?? []).length, 1, "只标 model=coarse 的那一项");
+  assert.ok(!/仅仿真粗估/.test(metricCardHtml(mc("identified"))));
+  assert.equal(toMetricsCard(mc("coarse"))!.items[0].model!.basis, "题面(2)粗估"); assert.equal(toMetricsCard(mc("coarse"))!.items[1].model, null);
+  for (const f of ["src/plant.ts", "src/main.ts", "src/iterui.ts", "src/metriccard.ts"]) assert.ok(!/"(estimate|basis|model|plant_estimate|plant_coarse)"/.test(readFileSync(f, "utf8")), f + " 不写字段名");
   console.log("r9p6c plant ok");
 }
 // r9d：#91 stop_iteration 有修复按钮；进度块 detail（中文）优先；写文件卡按钮只叫「确认写入」

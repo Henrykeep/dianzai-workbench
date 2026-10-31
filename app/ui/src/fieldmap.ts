@@ -84,6 +84,7 @@ export const MC_F = {
   verdict: "verdict", verdictZh: "verdict_zh", basis: "pass_basis", source: "source", evidence: "evidence",
   tuning: "tuning", calib: "calibration", coeffs: "coeffs", signal: "signal_source",
   how: "method", manualSteps: "manual_steps", procedure: "procedure", entry: "manual_entry", eValue: "value", eBy: "by", eAt: "at", srcNote: "source_note",
+  model: "model",   // 每项 model:{estimate, basis}，后端从 app.yaml plant 抄来；子字段名同 PLANT_F
 } as const;
 // 指标卡导出：CSV / xlsx 由后端生成，前端只调这个 op（op 名未定稿，改名只改这里）
 export const MC_EXPORT_OP = "metrics_export";
@@ -96,6 +97,7 @@ export type McItem = {
   source: "sim" | "real" | "calibrated" | "manual" | ""; srcNote: string; evidence: string; tuning: any | null;
   how: "auto" | "manual" | ""; manualSteps: string[]; procedure: string[]; entry: { value: number | null; by: string; at: string } | null;
   calib: { coeffs: number[]; signal: string } | null;
+  model: { estimate: string; basis: string } | null;
 };
 export type MetricsCard = { kind: TaskKind; kindBasis: string; items: McItem[] };
 const strList = (v: unknown): string[] => Array.isArray(v) ? v.map(y => typeof y === "string" ? y : "").filter(Boolean) : typeof v === "string" && v ? [v] : [];
@@ -116,6 +118,7 @@ export function toMetricsCard(src: any): MetricsCard | null {
       manualSteps: strList(x[MC_F.manualSteps]), procedure: strList(x[MC_F.procedure]),
       entry: x[MC_F.entry] && typeof x[MC_F.entry] === "object" ? { value: num(x[MC_F.entry][MC_F.eValue]) ?? null, by: str(x[MC_F.entry][MC_F.eBy]), at: str(x[MC_F.entry][MC_F.eAt]) } : null,
       tuning: x[MC_F.tuning] && typeof x[MC_F.tuning] === "object" ? x[MC_F.tuning] : null,
+      model: x[MC_F.model] && typeof x[MC_F.model] === "object" && str(x[MC_F.model][PLANT_F.estimate]) ? { estimate: str(x[MC_F.model][PLANT_F.estimate]), basis: str(x[MC_F.model][PLANT_F.basis]) } : null,
       calib: c && typeof c === "object" ? { coeffs: Array.isArray(c[MC_F.coeffs]) ? c[MC_F.coeffs].filter((y: unknown) => num(y) != null) : [], signal: str(c[MC_F.signal]) } : null,
     };
   });
@@ -141,6 +144,6 @@ export const writeScopeNote = (card: any): string => card?.[WRITE_F.scope] === W
 // fw-plant a4161a3 schema/plant.schema.json：plant.estimate ∈ coarse|identified，plant.basis 一句话依据；单位原样显示
 export const PLANT_F = { obj: "plant", estimate: "estimate", basis: "basis", unit: "unit", uUnit: "u_unit" } as const;
 export const PLANT_EST_ZH: Record<string, string> = { coarse: "粗估", identified: "已辨识" };
-// 结果在粗估模型下得出的标记（后端定稿前暂定，两种写法都认）：plant_estimate:"coarse" 或 plant_coarse:true
-export const COARSE_F = { est: "plant_estimate", flag: "plant_coarse", coarse: "coarse" } as const;
+// 粗估判定值：调参页标签读工程的 plant.estimate；结果 / 指标卡读每项 model.estimate（同一 schema 枚举）
+export const PLANT_COARSE = "coarse";
 export const COARSE_ZH = "仅仿真粗估";
