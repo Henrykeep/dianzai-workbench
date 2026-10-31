@@ -1069,3 +1069,8 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 /* r9p4 页头条已删：提交按钮回到输入框右侧，固定不被挤压 */
 .theme-sw{white-space:nowrap}
 .life{flex-wrap:wrap;row-gap:var(--sp1)}
+.rc .rc-cur{margin:0 0 var(--sp2);font:400 var(--t-lg)/24px var(--f-mono);font-variant-numeric:tabular-nums}
+.life{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;line-height:20px}
+.life span{white-space:nowrap;overflow:visible;text-overflow:clip}
+.life{display:flex!important;flex-wrap:wrap;column-gap:0}
+.life span{flex:none}

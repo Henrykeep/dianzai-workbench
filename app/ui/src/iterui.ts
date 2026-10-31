@@ -141,9 +141,28 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   const cells = v.compare.filter(x => CARD_KEYS.test(x[0]));
   const cmp = cells.length
     ? `<div class="rc-cmp">${cells.map(x => `<div class="rc-m"><span class="rc-k">${esc(x[0])}</span><span class="rc-v num">${esc(x[1])} → <b>${esc(x[2])}</b></span><span class="rc-d num ${x[4] ?? ""}">${esc(x[3])}</span></div>`).join("")}</div>`
-    : `<p class="rc-same">${esc(v.title)}</p>`;
+    : `<p class="rc-cur num">${esc(currentMetrics(r))}</p><p class="rc-same">${esc(v.title)}</p>`;
   const ps = `<div class="rc-ps">${v.params.map(([k, x]) => `<span class="mono"><i>${esc(k)}</i> ${esc(x)}</span>`).join("")}</div>`;
   const det = `<details class="rc-det"><summary>详情</summary>${[v.verdict.text, ...v.gaps, v.reason, v.next].filter(Boolean).map(t => `<p>${esc(t)}</p>`).join("")}</details>`;
   const btn = o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"'}>采用这组参数</wa-button>` : "";
   return `<wa-card class="itc rc"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}</h4>${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+}
+
+// r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头
+const CUR_KEYS: [string, string[], (v: number, u: string) => string][] = [
+  ["超调", ["overshoot_pct", "overshoot"], (v, u) => `${n(Math.abs(v))}${u || "%"}`],
+  ["调节", ["settling_s", "settle_s", "settle_ms", "settling"], (v, u) => u === "ms" || (!u && v > 50) ? `${n(v / 1000)} s` : `${n(v)} ${u || "s"}`],
+  ["稳态误差", ["ss_err", "ss_err_pct", "sse_pct", "sse"], (v, u) => `${n(Math.abs(v))}${u ? (u === "%" ? "%" : " " + u) : ""}`],
+];
+export function currentMetrics(r: Stopped): string {
+  const pools: { key: string; value: number; unit: string }[][] = [];
+  const c: any = r.compare; if (c?.best?.length) pools.push(c.best); if (c?.round0?.length) pools.push(c.round0);
+  const obj = (o: any, unitOf: (k: string) => string) => o ? Object.entries(o).filter(([, v]) => typeof v === "number").map(([key, value]) => ({ key, value: value as number, unit: unitOf(key) })) : [];
+  const uf = (k: string) => METRIC_F.find(m => m[0] === k)?.[2] ?? (/_pct$/.test(k) ? "%" : /_ms$/.test(k) ? "ms" : /_s$/.test(k) ? "s" : "");
+  pools.push(obj(r.best?.metrics, uf), obj(r.base, uf));
+  const e: any = r.ss_err; if (e && typeof e.measured === "number") pools.push([{ key: "ss_err", value: e.measured, unit: e.unit ?? "" }]);
+  return CUR_KEYS.map(([zh, keys, f]) => {
+    for (const pl of pools) { const m = pl.find(x => keys.includes(x.key) && Number.isFinite(x.value)); if (m) return `${zh} ${f(m.value, m.unit)}`; }
+    return `${zh} —`;
+  }).join(" · ");
 }

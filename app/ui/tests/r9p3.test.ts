@@ -65,3 +65,11 @@ assert.match(rc, /<h4[^>]*>未判定<\/h4>/); assert.equal((rc.match(/class="rc-
 const [top, det] = rc.split('<details class="rc-det">'); assert.ok(!/停止原因|判定依据|按默认/.test(top), top); assert.match(det, /停止原因/);
 assert.equal((rc.match(/variant="brand"/g) ?? []).length, 1); assert.match(rc, /采用这组参数/);
 console.log("r9p4 card ok");
+// r9p5 未改参也有指标行：当前值、无箭头、缺值「—」
+import { currentMetrics } from "../src/iterui";
+const same = { type: "iterate.stopped", reason: "pass", best: { iter: 0, params: { kp: 1 }, metrics: { overshoot_pct: 12.5, settle_ms: 1500 } }, compare: { round0: [], best: [], unchanged: true } } as any;
+assert.equal(currentMetrics(same), "超调 12.5% · 调节 1.5 s · 稳态误差 —");
+const rcs = resultCardHtml(same, s => s, { canApply: true, applyReady: true });
+assert.match(rcs, /rc-cur[^>]*>超调 12.5% · 调节 1.5 s · 稳态误差 —</); assert.ok(!/[→↓↑]/.test(rcs), rcs);
+assert.equal(currentMetrics({ type: "iterate.stopped", reason: "pass", best: null } as any), "超调 — · 调节 — · 稳态误差 —");
+console.log("r9p5 ok");
