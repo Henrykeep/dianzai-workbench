@@ -4,7 +4,10 @@ import subprocess
 import pytest
 
 from dzbench.agent.gateway import Gateway
-from test_agent import Runner, repo  # noqa: F401  复用真 git 仓库夹具
+import test_agent
+from test_agent import Runner
+
+repo = test_agent.repo   # 复用真 git 仓库夹具
 
 
 def _count(r):
@@ -42,7 +45,8 @@ def test_commit_only_after_approval_and_reject_returns_reason(repo):
 
 
 @pytest.mark.parametrize("op", ["commit", "branch", "reset", "push", "tag"])
-def test_unapproved_git_mutation_refused(repo, op):
+def test_unapproved_git_mutation_refused(repo  # noqa: F811
+, op):
     g = Gateway(repo, runner=Runner())
     before = _count(repo)
     r = g.git_mutate(op, "-m", "x") if op == "commit" else g.git_mutate(op, "x")

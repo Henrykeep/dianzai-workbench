@@ -69,6 +69,7 @@ actions:
   - {id: guard_reset,  label: 重置护栏,         at: step:调参,   ui: ag-guard,   ops: [tune_reset]}
   - {id: agent_chat,   label: Agent 助手,       at: step:调参,   ui: ag-form,    ops: [agent_ask, agent_reset, agent_set_mode, agent_journal, agent_tune_finish]}
   - {id: agent_undo,   label: 撤销 Agent,       at: step:调参,   ui: ag-undo,    ops: [agent_undo]}
+  - {id: git_confirm,  label: 批准 git 提交,    at: step:调参,   ui: git-confirm, ops: [git_confirm_decide], ready: false}   # #88 提交确认卡；界面待前端接
   # ── 评分 ──
   - {id: score,        label: 评分项逐项验收,   at: step:评分,   ui: score,      ops: [score_items, score_save, score_writeback]}
   # ── 封箱 ──
