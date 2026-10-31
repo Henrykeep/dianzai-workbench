@@ -1,5 +1,7 @@
 """project.open / project.list：打开已有项目、列出可选项目（RPC 与 Agent 工具同一接口）。"""
 import asyncio
+import os
+import pathlib
 import datetime
 
 import pytest
@@ -90,7 +92,10 @@ def test_agent_tools_same_interface(sv):
     assert {"project_list", "project_open"} <= loop._READ
     assert risk.RISK["project_list"] == risk.AUTO == risk.RISK["project_open"]
     assert sv.svc.project_list() == op(sv, op="project.list")
-    assert sv.svc.project_open("demo")["project"]["name"] == "demo"
+    ro = sv.svc.project_open("demo")                       # #55：Agent 不能把内置例题当自己的项目（界面 op 照常可看）
+    assert ro["error"] == "example_readonly" and "quick_start" in ro["fix"]
+    (pathlib.Path(os.environ["DZBENCH_HOME"]) / "projects" / "mine").mkdir(parents=True)
+    assert sv.svc.project_open("mine")["project"]["name"] == "mine"
     bad = sv.svc.project_open("../x")
     assert bad["error"] == "project_code_invalid" and bad["fix_action"] == "project_list"
 

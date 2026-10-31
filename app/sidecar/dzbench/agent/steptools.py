@@ -244,16 +244,47 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
     return {"code": code, "steps": steps, "batch": batch, "stopped_at": None}
 
 
+def slug(name: str) -> str:
+    """项目目录名：只用 ASCII 小写字母/数字/连字符（Windows 路径、Keil、make 都不怕）。中文名转不出字母时用 proj-<哈希>。"""
+    import hashlib
+    import re
+    import unicodedata
+    a = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode()
+    a = re.sub(r"[^a-z0-9]+", "-", a.lower()).strip("-")
+    if not a or (not str(name).isascii() and len(a) < 2):
+        a = (a + "-" if a else "proj-") + hashlib.sha1(str(name).encode("utf-8")).hexdigest()[:6]
+    return a[:40].strip("-")
+
+
 def fresh_code(root, code: str) -> str:
-    """新建项目的代号：已有同名目录（用户项目或内置示例）就加 -2、-3…，保证落在一个全新的目录。"""
+    """新建项目的目录名（#39/#55）：ASCII slug（如 2026h-ball-3）；与已有用户项目或内置示例（按 slug 比）重名就加 -2、-3…，
+    保证落在一个全新的目录。中文显示名另存 project.yaml 的 display_name（set_display_name）。"""
+    ex = pathlib.Path(root) / "examples"
+    taken = {slug(e.name) for e in ex.iterdir()} if ex.is_dir() else set()
+
     def used(c):
-        return (paths.projects_dir() / c).exists() or (pathlib.Path(root) / "examples" / c).exists()
-    if not used(code):
-        return code
+        return (paths.projects_dir() / c).exists() or (ex / c).exists() or c in taken
+    base = slug(code)
+    if not used(base):
+        return base
     i = 2
-    while used(f"{code}-{i}"):
+    while used(f"{base}-{i}"):
         i += 1
-    return f"{code}-{i}"
+    return f"{base}-{i}"
+
+
+def set_display_name(d, name: str) -> None:
+    """project.yaml 里记显示名（可以是中文）；目录名始终是 ASCII slug。没有 project.yaml 就建一个最小的。"""
+    import json
+    p = pathlib.Path(d) / "project.yaml"
+    line = f"display_name: {json.dumps(str(name), ensure_ascii=False)}"
+    if not p.exists():
+        p.write_text(f"schema_version: 1\nname: {pathlib.Path(d).name}\n{line}\n", encoding="utf-8")
+        return
+    lines = [x for x in p.read_text(encoding="utf-8").splitlines() if not x.startswith("display_name:")]
+    k = next((i + 1 for i, x in enumerate(lines) if x.startswith("name:")), len(lines))
+    lines.insert(k, line)
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def project_apply(root, code: str, batch: list) -> dict:

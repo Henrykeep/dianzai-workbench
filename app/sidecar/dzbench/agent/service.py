@@ -330,8 +330,8 @@ class AgentService:
         用户点确认 → 写入项目 → 连仿真板 → 一键起步调参 → 评分。返回 action_id 给界面。"""
         ex = steptools.quick_example(self.gw.root, text)
         if ex:                                                        # #55：说的是内置例题 → 复制成新项目目录（例题只读，不复用）
-            code = steptools.fresh_code(self.gw.root, ex.split("_")[0] if "_" in ex else ex)
-            card = self.gate("project_fork", {"example": ex, "code": code}, lambda: None)
+            code = steptools.fresh_code(self.gw.root, ex)                # ASCII slug（2026h-ball、2026h-ball-2…），#55
+            card = self.gate("project_fork", {"example": ex, "code": code, "name": ex}, lambda: None)
             return {"spec": {"code": code, "example": ex, "sim": "sim:" + ex}, "action_id": card.get("action_id"),
                     "note": f"确认卡已出：以内置例题 {ex} 为模板新建项目 {code}（新目录，例题本身不动）；确认后自动建项目、上仿真、自动迭代调参。不要再调别的工具建项目。"}
         sp = steptools.quick_spec(text)
@@ -346,7 +346,7 @@ class AgentService:
         return {"spec": sp, "chain": ch, "action_id": card.get("action_id"),
                 "note": "确认卡已出（含方案与引脚表）；用户点确认后自动写项目、上仿真、调参、评分。不要再调 project_apply。"}
 
-    def project_fork(self, example: str, code: str) -> dict:
+    def project_fork(self, example: str, code: str, name: str | None = None) -> dict:
         """“以例题为模板新建”卡被确认：examples/<example> 整个复制到 $DZBENCH_HOME/projects/<code>（新目录），设为当前项目，
         连该例题的仿真板，跑自动迭代（结束出“采用最好参数”卡）。记忆按 新项目 + 板子 记（不再落 _none）。"""
         import shutil
@@ -357,6 +357,7 @@ class AgentService:
         code = steptools.fresh_code(self.gw.root, code)               # 卡挂着期间可能又建了同名
         dst = paths.projects_dir() / code
         shutil.copytree(src, dst, symlinks=True)
+        steptools.set_display_name(dst, name or example)               # 显示名（可中文）进 project.yaml；目录名是 ASCII slug
         project.set_current(self.gw.root, code)
         out: dict = {"project": code, "path": str(dst), "from_example": example}
         if not self.s.port:
@@ -378,6 +379,7 @@ class AgentService:
         """确认后接着跑：仿真板 → 一键起步调参 → 评分（仿真里都是 log 级，不再出卡）。"""
         sp = self.quick.pop(code)
         from .. import project
+        steptools.set_display_name(paths.project_dir(self.gw.root, code), sp.get("name") or sp.get("kind_cn") or code)
         project.set_current(self.gw.root, code)                       # #55：新项目即当前项目 → 记忆按 项目 + 板子 记
         if not self.s.port:
             self.s.connect(sp["sim"], 115200, log=False)
