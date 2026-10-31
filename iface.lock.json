@@ -1472,6 +1472,7 @@
    "dzctl.h: #define DZCTL_HB_SA_RUNNING (1u << 15)",
    "dzctl.h: #define DZCTL_MODE_MAGIC 0xA5u",
    "dzctl.h: #define DZCTL_HB_PARAMS_DIRTY (1u << 16)",
+   "dzctl.h: #define DZCTL_HB_SENSOR_SAT (1u << 18)",
    "dzctl.h: #define DZCTL_HB_ITER_BUSY (1u << 17)",
    "dzctl.h: #define DZCTL_ST_MAX 8u",
    "dzctl.h: #define DZCTL_CMD_SELFTEST 'H'",
@@ -1569,8 +1570,8 @@
    "dzstep.h: void dzstep_finish(dzstep_t *s, bool aborted, uint8_t cause, uint8_t seq, dzframe_t *out);",
    "dzstep.h: int dzstep_selftest(void);"
   ],
-  "hash": "506fe54ffe28d823",
-  "version": "0.14.0"
+  "hash": "6fe5bd0dbcefe1ff",
+  "version": "0.15.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

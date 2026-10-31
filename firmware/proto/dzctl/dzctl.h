@@ -21,7 +21,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.14.0"
+#define DZCTL_VERSION "0.15.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
@@ -96,6 +96,7 @@ uint32_t dzctl_fw_rev(void);
  *  板回 {'M', 结果}：0 已切换并写入 flash 1 没停稳拒切 2 没有 flash 3 写失败 4 缺确认字节/模式非法（不切） */
 #define DZCTL_MODE_MAGIC 0xA5u
 #define DZCTL_HB_PARAMS_DIRTY (1u << 16)   /**< 0.11.0 RAM 参数与 flash 里那份不一致（改过没存 / flash 里没有）；0 = 一致 */
+#define DZCTL_HB_SENSOR_SAT   (1u << 18)   /**< 0.15.0 被控量到了量程边界（传感器饱和/仿真对象钳位）；离开边界自动清 0，不锁存 */
 #define DZCTL_HB_ITER_BUSY    (1u << 17)   /**< 0.13.0 阶跃实验进行中（#38 自动迭代的一轮）；急停锁存时板子强制清 0 */
 /** 0.11.0 上电自检项编号（心跳 selftest_mask 的 bit (code−1)；应用只报自己做了的项） */
 typedef enum {
