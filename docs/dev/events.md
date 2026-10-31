@@ -217,3 +217,9 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - Agent 工具 `change_status`（只读）：每张改代码卡 `{id, title, files, write_status, commit_status, commit, status_zh}`；Agent 每轮上下文附「改代码卡真实状态」（#99）。
 - `iterate.stopped`：没有任何稳定轮（有效且超调 ≤ 40%）时 `best: null`，`message_zh: "发散，未找到稳定参数"`。
 - `ss_err` 新增 `value_source: sim_nominal|hw_measured`，`pass_basis` 末尾写明「测量值为仿真标称值 / 实机实测值」。
+
+## 上位机心跳 / 心跳超时急停
+
+- 侧车心跳：专用线程，每 250 ms 一帧（`Session.HOST_HB_PERIOD_S`），按单调时钟定拍，不拿 session.lock（只用写锁）。
+- 板端阈值归固件：`apps/include/link_app.h` `dzctl_wd_init(&L->wd, 1000u)`（= 4 × 250 ms）。
+- 心跳超时急停的 `estop_cause` / `estop state:"latched"`：`cause:"hb_timeout"`、`message_zh:"心跳超时 <实测间隔> ms"`、`gap_ms`、`detail_zh`、`fix_action:"estop_clear"`（一键解除）。

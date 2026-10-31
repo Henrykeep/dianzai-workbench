@@ -226,27 +226,51 @@ class Session:
 
     def _host_heartbeat(self, gen: int) -> None:
         """认出工作台固件（收到带 schema 的心跳）后，每 250 ms 发一帧上位机心跳（HEARTBEAT, LEN=0）。
-        非工作台设备（AT 模块、printf）从不绑定 schema，就不会收到这些字节。急停锁定期间照发（心跳不驱动执行器）。"""
+        非工作台设备（AT 模块、printf）从不绑定 schema，就不会收到这些字节。急停锁定期间照发（心跳不驱动执行器）。
+        心跳根因修复：以前每拍先拿 session.lock（日志、遥测入库、参数回执、阶跃等长活都持有它），再经 _send 又拿一次，
+        长持锁时这一拍被拖到 750 ms 以上 → 板端 1000 ms 看门狗差 1 ms 就锁存急停。现在：专用线程、按单调时钟定拍（不累积漂移），
+        不碰 session.lock，只用写锁 wlock 发 0 字节心跳帧；_stall_check 放在发送之后。"""
+        nxt = time.monotonic()
         while True:
-            time.sleep(self.HOST_HB_PERIOD_S)
-            with self.lock:
-                if gen != self._gen and not self.reconnecting:
-                    return
-                bound = self.schema_hash is not None and self.tr is not None
+            nxt += self.HOST_HB_PERIOD_S
+            dt = nxt - time.monotonic()
+            if dt > 0:
+                time.sleep(dt)
+            else:
+                nxt = time.monotonic()                       # 落后了就从现在重新定拍，不连发补拍
+            if gen != self._gen and not self.reconnecting:
+                return
+            tr = self.tr
+            if self.schema_hash is not None and tr is not None and self.host_hb:
+                self._send_hb(tr)
             self._stall_check(gen)
-            if bound and self.host_hb:
-                try:
-                    self._send(HEARTBEAT, 0, b"")
-                except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
-                    pass
+
+    def _send_hb(self, tr) -> None:
+        """上位机心跳专用发送：只拿写锁，不拿 session.lock；记下实际发送间隔（hb_gap_max_ms）。"""
+        now = time.monotonic()
+        last = getattr(self, "hb_sent_at", None)
+        if last is not None:
+            self.hb_gap_max_ms = max(getattr(self, "hb_gap_max_ms", 0.0), (now - last) * 1000)
+        self.hb_sent_at = now
+        try:
+            with self.wlock:
+                self.seq = (self.seq + 1) & 0xFF
+                frame = encode(HEARTBEAT, 0, self.seq, b"")
+                tr.write(frame)
+        except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
+            pass
 
     def _stall_check(self, gen: int) -> None:
         """USB 转串口卡死（CH340 / CP210x 偶发：口还在、驱动不报错、就是不来数据）：开了 stall_s 才查。"""
-        with self.lock:
+        if not self.lock.acquire(blocking=False):        # 心跳线程里调：别人持锁就下一拍再查，绝不让心跳等锁
+            return
+        try:
             if not (self.stall_s > 0 and self.tr is not None and not self.reconnecting and gen == self._gen
                     and getattr(self.tr, "ser", None) is not None and self._rx_seen):
                 return
             idle = time.monotonic() - self.last_rx
+        finally:
+            self.lock.release()
         if idle > self.stall_s:
             self._on_transport_error(f"{idle:.1f} s 没收到任何字节（串口卡死？）", gen)
 
@@ -1477,7 +1501,7 @@ def run_mode_dict(w: int | None) -> dict | None:
 # dzctl 0.8.0 dzctl_estop_cause_t → (cause 键, 中文说明模板)。{v} = 触发值，{t} = 板上时刻 s。
 ESTOP_CAUSES = {
     1: ("manual", "手动急停：上位机发出急停指令（急停按钮 / Esc / 空格）"),
-    2: ("hb_timeout", "心跳超时：上位机 {v:.0f} ms 未发送心跳（阈值 1000 ms），板端看门狗已切断输出"),
+    2: ("hb_timeout", "心跳超时 {v:.0f} ms"),          # 详情放 detail_zh；阈值归固件 apps/include/link_app.h dzctl_wd_init(1000)
     3: ("stall", "电机堵转：输出 {v:.2f} 时转速持续接近 0，已刹车保护"),
     4: ("undervolt", "电池欠压：电压 {v:.2f} V 低于临界值，已停机（电压回升也不会自动恢复）"),
     5: ("overcurrent", "过流：电流 {v:.2f} A 超过上限，已切断输出"),
@@ -1497,7 +1521,9 @@ def estop_cause_dict(cause: int, t_ms: int, value: float) -> dict | None:
         return None
     key, tpl = ESTOP_CAUSES.get(cause, (f"unknown_{cause}", "未知急停原因 #{c}"))
     msg = tpl.format(v=value, c=cause, r=RESET_NAMES.get(int(value), f"#{int(value)}"))
-    return {"cause": key, "cause_id": cause, "message_zh": msg, "cause_zh": msg,
+    extra = {"fix_action": "estop_clear", "gap_ms": round(value),
+             "detail_zh": f"上位机 {value:.0f} ms 未发送心跳，板端看门狗已切断输出"} if key == "hb_timeout" else {}
+    return extra | {"cause": key, "cause_id": cause, "message_zh": msg, "cause_zh": msg,
             "value": round(float(value), 4), "t": round(t_ms / 1000.0, 3), "board_t_ms": int(t_ms)}
 
 
