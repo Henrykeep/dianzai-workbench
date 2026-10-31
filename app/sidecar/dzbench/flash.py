@@ -24,9 +24,9 @@ FLASH_BASE = {"mspm0": 0x00000000, "stm32": 0x08000000}
 
 
 class FlashError(Exception):
-    def __init__(self, code: str, message: str, fix: str = ""):
+    def __init__(self, code: str, message: str, fix: str = "", fix_action: str | None = None):
         super().__init__(message)
-        self.code, self.message, self.fix = code, message, fix
+        self.code, self.message, self.fix, self.fix_action = code, message, fix, fix_action
 
 
 def sha256(p: pathlib.Path) -> str:

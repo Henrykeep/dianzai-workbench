@@ -109,7 +109,11 @@ $(OUT)/fw_rev: FORCE
 FORCE:
 INC  = $(addprefix -I,$(FW_INC) $(PROJ_INC) $(PORT_DIR) $(GEN) $(HAL_INC))
 SRCS = $(LIB_SRC) $(APP_SRC) $(PORT_SRC) $(GEN)/board_gen.c
-OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
+# 题目工程在另一个盘（Windows：C:\Users\...\projects\T6，仓库在 D:）时源文件是带盘符的绝对路径；
+# 目标名里的 ':' 会让 make 报 "multiple target patterns"，所以对象名把 ':' 换成 '_'，这类源文件逐个生成显式规则。
+obj_of = $(OUT)/obj/$(subst :,_,$(1)).o
+OBJS = $(foreach s,$(SRCS),$(call obj_of,$(s)))
+DRV_SRCS = $(foreach s,$(SRCS),$(if $(findstring :,$(s)),$(s)))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
@@ -146,6 +150,13 @@ $(OUT)/obj/%.c.o: %.c $(REQ_OK) $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GE
 	@mkdir -p $(dir $@)
 	@echo "  CC  $<"
 	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
+define DRV_OBJ_RULE
+$(call obj_of,$(1)): $(1) $$(REQ_OK) $$(GEN)/board_gen.h $$(if $$(PROJECT_YML),$$(PROJ_GEN)/project_gen.h) $$(if $$(LINK_YML),$$(LINK_GEN)/link_gen.h)
+	@mkdir -p $$(dir $$@)
+	@echo "  CC  $$<"
+	$$(Q)$$(CC) $$(CFLAGS) $$(INC) -MMD -c $$< -o $$@
+endef
+$(foreach s,$(DRV_SRCS),$(eval $(call DRV_OBJ_RULE,$(s))))
 $(OUT)/hal/%.c.o: %.c $(GEN)/board_gen.h
 	@mkdir -p $(dir $@)
 	@echo "  CC  $< (第三方，关闭警告)"

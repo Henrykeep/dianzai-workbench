@@ -59,3 +59,10 @@
 - 自动流程（`quick_start`、Agent 步骤）不读写这两个开关。
 - 入口登记：`docs/dev/entrypoints.yaml` 的 `enable_cloud`（`at: toolbox:设置`，`human_only: true`，`ops: [set_cloud_enabled]`），不进 `script_ops`。
 - 守护测试：`app/sidecar/tests/test_cloud_guard.py`。
+
+### J-Link 工具识别（#49）
+
+`flash.tool = jlink` 时只认 SEGGER J-Link：路径里有 `SEGGER` 直接认；否则跑 `<exe> -?`（stdin 关闭、5 s 超时）要求输出含 `SEGGER`。
+Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏感地撞名）。只找到 Java jlink 时：
+`code = "jlink_not_segger"`，`fix_action = "install_jlink"`，`message_zh` 「找到的 jlink 是 Java 工具，不是 SEGGER J-Link，请安装 J-Link 软件包」；
+自检 `tool_status` 与 `list_probes_for("jlink")` 的返回同样带 `fix_action` / `message_zh`。完全找不到也给 `install_jlink`。

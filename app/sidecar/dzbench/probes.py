@@ -57,14 +57,43 @@ def chip_name(tool: str, target: str, fcfg: dict | None = None) -> str:
     return target
 
 
+# Windows 上 PATH 里常有 JDK 的 jlink.exe（Java 模块链接器，文件名大小写不敏感地撞 JLink.exe）。#49
+JLINK_NAMES = ("JLink.exe", "JLinkExe") if os.name == "nt" else ("JLinkExe",)
+JAVA_JLINK_MSG = "找到的 jlink 是 Java 工具，不是 SEGGER J-Link，请安装 J-Link 软件包"
+
+
+def is_segger_jlink(path: str, timeout: float = 5) -> bool:
+    """SEGGER 安装路径直接认；否则跑 `<exe> -?`（stdin 关闭、带超时，不会卡）要求输出里有 SEGGER。"""
+    if "segger" in str(path).lower():
+        return True
+    try:
+        r = subprocess.run([path, "-?"], capture_output=True, text=True, timeout=timeout, stdin=subprocess.DEVNULL,
+                           errors="replace")
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return "SEGGER" in (r.stdout or "") + (r.stderr or "")
+
+
+def _jlink_exe(over: dict) -> str | None:
+    cands = [over["exe"]] if over.get("exe") else [p for p in (shutil.which(n) for n in JLINK_NAMES) if p]
+    for p in cands:
+        if is_segger_jlink(p):
+            return p
+    if cands:
+        raise FlashError("jlink_not_segger", JAVA_JLINK_MSG,
+                         "装 SEGGER J-Link Software Pack，或在 flash.jlink.exe 写 SEGGER 的 JLink.exe 路径", "install_jlink")
+    return None
+
+
 def _exe(tool: str, fcfg: dict) -> str:
     over = (fcfg.get(tool) or {}) if isinstance(fcfg.get(tool), dict) else {}
-    p = over.get("exe") or shutil.which(EXE[tool])
+    p = _jlink_exe(over) if tool == "jlink" else (over.get("exe") or shutil.which(EXE[tool]))
     if not p:
         hint = {"openocd": "装 OpenOCD ≥ 0.12（xPack openocd，解压后把 bin 加 PATH）或在 flash.openocd.exe 写路径",
                 "jlink": "装 SEGGER J-Link Software Pack，或在 flash.jlink.exe 写 JLink.exe 路径",
                 "probe-rs": "cargo install probe-rs-tools（或官网安装脚本），或在 flash.probe-rs.exe 写路径"}[tool]
-        raise FlashError("no_" + tool.replace("-", ""), f"找不到 {EXE[tool]}", hint)
+        raise FlashError("no_" + tool.replace("-", ""), f"找不到 {EXE[tool]}", hint,
+                         "install_jlink" if tool == "jlink" else None)
     return p
 
 
@@ -307,7 +336,8 @@ def list_probes_for(tool: str, fcfg: dict | None = None) -> dict:
     except ImportError:
         return {"via": "pyocd", "probes": [], "error": "没装 pyOCD，列不出探针（pip install pyocd）；序列号可以手填"}
     except FlashError as e:
-        return {"via": tool, "probes": [], "error": e.message + ("；" + e.fix if e.fix else "")}
+        return {"via": tool, "probes": [], "error": e.message + ("；" + e.fix if e.fix else ""),
+                "fix_action": e.fix_action, "message_zh": e.message}
     return {"via": tool, "probes": [], "error": f"不认识的后端 {tool}"}
 
 
@@ -325,4 +355,5 @@ def tool_status(fcfg: dict) -> dict:
     try:
         return {"tool": tool, "ok": True, "exe": _exe(tool, fcfg)}
     except FlashError as e:
-        return {"tool": tool, "ok": False, "exe": None, "why": e.message, "fix": e.fix}
+        return {"tool": tool, "ok": False, "exe": None, "why": e.message, "fix": e.fix,
+                "fix_action": e.fix_action, "message_zh": e.message}
