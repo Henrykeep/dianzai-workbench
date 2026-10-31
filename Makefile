@@ -295,8 +295,6 @@ check:
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	$(PY) tools/test_port_policy.py
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
-	$(PY) tools/check_generic.py --selftest
-	$(PY) tools/check_generic.py   # 核心代码不认题号/例子名（sidecar 只报告）
 	$(PY) tools/check_entrypoints.py --selftest
 	$(PY) tools/check_entrypoints.py
 	$(PY) tools/check_ascii_paths.py --selftest
@@ -373,3 +371,9 @@ clean:
 	rm -rf build
 
 -include $(OBJS:.o=.d)
+
+# #78 随机对象门禁：真 randplant 对象（tools/randplant.py → tools/tunegate_plant.py），失败打印 seed（TUNEGATE_N 个、按时间取种子）
+.PHONY: tunegate
+TUNEGATE_N ?= 16
+tunegate:
+	TUNEGATE_SOURCE=randplant $(PY) tools/tunegate.py --n $(TUNEGATE_N)

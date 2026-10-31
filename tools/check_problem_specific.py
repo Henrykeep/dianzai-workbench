@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """#80 核心代码里不许有「为某一道题写的」东西：题号、例题名、例题对象名、针对例题的写死整定常数。
 
-扫描范围（核心代码）：app/sidecar/dzbench、app/ui/src、firmware/、tools/templates/。
+扫描范围（核心代码）：app/sidecar/dzbench、app/ui/src、firmware/、tools/（*.py/*.sh 生成器与门禁脚本，含 templates/）。
+门禁脚本自己的禁词表：用 `dz-banned-words: begin` / `dz-banned-words: end` 标记行包起来，块内不扫（按标记，不按文件名）。
 不扫：examples/（例题本身）、tests/ 与测试夹具、第三方。
 例题名自动从 examples/ 目录名里取（2026H_ball → 2026H_ball / 2026h-ball / 2026H），新增例题不用改本脚本。
 
@@ -16,15 +17,18 @@ import re
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-SCOPES = ["app/sidecar/dzbench", "app/ui/src", "firmware", "tools/templates"]
+SCOPES = ["app/sidecar/dzbench", "app/ui/src", "firmware", "tools"]
 EXCL = re.compile(r"(^|/)(tests?|fixtures|examples|__pycache__|node_modules|third_party)(/|$)|(^|/)test_[^/]*$|\.test\.ts$|\.spec\.ts$|(^|/)evals[^/]*\.json$")   # evals*.json = 评测题集（数据，不是逻辑）
-EXTS = {".py", ".ts", ".tsx", ".js", ".c", ".h", ".json", ".yaml", ".yml", ".tmpl", ".jinja", ".svelte", ".vue", ".css", ".html", ".j2"}
+EXTS = {".py", ".ts", ".tsx", ".js", ".c", ".h", ".json", ".yaml", ".yml", ".tmpl", ".jinja", ".svelte", ".vue", ".css", ".html", ".j2", ".sh"}
 ALLOW = ROOT / "tools" / "problem_specific_allow.txt"
 
+# dz-banned-words: begin
 FIXED = [("problem_code", r"(?<![0-9A-Za-z])(19|20)\d\d[A-Ha-hJ-Zj-z](?![a-zA-Z0-9])"),     # 2026H / 2023j 题号
          ("example_obj", r"小球|钢球|钢珠|滚球|板球|(?<![A-Za-z])ball(?![A-Za-z])"),
-         ("example_obj", r"motor_pos"),
+         ("example_obj", r"motor_pos|xiaoqiu|pendulum|line_car|car_2wd|pan_tilt"),   # 演示应用名（apps/ 只是演示）
          ("magic_tuning", r"[\"']?(hold_s|return_tol|return_timeout_s|step_target|step_dur_ms|abs_tol)[\"']?\s*[:=]\s*\d")]
+# dz-banned-words: end
+MARK_BEGIN, MARK_END = "dz-banned-words: begin", "dz-banned-words: end"
 
 
 def rules(root: pathlib.Path = ROOT) -> list[tuple[str, re.Pattern]]:
@@ -44,11 +48,20 @@ def scan(root: pathlib.Path = ROOT) -> list[tuple[str, int, str, str]]:
             rel = f.relative_to(root).as_posix()
             if not f.is_file() or f.suffix not in EXTS or EXCL.search(rel):
                 continue
+            # tools/：只扫生成器/门禁脚本（*.py/*.sh）和 templates/；tools/bench/ 是评测题集（数据）
+            if rel.startswith("tools/") and not rel.startswith("tools/templates/") and (f.suffix not in (".py", ".sh") or rel.startswith("tools/bench/")):
+                continue
             try:
                 lines = f.read_text("utf-8").splitlines()
             except UnicodeDecodeError:
                 continue
+            skip = False
             for i, ln in enumerate(lines, 1):
+                if MARK_BEGIN in ln or MARK_END in ln:
+                    skip = MARK_BEGIN in ln
+                    continue
+                if skip:
+                    continue
                 for k, r in rs:
                     if r.search(ln):
                         out.append((rel, i, k, ln.strip()[:160]))
@@ -88,8 +101,10 @@ def selftest() -> None:
         (r / "app/sidecar/dzbench/a.py").write_text('X = {"2031Q_fan": 1}\nif port == "sim:ball": pass\nok = 1\nh = {"hold_s": 5.0}\n', "utf-8")
         (r / "app/sidecar/dzbench/tests").mkdir()
         (r / "app/sidecar/dzbench/tests/t.py").write_text("2026H\n", "utf-8")
+        (r / "tools").mkdir()
+        (r / "tools/gate.py").write_text('# dz-banned-words: begin\nBAD = "2026H|ball"\n# dz-banned-words: end\nif app == "car_2wd": pass\n', "utf-8")
         ks = [h[2] for h in scan(r)]
-        assert ks == ["problem_code", "example_obj", "magic_tuning"], ks
+        assert ks == ["problem_code", "example_obj", "magic_tuning", "example_obj"], ks
     print("✓ check_problem_specific selftest")
 
 

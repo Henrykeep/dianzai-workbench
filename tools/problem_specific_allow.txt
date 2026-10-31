@@ -1,9 +1,12 @@
 # #80 存量登记（只减不增）。格式：路径<TAB>规则<TAB>条数<TAB>负责人/说明。清掉一处就把条数调小，删到 0 就删行。
-app/sidecar/dzbench/agent/steptools.py	example_obj	1	后端 #78（randplant --kind pos 上来后替换 sim:motor_pos）
-firmware/algo/ball_beam/ball_beam.c	example_obj	19	嵌入式开发-2 #79：通用球杆算法库按例题对象命名，需改名/归档到 examples
-firmware/algo/ball_beam/ball_beam.h	example_obj	15	嵌入式开发-2 #79：通用球杆算法库按例题对象命名，需改名/归档到 examples
-firmware/drivers/battery/battery.c	problem_code	1	嵌入式开发-2 #79
-firmware/framework/persist/persist.c	problem_code	1	嵌入式开发-2 #79
-firmware/framework/safety/safety.h	problem_code	1	嵌入式开发-2 #79
-firmware/proto/dzctl/dzctl.h	problem_code	1	嵌入式开发-2 #79
-app/ui/src/examples.ts	problem_code	2	前端开发者 #81（integration 合入的新文件，待前端清）
+app/sidecar/dzbench/agent/steptools.py	example_obj	2	后端 #78（randplant --kind pos 上来后替换 sim:motor_pos）；含 check_generic 并入后的演示应用名
+app/ui/src/examples.ts	problem_code	2	前端开发者 #81（integration 4969824 里已有：SIM_ZH 例题名表、DEFAULT_EXAMPLE）
+app/sidecar/dzbench/agent/bench.py	example_obj	2	后端 #80（check_generic 并入后新扫到的演示应用名 car_2wd/motor_pos 等）
+app/sidecar/dzbench/agent/evalrun.py	example_obj	2	后端 #80（check_generic 并入后新扫到的演示应用名 car_2wd/motor_pos 等）
+app/sidecar/dzbench/agent/evals.py	example_obj	3	后端 #80（check_generic 并入后新扫到的演示应用名 car_2wd/motor_pos 等）
+app/sidecar/dzbench/agent/service.py	example_obj	1	后端 #80（check_generic 并入后新扫到的演示应用名 car_2wd/motor_pos 等）
+app/sidecar/dzbench/linkhealth.py	example_obj	1	后端 #80（check_generic 并入后新扫到的演示应用名 car_2wd/motor_pos 等）
+app/sidecar/dzbench/session.py	example_obj	3	后端 #80（check_generic 并入后新扫到的演示应用名 car_2wd/motor_pos 等）
+tools/gen_ioc.py	example_obj	1	第三方来源署名（MIT 出处，须保留）
+tools/gen_m0_keil.py	example_obj	1	第三方来源署名（MIT 出处，须保留）
+tools/gen_syscfg.py	example_obj	1	第三方来源署名（MIT 出处，须保留）

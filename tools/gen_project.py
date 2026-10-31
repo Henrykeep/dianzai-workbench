@@ -9,7 +9,7 @@
   tests:       测试项（小题号、名字、默认参数档、限时）
 
 用法：
-  python3 tools/gen_project.py examples/2026H_ball/project.yaml -o build/.../gen [--role main]
+  python3 tools/gen_project.py examples/<例题>/project.yaml -o build/.../gen [--role main]
   python3 tools/gen_project.py <project.yaml> --check        # 只校验
 --role 用于多板分布：只生成 board 角色为该值的子系统（例如 main / aux）。
 """

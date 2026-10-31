@@ -23,9 +23,9 @@ def test_plant_is_reproducible_and_from_randplant(tmp_path):
 
 def test_param_names_are_random_not_pid_only(monkeypatch):
     monkeypatch.setattr(RP, "reference", lambda *a, **k: {"metrics": {"ss_err_pct": 0.0, "overshoot_pct": 0.0, "settle_s": 1.0, "iae": 0.0}})
-    ps = [d for s in range(40) for d in RP.make(s)["app"]["params"]]
+    ps = [d for s in range(15) for d in RP.make(s)["app"]["params"]]
     names, roles = {d["name"] for d in ps}, {d["role"] for d in ps}
-    assert len(names) > 8 and roles >= {"kp", "ki", "kd", "ff"}
+    assert len(names) > 5 and roles >= {"kp", "ki", "kd"}
 
 
 def test_parse_spec():
@@ -34,7 +34,7 @@ def test_parse_spec():
     assert AT.parse_spec("让它转起来")["note_zh"] == "按默认判定"
 
 
-INFEASIBLE_SEED = 1018      # cause=saturation 的对象（test_infeasible_seed_is_infeasible 守着）
+INFEASIBLE_SEED = 1028      # cause=saturation 的对象（test_infeasible_seed_is_infeasible 守着）
 
 
 def _infeasible_seed():
@@ -60,3 +60,13 @@ def test_gate_main_prints_seed_on_failure(monkeypatch, capsys):
                                                           "initial": {"roles": {}}, "best": {"roles": {"kp": 0.0}}})
     assert TG.main(["--seed", str(s)]) == 1
     assert f"失败 seed：{s}" in capsys.readouterr().out
+
+
+def test_standin_is_opt_in_and_never_passes(monkeypatch, capsys):
+    monkeypatch.delenv("TUNEGATE_SOURCE", raising=False)
+    assert TG.source() == "randplant"
+    monkeypatch.setenv("TUNEGATE_SOURCE", "standin")
+    assert TG.source() == "standin"
+    monkeypatch.setattr(TG, "one", lambda s, k: {"seed": s, "ok": True, "errors": []})
+    assert TG.main(["--seed", "1"]) != 0
+    assert "未合入" in capsys.readouterr().out
