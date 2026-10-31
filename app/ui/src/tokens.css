@@ -1,67 +1,98 @@
-/* 芯台 设计变量 v6（docs/26-UI规范.md §6）
- * 只有三级文字对比（ink / text / muted；dim、faint 只给禁用和刻度），面板间 8px 间隙 + 12px 圆角，面板内不画线。
- * 唯一强调色：黄铜 = 意图（设定值、待下发、提议、主按钮）。实测通道用降饱和冷色；状态色降饱和；红只给急停和故障。不用紫。
- * 字号 4 级：12 / 14 / 20 / 40；间距 8 的倍数（细节 4）。字体全部本地（OFL，见 fonts/）。 */
 @font-face{font-family:"Bricolage Grotesque";src:url(./fonts/bricolage-grotesque-var.woff2) format("woff2");font-weight:200 800;font-display:swap}
+@font-face{font-family:"Inter";src:url(./fonts/inter-latin-var.woff2) format("woff2");font-weight:100 900;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD}
 @font-face{font-family:"Geist Mono";src:url(./fonts/geist-mono-var.woff2) format("woff2");font-weight:100 900;font-display:swap}
 @font-face{font-family:"Noto Sans SC Dz";src:url(./fonts/noto-sans-sc-dz.woff2) format("woff2");font-weight:100 900;font-display:swap}
 :root{
   --f-sans:"Bricolage Grotesque","Noto Sans SC Dz","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
   --f-mono:"Geist Mono","Noto Sans SC Dz",Consolas,monospace;
-  --t-xs:12px; --t-sm:12px; --t-md:14px; --t-lg:16px; --t-h:20px; --t-xl:32px;   /* 字号 5 级 12/14/16/20/32，见 docs/dev/design-decisions.md */
+  --t-xs:12px; --t-sm:14px; --t-md:14px; --t-lg:16px; --t-h:20px; --t-xl:20px;   /* 字号 4 级 12/14/16/20 */
   --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
   --r-xs:4px; --r-sm:4px; --r:8px; --r-lg:8px;
   --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:48px; --h-sb:28px; --w-rail:0px; --w-nav:200px; --w-nav-folded:56px; --h-nav-item:32px; --w-left:280px; --w-side:320px; --w-lab:136px;
   /* 动效：四档时长、只动 transform / opacity */
   --d-1:160ms; --d-2:280ms; --d-3:480ms; --d-4:720ms; --dur:160ms; --ease:cubic-bezier(.22,1,.36,1);
 }
-/* v8 暗色：冷石墨中性（hue 255，低彩度）+ 唯一暖强调（琥珀 = 意图）。四层表面靠亮度 + 顶部高光 + 柔影分层。 */
-:root,[data-theme="dark"]{
-  color-scheme:dark;
-  --bg:oklch(.145 .008 255);
-  --s0:oklch(.17 .009 255); --s1:oklch(.145 .008 255); --s2:oklch(.185 .01 255); --s3:oklch(.235 .012 255); --s-hover:oklch(.265 .013 255);
-  --ink:oklch(.97 .004 255); --text:oklch(.8 .01 255); --muted:oklch(.7 .012 255); --dim:oklch(.6 .012 255); --faint:oklch(.36 .01 255);
-  --line:oklch(1 0 0 / .07); --hair:oklch(1 0 0 / .05); --line2:oklch(1 0 0 / .12);
-  --grid:oklch(1 0 0 / .045); --grid-2:oklch(1 0 0 / .09);
-  --hi:inset 0 1px 0 oklch(1 0 0 / .05); --hi-acc:inset 0 1px 0 oklch(1 0 0 / .25); --acc-line:oklch(.8 .135 68 / .3);
-  --sh-card:0 0 0 1px oklch(1 0 0 / .055),0 1px 0 oklch(1 0 0 / .04) inset,0 12px 32px -18px oklch(0 0 0 / .7);
-  --sh-pop:0 0 0 1px var(--line2),0 24px 48px -20px oklch(0 0 0 / .85);
-  --acc:oklch(.8 .135 68); --acc-t:oklch(.83 .12 72); --acc-ink:oklch(.2 .04 62); --acc-bg:oklch(.8 .135 68 / .12); --focus:0 0 0 2px oklch(.8 .135 68 / .5);
-  --go:var(--acc); --go-ink:var(--acc-ink);
-  --ok:oklch(.8 .11 160); --warn:oklch(.84 .11 88); --crit:oklch(.72 .14 25); --info:oklch(.8 .08 230); --off:var(--faint);
-  --ok-bg:oklch(.8 .11 160 / .12); --warn-bg:oklch(.84 .11 88 / .12); --crit-bg:oklch(.72 .14 25 / .14);
-  --estop:oklch(.62 .2 27); --estop-ink:oklch(1 0 0); --estop-bg:oklch(.62 .2 27 / .16);
-  --band:oklch(.85 .08 220 / .06);
-  --ch1:oklch(.85 .1 215); --ch2:oklch(.82 .1 160); --ch3:oklch(.8 .09 240); --ch4:oklch(.85 .02 255);
-  --ch5:oklch(.82 .09 190); --ch6:oklch(.8 .09 130); --ch7:oklch(.76 .07 40); --ch8:oklch(.7 .03 240);
-  --setpoint:var(--acc);
-}
-[data-theme="light"]{
+/* 以下 :root / [data-theme=dark] 两段与 /workspace/charter/tokens.css（统筹者 设计 Token v1）逐字一致 */
+/* 设计 Token v1 — 浅色默认，[data-theme=dark] 深色 */
+:root{
+  --font-sans:"Inter","HarmonyOS Sans SC","Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  --font-mono:"JetBrains Mono","Cascadia Mono",Consolas,monospace;
+  --fs-12:12px;--lh-12:16px; --fs-14:14px;--lh-14:20px; --fs-16:16px;--lh-16:24px; --fs-20:20px;--lh-20:28px; --fs-28:28px;--lh-28:36px;
+  --fw-regular:400;--fw-medium:500;--fw-semibold:600;
+  --sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:24px;--sp-6:32px;--sp-7:48px;
+  --radius-sm:4px;--radius-md:8px;--radius-lg:8px;--radius-full:999px;
+  --icon-sm:14px;--icon-md:16px;--icon-lg:20px;
+  --dur-fast:120ms;--dur-base:180ms;--ease:cubic-bezier(.2,0,0,1);
+
+  --bg:#F7F8FA; --surface-1:#FFFFFF; --surface-2:#F1F3F5; --surface-hover:#ECEEF1;
+  --border:#E3E5E9; --border-strong:#CDD1D7;
+  --text-primary:#1C2024; --text-secondary:#555A63; --text-muted:#656A73; --text-on-accent:#FFFFFF;
+  --accent:#0D74CE; --accent-hover:#0B68B9; --accent-active:#0A5DA6; --accent-subtle:#E6F1FB; --accent-text:#0D74CE;
+  --success:#1A7F4B; --success-subtle:#E9F6EF;
+  --warning:#9A5B00; --warning-subtle:#FFF4E0;
+  --danger:#CD2B31;  --danger-hover:#B8252B; --danger-subtle:#FDECEC; --estop-bar:#A11B22; --on-estop:#FFFFFF;
+  --info:#2550C7;    --info-subtle:#EDF2FE;
+  --chart-1:#2E5BDB;--chart-2:#E06A00;--chart-3:#0F9488;--chart-4:#AB6400;--chart-5:#12A594;--chart-6:#656A73;
+  --chart-grid:#ECEEF1;--chart-axis:#656A73;
+  --focus-ring:0 0 0 2px var(--surface-1),0 0 0 4px #7A9BF0;
+  --shadow-1:0 1px 2px rgba(16,24,40,.06);
+  --shadow-2:0 4px 12px rgba(16,24,40,.08),0 1px 3px rgba(16,24,40,.06);
+  --shadow-3:0 12px 32px rgba(16,24,40,.14),0 2px 6px rgba(16,24,40,.08);
   color-scheme:light;
-  --bg:oklch(.945 .005 80);
-  --s0:oklch(.99 .003 85); --s1:oklch(.945 .005 80); --s2:oklch(.99 .003 85); --s3:oklch(.955 .005 80); --s-hover:oklch(.93 .006 80);
-  --ink:oklch(.2 .01 60); --text:oklch(.45 .01 60); --muted:oklch(.58 .008 60); --dim:oklch(.66 .007 60); --faint:oklch(.82 .006 60);
-  --line:oklch(0 0 0 / .07); --hair:oklch(0 0 0 / .05); --line2:oklch(0 0 0 / .12);
-  --grid:oklch(0 0 0 / .045); --grid-2:oklch(0 0 0 / .09);
-  --sh-pop:0 0 0 1px var(--line2),0 16px 32px -16px oklch(.2 0 0 / .25);
-  --acc:oklch(.6 .13 58); --acc-t:oklch(.55 .13 55); --acc-ink:oklch(.99 0 0); --acc-bg:oklch(.6 .13 58 / .09); --focus:0 0 0 2px oklch(.6 .13 58 / .35);
-  --ok:oklch(.5 .09 155); --warn:oklch(.55 .1 75); --crit:oklch(.55 .13 30); --info:oklch(.5 .07 230);
-  --ok-bg:oklch(.5 .09 155 / .08); --warn-bg:oklch(.55 .1 75 / .1); --crit-bg:oklch(.55 .13 30 / .08);
-  --estop:oklch(.56 .2 27);
-  --band:oklch(.48 .09 225 / .05);
-  --ch1:oklch(.48 .09 225); --ch2:oklch(.5 .08 165); --ch3:oklch(.48 .08 240); --ch4:oklch(.45 .02 70);
-  --ch5:oklch(.52 .08 190); --ch6:oklch(.5 .07 135); --ch7:oklch(.5 .06 40); --ch8:oklch(.5 .03 230);
 }
-/* 高对比（户外强光 / 投影）：纯黑底、纯白字、线加亮，靠边框区分层级（WCAG 2.2 AAA 7:1）；仍不用紫 */
-[data-theme="hc"]{
+[data-theme=dark]{
+  --bg:#111214; --surface-1:#18191C; --surface-2:#212327; --surface-hover:#272A2F;
+  --border:#2B2E33; --border-strong:#3A3E45;
+  --text-primary:#EDEEF0; --text-secondary:#B4B8BF; --text-muted:#9196A0; --text-on-accent:#FFFFFF;
+  --accent:#0D74CE; --accent-hover:#1F84DC; --accent-active:#0B68B9; --accent-subtle:#10243A; --accent-text:#70B8FF;
+  --success:#4CC38A; --success-subtle:#132A1F;
+  --warning:#F5B544; --warning-subtle:#2E2410;
+  --danger:#FF6B6E;  --danger-hover:#FF8587; --danger-subtle:#3A1517; --estop-bar:#A11B22; --on-estop:#FFFFFF;
+  --info:#86A8FF;    --info-subtle:#1A2440;
+  --chart-1:#6E93FF;--chart-2:#FF9A4D;--chart-3:#3CCBB8;--chart-4:#FFC53D;--chart-5:#0BD8B6;--chart-6:#A3A8B2;
+  --chart-grid:#24272B;--chart-axis:#9196A0;
+  --focus-ring:0 0 0 2px var(--surface-1),0 0 0 4px #5C86F5;
+  --shadow-1:0 1px 2px rgba(0,0,0,.4);
+  --shadow-2:0 4px 12px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.04);
+  --shadow-3:0 12px 32px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06);
   color-scheme:dark;
-  --bg:oklch(0 0 0);
-  --s0:oklch(0 0 0); --s1:oklch(0 0 0); --s2:oklch(.1 0 0); --s3:oklch(.18 0 0); --s-hover:oklch(.26 0 0);
-  --ink:oklch(1 0 0); --text:oklch(.95 0 0); --muted:oklch(.85 0 0); --dim:oklch(.75 0 0); --faint:oklch(.6 0 0);
-  --line:oklch(.62 0 0); --hair:oklch(.42 0 0); --line2:oklch(.8 0 0);
-  --grid:oklch(.3 0 0); --grid-2:oklch(.5 0 0);
-  --acc:oklch(.85 .15 70); --acc-t:oklch(.88 .14 75); --acc-ink:#000; --acc-bg:oklch(.85 .15 70 / .2); --focus:0 0 0 2px #fff;
-  --ok:#5fe39a; --warn:#ffd24a; --crit:#ff6b60; --info:#7cc4ff; --estop:#ff4d42;
-  --ch1:#4ae0ff; --ch2:#6cf08f; --ch3:#8ab4ff; --ch4:#ffffff; --ch5:#4affd2; --ch6:#c8ff6c; --ch7:#ff9c4a; --ch8:#b0c4c8;
-  --setpoint:var(--acc); --band:oklch(1 0 0 / .08);
+}
+
+/* ---- 应用扩展（不改上面统筹者 token 的值；只加别名，组件读语义名） ----
+ * 规则：90% 以上是灰；蓝只用于主按钮与选中态；红只给急停与故障；其他状态中性色 + 小图标。不用紫粉：chart-4/5 已换成琥珀/青（与统筹稿唯一差异）。 */
+:root,[data-theme=light],[data-theme=dark]{
+  --accent-solid:#0D74CE; --danger-solid:#CE2C31;   /* 浅深统一：白字对比 4.77 / 5.21 */
+  --f-sans:var(--font-sans); --f-mono:var(--font-mono);
+  --t-xs:var(--fs-12); --t-sm:var(--fs-14); --t-md:var(--fs-14); --t-lg:var(--fs-16); --t-h:var(--fs-20); --t-xl:var(--fs-20);
+  --sp1:var(--sp-1); --sp2:var(--sp-2); --sp3:var(--sp-3); --sp4:var(--sp-4); --sp5:var(--sp-5); --sp6:var(--sp-6);
+  --r-xs:var(--radius-sm); --r-sm:var(--radius-sm); --r:var(--radius-md); --r-lg:var(--radius-lg);
+  --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:48px; --h-sb:28px; --w-rail:0px; --w-nav:200px; --w-nav-folded:56px; --h-nav-item:32px; --w-left:280px; --w-side:320px; --w-lab:136px;
+  --d-1:var(--dur-fast); --d-2:var(--dur-base); --d-3:480ms; --d-4:720ms; --dur:var(--dur-fast);
+  --surface:var(--surface-1); --surface-sel:var(--surface-2);
+  --s0:var(--surface-1); --s1:var(--bg); --s2:var(--surface-1); --s3:var(--surface-2); --s-hover:var(--surface-hover);
+  --ink:var(--text-primary); --text:var(--text-primary); --muted:var(--text-secondary); --dim:var(--text-muted); --faint:var(--border-strong);
+  --line:var(--border); --hair:var(--border); --line2:var(--border-strong);
+  --grid:var(--chart-grid); --grid-2:var(--border);
+  --hi:none; --hi-acc:none; --acc-line:var(--accent-subtle);
+  --sh-card:none; --sh-pop:var(--shadow-3);
+  --acc:var(--accent-solid); --acc-t:var(--accent-text); --acc-ink:var(--text-on-accent); --acc-bg:var(--accent-subtle); --focus:var(--focus-ring);
+  --go:var(--accent-solid); --go-ink:var(--text-on-accent);
+  --ok:var(--text-secondary); --warn:var(--text-secondary); --info:var(--text-secondary); --off:var(--text-muted); --crit:var(--danger);
+  --ok-bg:transparent; --warn-bg:transparent; --crit-bg:var(--danger-subtle);
+  --estop:var(--danger-solid); --estop-ink:#FFFFFF; --estop-bg:var(--danger-subtle);
+  --band:var(--accent-subtle);
+  --ch1:var(--chart-1); --ch2:var(--chart-3); --ch3:var(--chart-4); --ch4:var(--chart-6); --ch5:var(--chart-2); --ch6:var(--chart-5); --ch7:var(--chart-1); --ch8:var(--chart-6);
+  --f-mono:"Geist Mono",var(--font-mono);
+  --setpoint:var(--text-primary);
+}
+
+/* r9p3 大屏（≥1600px）：字号上一级、间距 ×1.25（仍为 4 的倍数）、侧栏加宽 */
+@media (min-width:1600px){
+  :root{
+    --t-xs:14px; --t-sm:16px; --t-md:16px; --t-lg:20px; --t-h:20px; --t-xl:20px;
+    --sp2:12px; --sp3:16px; --sp4:20px; --sp5:32px; --sp6:40px;
+    --h-row:40px; --h-ctl:40px; --h-top:56px; --h-sb:32px; --w-nav:232px; --w-left:340px; --w-side:400px; --h-nav-item:40px;
+    --wa-font-size-m:16px; --wa-font-size-s:16px; --wa-font-size-xs:14px;
+  }
+  body{line-height:24px}
 }

@@ -1,3 +1,4 @@
+import { ledgerJudge } from "./verdictbus";
 // 测量与历史（docs/26 §3.5）：A/B 光标读数、t0 阶跃锚点、每轮实验进历史、上一轮做余辉。
 // 只依赖 Plot 的公开接口和两个取值函数，界面不认任何题目字段名。
 import { Plot, num } from "./plot";
@@ -75,6 +76,7 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
     plot.annot = { i, tPeak: plot.t0 + d.rel[k], yPeak: y[k], mp: r.m.Mp, ts: r.m.settled ? tStep + r.m.ts : null, tsv: r.m.ts };
     plot.repaint();
   }
+  window.addEventListener("dz-verdict", () => renderHist());
   window.addEventListener("dz-round", e => { const d = (e as CustomEvent).detail; closeRound(VERDICT_SHORT[d?.verdict?.action] ?? undefined, d?.metrics); });
   function markT0() {
     if (!plot.t.length) return;
@@ -136,13 +138,14 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
   function renderHist() {
     const host = $("hist"), ln = layerName(), rs = runs.filter(r => r.layer === ln), sp = specOf(mainCh(plot));
     $("hist-n").textContent = runs.length ? `${rs.length}${ln ? " 轮 · " + ln : " 轮"}` : "";
+    document.querySelector(".app")?.classList.toggle("hist-empty", !runs.length);   // 台账为空：调参页收起这一格（不用 :has，兼容 WebKitGTK）
     if (!runs.length) { host.innerHTML = `<p class="hint">每点一次“阶跃实验”，这一轮的改动和超调 / 上升 / 调节自动记到这里；上一轮淡色画在曲线上对比。只存在内存里。</p>`; return; }
     // 台账：每轮一行，改动 + 三个指标，当前余辉轮左侧黄铜边
     // 串级：每层一本台账（只列在当前层做的轮次）；有验收规格时列评委口径 + 最近 N 轮按最差一轮的汇总
     const w = sp ? worstOf(rs.map(r => r.a), sp.runs ?? 3) : null, u = sp ? esc(plot.units[mainCh(plot)]) : "";
     const sum = !w ? "" : `<p class="acc-sum ${w.all ? "ok" : ""}">最近 ${w.n}/${w.need} 轮：通过 ${w.pass} · 最差到位 ${Number.isFinite(w.total) ? w.total.toFixed(2) + " s" : "—"} · 最差误差 ${Number.isFinite(w.err) ? num(w.err) + " " + u : "—"}${w.all ? " · 达标" : ""}</p>`;
     const tm = (v: number | undefined) => v != null && Number.isFinite(v) ? ms(v) + " " + msu(v) : "—";
-    const judge = (r: Run) => sp ? (r.a ? (r.a.pass ? "过" : "未过") : "—") : r.verdict ?? "—";
+    const judge = (r: Run) => sp ? (r.a ? (r.a.pass ? "过" : "未过") : "—") : ledgerJudge(r === rs[0], r.verdict);
     host.innerHTML = sum + `<table class="ledger"><tr><th>轮</th><th>改动</th><th>超调</th><th>上升</th><th>调节</th><th>判定</th></tr>` + rs.map(r => { const k = runs.indexOf(r); return `<tr class="${r === rs[0] ? "cur" : ""} ${plot.ghost === r.data ? "on" : ""}" data-g="${k}" title="${esc(r.wall + (r.a?.why ? " · " + r.a.why : ""))}；点一行 = 把这一轮当余辉对比">
       <td class="hn">#${r.n}</td><td class="chg">${r.diff ? esc(r.diff) : r === rs[rs.length - 1] ? "首轮" : "参数未变"}</td>
       <td class="num mp">${r.m ? r.m.Mp.toFixed(1) + "%" : "—"}</td><td class="num">${tm(r.m?.tr)}</td><td class="num ts">${r.m?.settled ? tm(r.m.ts) : "—"}</td>

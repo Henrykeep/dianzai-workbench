@@ -8,7 +8,7 @@ export type State = "todo" | "doing" | "done" | "blocked";
 export type BlockerCode = "no_board" | "missing_deps" | "gains_zero" | "estop" | "selftest_fail" | "params_not_saved";
 // 7 步旅程：id 与后端 progress.get 的 steps[].id 一致；page = 进入时打开的内部页
 export const JOURNEY = [
-  { id: "req", title: "读题定方案", pages: ["项目"] }, { id: "project", title: "建工程", pages: ["烧录"] },
+  { id: "req", title: "选题与方案", pages: ["项目"] }, { id: "project", title: "建工程", pages: ["烧录"] },
   { id: "sim", title: "仿真", pages: ["联调"] }, { id: "bringup", title: "上板联调", pages: ["模块", "标定"] },
   { id: "tune", title: "调参", pages: ["调参"] }, { id: "score", title: "评分", pages: ["评分"] }, { id: "seal", title: "封箱", pages: ["封箱"] },
 ] as const;
@@ -74,7 +74,7 @@ export function infer(c: Ctx): Progress {
   const nx = cur.state !== "done" ? cur : steps.find(s => s.state !== "done");
   const nj = nx && JOURNEY.find(j => j.id === nx.id)!;
   const next = nx && nj ? { title: nx.title, action: MAIN[nj.pages[0] as Step], hint: STEP_HINT[nj.pages[0] as Step] } : null;
-  return { steps, current: curId, next, blockers };
+  return { steps, current: curId, next, blockers, inferred: true } as Progress;
 }
 
 let noApiUntil = 0;
@@ -89,7 +89,7 @@ export async function fetchProgress(call: (op: string) => Promise<any>, c: Ctx):
 
 // 每页顶部「一句话说明 + 一个主按钮」：说明这一步做什么、做完产出什么；按钮与 progress.next 同源
 export const PURPOSE: Record<StepId, string> = {
-  req: "把题目或需求整理成需求表与技术方案；产出 requirements.yaml、scheme.yaml。",
+  req: "把题目或需求整理成需求表与技术方案，确认后写进工程。",
   project: "生成或导入工程并编译、烧录到目标板；产出可运行的固件。",
   sim: "在仿真板上跑通控制回路，确认信号与参数结构；产出可用的参数初值。",
   bringup: "逐个模块上板收发并完成标定；产出极性、零偏等标定值。",
@@ -105,7 +105,7 @@ export const ACTION_LABEL: Record<string, string> = {
 export function viewStep(step: string | undefined): StepId | undefined { return JOURNEY.find(j => (j.pages as readonly string[]).includes(step ?? ""))?.id; }
 export function pageHead(p: Progress, view?: StepId, resident: string[] = []): { text: string; label: string; action?: string; goto?: StepId; hidden?: boolean } {
   const cur = p.steps.find(s => s.id === (view ?? p.current)) ?? p.steps.find(s => s.id === p.current)!;
-  const text = PURPOSE[cur.id];
+  const text = (view && PURPOSE[view]) || PURPOSE[cur.id];   // 文案永远跟当前打开的页，进度数据里缺这一步也不串页
   const dup = (a: string) => { const ui = ACTIONS[a]?.ui; return !!ui && resident.includes(ui); };
   if (p.next && p.next.title === cur.title) return dup(p.next.action) ? { text, label: "", hidden: true } : { text, label: ACTION_LABEL[p.next.action] ?? "开始", action: p.next.action };
   const nx = p.next && p.steps.find(s => s.title === p.next!.title);
@@ -119,28 +119,31 @@ export function runAction(a: string, go: (s: Step) => void) {
   const t = ACTIONS[a]; if (!t || entry(a)?.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => { const el = document.getElementById(t.ui); if (t.jump) el?.focus(); else el?.click(); }, 0);
 }
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
+// r9p4：左栏的勾只认当前项目的进度接口（progress.get / progress.changed）；本地推断、没有项目 → 一个勾都不画
+export const tickable = (p: any) => !p?.inferred && !!p?.project && p.project !== null;
 export function render(p: Progress, go: (s: Step) => void) {
   document.querySelectorAll<HTMLElement>("#steps [data-step]").forEach(b => {
     const s = p.steps.find(x => x.id === b.dataset.pid); if (!s) return;
     if (b.classList.contains("sub")) return;   // 子项（标定）跟随父步，不单独标状态
     b.dataset.state = s.state;
-    b.classList.toggle("done", s.state === "done");
+    b.classList.toggle("done", s.state === "done" && tickable(p));
     b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
     b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
   });
   // 每个 blocker 标到它 blocks 列出的那几步导航下：卡住原因 + fix_action 按钮（接口数据才有 blocks；推断数据不标）
+  // 设计 v9：左栏只标一个小圆点（data-blocked），原因写进悬停提示；文字提示只在页头出现一次
   document.querySelectorAll("#steps .nav-blk").forEach(e => e.remove());
+  document.querySelectorAll<HTMLElement>("#steps [data-blocked]").forEach(n => delete n.dataset.blocked);
   for (const s of p.steps) {
     const bs = p.blockers.filter(b => b.blocks?.includes(s.id)); if (!bs.length) continue;
     const nav = document.querySelector<HTMLElement>(`#steps [data-pid="${s.id}"]:not(.sub)`); if (!nav) continue;
-    nav.dataset.blocked = "1";
-    const box = document.createElement("div"); box.className = "nav-blk";
-    for (const b of bs) box.append(blockerRow(b, go));
-    nav.after(box);
+    nav.dataset.blocked = "1"; nav.title += "\n" + bs.map(b => b.message).join("\n");
   }
-  document.querySelectorAll<HTMLElement>("#steps [data-blocked]").forEach(n => { if (!(n.nextElementSibling as HTMLElement | null)?.classList.contains("nav-blk")) delete n.dataset.blocked; });
   const ph = document.getElementById("pg-head");
-  if (ph) {
+  // 新建项目页不放页头条：和三步卡重复，且新项目上不该写「已完成」
+  const onReq = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step) === "req";
+  if (ph) ph.hidden = onReq;
+  if (ph && !onReq) {
     const view = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step);
     const extra = document.getElementById("pg-tune");   // 调参页「读取自检」「保存参数」常驻在页头，重画时保留
     const resident = view === "tune" && extra ? [...extra.querySelectorAll<HTMLElement>("button[id]")].map(e => e.id) : [];
@@ -148,24 +151,24 @@ export function render(p: Progress, go: (s: Step) => void) {
     ph.innerHTML = `<p class="pg-t"></p><button class="btn pri" type="button"></button>`;
     if (extra) ph.querySelector("p")!.after(extra);
     ph.querySelector("p")!.textContent = hd.text;
+    if (view === "tune") {   // 设计 v10：调参页头 = 20px 标题 + 一行短说明；完整说明放悬停提示
+      const t = ph.querySelector("p")!; t.title = hd.text; t.classList.add("pg-tt");
+      t.replaceChildren(Object.assign(document.createElement("b"), { className: "pg-h", textContent: "调参" }),
+        Object.assign(document.createElement("span"), { className: "pg-s", textContent: "阶跃实验 → 看指标 → 达标后保存参数" }));
+    }
     const b = ph.querySelector<HTMLButtonElement>(":scope > button.pri")!   /* 不能取第一个 button：调参页常驻的「保存参数」也在页头 */; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto; b.hidden = !!hd.hidden;   // 与页头常驻入口重复：只留入口表登记的那个
     b.onclick = () => { if (hd.action) runAction(hd.action, go); else if (hd.goto) go(JOURNEY.find(j => j.id === hd.goto)!.pages[0] as Step); };
+    if (view === "tune") b.hidden = true;   // 调参页唯一主按钮是「阶跃实验」
+    // params_not_saved：全页只在「保存参数」旁显示一次，直接读 progress 的那一条，不再自己判断
+    const ns = p.blockers.find(x => x.code === "params_not_saved"), sv = document.getElementById("tb-save");
+    let tag = document.getElementById("tb-notice");
+    if (sv && !tag) { tag = document.createElement("span"); tag.id = "tb-notice"; tag.className = "notice"; sv.before(tag); }
+    if (tag) { tag.hidden = !ns; tag.textContent = ns ? "参数未写入 Flash" : ""; tag.title = ns?.message ?? ""; tag.dataset.code = ns ? ns.code : ""; }
   }
   const h = document.getElementById("step-hint"); if (!h) return;
   const run = (a: string) => runAction(a, go);
   h.replaceChildren();
   if (p.next) { const n = document.createElement("span"); n.className = "nx"; n.textContent = `下一步：${p.next.title} — ${p.next.hint}`; h.append(n); }
-  for (const b of p.blockers) {
-    const f = resolveFix(b.fix_action);
-    if (f?.kind === "run") {
-      const a = document.createElement("a"); a.className = "blk"; a.href = "#"; a.dataset.code = b.code;
-      a.textContent = `${b.message} · ${f.label}`; a.onclick = e => { e.preventDefault(); run(b.fix_action!); };
-      h.append(a);
-    } else {   // 未就绪 / 未登记 / 无 fix_action：只写原因，不给可点的链接
-      const n = document.createElement("span"); n.className = "blk off"; n.dataset.code = b.code;
-      n.textContent = b.message + (f?.note ? ` · ${f.note}` : ""); h.append(n);
-    }
-  }
 }
 
 export function blockerRow(b: Blocker, go: (s: Step) => void): HTMLElement {
