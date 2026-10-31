@@ -36,3 +36,15 @@ export function sourceLabel(m: any): string {
   const s = String(m?.[SOURCE_F] ?? m?.preview?.[SOURCE_F] ?? m?.args?.[SOURCE_F] ?? "").toLowerCase();
   return /rule|规则/.test(s) ? "来自规则引擎" : /llm|model|agent|模型/.test(s) ? "来自模型" : "";
 }
+// 卡结论（后端定稿前可选）：verdict ∈ pass|fail|unknown + verdict_zh。结论只显示 verdict_zh；缺 verdict → 中性「未判定」，绝不当作达标
+export const VERDICT_F = { v: "verdict", zh: "verdict_zh" } as const;
+export type Verdict = { v: "pass" | "fail" | "unknown"; zh: string };
+export function toVerdict(src: any): Verdict {
+  const pick = (k: string) => src?.args?.[k] ?? src?.preview?.[k] ?? src?.[k];
+  const v = pick(VERDICT_F.v), zh = str(pick(VERDICT_F.zh));
+  if (v === "pass" || v === "fail" || v === "unknown") return { v, zh: zh || (v === "unknown" ? "未判定" : "") || "未判定" };
+  return { v: "unknown", zh: "未判定" };
+}
+// 换示例：op project_switch_example {example}；回 project_forked {example, project, path, message_zh}
+export const SWITCH_EX_OP = "project_switch_example";
+export const FORKED_F = { type: "project_forked", example: "example", project: "project", msg: "message_zh", alts: "examples" } as const;

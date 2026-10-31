@@ -3,6 +3,7 @@ import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
 import "./wa";
+import { SWITCH_EX_OP, FORKED_F } from "./fieldmap";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
 import "./entry-data";
@@ -445,6 +446,15 @@ function lockParams(on: boolean) {
   if (on) { $<HTMLButtonElement>("p-send").disabled = true; const w = document.getElementById("it-write") as any; if (w) w.disabled = true; }
   $("p-send").title = on ? ITER_LOCK_ZH : "";
 }
+// 首次自动套用最接近的示例：一句话 +「更换示例」（op project_switch_example）
+function showForked(m: any) {
+  const st = document.getElementById("pj-ask-st"); if (!st) return;
+  if (m[FORKED_F.project]) hasProject = true;
+  const alts: string[] = Array.isArray(m[FORKED_F.alts]) ? m[FORKED_F.alts] : [];
+  st.innerHTML = `<span>${esc(m[FORKED_F.msg] || `已基于 ${m[FORKED_F.example] ?? "示例"} 新建 ${m[FORKED_F.project] ?? ""}`)}</span> <wa-button size="small" appearance="outlined" id="pj-swap">更换示例</wa-button><span class="pj-swap" id="pj-swap-f" hidden><input class="in" id="pj-swap-in" list="pj-swap-l" placeholder="示例名，如 2026H_ball"><datalist id="pj-swap-l">${alts.map(a => `<option value="${esc(a)}">`).join("")}</datalist><wa-button size="small" variant="neutral" id="pj-swap-go">换成这个</wa-button></span>`;
+  $("pj-swap").onclick = () => { $("pj-swap-f").hidden = false; $("pj-swap-in").focus(); };
+  $("pj-swap-go").onclick = () => { const ex = $<HTMLInputElement>("pj-swap-in").value.trim(); if (ex) void call(SWITCH_EX_OP, { example: ex }).catch(() => {}); };
+}
 function showReject(m: any) {
   const e = document.getElementById(`rej-${m.name}`); if (!e) return;
   e.textContent = rejectHint(m); e.hidden = false; setTimeout(() => { e.hidden = true; }, 15000);
@@ -732,6 +742,7 @@ $("props").innerHTML = AGENT_IDLE;
 function userChangedParams() { FN.onUserChange(); renderBoard(S.status); }
 // #62 自动迭代（WS op iterate_start / iterate_cancel / iterate_status，见 docs/dev/events.md）
 const IT = new IterModel(true);
+IT.cache = { get: () => localStorage.getItem("dz.iter.card"), set: v => localStorage.setItem("dz.iter.card", v) };
 function renderIter() {
   IT.setSim(String(S.status.port ?? "").startsWith("sim:"));
   const b = IT.button(), go = $<HTMLButtonElement>("it-go");
@@ -741,7 +752,7 @@ function renderIter() {
   if (IT.s.phase !== "done") { c.hidden = true; c.innerHTML = ""; return; }
   const v = cardView(IT.s.result), id = IT.applyId();
   c.hidden = false;
-  c.innerHTML = `<wa-card class="itc"><h4>${esc(v.title)}</h4>${v.compare.length ? `<table class="it-cmp"><thead><tr><th></th><th>第 0 轮</th><th>最好</th><th>变化</th></tr></thead><tbody>${v.compare.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num ${r[4]}">${esc(r[3])}</td></tr>`).join("")}</tbody></table>` : ""}<div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
+  c.innerHTML = `<wa-card class="itc"><h4>${esc(v.title)}</h4><div class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(v.verdict.text)}</div>${v.compare.length ? `<table class="it-cmp"><thead><tr><th></th><th>第 0 轮</th><th>最好</th><th>变化</th></tr></thead><tbody>${v.compare.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num ${r[4]}">${esc(r[3])}</td></tr>`).join("")}</tbody></table>` : ""}<div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
     `<div class="it-col">${v.gaps.map(g => `<span>${esc(g)}</span>`).join("")}</div><div class="it-col"><span>${esc(v.reason)}</span>${v.next ? `<span class="hint">${esc(v.next)}</span>` : ""}</div>` +
     `<span class="it-act">${v.canWrite ? `<wa-button variant="brand" size="small" id="it-write" ${id == null ? "disabled title=\"等本地服务出确认卡…\"" : ""}>${APPLY_LABEL}</wa-button>` : ""}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
@@ -787,6 +798,7 @@ link.on(m => {
     case "reconnected": toast(m.message, "ok", 5000); break;
     case "port_moved": toast(m.message, "warn", 8000); break;
     case "param_reject": showReject(m); break;
+    case "project_forked": showForked(m); break;
     case "reconnecting": lkNext = +m.next_s || null; lkNextAt = Date.now(); if (lkSince == null) lkSince = Date.now(); if (!lkMsg || lkMsg.board === "connected") lkMsg = { board: "lost" }; renderLinkTag(); if (m.attempt >= 5) toast(`${m.port} 还没回来：已试 ${m.attempt} 次，每 ${m.next_s} s 再试；不想等就点“断开”`, "info", 4000); break;
     case "estop": if ((m as any).state === "latched") RESTORE.onReport((m as any).sp_before_latch);
       handleEstopMsg(m as any, { setPhase: setEstopPhase, showCleared, toast: (t, k, ms) => toast(t, k, ms) }); break;   // 状态只看 state

@@ -1005,3 +1005,4 @@ body{font-variant-numeric:tabular-nums}
 .gd li .n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:999px;border:1px solid var(--line);font-size:var(--t-xs)}
 .gd li.cur{color:var(--ink);font-weight:600} .gd li.cur .n{border-color:var(--accent);color:var(--accent)}
 .gd li.done{color:var(--ink)}
+.it-verdict{margin:var(--sp2) 0;font-size:var(--t-lg);color:var(--ink)} .it-verdict.unknown{color:var(--muted)} .it-verdict.fail{color:var(--crit)}

@@ -23,7 +23,7 @@ const v = cardView((it.s as any).result);
 eq(v.title, "最好一组参数（第 5 轮）", "title"); eq(v.params, [["kp", "1.235"], ["ki", "0.5"]], "params");
 eq(v.gaps, ["超调：12%，目标 ≤ 5%，差 7%"], "gaps"); eq(v.reason, "停止原因：轮数用完", "reason"); eq(v.canWrite, true, "write");
 eq(cardView({ reason: "invalid", best: null }).canWrite, false, "no best");
-eq(cardView({ reason: "pass", best: { iter: 1, params: { kp: 1 }, pass: true, gaps: {} } }).gaps, ["各项指标均已达标"], "pass gaps");
+eq(cardView({ reason: "pass", best: { iter: 1, params: { kp: 1 }, pass: true, gaps: {} } }).gaps, [], "pass gaps: no frontend 达标 text");
 eq(cardView({ reason: "blocked", best: { iter: 0, params: { kp: 1 }, gaps: {} } }).gaps, ["这一轮没有完整指标"], "no metrics");
 it.reset(); eq(it.s.phase, "idle", "reset");
 eq(iterTarget({ v: 100 }), 100, "target"); eq(iterTarget({ v: 0 }), null, "zero"); eq(iterTarget(null), null, "none");

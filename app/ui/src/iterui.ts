@@ -1,11 +1,11 @@
-import { toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr } from "./fieldmap";
+import { toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
 // 纯状态机 + 文案；main.ts 只做 DOM 接线。预算一律以本地服务报的 limits 为准，没报前按板型兜底（实机 8 轮、仿真 20 轮、180 s）。
 export type Limits = { time_s: number; rounds: number };
 export const DEFAULT_LIMITS = (sim: boolean): Limits => ({ time_s: 180, rounds: sim ? 20 : 8 });
 export type Gap = { value: number; limit: number; gap: number; unit: string };
 export type Best = { iter: number; params: Record<string, number>; params_hash?: string; metrics?: Record<string, unknown>; pass?: unknown; gaps?: Record<string, Gap> };
-export type Stopped = { reason: string; message_zh?: string; rounds?: number; best?: Best | null; next_zh?: string; best_card?: number | null; ss_err?: SsErr | null; pass_basis?: string; base?: Record<string, number> | null };
+export type Stopped = { reason: string; message_zh?: string; rounds?: number; best?: Best | null; next_zh?: string; best_card?: number | null; ss_err?: SsErr | null; pass_basis?: string; verdict?: Verdict; base?: Record<string, number> | null };
 // 本地服务在 iterate.stopped 后推一张 agent_action（tool=iterate_apply_best，“采用最好参数”）：界面只出一张卡——调参页这张，按钮确认的就是那张 action
 export const APPLY_TOOL = "iterate_apply_best";
 export const APPLY_LABEL = "采用最好参数";
@@ -19,14 +19,15 @@ export const budgetText = (l: Limits) => `最多 ${l.rounds} 轮 / ${l.time_s} s
 export const runText = (iter: number, l: Limits, elapsedS: number) => `第 ${Math.min(Math.max(iter, 1), l.rounds)}/${l.rounds} 轮，预算还剩 ${Math.max(0, Math.ceil(l.time_s - elapsedS))} s`;
 void mmss;
 export const REASON_ZH: Record<string, string> = {
-  autopilot: "自动调参结束", pass: "已连续达标", budget_time: "时间预算用完", budget_rounds: "轮数用完", estop: "急停", stopped: "已手动停止",
+  autopilot: "自动调参结束", pass: "满足停止条件", budget_time: "时间预算用完", budget_rounds: "轮数用完", estop: "急停", stopped: "已手动停止",
   invalid: "连续 3 轮无效", no_improve: "连续 3 轮没有改进", unstable: "出现发散", blocked: "各方向都被挡住", error: "出错",
 };
 const GAP_ZH: Record<string, string> = { overshoot: "超调", ss_err: "稳态误差", settle: "调节时间", rise: "上升时间" };
 const n = (v: number) => String(+(+v).toPrecision(4));
 export function gapLines(g: Record<string, Gap> | undefined, pass?: unknown, basis = ""): string[] {
   const ks = Object.keys(g ?? {});
-  if (!ks.length) return [pass === true || (pass as any)?.all === true ? `各项指标均已达标${basis ? `（${basis}）` : ""}` : "这一轮没有完整指标"];
+  void basis;   // 结论只来自后端 verdict_zh，前端不再拼「达标」
+  if (!ks.length) return pass ? [] : ["这一轮没有完整指标"];
   return ks.map(k => { const x = g![k], u = x.unit === "abs" ? "" : x.unit; return `${GAP_ZH[k] ?? k}：${n(x.value)}${u}，目标 ≤ ${n(x.limit)}${u}，差 ${n(x.gap)}${u}`; });
 }
 // 稳态误差 vs 题目误差带（卡 args.ss_err）：实测值 / 误差带+出处 / 是否在带内；单位对不上（inside=null）只提示先标定，不判过不过
@@ -47,14 +48,20 @@ export function compareRows(base: Record<string, number> | null | undefined, bes
     return [zh, `${n(a)} ${u}`, `${n(b)} ${u}`, d === 0 ? "—" : `${d < 0 ? "↓" : "↑"} ${n(Math.abs(d))} ${u}${a ? `（${pct > 0 ? "+" : ""}${pct}%）` : ""}`, d < 0 ? "good" : d > 0 ? "bad" : ""];
   });
 }
-export function cardView(r: Stopped): { title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
+// 结论行：只显示 verdict_zh；inside=null 一律「未判定」（不论后端给什么 pass）；达标口径附在后面
+export function verdictLine(v: Verdict | undefined, e: SsErr | null, basis: string): { v: string; text: string } {
+  const x: Verdict = !v || e?.inside === null ? { v: "unknown", zh: v?.v === "unknown" && v.zh ? v.zh : "未判定" } : v;
+  return { v: x.v, text: `${x.zh}${basis ? `（${basis}）` : ""}` };
+}
+export function cardView(r: Stopped): { verdict: { v: string; text: string }; title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
   const b = r.best ?? null, basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
   return {
     compare: b && !zero ? compareRows(r.base, b.metrics) : [],
-    title: !b ? "没有可用的一轮" : zero ? (r.reason === "pass" ? "初值已达标，未改参" : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
-    reason: `停止原因：${REASON_ZH[r.reason] ?? r.reason}${r.message_zh ? `（${r.message_zh}）` : ""}${r.reason === "pass" && basis ? `；${basis}` : ""}`,
+    title: !b ? "没有可用的一轮" : zero ? "初值已是最好一组，未改参" : `最好一组参数（第 ${b.iter} 轮）`,
+    reason: `停止原因：${REASON_ZH[r.reason] ?? r.reason}${r.message_zh ? `（${r.message_zh}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
-    gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null ? undefined : b.pass, basis).filter(l => !(e?.inside === null && l === "这一轮没有完整指标"))] : [],
+    gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null || b.pass)] : [],
+    verdict: verdictLine(r.verdict, e, basis),
     canWrite: !!b && !zero && Object.keys(b.params ?? {}).length > 0,
     next: /flash/i.test(r.next_zh ?? "") ? "" : (r.next_zh ?? ""),   // #63：“写入 Flash”只在「保存参数」旁
   };
@@ -74,25 +81,38 @@ export class IterModel {
     if (m?.type === "iterate.started") { const l = m.limits?.rounds ? { time_s: m.limits.time_s, rounds: m.limits.rounds } : this.s.limits; this.base = null; this.s = { phase: "running", limits: l, t0: now, iter: 0 }; return true; }
     if (m?.type === "iterate.round" && +m.iter === 0) this.base = roundMetrics(m);
     if (m?.type === "iterate.round") { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; (this.s as any).iter = Math.max((this.s as any).iter, +m.iter || 0); return true; }
-    if (m?.type === "iterate.stopped") { const id = this.s.phase === "done" ? this.s.result.best_card : undefined; const x = this.extra; this.s = { phase: "done", limits: this.s.limits, result: { ...m, base: roundMetrics(m[ROUND0_F.obj]) ?? this.base, best_card: m.best_card ?? id ?? null, ss_err: x.ss_err ?? null, pass_basis: passBasis(m) || x.pass_basis || "" } }; return true; }
-    if (m?.type === "agent_action" && m.tool === APPLY_TOOL) { this.cardId = m.id; this.extra = { ss_err: toSsErr(m), pass_basis: passBasis(m) };
+    if (m?.type === "iterate.stopped") { const id = this.s.phase === "done" ? this.s.result.best_card : undefined; const x = this.extra; this.s = { phase: "done", limits: this.s.limits, result: { ...m, base: roundMetrics(m[ROUND0_F.obj]) ?? this.base, best_card: m.best_card ?? id ?? null, ss_err: toSsErr(m) ?? x.ss_err ?? null, pass_basis: passBasis(m) || x.pass_basis || "", verdict: m.verdict ? toVerdict(m) : x.verdict } }; return true; }
+    if (m?.type === "agent_action" && m.tool === APPLY_TOOL) { this.cardId = m.id; this.extra = { ss_err: toSsErr(m), pass_basis: passBasis(m), verdict: m.args?.verdict || m.verdict ? toVerdict(m) : undefined }; this.cache?.set(JSON.stringify({ id: m.id, ...this.extra }));
       // 走的是 tune 自动调参（tune_round，无 iterate.stopped）时，卡本身就是结果：用卡参数合成结果，调参页照样出这一张
-      if (this.s.phase !== "done") { const a = m.args ?? {}; this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", best: { iter: +a.iter || 0, params: a.params ?? {}, params_hash: a.params_hash }, best_card: m.id, ss_err: this.extra.ss_err, pass_basis: this.extra.pass_basis } }; return true; }
-      if (this.s.phase === "done") { const r = this.s.result; r.best_card = m.id; r.ss_err = this.extra.ss_err; r.pass_basis = r.pass_basis || this.extra.pass_basis; } return true; }
+      if (this.s.phase !== "done") { const a = m.args ?? {}; this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", best: { iter: +a.iter || 0, params: a.params ?? {}, params_hash: a.params_hash }, best_card: m.id, ss_err: this.extra.ss_err, pass_basis: this.extra.pass_basis, verdict: this.extra.verdict } }; return true; }
+      if (this.s.phase === "done") { const r = this.s.result; r.best_card = m.id; r.ss_err = this.extra.ss_err; r.pass_basis = r.pass_basis || this.extra.pass_basis; r.verdict = this.extra.verdict; } return true; }
     return false;
   }
   cardId: number | null = null;
   base: Record<string, number> | null = null;
-  extra: { ss_err: SsErr | null; pass_basis: string } = { ss_err: null, pass_basis: "" };
+  extra: { ss_err: SsErr | null; pass_basis: string; verdict?: Verdict } = { ss_err: null, pass_basis: "" };
+  // 刷新后补回卡字段：优先 iterate_status 里的结果（后端按工程+板子存），否则用本地缓存的上一张卡（同 id）
+  cache?: { get(): string | null; set(v: string): void };
+  restored(res: any): { ss_err: SsErr | null; pass_basis: string; verdict?: Verdict } {
+    const card = res?.card ?? res?.param_card ?? res;
+    let c: any = null; try { c = JSON.parse(this.cache?.get() ?? "null"); } catch { c = null; }
+    const same = c && (res?.best_card == null || c.id === res.best_card);
+    const hasV = card?.args?.verdict ?? card?.verdict ?? res?.verdict;
+    return {
+      ss_err: toSsErr(card) ?? toSsErr(res) ?? (same ? c.ss_err : null),
+      pass_basis: passBasis(card) || passBasis(res) || (same ? c.pass_basis || "" : ""),
+      verdict: hasV ? toVerdict(card?.args?.verdict || card?.verdict ? card : res) : same ? c.verdict : undefined,
+    };
+  }
   // 重连 / 刷新：iterate_status {running, result}
   onStatus(r: any, now: number, dismissed?: number | null) {
     if (!r?.running && r?.result && r.result.best_card != null && r.result.best_card === dismissed) return;   // 已采用 / 已收起的结果不再出卡
     if (r?.running) { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; }
-    else if (r?.result && this.s.phase !== "done" && r.result.type !== "tune.stopped") this.s = { phase: "done", limits: this.s.limits, result: { ...r.result, best_card: r.result.best_card ?? null, ss_err: toSsErr(r.result), pass_basis: passBasis(r.result) } };
-    else if (r?.result?.type === "tune.stopped" && this.s.phase !== "done") this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", ...r.result } };
+    else if (r?.result && this.s.phase !== "done" && r.result.type !== "tune.stopped") this.s = { phase: "done", limits: this.s.limits, result: { ...r.result, best_card: r.result.best_card ?? null, ...this.restored(r.result) } };
+    else if (r?.result?.type === "tune.stopped" && this.s.phase !== "done") this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", ...r.result, ...this.restored(r.result) } };
   }
   applyId(): number | null { return this.s.phase === "done" ? (this.s.result.best_card ?? this.cardId) : null; }
-  reset() { this.cardId = null; this.extra = { ss_err: null, pass_basis: "" }; this.s = { phase: "idle", limits: this.s.limits }; }
+  reset() { this.cache?.set("null"); this.cardId = null; this.extra = { ss_err: null, pass_basis: "" }; this.s = { phase: "idle", limits: this.s.limits }; }
   // 主按钮（同一位置只一个主按钮）：idle/done → 自动迭代；running/pending → 停止迭代
   button(): { label: string; op: "start" | "cancel" } { return this.s.phase === "running" || this.s.phase === "pending" ? { label: "停止迭代", op: "cancel" } : { label: "自动迭代", op: "start" }; }
   text(now: number): string {
