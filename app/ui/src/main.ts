@@ -26,6 +26,7 @@ import { initProject } from "./project";
 import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
+import { clearedEvent, latchHead, portsWithSession } from "./r8pre";
 import { bannerHint, clearedLine, EstopSpans, RestoreTarget } from "./estophist";
 import { purgeEstopBlockers, resolveEstopAlerts, dropEstopBlockers } from "./estopclear";
 import { fireEstop, handleEstopMsg, latchedCause, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE, clearedOnce, CLEARED_NOTICE, markClearClick, markClearedShown } from "./estopbtn";
@@ -67,14 +68,14 @@ function renderAlerts() {
   if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
   el.classList.remove("al-hist");
-  if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.textContent = estopHist; } else el.innerHTML = ""; return; }
+  if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.innerHTML = `<span class="al-t">${esc(estopHist)}</span><span class="sp"></span><button class="btn sm" id="al-retune">${esc(RETUNE.label)}</button>`; el.querySelector<HTMLElement>("#al-retune")!.onclick = () => runAction(RETUNE.action, s => goStepRef(s)); } else el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
   const last = l[l.length - 1];
   const ev = l.filter(isE).pop() as any, wd = l.filter(isW).pop() as any;
   const v = estopView(ev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs);
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
-  if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? v.head : "已解除（之前：" + v.head + "）")}</b></span>`;
+  if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? (ev ? v.head : latchHead((S.status as any).estop_cause ?? latchedCause())) : "已解除（之前：" + v.head + "）")}</b></span>`;
   const fh = bannerHint(latched, ev); if (fh) head += `<span class="al-t al-fix">${esc(fh)}</span>`;
   const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
@@ -141,13 +142,8 @@ const call = async <T = any>(op: string, args: Record<string, unknown> = {}) => 
 // ---------------------------------------------------------------- 急停：永远可点，不依赖任何状态
 let estopPhase: EstopPhase = "idle";
 // 解除确认（cleared 事件或 tx_locked → false）：只提示 + 「重新调参」；不自动发任何运动 / 调参请求
-const cleared = clearedOnce(() => onCleared((text, btn, go) => {
-    const d = document.createElement("div"); d.className = "toast ok cleared";
-    d.innerHTML = `<b>${esc(text)}</b><span class="act"><button class="btn sm pri" data-r="retune">${esc(btn.label)}</button><button class="btn sm" data-r="x">知道了</button></span>`;
-    d.querySelector<HTMLElement>("[data-r=retune]")!.onclick = () => { d.remove(); go(); };
-    d.querySelector<HTMLElement>("[data-r=x]")!.onclick = () => d.remove();
-    $("toasts").prepend(d); markClearedShown();   // 解除卡渲染后打点
-  }, () => runAction(RETUNE.action, s => goStepRef(s))));
+// r8pre：不再弹右下 toast；同一句话 + 同一个动作只在灰条里（renderAlerts 的 al-hist）
+const cleared = clearedOnce(() => onCleared(() => markClearedShown(), () => runAction(RETUNE.action, s => goStepRef(s))));
 // #41：解除后同一节拍内清掉红条与所有「请先解除急停」提示，只留一行中性历史
 let estopHist = "";
 function resolveEstop() {
@@ -158,6 +154,8 @@ function resolveEstop() {
   document.getElementById("cmd-r")?.classList.remove("attn"); $("estop").classList.remove("locked");
   renderAlerts(); purgeEstopBlockers(document); agent.resolveEstop?.();
   if (estopHist) markClearedShown();
+  if (estopHist && tl.all().at(-1)?.kind !== "estop_clear") tl.add(clearedEvent(tl.all(), null, plot.now()));   // r8pre：时间线最新一条是中性「急停已解除」
+  ana.invalidate();
   showRestore(); tl.refresh();
   void refreshProgressRef();
 }
@@ -618,6 +616,7 @@ function renderStatus(st: Msg) {
     $("rp-play").textContent = st.replay_paused ? "▶" : "⏸";
     if (document.activeElement !== $("rp-speed")) $<HTMLSelectElement>("rp-speed").value = String(st.replay_speed);
   }
+  { const ps = portsWithSession(S.ports, st as any); if (ps.value) { const sel = $<HTMLSelectElement>("port"); if (ps.ports !== S.ports || sel.value !== ps.value) { S.ports = ps.ports; renderPorts(false); sel.value = ps.value; } } }   // r8pre：复用会话时下拉框 = 底栏实际端口
   $("connect").innerHTML = st.connected ? "断开 <kbd>⌃O</kbd>" : "连接 <kbd>⌃O</kbd>";
   $("connect").classList.toggle("pri", !st.connected);
   $<HTMLSelectElement>("port").disabled = $<HTMLSelectElement>("baud").disabled = $<HTMLSelectElement>("lines").disabled = !!st.connected;
