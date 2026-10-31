@@ -35,6 +35,8 @@ except ImportError:  # pragma: no cover
     sys.exit("缺 python-control：pip install -r app/sidecar/requirements.txt")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import plantmodel  # noqa: E402  共享对象模型（plant: 声明也用它）
 MADE_UP = ["zorb", "qlu", "nit/s"]                       # 编出来的单位：界面/后端没见过也要照原样处理
 UNITS = {"pos": ["deg", "mm"], "vel": ["rpm", "A", "V"], "temp": ["°C", "%RH", "kPa"]}
 UNITS["any"] = sorted({u for v in UNITS.values() for u in v}) + MADE_UP
@@ -315,47 +317,10 @@ link:
 
 
 def sim_c(p: dict) -> str:
-    ss = p["ss"]; n = len(ss["B"])
-    fl = lambda xs: ", ".join(f"{float(x):.9e}f" for x in xs)
-    A = ",\n    ".join("{ " + fl(row) + " }" for row in ss["A"])
-    f = lambda v: f"{float(v):.9e}f"
-    return f"""/* 由 tools/randplant.py --seed {p['seed']} 生成：随机被控对象（离散 ZOH，dt = {p['dt_s']} s），仅 host-sim 编译。 */
-#include "board_gen.h"
-#include "host_sim.h"
-#include <math.h>
-#include <stdint.h>
-
-#define RP_N {n}
-static const float A[RP_N][RP_N] = {{
-    {A}
-}};
-static const float B[RP_N] = {{ {fl(ss['B'])} }};
-static const float C[RP_N] = {{ {fl(ss['C'])} }};
-static const float D = {f(ss['D'])};
-static float x[RP_N];
-static uint32_t s_rng = {(p['seed'] * 2654435761) % 2**32 or 1}u;
-
-static float urand(void) {{ s_rng ^= s_rng << 13; s_rng ^= s_rng >> 17; s_rng ^= s_rng << 5; return (float)(s_rng >> 8) * (1.0f / 16777216.0f); }}
-static float gauss(void) {{ float a = urand() + 1e-7f, b = urand(); return sqrtf(-2.0f * logf(a)) * cosf(6.2831853f * b); }}
-
-/* app_main.c 的弱符号覆盖：一步对象（饱和 → 死区 → 线性 → 传感器量程），返回带噪声的测量值 */
-float randplant_step(float u)
-{{
-    float xn[RP_N], y;
-    if (u > {f(p['sat'])}) u = {f(p['sat'])};
-    if (u < -{f(p['sat'])}) u = -{f(p['sat'])};
-    u = fabsf(u) <= {f(p['deadzone'])} ? 0.0f : (u > 0 ? u - {f(p['deadzone'])} : u + {f(p['deadzone'])});
-    y = D * u;
-    for (int i = 0; i < RP_N; i++) y += C[i] * x[i];
-    for (int i = 0; i < RP_N; i++) {{ xn[i] = B[i] * u; for (int j = 0; j < RP_N; j++) xn[i] += A[i][j] * x[j]; }}
-    for (int i = 0; i < RP_N; i++) x[i] = xn[i];
-    if (y > {f(p['sensor_range'] / 2)}) y = {f(p['sensor_range'] / 2)};
-    if (y < -{f(p['sensor_range'] / 2)}) y = -{f(p['sensor_range'] / 2)};
-    return y + {f(p['noise_std'])} * gauss();
-}}
-
-void host_sim_app_setup(void) {{ }}
-"""
+    """对象 C 代码：与 plant: 声明共用 tools/plantmodel.py（滞后已用 Padé 折进状态空间；传感器量程限幅）。"""
+    return plantmodel.sim_c(p["ss"], dt=p["dt_s"], sat=(-float(p["sat"]), float(p["sat"])), deadzone=float(p["deadzone"]),
+                            noise_std=float(p["noise_std"]), seed=int(p["seed"]), y_clip=0.5 * float(p["sensor_range"]),
+                            tag=f"tools/randplant.py --seed {p['seed']}")
 
 
 def app_main(p: dict) -> str:
@@ -372,8 +337,8 @@ def app_main(p: dict) -> str:
 #define CTRL_PERIOD_US {us}u
 #define DT ({us}e-6f)
 
-DZ_WEAK float randplant_step(float u);
-DZ_WEAK float randplant_step(float u) {{ (void)u; return 0.0f; }}   /* 真板没有对象：只在 host-sim 由 sim_setup.c 提供 */
+DZ_WEAK float sim_plant_step(float u);
+DZ_WEAK float sim_plant_step(float u) {{ (void)u; return 0.0f; }}   /* 真板没有对象：只在 host-sim 由 sim_setup.c 提供 */
 
 static link_app_t L;
 static volatile float s_y, s_u;
@@ -395,7 +360,7 @@ static void ctrl_isr(void *ctx)
         u = clampf({g('P', '0.0f')} * e + s_i + {g('D', '0.0f')} * s_df + {g('FF', '0.0f')} * sp, lim);
     }}
     s_u = u;
-    s_y = randplant_step(u);
+    s_y = sim_plant_step(u);
 }}
 
 dz_err_t app_init(void)
