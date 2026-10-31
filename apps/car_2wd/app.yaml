@@ -27,6 +27,9 @@ link:
   # 保护阈值表里只读显示的编译期常量（改要重烧）。界面不认名字，按这里列
   protect_fixed:
     - { name: 看门狗, value: 500, unit: ms, where: apps/car_2wd/app_main.c WDG_MS }
+  # #38 阶跃实验（DATA 0x7B）：板上按遥测节拍算指标，发 step_result（dzctl 0.13.0，firmware/proto/dzctl/README.md）
+  step:
+    - { sp: 0, y: spd_a, u_max: 0.9, range: 10, abs_tol: 0.05 }
   params:
     - { name: kp,             type: float,  default: 0.08, min: 0,   max: 2,    desc: 轮速 PID（起步值，未实测） }
     - { name: ki,             type: float,  default: 1.5,  min: 0,   max: 20,   desc: 轮速 PID（起步值，未实测） }
@@ -35,7 +38,7 @@ link:
     - { name: cmd_timeout_ms, type: uint32, default: 200,  min: 50,  max: 2000, unit: ms, desc: 断线停车, protect: 断线停车 }
     - { name: stall_duty,     type: float,  default: 0.8,  min: 0.1, max: 1,    desc: 堵转判定占空比（无电流采样，用 PID 输出代替电流；电机最大 0.9）, protect: 堵转 }
     - { name: stall_src,      type: uint8,  default: 0,    min: 0,   max: 1,    desc: 堵转负载来源 0=占空比 1=电流（板子要有 ADC ISENSE_A/B，否则仍按占空比）, protect: 堵转 }
-    - { name: stall_amp,      type: float,  default: 2.0,  min: 0.1, max: 20,   unit: A, desc: 堵转电流门限（stall_src=1 时用；按电机手册堵转电流的 60~80%）, protect: 堵转 }
+    - { name: stall_amp,      type: float,  default: 2.0,  min: 0.1, max: 20, max_delta: 5,   unit: A, desc: 堵转电流门限（stall_src=1 时用；按电机手册堵转电流的 60~80%）, protect: 堵转 }
     - { name: isense_mv_per_a, type: float, default: 500,  min: 1,   max: 10000, unit: mV/A, desc: 电流采样灵敏度（采样电阻 × 运放增益） }
     - { name: isense_zero_mv, type: float,  default: 0,    min: 0,   max: 5000, unit: mV, desc: 零电流时 ADC 引脚电压（双向运放常为 VCC/2） }
     - { name: sa_v_mps,       type: float,  default: 0.2,  min: 0,   max: 1,    unit: m/s, desc: 脱机模式启动后的巡航线速度（无上位机时的板上目标） }

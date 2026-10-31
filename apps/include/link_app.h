@@ -26,6 +26,7 @@
 #include "blackbox.h"
 #include "link_relay.h"
 #include "dz_runtime.h"
+#include "link_step.h"
 
 typedef struct {
     dzframe_parser_t rx;
@@ -41,7 +42,17 @@ typedef struct {
     const bb_t *bb;                         /**< 可选：非 NULL 时响应黑匣子导出请求 */
     void (*on_cmd)(uint8_t c, uint8_t n);   /**< 'R' 以外的单字节命令；n = 第二字节（没有为 0） */
     dzrt_t rt;                              /**< 通用运行时（自检 / 运行模式 / 存参） */
+    uint32_t now;                           /**< 最近一次 link_app_poll 的时刻（阶跃实验样本时间 = 遥测 t_ms） */
 } link_app_t;
+
+/** 进锁存：输出禁止 + 设定值清零（锁存期间遥测里的设定值就是 0，上位机批量转发的旧样本也不会再报旧值）。 */
+static inline void link_app_latch(link_app_t *L)
+{
+    L->estop = L->latched = true;
+    for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
+    link_step_latch();                      /* #38：bit17 立即清 0，阶跃结果以 aborted=1 补发 */
+}
+
 
 static link_app_t *s_link_app_self;
 static bool link_app_still_default(void)
@@ -69,7 +80,7 @@ static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*
     s_link_app_self = L;
     dzctl_estop_clear();                    /* 上电：RAM 里的旧原因不算（仿真里 app_init 会重跑） */
     if (dzrt_boot(&L->rt, &g_link_params, &g_link_params_default, link_app_still_default, link_app_send_fwd) == 0u && on_params) on_params();
-    if (dzrt_selftest(&L->rt, pal_millis()) != 0u) { L->estop = L->latched = true; dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); }
+    if (dzrt_selftest(&L->rt, pal_millis()) != 0u) { link_app_latch(L); dzctl_estop_note(DZCTL_ES_SELFTEST, pal_millis(), 0.0f); }
     dzrt_start(&L->rt, !L->estop, false);
 }
 
@@ -87,13 +98,15 @@ static inline void link_app_send(const dzframe_t *f)
 static inline bool link_app_poll(link_app_t *L, uint32_t now)
 {
     uint8_t buf[32]; uint16_t got = 0;
-    dzframe_t f, ack;
+    dzframe_t f, ack, rej;
+    uint8_t sch; float stg; int sr; bool has_rej;
     dzctl_table_t t = link_param_table(&g_link_params);
+    L->now = now;
     if (link_read(buf, sizeof buf, &got) == DZ_OK) {
         for (uint16_t i = 0; i < got; i++) {
             if (!dzframe_feed(&L->rx, buf[i], &f)) continue;
             dzctl_wd_feed(&L->wd, &f, now);
-            if (dzctl_is_estop(&f)) { L->estop = L->latched = true; dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
+            if (dzctl_is_estop(&f)) { link_app_latch(L); dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f); pid_relay_stop(); }
             else if (link_relay_frame(&f, L->latched, &L->seq, &ack)) { if (!L->latched) L->estop = false; link_app_send(&ack); }   /* 继电实验 = 显式新指令，解除后可开始 */
             else if (dzctl_is_bb_request(&f)) {
                 for (uint16_t k = 0; L->bb && k < bb_count(L->bb); k++) {
@@ -102,10 +115,19 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
                     link_app_send(&ack);
                 }
             }
-            else if (dzctl_handle(&t, &f, &ack)) { if (L->on_params) L->on_params(); link_app_send(&ack); }
+            else if ((sr = link_step_rx(&f, L->latched, !dzrt_needs_host(&L->rt), now, &t, &L->seq, link_app_send, &sch, &stg)) != 0) {
+                if (sr == 2) { L->sp[g_link_step[sch].sp_idx] = stg; L->sp_ms = now; L->estop = false; }   /* 阶跃 = 显式新指令 */
+            }
+            else if (dzctl_handle_checked(&t, &f, L->latched || link_step_busy(), &ack, &rej, &has_rej)) {   /* 0.13.0 越界/类型/状态/步长 → 拒绝 */
+                if (!has_rej && L->on_params) L->on_params();
+                link_app_send(&ack);
+                if (has_rej) link_app_send(&rej);
+            }
             else if (dzrt_cmd(&L->rt, &f)) { }
             else if (f.kind == DZF_DATA && f.id == 1u && !dzrt_needs_host(&L->rt)) { }   /* 脱机：不收上位机设定值 */
+            else if (f.kind == DZF_DATA && f.id == 1u && L->latched) { }   /* 锁存中：设定值整帧丢弃（急停后仍在路上的阶跃/扫频帧），'R' 后要重新给 */
             else if (f.kind == DZF_DATA && f.id == 1u && f.len >= 4u && f.len % 4u == 0u) {
+                link_step_preempt();               /* 实验中途又给设定值：这一轮作废（aborted, 0x80） */
                 for (unsigned k = 0; k < 4u && 4u * k < f.len; k++) L->sp[k] = dzframe_get_f32(&f, 4u * k);
                 L->sp_ms = now;
                 if (!L->latched) L->estop = false;   /* 解除后由人/Agent 重新给设定值才恢复输出 */
@@ -123,10 +145,11 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
         }
     }
     if (dzrt_needs_host(&L->rt) && dzctl_wd_expired(&L->wd, now)) {   /* 上位机掉线：急停 */
-        L->estop = L->latched = true;
+        link_app_latch(L);
         dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, now, (float)(uint32_t)(now - L->wd.last_ms));
     }
     link_relay_guard(L->estop);                           /* 急停中结束继电 */
+    link_step_flush(&L->seq, link_app_send);              /* 急停/打断的阶跃：先发 aborted 结果，再发急停沿心跳 */
     L->rt.bb = (bb_t *)L->bb;
     {
         bool was_sa = !dzrt_needs_host(&L->rt);
@@ -145,6 +168,10 @@ static inline void link_app_send_telem(link_app_t *L, const link_telem_t *v)
 {
     dzframe_t f;
     if (link_telem_pack(&f, v)) { f.seq = L->seq++; link_app_send(&f); }
+    if (link_step_busy()) {                                /* #38：样本 = 这一帧遥测（t = poll 时刻 = 遥测 t_ms） */
+        uint8_t ch = s_link_step.ch;
+        link_step_on_telem(L->now, link_step_y(v, ch), link_step_u(v, ch), &L->seq, link_app_send);
+    }
 }
 
 #endif

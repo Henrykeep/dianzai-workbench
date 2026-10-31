@@ -19,6 +19,7 @@
  *     黑匣子（RAM 环 32 条）：复位原因、堵转、解除；上位机发 DATA id=0x7D len=0 导出。
  *   可选外设（car_aux.c）：板子有 VBAT 就监测电池（过放 → 急停），有 US_TRIG/US_ECHO 就测前方距离（太近 → 不许前进）。
  */
+#include <math.h>
 #include <string.h>
 #include "board_gen.h"
 #include "link_io.h"
@@ -37,6 +38,7 @@
 #include "blackbox.h"
 #include "persist.h"
 #include "dz_runtime.h"
+#include "link_step.h"
 #include "dz_compiler.h"
 #include "nvm_pal.h"
 
@@ -56,6 +58,8 @@ static car_state_t s_state;
 static subsys_sched_t s_sched;
 static dzframe_parser_t s_rx;
 static volatile float s_sp[2];
+static volatile float s_wu[2];   /* 每轮 PID 输出（#38 阶跃 u_sat_ratio 用轮 A） */
+static uint8_t s_step_seq;
 static volatile uint32_t s_ctrl_errors;
 static drive_params_t s_params = { .wheel_diam_m = 0.065f, .track_m = 0.15f };   /* 其余字段来自 g_link_params */
 static volatile bool s_estop;
@@ -103,9 +107,10 @@ static void ctrl_isr(void *ctx)
         if (s_gains_dirty) (void)pid_set_gains(&w->pid, g_link_params.kp, g_link_params.ki, 0.0f);
         /* 急停时也要更新编码器：否则遥测里的转速冻结在急停前的值，上位机看着像还在转 */
         dz_err_t ee = encoder_update(&w->enc);
-        if (s_estop) { motor_dc_stop(&w->motor, MOTOR_DC_BRAKE); pid_reset(&w->pid); continue; }
+        if (s_estop) { motor_dc_stop(&w->motor, MOTOR_DC_BRAKE); pid_reset(&w->pid); s_wu[i] = 0.0f; continue; }
         if (ee != DZ_OK) { s_ctrl_errors++; motor_dc_stop(&w->motor, MOTOR_DC_COAST); continue; }
         float spd = encoder_speed_rps(&w->enc), u = pid_update(&w->pid, s_sp[i], spd);
+        s_wu[i] = u;
 #if HAVE_ISENSE
         float load = use_current() ? s_amp[i] : u;
 #else
@@ -221,20 +226,28 @@ static void handle_rx(uint32_t now)
 {
     uint8_t buf[32]; uint16_t got = 0;
     if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
-    dzframe_t f, ack;
+    dzframe_t f, ack, rej;
     dzctl_table_t t = link_param_table(&g_link_params);
+    uint8_t sch; float stg; int sr; bool has_rej;
     for (uint16_t i = 0; i < got; i++) {
         if (!dzframe_feed(&s_rx, buf[i], &f)) continue;
         dzctl_wd_feed(&s_wd, &f, now);
         if (dzctl_is_estop(&f)) {
             s_estop = true;
+            link_step_latch();
             dzctl_estop_note(DZCTL_ES_MANUAL, now, 0.0f);
             s_state.cmd_v_mps = s_state.cmd_w_rps = 0.0f;
         } else if (link_relay_frame(&f, s_estop, &s_relay_seq, &ack)) {
             send(&ack);
-        } else if (dzctl_handle(&t, &f, &ack)) {
-            apply_params();
+        } else if ((sr = link_step_rx(&f, s_estop, !dzrt_needs_host(&s_rt), now, &t, &s_step_seq, send, &sch, &stg)) != 0) {
+            if (sr == 2) {   /* #38 阶跃：轮 A 目标 stg rps → 直行线速度（w = 0），实验期间每拍续命令 */
+                s_state.cmd_v_mps = car_aux_limit_v(stg * 3.14159265f * s_params.wheel_diam_m);
+                s_state.cmd_w_rps = 0.0f; s_state.cmd_ms = now;
+            }
+        } else if (dzctl_handle_checked(&t, &f, s_estop || link_step_busy(), &ack, &rej, &has_rej)) {   /* 0.13.0 拒绝不限幅 */
+            if (!has_rej) apply_params();
             send(&ack);
+            if (has_rej) send(&rej);
         } else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u && f.payload[0] == 'R') {
             uint32_t st = pal_irq_save();
             s_estop = false;
@@ -254,6 +267,7 @@ static void handle_rx(uint32_t now)
                 send(&ack);
             }
         } else if (!s_estop && dzrt_needs_host(&s_rt) && f.kind == DZF_DATA && f.id == ID_CMD && f.len == 8u) {   /* 脱机：不收上位机目标 */
+            link_step_preempt();   /* 实验中途又给目标：这一轮作废 */
             s_state.cmd_v_mps = car_aux_limit_v(dzframe_get_f32(&f, 0));
             s_state.cmd_w_rps = dzframe_get_f32(&f, 4);
             s_state.cmd_ms = now;
@@ -305,9 +319,13 @@ void app_loop(void)
     }
     dzctl_set_flags(SAFETY_F_SAFE_BOOT | SAFETY_F_STALL, false);
     dzctl_set_flags(safety_flags(&s_safe), true);
+    if (s_estop) link_step_latch();             /* 任何原因的急停：bit17 清 0，阶跃结果 aborted=1 */
+    link_step_flush(&s_step_seq, send);
+    if (link_step_busy()) s_state.cmd_ms = now; /* 阶跃进行中：板上自己续命令（不触发断线停车） */
     s_state.cmd_v_mps = car_aux_limit_v(s_state.cmd_v_mps);
     subsys_sched_poll(&s_sched, now);
     uint32_t st = pal_irq_save();
+    if (s_estop) s_state.sp_a_rps = s_state.sp_b_rps = 0.0f;   /* 急停：轮速目标（含斜坡）立即归零，'R' 后从 0 起，遥测不报旧目标 */
     s_sp[0] = s_state.sp_a_rps; s_sp[1] = s_state.sp_b_rps;
     pal_irq_restore(st);
 
@@ -321,6 +339,7 @@ void app_loop(void)
         t.ctrl_err = s_ctrl_errors;
         pal_irq_restore(st);
         if (link_telem_pack(&f, &t)) { f.seq = seq++; send(&f); }
+        if (link_step_busy()) link_step_on_telem(now, t.spd_a, NAN /* 占空比不在遥测里，上位机无法复算 → u_sat_ratio=-1 */, &s_step_seq, send);
     }
     static bool hb_was_estop;
     if (dzrt_hb_due(now, s_estop, &hb_was_estop, &last_hb)) {   /* 急停上升沿 / 下降沿立即发（与 link_app 同一个助手） */
