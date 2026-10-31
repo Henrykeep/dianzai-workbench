@@ -28,6 +28,7 @@ actions:
   - {id: blackbox,     label: 读黑匣子,         at: always:排障, ui: pre-bbtn,   ops: [blackbox]}
   # 进度阻塞项的修复按钮（进度条按 fix_action 动态生成）。ready: false = 入口已登记但功能未就绪（界面置灰，侧车返回 not_ready）
   - {id: fetch_deps,   label: 一键安装依赖,     at: always:排障, ui: doc-list,   ops: [fetch_deps]}   # 固定在自检对话框 #doc 的结果列表（missing_deps 的 fix_action 跳到自检）
+  - {id: reinstall,    label: 重新安装工作台,   at: always:排障, ui: reinstall, dynamic: true, ops: []}   # data_file_missing 的 fix_action：随包数据文件（docs/dev/roles.json 等）缺失或版本不认识；进度条动态生成按钮，指引重装
   # ── 项目 ──
   - {id: project_new,  label: 新建项目,         at: page:req,   ui: pj-new,     ops: []}   # 只把焦点移到一句话输入（project_ask），不另起新建流程
   - {id: project_open, label: 打开项目,         at: page:req,   ui: pj-open,    ops: [project.list, project.open]}   # 列表按钮 .pj-item 是这一入口的选项，选中即 project.open {code}

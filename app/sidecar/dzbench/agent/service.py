@@ -61,35 +61,26 @@ NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse
 
 
 
-def _roles_json_paths() -> list:
-    import os, pathlib, sys
-    out = []
-    if getattr(sys, "_MEIPASS", None):                          # 安装包（PyInstaller）里随包的 docs/dev/roles.json
-        out.append(pathlib.Path(sys._MEIPASS) / "docs" / "dev" / "roles.json")
-    if os.environ.get("DZBENCH_REPO"):
-        out.append(pathlib.Path(os.environ["DZBENCH_REPO"]) / "docs" / "dev" / "roles.json")
-    out.append(pathlib.Path(__file__).resolve().parents[4] / "docs" / "dev" / "roles.json")
-    return out
-
+def load_roles() -> tuple[list, str]:
+    """#136：参数角色只读 docs/dev/roles.json（{schema_version:1, roles:[{code, zh}]}，gen_link 生成；侧车不留副本）。
+    返回 ([{code, zh}], 问题说明)。"""
+    from .. import datafiles
+    d, prob = datafiles.load("roles.json")
+    if prob:
+        return [], prob["message_zh"]
+    rs = [r for r in d.get("roles") or [] if isinstance(r, dict) and isinstance(r.get("code"), str)]
+    return (rs, "") if rs else ([], "参数角色取值表 roles.json 里没有角色，请重新安装工作台")
 
 def link_roles() -> tuple:
-    """#136：role 取值只读 docs/dev/roles.json（由 gen_link --emit-roles 从 ROLES 生成；侧车不留副本）。读不到返回 ()。"""
-    import json
-    for f in _roles_json_paths():
-        try:
-            d = json.loads(f.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(d, list) and d and all(isinstance(x, str) for x in d):
-            return tuple(d)
-    return ()
+    return tuple(r["code"] for r in load_roles()[0])
 
 
 def role_hint_zh() -> str:
-    rs = link_roles()
+    rs, why = load_roles()
     if not rs:
-        return "在 app.yaml 的 link.params.<参数名>.role 上写角色；角色取值表 docs/dev/roles.json 没找到，这里列不出来，请看 tools/gen_link.py 的说明"
-    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {' / '.join(rs)}（例如比例增益写 role: {rs[0]}）"
+        return f"在 app.yaml 的 link.params.<参数名>.role 上写角色；{why}，这里列不出可选值"
+    opts = " / ".join(f"{r['code']}（{r.get('zh') or r['code']}）" for r in rs)
+    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {opts}（例如比例增益写 role: {rs[0]['code']}）"
 
 class AgentService:
     def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):

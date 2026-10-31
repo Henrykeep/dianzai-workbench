@@ -37,41 +37,6 @@ def test_hb_timeout_text_uses_handshake_threshold():
 
 
 
-def test_role_hint_reads_only_roles_json(tmp_path, monkeypatch):
-    """#136：提示只读 docs/dev/roles.json；例子要能过 gen_link.check；kp 过不了。"""
-    import importlib.util, json, pathlib, re
-    from dzbench.agent import service as SV
-    root = pathlib.Path(__file__).resolve().parents[3]
-    spec = importlib.util.spec_from_file_location("gl_t", root / "tools" / "gen_link.py"); gl = importlib.util.module_from_spec(spec); spec.loader.exec_module(gl)
-    f = tmp_path / "docs" / "dev" / "roles.json"; f.parent.mkdir(parents=True)
-    f.write_text(json.dumps(list(gl.ROLES)), "utf-8")
-    monkeypatch.setattr(SV, "_roles_json_paths", lambda: [f])
-    assert SV.link_roles() == tuple(gl.ROLES)
-    h = SV.role_hint_zh()
-    assert "kp" not in h and all(r in h for r in gl.ROLES), h
-    ex = re.search(r"role: (\w+)", h).group(1)
-    p = {"name": "g", "type": "float", "default": 0.1, "min": 0, "max": 1, "role": ex}
-    assert not [e for e in gl.check({}, [p]) if "role" in e]
-    assert [e for e in gl.check({}, [dict(p, role="kp")]) if "role" in e]
-
-
-def test_role_hint_without_roles_json_says_so(tmp_path, monkeypatch):
-    from dzbench.agent import service as SV
-    monkeypatch.setattr(SV, "_roles_json_paths", lambda: [tmp_path / "nope.json"])
-    h = SV.role_hint_zh()
-    assert SV.link_roles() == () and "roles.json 没找到" in h and "role:" not in h.split("；")[1], h
-
-
-def test_repo_roles_json_matches_gen_link_when_present():
-    """roles.json 生成后（嵌入式开发-2 的 gen_link --emit-roles）必须和 ROLES 一致。"""
-    import importlib.util, json, pathlib
-    root = pathlib.Path(__file__).resolve().parents[3]
-    f = root / "docs" / "dev" / "roles.json"
-    spec = importlib.util.spec_from_file_location("gl_t2", root / "tools" / "gen_link.py"); gl = importlib.util.module_from_spec(spec); spec.loader.exec_module(gl)
-    if f.exists():
-        assert json.loads(f.read_text("utf-8")) == list(gl.ROLES)
-
-
 def test_find_by_hash_prefers_newest_of_same_hash(tmp_path, monkeypatch):
     """flaky 根因：同一应用编给多块板 → 同 hash 多份 link_schema.json（hash 不含 wd_timeout_ms）；
     以前按文件系统顺序取第一份，拿到旧固件的表 → threshold 读成 null，测试按 1000 ms 等，板子 1500 ms 才锁存。"""
@@ -85,3 +50,41 @@ def test_find_by_hash_prefers_newest_of_same_hash(tmp_path, monkeypatch):
     os.utime(old, (1e9, 1e9))
     monkeypatch.setattr(SC, "search_dirs", lambda: [tmp_path])
     assert SC.find_by_hash(0x1234).wd_timeout_ms == 2300
+
+
+def test_roles_hint_list_equals_roles_json_codes():
+    import json, pathlib
+    from dzbench.agent import service as SV
+    d = json.loads((pathlib.Path(__file__).resolve().parents[3] / "docs/dev/roles.json").read_text("utf-8"))
+    codes = [r["code"] for r in d["roles"]]
+    assert list(SV.link_roles()) == codes
+    h = SV.role_hint_zh()
+    assert [c for c in codes if f"{c}（" in h] == codes and "kp" not in h, h
+
+
+def _datafiles_at(tmp_path, monkeypatch, content):
+    from dzbench import datafiles
+    if content is not None:
+        f = tmp_path / "docs" / "dev" / "roles.json"; f.parent.mkdir(parents=True); f.write_text(content, "utf-8")
+    monkeypatch.setattr(datafiles, "roots", lambda: [tmp_path])
+    return datafiles
+
+
+def test_roles_json_missing_is_blocker_and_cli_fails(tmp_path, monkeypatch, capsys):
+    from dzbench import progress
+    from dzbench.agent import service as SV
+    df = _datafiles_at(tmp_path, monkeypatch, None)
+    probs = df.check()
+    assert probs and probs[0]["reason"] == "data_file_missing" and probs[0]["fix_action"] == "reinstall" and probs[0]["file"].endswith("roles.json")
+    bl = progress.blockers({"data_missing": probs, "link": {"board": "connected"}})
+    assert bl[0]["code"] == "data_file_missing" and bl[0]["fix_action"] == "reinstall" and "重新安装" in bl[0]["message_zh"]
+    assert "没找到" in SV.role_hint_zh() and "role: " not in SV.role_hint_zh()
+    assert df.main() == 1
+
+
+def test_roles_json_unknown_version_rejected(tmp_path, monkeypatch):
+    from dzbench.agent import service as SV
+    df = _datafiles_at(tmp_path, monkeypatch, '{"schema_version": 2, "roles": [{"code": "P", "zh": "比例"}]}')
+    assert df.check()[0]["reason"] == "data_file_missing" and "版本 2" in df.check()[0]["message_zh"]
+    assert SV.link_roles() == () and "版本 2" in SV.role_hint_zh()
+    assert df.main() == 1
