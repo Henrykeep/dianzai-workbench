@@ -232,8 +232,10 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - `step_too_large`（message_zh + fix，fix_action=`lower_step`，带 `max_step`）：iterate 的阶跃目标、或一次设定值跳变超过 link.step.max_step 时返回。
 - 探测幅度 = 量程 × PROBE_FRAC，受 max_step 限制；没声明量程时用最小可测幅度（不再固定 0.05）。
 - 参数角色（字段规格，gen_link / randplant 由嵌入式开发-2 加）：app.yaml `link.params.<名>.role` ∈ P/I/D/FF/LIM/other，握手参数表带 `role`（没写为 null）。后端只认这个声明，名字猜测只当建议；LIM / other 不参与整定，也不进 iterate 的默认参数集。
+- #123：角色只从握手 `params[i].role` 来（P/I/D/FF/LIM/other 或 null），侧车不按参数名猜（`guess_gain` 已删）；LIM / other 不参与整定。`tools/tunegate.py` 也从握手表（randplant 写的 app.yaml 经 gen_link）取角色，不读 plant.json。
 - `autotune` 角色没声明时返回 `{"verdict":"needs_human","reason":"roles_unconfirmed","missing":[名],"suggested":{名:角色},"message_zh","fix","fix_action":"confirm_roles"}`，不跑。
-- `{"op":"confirm_roles","roles":{名:角色},"app_dir"?}`：把确认过的角色写回 app.yaml `link.params`（只改对应行）。返回 `{ok, app_yaml, roles, message_zh, fix_action:"rebuild"}`；重新生成握手表后生效。Agent 工具同名（human 级，卡片标题“确认参数角色”）。
+- `suggested` 只按结构给：`link.step.u_max` 指向的参数 = `"LIM"`，其余 `null`（要人选），不按名字猜。
+- `{"op":"confirm_roles","roles":{<参数名>: "P"|"I"|"D"|"FF"|"LIM"|"other"},"app_dir"?}`：校验参数名都在握手 params 里、角色在枚举里；写进工程 app.yaml `link.params.<名>.role`（只写工程目录，只改对应行）。成功 `{ok:true, app_yaml, roles, message_zh, fix_action:"rebuild"}`；失败 error `bad_role` / `bad_param`，带 `message_zh` 和 `fix_action:"confirm_roles"`。之后 autotune / iterate 可重试。Agent 工具同名（human 级，卡片标题“确认参数角色”）。
 - `iterate_plan` 没给 dur_ms（或用默认目标）时先实测阶跃时序；测不出来（会话不支持 / 失败）就退默认，结果带 `fallback: ["dur_default"|"span_quarter"|"max_step"]`、`message_zh`（说明退了什么、为什么）和 `fix_action: "measure_step_timing"`。
 
 ## 上位机心跳 / 心跳超时急停
@@ -246,6 +248,7 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 
 ### #102 被控量到量程（dzctl 0.15.0 心跳 bit18 `DZCTL_HB_SENSOR_SAT`）
 - status 的 `hb_flags` 多一项「被控量到量程」（实时、不锁存；旧固件恒无）。
+- status 带 `sensor_sat: bool`：最新一帧心跳的 bit18（`DZCTL_HB_SENSOR_SAT`），不锁存；旧固件 / 没心跳恒 false。
 - 自动迭代每轮记录 `sensor_sat: bool`（该轮阶跃期间任一心跳带 bit18）；到量程的轮不算稳定。
 - `iterate.stopped` 加 `sensor_sat: bool`（最后一轮到量程）；没有稳定轮或最后一轮到量程 → `best: null`，`message_zh: "发散，未找到稳定参数"`。
 - 急停阈值 `threshold_ms` 取握手 `wd_timeout_ms`（固件 fw-wd，默认 1500）；握手未上报为 null。
@@ -277,3 +280,18 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - `restored: bool`：重启后从 `estop_latch.json` 读回为 true。
 - `fix_action: "estop_clear"`。
 `estop_latch.json` 记录同名字段：`reason`、`reason_zh`、`latched_at`、`measured_ms`、`threshold_ms`。
+
+## #129 降幅测试（题面幅度超过 max_step / 量程）
+- `autotune` 结果和 metrics_card `items[]` 每项加 `amp_reduced: true`、`amp_spec`（题面阶跃幅度）、`amp_tested`（实际测的幅度）、`warning_zh: "按降幅测试，未验题面幅度"`；没降幅时这些字段都不出现。
+- 降幅时本来达标的项 `verdict: "partial"`、`verdict_zh: "未验题面幅度"`，整卡 verdict 也是 `partial`，永不给 `pass`。未达标项仍是 `fail`。
+- `tools/tunegate.py`：降幅却给了 pass 算假达标（硬红）。
+
+## 原因待确认（#125 之前的过渡规则）
+- 未达标但特征不足以归类时：`category` / `reason` 为 `"unconfirmed"`，`pass_basis` 以「原因待确认」开头，不给错误类别。
+
+## tunegate 分桶（判卷侧，tools/tunegate_grade.py 是唯一读真值的模块）
+- randplant `feasible` 三态 `true` / `false` / `"unknown"` 原样透传（不 `bool()`）。
+- `false_pass`：卡上 pass 而真值不满足，或标签 false、复核也不可达却 pass，或降幅给 pass → 硬红。
+- `truth_label_suspect`：标签 false、卡上 pass 且真值满足、`feascheck.judge()` 复核找到达标参数 → 单独报，不算后端假达标。
+- `undecided`：标签 unknown、复核仍 unknown → 单独计数，不进通过率分母。打印 unknown 个数 / 比例，> 10%（`FEAS_MAX_UNKNOWN`）出 `::warning::`。
+- `tools/check_no_truth_leak.py`（make check）：后端 dzbench 与 tools/tunegate.py 读 plant.json / 真值键 / import randplant 就红。

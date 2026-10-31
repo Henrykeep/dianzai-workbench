@@ -268,6 +268,7 @@ test:
 	$(PY) tests/randplant/test_clip_relay.py   # #103 对象量程钳位（bit18 SENSOR_SAT）+ 随机对象 0x7C 继电接管
 	$(PY) tests/randplant/test_feasible.py   # #124/#125 可行性标签：独立搜索达标 ⇒ 不许 feasible:false；原因类别对结构分类器
 	$(PY) tests/randplant/test_role.py   # 参数角色 role：gen_link 校验 / null / randplant 角色一致 / host-sim 心跳绑定的表带 role
+	$(PY) tests/randplant/test_truth_leak.py   # 真值只许 tools/tunegate_grade.py 读（check_no_truth_leak 规则自测）
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
@@ -296,6 +297,8 @@ check:
 	$(PY) tools/check_redef.py --selftest
 	$(PY) tools/check_problem_specific.py --selftest   # #80 核心代码不许为某一道题写专门代码
 	$(PY) tools/check_problem_specific.py
+	$(PY) tools/check_no_truth_leak.py --selftest   # 真值只许判卷模块 tools/tunegate_grade.py 读
+	$(PY) tools/check_no_truth_leak.py
 	$(PY) tools/check_redef.py
 	$(PY) tools/tree_guard.py --selftest
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)

@@ -6,7 +6,8 @@
 
 对象来源（默认）：tools/randplant.py（嵌入式开发-2，与 plant: 共用 tools/plantmodel.py），经 tools/tunegate_plant.py 转成整定输入 + Python 仿真板。
 TUNEGATE_SOURCE=standin 只给单元测试显式选用 tools/randplant_standin.py；替身上的结果一律打印「未合入」，退出码非 0，永不算通过。
-整定只读 app.yaml / link.yaml / spec.txt，plant.json 只给判卷用。
+整定只读 app.yaml / link.yaml / spec.txt；plant.json / 真值只有 tools/tunegate_grade.py 读（check_no_truth_leak 守着）。
+可行性三态 True/False/"unknown"：unknown 走 feascheck.judge()，undecided 单独计数不进通过率；标签 false 而复核可达 = truth_label_suspect。
 """
 from __future__ import annotations
 
@@ -19,12 +20,11 @@ import sys
 import tempfile
 import time
 
+MAX_UNKNOWN = float(os.environ.get("FEAS_MAX_UNKNOWN", "0.10"))
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "app" / "sidecar"))
 sys.path.insert(0, str(ROOT / "tools"))
 
-NEAR_REF = 1.5      # 最好一轮真值代价 ≤ reference × 1.5 + 0.02
-NEAR_ABS = 0.02
 
 
 def source() -> str:
@@ -33,7 +33,9 @@ def source() -> str:
 
 
 def one(seed: int, kind: str) -> dict:
+    """整定只读 app.yaml / link.yaml / spec.txt；仿真板和判卷都交给 tunegate_grade（唯一读真值的模块）。"""
     import yaml
+    import tunegate_grade as G
     from dzbench.tuning import autotune as AT
     if source() == "randplant":
         import tunegate_plant as RP
@@ -44,42 +46,12 @@ def one(seed: int, kind: str) -> dict:
         app = yaml.safe_load(open(f"{d}/app.yaml", encoding="utf-8"))
         link = yaml.safe_load(open(f"{d}/link.yaml", encoding="utf-8"))
         spec = open(f"{d}/spec.txt", encoding="utf-8").read()
-        plant = json.load(open(f"{d}/plant.json", encoding="utf-8"))          # 只用于判卷
-    board = RP.SimBoard(plant, app, seed)
-    t0 = time.monotonic()
-    res = AT.autotune(board, app, link, spec, seed)
-    ref = plant["reference"]
-    import control
-    m = AT.LinModel(control.c2d(control.tf(plant["num"], plant["den"]), plant["sample_s"]), round(plant["delay_s"] / plant["sample_s"]))
-
-    def truth(p):
-        t, r, y, u = RP.simulate(plant, m, p, ref["amp"], ref["n"])
-        mm = AT.metrics(t, r, y, ref["amp"])
-        return mm, AT.cost(mm)
-    mi, ci = truth(res["initial"]["roles"] if "roles" in res["initial"] else {dd["role"]: dd["init"] for dd in app["params"]})
-    mb, cb = truth(res["best"]["roles"])
-    # 假达标按整定器自己那次实验（同幅度、同窗口、无噪声的真对象）判：卡上说 pass，真值同一实验必须也满足
-    ea, en = float(res.get("amp") or ref["amp"]), int(res.get("n") or ref["n"])
-    te, re_, ye, _ = RP.simulate(plant, m, res["best"]["roles"], ea, en)
-    me = AT.metrics(te, re_, ye, ea)
-    sp = AT.parse_spec(spec)
-    errs = []
-    if plant["feasible"]:
-        if not cb < ci and ci < 1e9:
-            errs.append(f"没比初值好（真值代价 {cb:.4g} ≥ 初值 {ci:.4g}）")
-        if not cb <= ref["cost"] * NEAR_REF + NEAR_ABS:
-            errs.append(f"离 reference 太远（{cb:.4g} > {ref['cost']:.4g}×{NEAR_REF}+{NEAR_ABS}）")
-        if res["verdict"] == "pass" and AT.meets(me, sp):
-            errs.append("假达标：卡上 pass，真值不满足 " + "、".join(AT.meets(me, sp)))
-    else:
-        if res["verdict"] == "pass":
-            errs.append(f"假达标：feasible:false（{plant['infeasible_reason']}）却给了 pass")
-        elif plant["infeasible_reason"] in ("saturation", "delay", "nonminimum_phase") and res["category"] != plant["infeasible_reason"]:
-            errs.append(f"原因对不上：应为 {plant['infeasible_reason']}，卡上 {res['category']}（{res['pass_basis']}）")
-    return {"seed": seed, "kind": plant["kind"], "feasible": plant["feasible"], "cause": plant["infeasible_reason"],
-            "verdict": res["verdict"], "category": res["category"], "pass_basis": res["pass_basis"],
-            "cost": {"initial": ci, "best": cb, "reference": ref["cost"]}, "ok": not errs, "errors": errs,
-            "false_pass": any(e.startswith("假达标") for e in errs), "rejected_writes": board.rejected, "secs": round(time.monotonic() - t0, 2)}
+        board = G.board(d, app, seed, source())
+        t0 = time.monotonic()
+        res = AT.autotune(board, app, link, spec, seed)
+        secs = round(time.monotonic() - t0, 2)
+        out = G.grade(d, seed, res, app, spec, source())
+    return out | {"rejected_writes": board.rejected, "secs": secs, "amp_reduced": bool(res.get("amp_reduced"))}
 
 
 def main(argv=None) -> int:
@@ -112,11 +84,22 @@ def main(argv=None) -> int:
         mark = "✓" if r["ok"] else "✗"
         print(f"{mark} seed={s} {r.get('kind', '?')} feasible={r.get('feasible')} verdict={r.get('verdict')}/{r.get('category')} "
               f"cost {json.dumps({k: round(v, 4) if math.isfinite(v) else None for k, v in (r.get('cost') or {}).items()})} {'; '.join(r['errors'])}")
+    und = [r for r in rs if r.get("bucket") == "undecided"]
+    sus = [r for r in rs if r.get("bucket") == "truth_label_suspect"]
     bad = [r for r in rs if not r["ok"]]
     fake = [r for r in rs if r.get("false_pass")]
-    feas = [r for r in rs if r.get("feasible")]
-    print(f"tunegate：{len(rs) - len(bad)}/{len(rs)} 通过（feasible {len(feas)}，infeasible {len(rs) - len(feas)}）"
+    feas = [r for r in rs if r.get("feasible") is True]
+    infe = [r for r in rs if r.get("feasible") is False]
+    unk = [r for r in rs if r.get("feasible") == "unknown"]
+    den = len(rs) - len(und)                                        # undecided 不进通过率分母
+    good = den - len(bad)
+    print(f"tunegate：{good}/{den} 通过（feasible {len(feas)}，infeasible {len(infe)}，unknown {len(unk)}；undecided {len(und)} 不计）"
           + (f"；失败 seed：{','.join(str(r['seed']) for r in bad)}（tools/tunegate.py --seed N 复现）" if bad else ""))
+    ratio = len(unk) / len(rs) if rs else 0.0
+    print(f"tunegate：feasible=unknown {len(unk)}/{len(rs)}（{ratio:.0%}）" + (f"：seed {','.join(str(r['seed']) for r in unk)}" if unk else ""))
+    if ratio > MAX_UNKNOWN:
+        print(f"::warning::tunegate unknown 比例 {ratio:.0%} > {MAX_UNKNOWN:.0%}（randplant 标签不确定的太多）")
+    print(f"tunegate：truth_label_suspect {len(sus)} 个（标签 false、复核找到达标参数；不算后端假达标）" + (f"：seed {','.join(str(r['seed']) for r in sus)}" if sus else ""))
     if a.json:
         pathlib.Path(a.json).write_text(json.dumps(rs, ensure_ascii=False, indent=1, default=str), "utf-8")
     if source() == "standin":
@@ -124,9 +107,9 @@ def main(argv=None) -> int:
         return 2
     print(f"tunegate：用时 {time.monotonic() - t_start:.1f} s")
     if bad:
-        print(f"::warning::tunegate 通过率 {len(rs) - len(bad)}/{len(rs)}；未通过 seed {','.join(str(r['seed']) for r in bad)}")
+        print(f"::warning::tunegate 通过率 {good}/{den}；未通过 seed {','.join(str(r['seed']) for r in bad)}")
     print(f"tunegate：假达标 {len(fake)} 个（硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in fake)}" if fake else "")
-          + f"；通过率 {len(rs) - len(bad)}/{len(rs)}（软指标，未通过只警告）")
+          + f"；通过率 {good}/{den}（软指标，未通过只警告）")
     return 1 if fake else 0
 
 

@@ -32,16 +32,11 @@ def declared(schema) -> tuple[dict, list[str]]:
     return out, missing
 
 
-def suggest(schema, guess) -> dict:
-    """只当建议给人确认：link.step.u_max 指向的参数 → LIM，其余按名字猜 P/I/D，猜不到 = other。"""
+def suggest(schema) -> dict:
+    """只当建议给人确认，只按结构（#123 不按参数名猜）：link.step.u_max 指向的参数 → LIM，其余 null（要人选）。"""
     names = [p["name"] for p in tunable(schema)]
     st = (schema.step or [{}])[0]
-    out = {n: "LIM" for n in names if n == st.get("u_max")}
-    for r, k in (("P", "kp"), ("I", "ki"), ("D", "kd")):
-        n = guess(names, k)
-        if n and n not in out:
-            out[n] = r
-    return {n: out.get(n, "other") for n in names}
+    return {n: ("LIM" if n == st.get("u_max") else None) for n in names}
 
 
 class SessionBoard:

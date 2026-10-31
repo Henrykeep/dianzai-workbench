@@ -46,13 +46,6 @@ def guess_pairs(fields: list[str]) -> list[tuple[str, str]]:
     return out
 
 
-def guess_gain(params: list[str], kind: str) -> str | None:
-    for p in params:
-        if p == kind or p.endswith("_" + kind):
-            return p
-    return None
-
-
 from .iterate import INVALID_ZH, step_invalid  # noqa: E402  唯一的有效性判定（台账 / 卡 / 提议 / 迭代共用）
 
 
@@ -1021,9 +1014,9 @@ class AgentService:
         rl, missing = declared(sch)
         if missing or "kp" not in rl:
             miss = missing or [p["name"] for p in sch.params]
-            return {"verdict": "needs_human", "reason": "roles_unconfirmed", "missing": miss, "suggested": suggest(sch, guess_gain),
+            return {"verdict": "needs_human", "reason": "roles_unconfirmed", "missing": miss, "suggested": suggest(sch),
                     "message_zh": "这些参数没声明作用（app.yaml link.params.<名>.role ∈ P/I/D/FF/LIM/other）："
-                                  + "、".join(miss) + "；按名字猜的只是建议，确认后才整定",
+                                  + "、".join(miss) + "；不按参数名猜，建议只按结构给（u_max 指向的 = LIM），确认后才整定",
                     "fix": "核对建议的角色后点“确认角色”（写回 app.yaml，重新生成握手表）", "fix_action": "confirm_roles"}
         by = {p["name"]: p for p in sch.params}
         decl = [{"role": r, "name": n, "min": float(by[n]["min"]), "max": float(by[n]["max"]), "max_delta": by[n].get("max_delta")}
@@ -1041,6 +1034,11 @@ class AgentService:
         bad = {n: r for n, r in (roles or {}).items() if r not in ROLES}
         if not roles or bad:
             raise GatewayError("bad_role", f"角色只能是 {'/'.join(ROLES)}：{bad or '（空）'}", "每个参数选一个角色", {"fix_action": "confirm_roles"})
+        sch = getattr(getattr(self, "s", None), "schema", None)
+        if sch and sch.params:
+            unk = sorted(set(roles) - {p["name"] for p in sch.params})
+            if unk:
+                raise GatewayError("bad_param", f"握手参数表里没有：{'、'.join(unk)}", "用 list_params 看参数名", {"fix_action": "confirm_roles"})
         y = self._app_yaml(app_dir)
         lines = y.read_text(encoding="utf-8").splitlines(keepends=True)
         done = set()
@@ -1236,10 +1234,15 @@ class AgentService:
         return r | {"value": v, "guard": notes}
 
     def _gain_names(self) -> dict:
-        """{kp/ki/kd: 板上参数名}：step_test.gains 写明的优先（如 kp=pos_k），否则按名字猜。"""
-        names = [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
+        """{kp/ki/kd: 板上参数名}：step_test.gains 写明的优先（如 kp=pos_k），否则只认握手 params[i].role（#123，不按名字猜）。"""
+        from ..tuning.session_board import declared
+        sch = self.s.schema
+        names = [p["name"] for p in (sch.params if sch else [])]
         cfg = (self.step_cfg() or {}).get("gains") or {}
-        return {x: n for x in ("kp", "ki", "kd") if (n := cfg.get(x) if cfg.get(x) in names else (None if cfg else guess_gain(names, x)))}
+        if cfg:
+            return {x: cfg[x] for x in ("kp", "ki", "kd") if cfg.get(x) in names}
+        rl = declared(sch)[0] if sch else {}
+        return {x: rl[x] for x in ("kp", "ki", "kd") if x in rl}
 
     def _gains(self) -> dict:
         ks = list(self._gain_names().values())

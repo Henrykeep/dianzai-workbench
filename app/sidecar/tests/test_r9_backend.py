@@ -430,7 +430,7 @@ def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
     r = o.autotune_run(p["spec_text"])
     assert r["verdict"] == "needs_human" and r["reason"] == "roles_unconfirmed" and r["fix_action"] == "confirm_roles"
     assert set(r["missing"]) == set(p["roles"].values()) and "link.params" in r["message_zh"]
-    assert set(r["suggested"]) == set(r["missing"]) and set(r["suggested"].values()) <= {"P", "I", "D", "FF", "LIM", "other"}
+    assert set(r["suggested"]) == set(r["missing"]) and set(r["suggested"].values()) <= {"LIM", None}   # #123：不按名字猜
     with pytest.raises(S.GatewayError):
         o.confirm_roles({next(iter(r["missing"])): "kp"}, str(tmp_path))      # 只收 P/I/D/FF/LIM/other
     truth = {nm: role for role, nm in p["roles"].items()}
@@ -439,3 +439,53 @@ def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
     y = yaml.safe_load((tmp_path / "app.yaml").read_text("utf-8"))
     assert {q["name"]: q.get("role") for q in y["link"]["params"]} == truth
     assert not gen_link.check(*gen_link.load(tmp_path / "app.yaml")[:2])
+
+
+def test_status_sensor_sat_follows_latest_heartbeat():
+    from dzbench.session import Session
+    s = Session()
+    s.hb_status = 1 << 18
+    assert s.status()["sensor_sat"] is True
+    s.hb_status = 0                                  # 不锁存：下一帧没 bit18 就是 false
+    assert s.status()["sensor_sat"] is False
+
+
+def test_confirm_roles_rejects_names_not_in_handshake(tmp_path):
+    o = S.AgentService.__new__(S.AgentService)
+    o.s = types.SimpleNamespace(schema=types.SimpleNamespace(params=[{"name": "a", "type": "f32", "min": 0, "max": 1}]))
+    with pytest.raises(S.GatewayError) as e:
+        o.confirm_roles({"zz": "P"}, str(tmp_path))
+    assert e.value.code == "bad_param" and e.value.fix_action == "confirm_roles" and "zz" in e.value.message
+
+
+def test_guess_gain_removed():
+    assert not hasattr(S, "guess_gain")
+
+
+def test_amp_reduced_is_partial_never_pass(tmp_path):
+    """#129：题面阶跃幅度超过 max_step → 降幅测，items 带 amp_reduced / amp_spec / amp_tested，达标项也只给 partial。"""
+    import sys as _sys
+    import yaml
+    root = pathlib.Path(__file__).resolve().parents[3]
+    _sys.path.insert(0, str(root / "tools"))
+    import tunegate_grade as G
+    import tunegate_plant as TP
+    from dzbench.tuning import autotune as AT
+    TP.make(3001, "any", str(tmp_path))
+    app = yaml.safe_load((tmp_path / "app.yaml").read_text("utf-8"))
+    link = yaml.safe_load((tmp_path / "link.yaml").read_text("utf-8"))
+    big = round(float(link["max_step"]) * 3, 3)
+    import re as _re
+    spec = _re.sub(r"(阶跃(?:幅度|幅值|大小)?[为是]?\s*)[\d.]+", lambda m: m.group(1) + str(big), (tmp_path / "spec.txt").read_text("utf-8"), count=1)
+    if str(big) not in spec:
+        spec = f"阶跃幅度 {big}，" + spec
+    res = AT.autotune(G.board(str(tmp_path), app, 3001, "randplant"), app, link, spec, 3001)
+    assert res["amp_reduced"] is True and res["amp_spec"] == big and abs(res["amp_tested"]) <= float(link["max_step"]) + 1e-9
+    assert res["verdict"] in ("partial", "fail") and res["verdict"] != "pass"
+    assert res["items"] and all(it["amp_reduced"] and it["warning_zh"] == "按降幅测试，未验题面幅度" for it in res["items"])
+    for it in res["items"]:
+        assert it["verdict"] in ("partial", "fail") and (it["verdict"] != "partial" or it["verdict_zh"] == "未验题面幅度")
+    if res["verdict"] == "partial":
+        assert res["verdict_zh"] == "未验题面幅度"
+    g = G.grade(str(tmp_path), 3001, res | {"verdict": "pass"}, app, spec)     # 假如给了 pass：判卷算假达标
+    assert g["false_pass"] and g["bucket"] == "false_pass"
