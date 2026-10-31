@@ -91,7 +91,8 @@ FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard fi
 LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/proto/*/*.c firmware/drivers/*/*.c)
 # 纯 make 递归通配（不调 find：Windows 上 find.exe 是另一个程序，会报 "File not found - *.c"）
 rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
-APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f),,$f)))
+# 工程目录下的 build/（工作台给 Keil/IDE 导出的 build/gen/ 生成物，#52）不参与编译：生成物以 $(OUT)/projgen 为准，否则重复定义
+APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f)$(findstring $(APP_DIR)/build/,$f),,$f)))
 SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
 APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC) $(LINK_SRC)
 PORT_DIR = ports/$(BOARD_PORT)
@@ -232,6 +233,8 @@ test:
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
 	$(PY) tools/test_link_hold.py   # link_schema 设定值通道 hold（latched/timeout）与固件行为一致
+	$(PY) tools/test_swd_pins.py   # #56 SWD 调试脚占用即报错
+	$(PY) tools/test_projgen_build.py   # #52 工程 build/gen 导出物不与 projgen 重复链接
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	tools/test_estop_sp.sh   # 急停 / 'R' 后设定值归零、不自动恢复（60 相位 × 5 应用）
 	python3 tools/test_step_result.py   # #38 阶跃 step_result 对拍 / param_reject / 心跳 bit17（5 应用）
