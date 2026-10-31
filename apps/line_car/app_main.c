@@ -125,6 +125,7 @@ void app_loop(void)
                 va = g_link_params.v_base + dw;                     /* 线在右（pos>0）→ 左轮(A)快 → 右转 */
                 vb = g_link_params.v_base - dw;
             }
+            if (L.estop) va = vb = 0.0f;                            /* 急停：轮速目标归零（遥测不报旧目标，'R' 后从 0 起） */
             uint32_t st = pal_irq_save();
             s_sp[0] = va; s_sp[1] = vb;
             pal_irq_restore(st);
