@@ -104,6 +104,7 @@ class AgentService:
             "list_files": lambda glob="**/*": self.gw.list_files(glob),
             "read_file": lambda path: self.gw.read_file(path),
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
+            "change_status": lambda: self.gw.change_states(),
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
             "progress_get": self.progress_get,
@@ -121,7 +122,7 @@ class AgentService:
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
             "quick_start": lambda text: self.quick_start(text),
-        }, emit, preload=self._preload, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
+        }, emit, preload=self._preload, card_states=self._card_states, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
 
@@ -316,6 +317,11 @@ class AgentService:
         r = steptools.project_chain(self.gw.root, code, **m)
         self.chains[code] = r
         return {k: v for k, v in r.items() if k != "batch"} | {"to_write": [s for s, _ in r["batch"]]}
+
+    def _card_states(self) -> str:
+        """#99：改代码卡真实状态（写入 + 提交卡），每轮附给 Agent；没有卡就不附。"""
+        rows = self.gw.change_states()
+        return ("改代码卡真实状态（以此为准）：\n" + "\n".join("- " + r["status_zh"] for r in rows)) if rows else ""
 
     def _preload(self) -> str:
         """第一轮附上：仓库地图（顶层目录 + 一句话用途）、板卡、项目、仿真对象。几百字，换掉 3~6 次只读调用。"""
