@@ -33,7 +33,7 @@ from .tuning import StepMetrics, step_metrics, tuning_hints
 
 
 def guess_pairs(fields: list[str]) -> list[tuple[str, str]]:
-    """猜 (反馈, 设定) 通道对：sp_a↔spd_a、ball_sp_px↔cam_x_px 之类靠后缀/同名去掉 sp。"""
+    """猜 (反馈, 设定) 通道对：sp_a↔spd_a、pos_sp↔pos 之类靠后缀/同名去掉 sp。"""
     out = []
     for sp in fields:
         if not re.search(r"(^|_)(sp|set|target|ref)(_|$)", sp):
@@ -338,7 +338,7 @@ class AgentService:
         用户点确认 → 写入项目 → 连仿真板 → 一键起步调参 → 评分。返回 action_id 给界面。"""
         ex = steptools.quick_example(self.gw.root, text)
         if ex:                                                        # #55：说的是内置例题 → 复制成新项目目录（例题只读，不复用）
-            code = steptools.fresh_code(self.gw.root, ex)                # ASCII slug（2026h-ball、2026h-ball-2…），#55
+            code = steptools.fresh_code(self.gw.root, ex)                # ASCII slug（<slug>、<slug>-2…），#55
             # 开局直接按最接近的例题建（新目录、只写用户项目区、例题不动），不再让用户点卡；回复里说清楚并可更换
             risk.audit("project_fork", {"example": ex, "code": code}, risk.LOG, "auto")
             out = self.project_fork(ex, code, name=ex)
@@ -363,7 +363,7 @@ class AgentService:
                 "note": "确认卡已出（含方案与引脚表）；用户点确认后自动写项目、上仿真、调参、评分。不要再调 project_apply。"}
 
     def _ensure_board(self, board: str) -> None:
-        """r9q (b)：例题声明了自己的仿真板（2026H → sim:2026H_ball）。没连、或连着别的仿真板（如 motor_pos）就换过去，
+        """r9q (b)：例题声明了自己的仿真板（project.yaml sim_board）。没连、或连着别的仿真板就换过去，
         不默默沿用已连的板子。连着实板（非 sim:）不动：实板换线要人来，后面调参照实板规则走、卡上写明。"""
         cur = self.s.port or ""
         if cur == board or (cur and not cur.startswith("sim:")):
@@ -517,7 +517,8 @@ class AgentService:
         if bad or not names:
             raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
         st = steps[int(ch)]
-        o = self.step_override()                         # #94：主线和直接 iterate_start 用同一份默认（覆盖本身归 #80 清理）
+        o = self.measure_step_timing() if (dur_ms is None or (target is None and _default_target)) else {}
+        # #94：主线和直接 iterate_start 同一个时序来源（stepident 实测；实机返回 {} 用默认）
         if dur_ms is None:
             dur_ms = int(o.get("step_dur_ms", 2000))
         if target is None and _default_target:
@@ -555,7 +556,7 @@ class AgentService:
     def _iterate_start_agent(self, **args) -> dict:
         """#53 Agent 走的 iterate_start：仿真里直接跑完（等后台线程到停止条件），把结果和“采用最好参数”卡一起回给模型；
         实机先出批量确认卡（pending），点了以后同样在结束时出最好参数卡。"""
-        if self.sim and self.s.schema and not self.s.schema.step:     # r9q (a)：板上没有 step_result（如 2026H 例题固件）→ 同一个入口改用上位机阶跃
+        if self.sim and self.s.schema and not self.s.schema.step:     # r9q (a)：板上没有 step_result（例题固件没声明 link.step 时）→ 同一个入口改用上位机阶跃
             return self._tune_autopilot_agent(rounds=4)
         r = self.iterate_start(**args)
         th = getattr(self, "iter_thread", None)
@@ -588,7 +589,7 @@ class AgentService:
         return f"{params_hash(order, full):08x}" if order and all(n in full for n in order) else None
 
     def _tune_autopilot_agent(self, **args) -> dict:
-        """板子不支持 step_result（没有 link.step，如 2026H 仿真）时的退路：tune_autopilot 跑完同样以“采用最好参数”卡收尾（#53）。"""
+        """板子不支持 step_result（没有 link.step，如部分例题仿真）时的退路：tune_autopilot 跑完同样以“采用最好参数”卡收尾（#53）。"""
         n = int(args.get("rounds", 6))
         self.emit({"type": "iterate.started", "engine": "host_step", "start": self._gains(), "start_hash": self._local_hash(),
                    "limits": {"time_s": None, "rounds": n + 1}})
@@ -690,7 +691,7 @@ class AgentService:
             return None
 
     def _unit_per(self, y: str | None, frm: str, to: str) -> tuple[float | None, str | None]:
-        """板子声明的换算（app/project.yaml 遥测字段 cal: {unit, pts}，如 2026H 600 px ↔ 100 cm → 6 px = 1 cm）。"""
+        """板子声明的换算（app/project.yaml 遥测字段 cal: {unit, pts}，如 600 px ↔ 100 cm → 6 px = 1 cm）。"""
         f = next((f for f in (self.s.schema.fields if self.s.schema else []) if f["name"] == y), None) or {}
         cal = f.get("cal") or {}
         pts = cal.get("pts") or []
@@ -768,7 +769,7 @@ class AgentService:
         return out
 
     def _phys_per(self, frm: str, to: str) -> tuple[float | None, str | None]:
-        """固件声明 app.yaml link.step[0].phys {unit, per_unit}：per_unit = 多少个 y 单位 = 1 个 phys 单位（2026H 6 px = 1 cm）。"""
+        """固件声明 app.yaml link.step[0].phys {unit, per_unit}：per_unit = 多少个 y 单位 = 1 个 phys 单位（如 6 px = 1 cm）。"""
         st = getattr(self.s.schema, "step", None) or []
         ph = (st[0].get("phys") if st else None) or {}
         try:
@@ -1072,7 +1073,7 @@ class AgentService:
         return r | {"value": v, "guard": notes}
 
     def _gain_names(self) -> dict:
-        """{kp/ki/kd: 板上参数名}：step_test.gains 写明的优先（如 2026H 球环 kp=pos_k），否则按名字猜。"""
+        """{kp/ki/kd: 板上参数名}：step_test.gains 写明的优先（如 kp=pos_k），否则按名字猜。"""
         names = [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
         cfg = (self.step_cfg() or {}).get("gains") or {}
         return {x: n for x in ("kp", "ki", "kd") if (n := cfg.get(x) if cfg.get(x) in names else (None if cfg else guess_gain(names, x)))}
@@ -1168,7 +1169,7 @@ class AgentService:
         return {"ok": not failed, "failed": failed, "checked": checked}
 
     def step_start(self, st: dict) -> None:
-        """实验前的准备命令（如 2026H：'T'1 选测试 → 'G' 开始）。运行中再发会被板子状态机忽略。
+        """实验前的准备命令（如 'T'1 选测试 → 'G' 开始）。运行中再发会被板子状态机忽略。
         上一轮已到 DONE（限时到了）时需要复位，但复位帧也是解除急停，所以只有在“没急停锁存 + 遥测 state 正是 DONE”
         时才发 'R'；急停状态下直接拒绝做实验。"""
         if not st.get("start"):
@@ -1190,23 +1191,71 @@ class AgentService:
     SETTLE_DT = 0.1        # 回起点每拍发一次 low、取一次样
     RETURN_TIMEOUT_S = 8.0 # 回起点最多等这么久（pre_s 之后）；超时用实测起点当基线，标 start_offset
 
-    # 后端自管的阶跃时序覆盖（r9 #67）：不改 app.yaml link.step/hold、不改 dzbench.json pre_s/hold_s。键 = 仿真应用 / 板卡名。
-    # hold_s 覆盖 step_test.hold_s；return_tol = 回起点容差（物理单位，没有 app.yaml link.step.abs_tol 时用）；return_timeout_s 回起点最多等多久。
-    STEP_OVERRIDES = {"2026H_ball": {"hold_s": 5.0, "return_tol": 6.0, "return_timeout_s": 8.0,
-                                      # 板上阶跃（link.step，fw-ball2 起）：钢珠约 70 px/s，量程/4 = 200 px 在 2 s 内到不了 → 无效轮
-                                      "step_target": 60.0, "step_dur_ms": 6000}}
+    # 阶跃时序（r10 #80）：不按题号/板名查表，全部由 stepident 从一次小幅探测阶跃实测推出（幅度、回起点容差、保持、超时），
+    # 只受 app.yaml link.step 的物理量程约束。没测过 / 测不出 → {}，各处退回通用默认值。
+    PROBE_S = 3.0
 
     def step_override(self) -> dict:
-        app = (getattr(self.s, "port", "") or "").split(":", 1)[-1].split("+")[0] if str(getattr(self.s, "port", "")).startswith("sim:") else ""
-        return dict(AgentService.STEP_OVERRIDES.get(app) or {})
+        cache = getattr(self, "_step_timing", None) or {}
+        return dict(cache.get(str(getattr(self.s, "port", "") or "")) or {})
+
+    def measure_step_timing(self) -> dict:
+        """仿真板上做一次小幅探测阶跃（量程 × stepident.PROBE_FRAC），辨识 σ/K/L/T/速度 → 阶跃时序，按端口缓存。
+        实机不自动探测（要人确认），返回 {}。"""
+        from . import stepident
+        port = str(getattr(self.s, "port", "") or "")
+        cache = self.__dict__.setdefault("_step_timing", {})
+        if port in cache:
+            return dict(cache[port])
+        if not self.sim:
+            return {}
+        out: dict = {}
+        try:
+            lst = (self.s.schema.step if self.s.schema else None) or []
+            if lst:                                                     # 板上阶跃（0x7B）
+                c = lst[0]
+                rng = float(c.get("range") or 0.0) or None
+                amp = (rng or 1.0) * stepident.PROBE_FRAC
+                time.sleep(1.0)                                         # 起跳前 1 s 录噪声底 / 起点
+                w0 = self.s.window(1.0)
+                tb = w0[-1][0] if w0 else 0.0
+                dur = int(self.PROBE_S * 1000)
+                self.s.step_start(0, 0, amp, dur)
+                self.s.step_wait(0, self.PROBE_S + 3)
+                w = [x for x in w0 if c.get("y") in x[1]] + [x for x in self.s.window(self.PROBE_S + 2) if x[0] > tb and c.get("y") in x[1]]
+                ts = tb
+                y = [float(x[1][c["y"]]) for x in w]
+                ident = stepident.identify([x[0] for x in w], y, ts, amp)
+            else:
+                st = self.step_cfg()
+                if not st:
+                    return {}
+                lo, hi = list(st["low"]), list(st["high"])
+                rng = abs(float(hi[0]) - float(lo[0])) * 4 or None
+                amp = (float(hi[0]) - float(lo[0])) * 0.25
+                pr = [lo[0] + amp] + list(lo[1:])
+                self._settle_at_low(st, lo, hi, float(st.get("pre_s", 0.6)))
+                ts = (self.s.window(0.05) or [(0.0, {})])[-1][0]
+                t_end = time.monotonic() + self.PROBE_S
+                while time.monotonic() < t_end:
+                    self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *pr))
+                    time.sleep(0.1)
+                w = [x for x in self.s.window(self.PROBE_S + 1) if st["y"] in x[1]]
+                ident = stepident.identify([x[0] for x in w], [float(x[1][st["y"]]) for x in w], ts, amp)
+            out = stepident.derive(ident, rng, amp)
+        except Exception as e:                                          # noqa: BLE001  探测失败不挡主线，如实记下
+            out = {}
+            cache[port + "#why"] = {"why_zh": f"探测阶跃失败：{e}"}
+        cache[port] = out
+        return dict(out)
 
     def _return_tol(self, st: dict, span: float) -> float:
-        """回起点容差：app.yaml link.step.abs_tol（同 y 通道）> 后端覆盖 return_tol > 10% 阶跃幅度。"""
+        """回起点容差：app.yaml link.step.abs_tol（同 y 通道）> 实测辨识 return_tol（4σ / 5% 幅度）> 10% 阶跃幅度。"""
         for c in (self.s.schema.step if self.s.schema else []):
             if c.get("y") == st.get("y") and c.get("abs_tol") is not None:
                 return float(c["abs_tol"])
         o = self.step_override()
-        if o.get("return_tol") is not None:
+        if o.get("return_tol") is not None:                     # 实测辨识（stepident）
             return float(o["return_tol"])
         return self.PRE_TOL * span
 
@@ -1243,8 +1292,8 @@ class AgentService:
         """按 dzbench.json 的 step_test 通过链路做一次标准阶跃实验，交给护栏判定。实机是 human 级。"""
         st = self.step_cfg()
         if not st:
-            raise LinkError("no_step_test", "没配置（或没有匹配当前遥测的）阶跃实验", '在 dzbench.json 写 step_test，如 {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"hold_s":1.5,"y":"spd_a","sp":"sp_a"}')
-        self.step_start(st)
+            raise LinkError("no_step_test", "没配置（或没有匹配当前遥测的）阶跃实验", '在 dzbench.json 写 step_test，如 {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"y":"spd_a","sp":"sp_a"}')
+        self.step_start(st)                                  # 时序用已测得的（measure_step_timing 缓存）；这里不隐式探测，免得打乱实验时序
         lo, hi, hold = st["low"], st["high"], float(self.step_override().get("hold_s", st.get("hold_s", 1.5)))
         pre = float(st.get("pre_s", 0.6))
         segs = None

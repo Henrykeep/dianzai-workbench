@@ -134,7 +134,38 @@ def test_target_equal_to_current_backs_off_instead_of_zero_step():
 def test_direct_iterate_start_and_main_flow_use_same_plan():
     sch = SimpleNamespace(step=[{"range": 400.0, "abs_tol": 1.0}], param_index={"kp": 0}, params=[{"name": "kp", "min": 0, "max": 2}])
     stub = SimpleNamespace(s=SimpleNamespace(schema=sch, port="sim:anything"), _gains=lambda: {"kp": "kp"},
-                           step_override=lambda: {})
+                           measure_step_timing=lambda: {})
     main = S.AgentService.iterate_plan(stub, _default_target=True)
     direct = S.AgentService.iterate_plan(stub, target=main["target"])
     assert main == direct
+
+
+def _rand_plant_rise(seed, kp, y0, target, dt=0.001, t_end=20.0):
+    """通用随机一阶对象（不看题号）：K、τ 来自 seed；P 控制闭环，返回 10→90% 上升时间。"""
+    import random
+    r = random.Random(seed)
+    K, tau = r.uniform(0.5, 3.0), r.uniform(0.05, 1.0)
+    y, t, t10, t90, amp = y0, 0.0, None, None, target - y0
+    while t < t_end and t90 is None:
+        y += dt * (K * kp * (target - y) - 0.0) / tau
+        frac = (y - y0) / amp
+        if t10 is None and frac >= 0.1:
+            t10 = t
+        if frac >= 0.9:
+            t90 = t
+        t += dt
+    return None if t90 is None else round(t90 - t10, 4)
+
+
+def test_iterate_start_alone_parked_at_target_three_gains_distinct_metrics():
+    """#94：板子停在目标上直接 iterate_start，三组不同增益必须给出三组不同指标（不是 3 个零幅度阶跃）。"""
+    target, seed = 137.0, 20261031
+    rises = []
+    for kp in (0.5, 1.0, 2.0):
+        io = I.SessionIO(FakeSession(target))
+        io.RETURN_DT = 0.001
+        back = io.return_to_start(0, 0, target)
+        assert back["step_amp"] >= back["step_tol"], back
+        assert abs(target - io.y0) >= back["step_tol"]
+        rises.append(_rand_plant_rise(seed, kp, io.y0, target))
+    assert None not in rises and len(set(rises)) == 3, rises
