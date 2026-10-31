@@ -10,6 +10,8 @@ import pytest
 from dzbench.session import LinkError, Session
 from dzbench._dzlink import DATA
 
+from conftest import wd_timeout_ms
+
 pytestmark = pytest.mark.needs_sim  # 原 skipif 条件统一放在 conftest.SIM_OK
 
 
@@ -207,18 +209,19 @@ def test_tune_analyze_on_sim_step(home, tmp_path):
 
 
 def test_host_heartbeat_watchdog_latches_estop(home):
-    """侧车心跳停了（模拟崩溃）> 1 s：car_2wd 固件输出归零并锁存急停；R 解除后才恢复。"""
+    """侧车心跳停了（模拟崩溃）超过看门狗超时 wd_timeout_ms（旧固件 1 s）：car_2wd 固件输出归零并锁存急停；R 解除后才恢复。"""
     import struct
     s = Session()
     s.connect("sim:car_2wd")
     try:
         assert wait(lambda: s.schema)
+        wd_ms = wd_timeout_ms(s.schema)
         time.sleep(0.6)                                   # 至少一帧上位机心跳 -> 看门狗布防
         sp = lambda: s.window(0.1)[-1][1]["sp_a"] if s.window(0.1) else None  # noqa: E731
         s.send_data(1, struct.pack("<ff", 0.3, 0.0))
         assert wait(lambda: (sp() or 0) > 0.5), "命令应生效"
         s.host_hb = False
-        time.sleep(1.6)                                   # cmd_timeout 也会停车，所以下面再发命令验证"锁存"
+        time.sleep(wd_ms / 1000 + 0.6)                    # 看门狗超时 + 余量；cmd_timeout 也会停车，所以下面再发命令验证"锁存"
         assert wait(lambda: s.status()["estop_cause"]), "心跳里应带急停原因"
         assert s.tx_locked and s.estop_source == "firmware:hb_timeout", "板子自己急停：侧车也锁存（r6 #20）"
         with pytest.raises(LinkError):
@@ -227,7 +230,7 @@ def test_host_heartbeat_watchdog_latches_estop(home):
         time.sleep(0.3)
         assert sp() == 0.0, "看门狗触发后应锁存急停，命令被拒"
         es = s.status()["estop_cause"]
-        assert es["cause"] == "hb_timeout" and 1000 <= es["value"] < 1600 and es["message_zh"].startswith("心跳超时"), es
+        assert es["cause"] == "hb_timeout" and wd_ms <= es["value"] < wd_ms + 600 and es["message_zh"].startswith("心跳超时"), (wd_ms, es)
         s.host_hb = True
         s.cmd("R")
         time.sleep(0.1)
