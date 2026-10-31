@@ -252,3 +252,9 @@ export const MC_X_F = { causes: "causes", code: "code", ev: "evidence", basis: "
 export const EVIDENCE_ZH: Record<string, string> = { strong: "证据强", medium: "证据中等", weak: "证据弱" };
 export const MC_STOP_ZH: Record<string, string> = { converged: "已收敛：再调也没有明显改进", budget_exhausted: "预算用完：轮数或时间到了，结果不一定是最好", at_limit: "参数到了声明的上下限，再往外调被挡住" };
 export const UNCHANGED_ZH = "初值已满足题面，本次没有改动参数";
+// 握手里的板子身份（暂定名）：board_uid 16 位十六进制或 null；uid_supported 布尔
+export const BOARD_UID_F = { uid: "board_uid", supported: "uid_supported" } as const;
+export const BOARD_UID_ZH = { unsupported: "此芯片暂不支持板子识别，换板检测不可用", unread: "未读到板子身份" } as const;
+// 工程/板子结构冲突（暂定名）：握手或事件 schema_conflict {message_zh, fix_action}，或 blockers 里 code=schema_conflict；为 null / 缺省 = 已解决
+export const SCHEMA_CONFLICT_F = { key: "schema_conflict", code: "code", codeAlt: "blocker_code", msg: "message_zh", fix: "fix_action", resolved: "resolved" } as const;
+export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理" } as const;
