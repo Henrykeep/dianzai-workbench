@@ -126,7 +126,7 @@ export function initAgent(call: Call) {
       <p>${esc(c.reason)}</p>${defaults(c.diff)}<pre class="diff">${diff}</pre>
       <div class="lbl">确认后：写入 → ${c.gates.length ? c.gates.map(esc).join(" → ") : "（无门禁）"}${writeScopeNote(c) ? "" : " → git 提交"}</div>${writeScopeNote(c) ? `<p class="hint wo-note">${esc(writeScopeNote(c))}</p>` : ""}
       ${c.log && c.status !== "pending" ? `<details ${c.status === "failed" ? "open" : ""}><summary>门禁输出</summary><pre class="log">${esc(c.log)}</pre></details>` : ""}
-      <div class="act">${c.status === "pending" ? `<button class="btn pri" data-a="1">${writeScopeNote(c) ? "确认写入" : "确认并提交"}</button><button class="btn" data-a="0">拒绝</button>`
+      <div class="act">${c.status === "pending" ? `<button class="btn pri" data-a="1">确认写入</button><button class="btn" data-a="0">拒绝</button>`
         : c.status === "committed" ? `<span class="lbl ok-t">${st[c.status]} ${esc(c.commit)}</span><button class="btn sm" data-rb="1">回滚</button>`
         : `<span class="lbl">${st[c.status] ?? esc(c.status)}</span>`}</div>`;
     d.querySelectorAll<HTMLButtonElement>("button[data-a]").forEach(b => b.onclick = () => {

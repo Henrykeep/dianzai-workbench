@@ -144,3 +144,11 @@ import { resultCardHtml } from "../src/iterui";
   for (const f of ["src/plant.ts", "src/main.ts", "src/iterui.ts"]) assert.ok(!/"(estimate|basis|plant_estimate|plant_coarse)"/.test(readFileSync(f, "utf8")), f + " 不写字段名");
   console.log("r9p6c plant ok");
 }
+// r9d：#91 stop_iteration 有修复按钮；进度块 detail（中文）优先；写文件卡按钮只叫「确认写入」
+import { ACTIONS as ACT2, resolveFix as rf2 } from "../src/progress";
+{
+  assert.equal(ACT2.stop_iteration.ui, "it-go"); assert.equal(ACT2.stop_iteration.when, "cancel"); assert.ok(rf2("stop_iteration"));
+  const ag = readFileSync("src/agent.ts", "utf8"); assert.ok(!ag.includes("确认并提交") && ag.includes("确认写入"));
+  assert.match(readFileSync("src/progress.ts", "utf8"), /s\.detail \? "：" \+ s\.detail/);
+  console.log("r9p6c r9d ok");
+}

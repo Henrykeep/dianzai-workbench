@@ -1156,3 +1156,5 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 #plant-tag{display:inline-flex;gap:8px;align-items:center;margin-left:8px}
 #plant-tag .plant-basis{max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .rc-coarse{margin-left:8px}
+/* #76 数字一律 ≥16px（1366 宽实测，见 fe-shots/numaudit.py）；只有图表轴刻度例外 */
+.rng span, #win span, .lab .lr, .tl-e i, .rc-ps .mono, .rc-v, .rc-v b, .rc-d, .rc-cur, #ro-rx, .status .mono, #framedef-n, .mc-v, .mc-val, .metric .num, .num { font-size: 16px; }
