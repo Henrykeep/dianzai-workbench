@@ -52,25 +52,11 @@ def guess_gain(params: list[str], kind: str) -> str | None:
     return None
 
 
-def step_invalid(m: dict | None) -> str | None:
-    """#68：阶跃本身无效（指标空、没测出上升时间、调节时间为 0）→ 这一轮不能判达标。返回原因码或 None。
-    同时认上位机口径（rise_s / settling_s）和板上 step_result 口径（rise_ms / settle_ms）。"""
-    if not m or not any(isinstance(v, (int, float)) and not isinstance(v, bool) for v in m.values()):
-        return "empty_metrics"
-    if m.get("ok") is False:
-        return "step_failed"
-    for k in ("rise_s", "rise_ms"):
-        if k in m and m[k] is None:
-            return "no_rise"
-    for k in ("settling_s", "settle_ms"):
-        if k in m and m[k] is not None and float(m[k]) == 0.0:
-            return "settle_zero"
-    return None
+from .iterate import INVALID_ZH, step_invalid  # noqa: E402  唯一的有效性判定（台账 / 卡 / 提议 / 迭代共用）
 
 
 NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse", "sse_pct", "ss_err_pct", "rise_s", "rise_ms")
 
-INVALID_ZH = {"empty_metrics": "指标为空", "step_failed": "阶跃没做成", "no_rise": "没测出上升时间", "settle_zero": "调节时间为 0（窗口没对上）"}
 
 
 class AgentService:
@@ -423,10 +409,7 @@ class AgentService:
         out["sim"] = self.s.port
         st = (self.s.schema.step if self.s.schema else None) or []
         if self.sim and st:
-            rng = float(st[0].get("range") or 1.0)
-            o = self.step_override()
-            out["iterate"] = self._iterate_start_agent(target=float(o.get("step_target", round(rng / 4, 4))),
-                                                       **({"dur_ms": int(o["step_dur_ms"])} if o.get("step_dur_ms") else {}))
+            out["iterate"] = self._iterate_start_agent(_default_target=True)   # #94：目标 / 时长的默认值只在 iterate_plan 一处定，和直接 iterate_start 同一条路
         elif self.sim:                                                 # 例题固件没有板上阶跃（link.step 为空）→ iterate 入口走上位机阶跃，同样出 iterate.* 和最好参数卡
             out["iterate"] = self._iterate_start_agent()
         out["best_card"] = (self.iter_result or {}).get("best_card")
@@ -520,7 +503,8 @@ class AgentService:
 
     # -------------------------------------------------------------- 仿真自动调参
     # -------------------------------------------------------------- #38 自动迭代（板上阶跃 step_result）
-    def iterate_plan(self, params: list | None = None, target: float | None = None, dur_ms: int = 2000, ch: int = 0) -> dict:
+    def iterate_plan(self, params: list | None = None, target: float | None = None, dur_ms: int | None = None, ch: int = 0,
+                     _default_target: bool = False) -> dict:
         """按 link_schema.json 拼迭代方案：参数的 [min, max] / max_delta、阶跃通道（link.step）。"""
         sch = self.s.schema
         if not sch:
@@ -533,6 +517,11 @@ class AgentService:
         if bad or not names:
             raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
         st = steps[int(ch)]
+        o = self.step_override()                         # #94：主线和直接 iterate_start 用同一份默认（覆盖本身归 #80 清理）
+        if dur_ms is None:
+            dur_ms = int(o.get("step_dur_ms", 2000))
+        if target is None and _default_target:
+            target = float(o.get("step_target", round(float(st.get("range") or 1.0) / 4, 4)))
         if target is None:
             raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {st['range']:g} 的 1/4")
         return {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(st["abs_tol"]),
@@ -649,11 +638,12 @@ class AgentService:
         阶跃无效 → invalid；ss_err.inside 为 null（单位对不上、实机未标定）→ unknown。这两种文案里都不出现「达标」。"""
         why = step_invalid(metrics) if metrics is not None else None
         if why or res.get("reason") == "invalid":
+            why = why or res.get("why_invalid")
             return "unknown", "本轮阶跃无效：" + INVALID_ZH.get(why or "", "没有有效的一轮") + "，不能判定，先检查实验通道"
         if ss.get("inside") is None:
             return "unknown", "暂无法判定是否满足题目误差带（题目误差带待标定）"
         if ss["inside"] and res.get("reason") == "pass":
-            return "pass", "各项指标均已达标（含题目误差带）"
+            return "pass", "各项指标均已达标（含题目误差带，" + AgentService._conv_zh(ss.get("conv_source"), ss.get("unit"), (ss.get("band") or {}).get("unit")) + "）"
         return "fail", "未达标：" + ("稳态误差超出题目误差带" if not ss["inside"] else "其他指标未达标")
 
     def _last_path(self) -> pathlib.Path | None:
@@ -766,7 +756,8 @@ class AgentService:
             if conv_note:
                 note += "；" + conv_note
         out = {"measured": round(val, 6), "unit": unit, "band": band, "inside": inside, "note_zh": note,
-               "pass_basis": self._pass_basis(band, inside)}
+               "pass_basis": self._pass_basis(band, inside, self._conv_zh(conv_source, unit, band["unit"]) if inside is not None else
+                                              ("仿真对象没有到该单位的标称换算" if self.sim else "实机未标定"))}
         if conv_note:
             out["converted"] = {"value": round(judged, 6), "unit": band["unit"], "note_zh": conv_note}
         out["conv_source"] = conv_source
@@ -838,15 +829,24 @@ class AgentService:
                 "unchanged": same, "note_zh": note}
 
     @staticmethod
-    def _pass_basis(band: dict | None, inside: bool | None) -> str:
+    def _conv_zh(src: str | None, unit: str | None, band_unit: str | None) -> str:
+        """#93：换算出处，pass_basis / verdict_zh 一律写明（仿真标称 / 已标定 / 同单位直接比）。"""
+        if src == "calibration":
+            return "按实机标定换算"
+        if src in ("phys", "sim_nominal", "cal"):
+            return "按仿真标称换算、未实机标定"
+        return "同单位直接比较、无需换算" if unit == band_unit else "未换算"
+
+    @staticmethod
+    def _pass_basis(band: dict | None, inside: bool | None, conv: str = "") -> str:
         """“达标停止”的依据（卡上和 stopped 事件都带）：迭代本身一律按默认口径（|稳态误差| ≤ 2%、超调 ≤ 10%）判达标；
         题目误差带能用时另外写明对照结果，不能用时说清楚待标定，免得用户把“已达标”当成题目要求已满足。"""
         if band is None or "item" not in band:
             return "题目未给误差带，按默认 2% 判定"
         if inside is None:
-            return "按默认 2% 判定，题目误差带待标定"
+            return "按默认 2% 判定，题目误差带待标定" + (f"：{conv}" if conv else "")
         src = re.sub(r"\s*[（(][^（）()]*[）)]", "", str(band["source"]))      # pass_basis 一句话，不带括号
-        return f"按默认 2% 判定达标，另对照{src}：" + ("在带内" if inside else "超出")
+        return f"按默认 2% 判定达标，另对照{src}：" + ("在带内" if inside else "超出") + (f"，{conv}" if conv else "")
 
     def _iter_emit(self, e: dict) -> None:
         if e.get("type") == "iterate.round" and e.get("valid"):
@@ -1454,6 +1454,9 @@ class AgentService:
     def rule_round(self) -> dict:
         """无 LLM 模式：默认分阶段 P→I→D（tune.rule_mode=staged），否则用规则提示；同样经过护栏与人工确认。"""
         g = self._guard()
+        last = g.rounds[-1] if g.rounds else None
+        if last is not None and not last.valid:          # #92：提议只用有效轮；最近一轮无效就不据此改参
+            return {"action": "OBSERVE", "reason": f"第 {last.n} 轮无效（{INVALID_ZH.get(last.why_invalid, last.why_invalid)}），不据此提议改参，先重做阶跃"}
         if self.cfg["tune"].get("rule_mode", "staged") == "staged" and g.rounds:
             p = self.staged.propose(StepMetrics(**g.rounds[-1].metrics), self._gains(), g)
             if not p:

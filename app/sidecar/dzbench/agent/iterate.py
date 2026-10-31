@@ -22,6 +22,7 @@ BUDGET_S = 180.0
 MAX_ROUNDS = {"hw": 8, "sim": 20}
 GOOD_REL = {"overshoot_pct": 10.0, "ss_err_pct": 2.0}
 MIN_SAMPLES = 20
+MAX_DUR_MS = 30000            # 板上阶跃时长上限（与 session.step_start 校验一致）
 CONSEC_PASS, CONSEC_INVALID, CONSEC_NO_IMPROVE = 2, 3, 3
 UNSTABLE_OVERSHOOT = 40.0
 HW_RATIO = (0.7, 1.5)          # 实机 HW 档：新值在当前值 ×0.7~×1.5
@@ -34,6 +35,31 @@ class IterError(Exception):
     def __init__(self, code: str, message_zh: str):
         super().__init__(message_zh)
         self.code, self.message_zh = code, message_zh
+
+
+INVALID_ZH = {"empty_metrics": "指标为空", "step_failed": "阶跃没做成", "no_rise": "没测出上升时间",
+              "settle_zero": "调节时间为 0（窗口没对上）", "zero_step": "阶跃幅度为 0（目标就是当前位置）",
+              "aborted": "阶跃被打断", "too_few_samples": "样本太少", "hash_mismatch": "参数哈希对不上", "no_result": "板子没回结果"}
+
+
+def step_invalid(m: dict | None) -> str | None:
+    """唯一的“这一轮能不能用”判定（#68/#75/#92/#94）：台账、结果卡、提议、自动迭代都调这一个。返回原因码或 None。
+    同时认上位机口径（rise_s / settling_s）和板上 step_result 口径（rise_ms / settle_ms）；
+    带 step_amp + step_tol 时，幅度小于回位容差 = 没做阶跃（zero_step）。"""
+    if not m or not any(isinstance(v, (int, float)) and not isinstance(v, bool) for v in m.values()):
+        return "empty_metrics"
+    if m.get("ok") is False:
+        return "step_failed"
+    amp, tol = m.get("step_amp"), m.get("step_tol")
+    if isinstance(amp, (int, float)) and isinstance(tol, (int, float)) and abs(amp) < tol:
+        return "zero_step"
+    for k in ("rise_s", "rise_ms"):
+        if k in m and m[k] is None:
+            return "no_rise"
+    for k in ("settling_s", "settle_ms"):
+        if k in m and m[k] is not None and float(m[k]) == 0.0:
+            return "settle_zero"
+    return None
 
 
 def params_hash(order: list[str], values: dict) -> int:
@@ -146,6 +172,9 @@ class Iterator:
             rec["start_y"] = r["start_y"]
         if r.get("start_offset") is not None:             # 没回到起点：用实测起点当基线，这一轮标出来
             rec["start_offset"], rec["start_y"] = r["start_offset"], r.get("start_y")   # abs 口径：超调 / 稳态误差是物理单位，不是百分比
+        for k in ("step_amp", "step_tol"):
+            if r.get(k) is not None:
+                rec[k] = r[k]
         why = None
         if r.get("aborted"):
             why = "aborted"
@@ -154,10 +183,12 @@ class Iterator:
             why = "too_few_samples"
         elif r["params_hash"] != local:
             why = "hash_mismatch"
-        elif r.get("metric_mode") != "abs" and r.get("rise_ms") is None:
-            why = "no_rise"                               # #68：没测出上升时间的阶跃不算一轮，绝不判达标
-        elif r.get("settle_ms") == 0:
-            why = "settle_zero"                           # #68：调节时间 0 = 窗口没对上（实际没做阶跃）
+        else:                                             # 其余一律走统一判定（与台账 / 结果卡 / 提议同一个函数）
+            m = {k: r.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms") if k in r} | \
+                {k: rec[k] for k in ("step_amp", "step_tol") if k in rec}
+            if r.get("metric_mode") != "abs":
+                m["rise_ms"] = r.get("rise_ms")
+            why = step_invalid(m)
         rec["valid"], rec["why_invalid"] = why is None, why
         if why is not None:                               # #68 验收：无效轮指标置 null（固件发的 0% / 0 ms 看着像完美）
             for k in ("overshoot_pct", "settle_ms", "ss_err_pct", "rise_ms"):
@@ -182,6 +213,10 @@ class Iterator:
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
                                               "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
                "next_zh": self._next_hint(reason)}
+        if reason == "invalid":                                       # 卡上写清楚哪一种无效，不只说“没有可用的一轮”
+            whys = [r.get("why_invalid") for r in self.rounds if not r["valid"]][-CONSEC_INVALID:]
+            out["why_invalid"] = whys[-1] if whys else None
+            out["reason_zh"] = "连续无效：" + "、".join(dict.fromkeys(INVALID_ZH.get(w, str(w)) for w in whys))
         r0 = next((r for r in self.rounds if r["valid"]), None)       # 卡上和最好一轮并排对比的初值轮
         if r0:
             out["round0"] = {"iter": r0["iter"], "pass": r0.get("pass"),
@@ -233,6 +268,11 @@ class Iterator:
             if self.io.locked():
                 return self._stopped("estop", "急停")
             if not rec["valid"]:
+                if rec["why_invalid"] in ("settle_zero", "no_rise") and self.plan["dur_ms"] < MAX_DUR_MS:
+                    # 窗口太短（对象慢）：时长翻倍重做同一轮，不算无效（时长由实测得出，不按题目写死）
+                    self.plan = dict(self.plan, dur_ms=min(MAX_DUR_MS, int(self.plan["dur_ms"]) * 2))
+                    self.emit({"type": "iterate.dur_extended", "dur_ms": self.plan["dur_ms"], "why": rec["why_invalid"]})
+                    continue
                 streak_invalid += 1
                 if rec["why_invalid"] == "aborted" and rec.get("abort_cause") == "host_stop" and self.stop_ev.is_set():
                     return self._stopped("stopped", "人点了停止迭代")
@@ -356,20 +396,35 @@ class SessionIO:
         vs = [float(v[y]) for _, v in w if v.get(y) is not None] if w else []
         return sum(vs) / len(vs) if vs else None
 
-    def return_to_start(self, ch: int, it: int) -> dict:
+    START_FRAC = 0.25     # 目标就在当前位置时：起点放到目标下方 量程 × 25%（app.yaml link.step.range；通用，不看题号）
+
+    def _send_sp(self, slot: int | None, v: float) -> None:
+        names = self.s.setpoint_names()
+        vals = [float(self.s._sp_live.get(n, 0.0)) for n in names]
+        if slot is not None and slot < len(vals):
+            vals[slot] = v
+            self.s.send_data(1, struct.pack(f"<{len(vals)}f", *vals))
+
+    def _cfg(self, ch: int) -> dict:
+        return next((c for c in (self.s.schema.step if self.s.schema else []) if int(c.get("sp", -1)) == int(ch)), None) \
+            or ((self.s.schema.step or [{}])[0] if self.s.schema else {})
+
+    def return_to_start(self, ch: int, it: int, target: float | None = None) -> dict:
         """上位机负责回起点（r9）：第 0 轮记下起点 y0；之后每轮先把设定值放回 y0，等 |y − y0| < tol（app.yaml link.step.abs_tol，
         没给按 2% range）持续 0.3 s，最多 8 s。超时不硬等：以实测位置为基线，这一轮标 start_offset。"""
         y, slot, tol = self._y(ch)
         if y is None or tol is None:
             return {}
-        if it == 0 or getattr(self, "y0", None) is None:
-            self.y0 = self._y_now(y)
-            return {"start_y": self.y0}
-        names = self.s.setpoint_names()
-        vals = [float(self.s._sp_live.get(n, 0.0)) for n in names]
-        if slot is not None and slot < len(vals):
-            vals[slot] = self.y0
-            self.s.send_data(1, struct.pack(f"<{len(vals)}f", *vals))
+        if getattr(self, "y0", None) is None:          # 整次迭代只定一次起点（无效轮重跑同一 iter 也回这个起点，#94）
+            now = self._y_now(y)
+            rng = self._cfg(ch).get("range")
+            if target is not None and now is not None and abs(float(target) - now) < 2 * tol and rng:
+                span = self.START_FRAC * float(rng)       # 目标就是当前位置 → 先退到起点再跳，不做 0 幅度阶跃
+                self.y0 = float(target) - span if float(target) - span >= -float(rng) else float(target) + span
+            else:
+                self.y0 = now
+                return {"start_y": now, **self._amp(target, tol)}
+        self._send_sp(slot, self.y0)
         # 按拍数计时（每拍 RETURN_DT），不读墙钟（Windows 15.6 ms 时钟粒度会让“持续 0.3 s”判不出来）
         dt = self.RETURN_DT
         n_hold, n_max, ok_n, k = round(0.3 / dt), round(self.RETURN_TIMEOUT_S / dt), 0, 0
@@ -378,15 +433,21 @@ class SessionIO:
             cur = self._y_now(y)
             ok_n = ok_n + 1 if cur is not None and abs(cur - self.y0) < tol else 0
             if ok_n >= n_hold:
-                return {"start_y": round(cur, 4), "return_s": round(k * dt, 2)}
+                return {"start_y": round(cur, 4), "return_s": round(k * dt, 2), **self._amp(target, tol, cur)}
             time.sleep(dt)
             k += 1
         return {"start_y": None if cur is None else round(cur, 4), "start_offset": None if cur is None else round(cur - self.y0, 4),
-                "return_s": round(k * dt, 2)}
+                "return_s": round(k * dt, 2), **self._amp(target, tol, cur)}
+
+    def _amp(self, target, tol, y=None) -> dict:
+        y = self.y0 if y is None else y
+        if target is None or y is None or tol is None:
+            return {}
+        return {"step_amp": round(abs(float(target) - float(y)), 6), "step_tol": float(tol)}
 
     def step(self, it: int, ch: int, target: float, dur_ms: int) -> dict:
         from ..session import LinkError
-        back = self.return_to_start(ch, it)
+        back = self.return_to_start(ch, it, target)
         try:
             self.s.step_start(ch, it, target, dur_ms)
         except LinkError as e:

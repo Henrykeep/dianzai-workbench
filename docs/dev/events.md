@@ -169,3 +169,11 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
   - 拒绝或超时：不提交，返回 `{ok:false, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit", ...请求字段}`；文件仍留在工作区。提交本身失败时 `reason:"commit_failed"`。
 - Agent 发起的任何 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit"}`，不执行。
 - `pending` 列表里同时包含待批的 `commit_confirm_request`。
+## r9c：有效性、换算出处、迭代时长（#75 #92 #93 #94）
+
+- **唯一有效性判定** `iterate.step_invalid`：台账 `tune_round`、结果卡、规则提议、自动迭代 `iterate.round` 都用它。原因码 `why_invalid` 新增 `zero_step`（阶跃幅度 < 回位容差）。规则引擎最近一轮无效时只回 `OBSERVE`，不出改参提议。
+- `iterate.round` 新增 `step_amp`、`step_tol`（物理单位）。
+- `iterate.stopped`（`reason: "invalid"`）新增 `why_invalid` 和 `reason_zh`（如「连续无效：阶跃幅度为 0（目标就是当前位置）」），卡片按它写原因，不再只写「没有可用的一轮」。
+- 新事件 `iterate.dur_extended {dur_ms, why}`：窗口太短（`settle_zero` / `no_rise`）时阶跃时长翻倍重做同一轮（上限 30000 ms），不计入「连续 3 轮无效」。
+- 目标等于当前位置时，迭代先把设定值退到 目标 − 量程×25% 再跳；无效轮重跑回同一起点。
+- `pass_basis` / `verdict_zh` 一律写明换算出处：「按仿真标称换算、未实机标定」「按实机标定换算」「同单位直接比较、无需换算」；实机未标定为 `inside: null` + 「待标定：实机未标定」。
