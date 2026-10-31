@@ -1,3 +1,4 @@
+import { ESTOP_F, MISSING_ZH } from "./fieldmap";
 // 急停提示（问题池 #25 / #28）。来源由本地服务在事件里给 source：heartbeat_lost | firmware:<cause> | ui | selftest。
 // 前三种用固定文案；firmware:<cause> 优先用 status.estop_cause.message_zh；都没有时写「急停已触发，原因未上报」，详情给最近一次心跳时间。
 // 心跳超时（watchdog 事件）与急停分开提示，不混成一句。
@@ -32,4 +33,23 @@ export const watchdogText = (ev: EstopEv) => `心跳超时：${ev.text || "板�
 export function latchedOf(st: { tx_locked?: boolean } | undefined, prev: boolean, sidecarUp: boolean): boolean {
   if (!sidecarUp) return prev;
   return typeof st?.tx_locked === "boolean" ? st.tx_locked : prev;
+}
+
+// r9f 横幅一行：「<HH:MM> <reason_zh> <measured> ms（阈值 <threshold> ms），已锁存」；缺字段写「后端未给」
+const pick = (os: any[], ks: readonly string[]) => { for (const o of os) for (const k of ks) { const v = o?.[k]; if (v != null && v !== "") return v; } return undefined; };
+const hhmm = (t: number) => { const d = new Date(t); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+export function estopRestored(...os: any[]): boolean { return os.some(o => o?.[ESTOP_F.restored] === true || o?.[ESTOP_F.source] === ESTOP_F.restoredSrc); }
+// localAt：界面自己看到锁存的时刻；从上次恢复的锁存不用它（那不是锁存发生的时刻）
+export function estopLine(ev: any, status: any, localAt: number | null): { line: string; restored: boolean } {
+  const os = [ev, status, status?.estop_cause], restored = estopRestored(...os);
+  const at = pick(os, ESTOP_F.at), t = typeof at === "number" && Number.isFinite(at) ? at : restored ? null : localAt;
+  const reason = pick(os, ESTOP_F.reason), ms = pick(os, ESTOP_F.measured), thr = pick(os, ESTOP_F.threshold);
+  const n = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)}` : MISSING_ZH;
+  return { restored, line: `${t != null ? hhmm(t) : MISSING_ZH} ${typeof reason === "string" && reason.trim() ? reason.trim() : MISSING_ZH} ${n(ms)} ms（阈值 ${n(thr)} ms），已锁存` };
+}
+// 解除两步：第一次点 → 「确认解除？」+「取消」，再点才发；5 s 不点自动退回
+export const CLEAR_CONFIRM_MS = 5000;
+export function clearStep(state: "idle" | "confirm", click: "clear" | "cancel" | "timeout"): { state: "idle" | "confirm"; send: boolean } {
+  if (click === "clear") return state === "confirm" ? { state: "idle", send: true } : { state: "confirm", send: false };
+  return { state: "idle", send: false };
 }

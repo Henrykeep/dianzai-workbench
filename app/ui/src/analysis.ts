@@ -1,4 +1,6 @@
 import { ledgerJudge } from "./verdictbus";
+import { LEDGER } from "./ledgerbus";
+import { LEDGER_ROUND_F } from "./fieldmap";
 // 测量与历史（docs/26 §3.5）：A/B 光标读数、t0 阶跃锚点、每轮实验进历史、上一轮做余辉。
 // 只依赖 Plot 的公开接口和两个取值函数，界面不认任何题目字段名。
 import { Plot, num } from "./plot";
@@ -52,6 +54,8 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
     // 阶跃实验：用侧车同一份指标（和程序判定一致），界面自己算的只在手动 t0 时用
     if (sm?.ok) r.m = { Mp: sm.overshoot_pct ?? NaN, tr: sm.rise_s ?? NaN, ts: sm.settling_s ?? NaN, ess: sm.sse_pct ?? NaN, settled: sm.settling_s != null, t0: NaN };
     runs.unshift(r); runs.length = Math.min(runs.length, MAX_RUNS);
+    { const mt: Record<string, number> = {}; if (r.m && Number.isFinite(r.m.Mp)) mt[LEDGER_ROUND_F.overshoot] = r.m.Mp; if (r.m && Number.isFinite(r.m.ts)) mt[LEDGER_ROUND_F.settle] = Math.round(r.m.ts * 1000);
+      LEDGER.push({ n: r.n, params: { ...r.params }, metrics: mt, valid: verdict !== "invalid" && Object.keys(mt).length > 0 }); }
     open = false;
     plot.ghost = runs[1]?.data ?? null;
     annotate(r);
@@ -179,5 +183,5 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
       renderHist(); renderReads();
     },
     invalidate() { STALE.clear(plot.t0); renderReads(); },
-    reset() { runs.length = 0; t0Params = {}; renderHist(); renderMeas(); renderReads(); }, runs: () => runs.length, marked: () => plot.t0 != null };
+    reset() { runs.length = 0; LEDGER.reset(); t0Params = {}; renderHist(); renderMeas(); renderReads(); }, runs: () => runs.length, marked: () => plot.t0 != null };
 }
