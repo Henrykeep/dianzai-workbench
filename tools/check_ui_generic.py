@@ -2,7 +2,7 @@
 """界面不写死某道题 / 某块板：app/ui/src 和 index.html 里不许出现例题专用名（例题名表只放 src/examples.ts）。
 用法：check_ui_generic.py [--selftest]"""
 import pathlib, re, sys
-BANNED = re.compile(r"2026H|小球|球环|motor_pos|ball_(?:kp|ki|kd|sp|beam)\b|pos_k\b")
+BANNED = re.compile(r"2026H|小球|球环|motor_pos|car_2wd|ball_(?:kp|ki|kd|sp|beam)\b|pos_k\b")
 ALLOW = {"examples.ts"}
 ROOT = pathlib.Path(__file__).resolve().parent.parent / "app" / "ui"
 

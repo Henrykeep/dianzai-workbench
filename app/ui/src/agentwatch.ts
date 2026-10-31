@@ -1,3 +1,4 @@
+import { NO_REASON_ZH } from "./fieldmap";
 // Agent 等待看门狗 + 错误卡文案。发出即「思考中」计时；60 s 无任何事件 → 超时卡；agent_error → 出错卡。不让用户干等。
 import { humanize } from "./errors";
 import { resolveFix, Fix } from "./progress";
@@ -36,7 +37,7 @@ export function errorCard(m: AgentErr, has: (ui: string) => boolean = ui => type
   const internal = m.code === "tool_schema";
   return {
     title: "Agent 出错：" + (internal ? "工具定义格式错误" : h?.what ?? "本轮未完成"),
-    why: internal ? "这是工作台内部配置错误，不是你的操作问题" : (m.message || h?.why || "本地服务未给出原因"),
+    why: internal ? "这是工作台内部配置错误，不是你的操作问题" : (m.message || h?.why || NO_REASON_ZH),
     fix: internal ? "可先重发一次或换个说法；反复出现请把「详情」发给开发者，其它功能不受影响" : (h?.fix ?? (fa === "settings" ? "在「大模型设置」中检查后重试" : "点「重试」重新发送")),
     detail: [m.code ? `code: ${m.code}` : "", internal && m.message ? m.message : "", m.detail || ""].filter(Boolean).join("\n") || "（本地服务未提供更多信息）",
     retry: fa === "retry" || m.retryable === true,

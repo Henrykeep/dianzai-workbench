@@ -140,3 +140,49 @@ console.log("r9p6 ok");
   assert.ok(!/text\/csv|\.csv"|Blob\(/.test(all), "前端不自己生成 CSV");
 }
 console.log("r9p6 export ok");
+
+// ---- r9p6b：#90 #91 #95 ----
+import { stripToolMarkup } from "../src/sanitize";
+import { errParts } from "../src/errors";
+import { errFixAction } from "../src/fieldmap";
+{
+  const eq = (a: unknown, b: unknown, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
+  eq(stripToolMarkup('好的<tool_call>{"name":"x"}</tool_call>已完成'), "好的已完成", "tool_call pair");
+  eq(stripToolMarkup("A<|tool_calls_section_begin|>x<|tool_calls_section_end|>B"), "AB", "kimi tokens");
+  eq(stripToolMarkup('先读文件\n<function=read>{"p":1}</function>'), "先读文件", "function=");
+  eq(stripToolMarkup("答案<|im_end|>"), "答案", "stray token");
+  eq(stripToolMarkup("流式中<tool_call>{\"na"), "流式中", "unterminated during streaming");
+  eq(stripToolMarkup("[TOOL_CALLS][{}]\n结果 1<2 且 a|b"), "结果 1<2 且 a|b", "TOOL_CALLS line");
+  for (const keep of ["kp 从 0.5 改成 0.8", "a < b > c", "用 `make check` 检查", "```c\nint x;\n```", "<b>不是标记</b>"]) eq(stripToolMarkup(keep), keep, "keeps " + keep);
+  eq(errParts({ code: "x", message: "busy", message_zh: "正在自动迭代" }).what, "正在自动迭代", "message_zh");
+  eq(errParts({ code: "x", message: "busy" }).why, "后端未给原因", "no reason");
+  eq(errParts({ code: "x", message: "busy", reason_zh: "迭代没停" } as any).why, "迭代没停", "reason_zh");
+  eq(errFixAction({ fix_action: "stop_iteration" }), "stop_iteration", "fix_action");
+  eq(errFixAction({ l: "stop_iteration" }), "stop_iteration", "l");
+  eq(errFixAction({}), "", "none");
+  const html = require("fs").readFileSync("index.html", "utf8");
+  if (/car_2wd/.test(html)) throw new Error("car_2wd placeholder");
+  console.log("r9p6b ok");
+}
+// #76 参数数字 ≥16px：每一档 --t-lg ≥16，且 .prow .in.num 有一条不在任何 @media 里的 var(--t-lg) 规则
+{
+  const css: string = require("fs").readFileSync("src/style.css", "utf8");
+  for (const m of css.matchAll(/--t-lg:\s*(\d+)px/g)) if (+m[1] < 16) throw new Error("--t-lg < 16: " + m[0]);
+  let depth = 0, ok = false, buf = "";
+  for (const ch of css) { if (ch === "{") { if (depth === 0 && /\.prow \.in\.num/.test(buf) && !/@media/.test(buf)) ok = true; depth++; buf = ""; } else if (ch === "}") { depth--; buf = ""; } else if (depth === 0) buf += ch; }
+  const tail = css.slice(css.lastIndexOf("#76 参数数字在所有宽度"));
+  if (!ok || !/\.prow \.in\.num[^{]*\{font-size:var\(--t-lg\)\}/.test(tail)) throw new Error("param num 16px rule missing");
+  for (const m of css.matchAll(/\.prow \.in\.num\{[^}]*font:\s*(\d+)px/g)) if (+m[1] < 16) throw new Error("prow num " + m[1]);
+  console.log("r9p6b font ok");
+}
+// #88 提交确认卡
+import { toCommitReq, commitCardHtml } from "../src/commitcard";
+{
+  const e = (s: string) => s.replace(/</g, "&lt;");
+  const h = commitCardHtml(toCommitReq({ files: [{ path: "src/a.c", status: "M" }, "b.yaml"], commit_message: "调参：kp 0.5→0.8" }), e);
+  for (const t of ["src/a.c", "b.yaml", "修改", "调参：kp 0.5→0.8", "确认提交", "取消", "2 个文件"]) if (!h.includes(t)) throw new Error("commit card " + t);
+  const z = commitCardHtml(toCommitReq({}), e);
+  if (!z.includes("disabled") || !z.includes("后端没有给提交说明")) throw new Error("empty commit card");
+  if (!require("fs").readFileSync("src/projflow.ts", "utf8").includes("只授权写入文件，不会提交")) throw new Error("write card note");
+  console.log("r9p6b commit ok");
+}

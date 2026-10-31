@@ -1122,3 +1122,6 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .mc-ev{display:inline-block;margin-top:4px;font-size:var(--t-xs);color:var(--acc-t)}
 .mc-exp{display:flex;gap:8px;margin-left:16px}
 .mc-steps{margin-top:4px;font-size:var(--t-xs);color:var(--muted)}.mc-steps ol{margin:4px 0 0;padding-left:16px}
+/* #76 参数数字在所有宽度都 ≥16px（以前只在 ≥1600 才放大，1366 掉回 14） */
+.prow .in.num,.prow .pv .in.num,#plist .pv .in.num,#plist input[id^=pi-],.lane .val,.lane .v{font-size:var(--t-lg)}
+.cc-files{margin:var(--sp2) 0;padding-left:var(--sp4)} .cc-st{color:var(--text-muted)} .cc-msg{white-space:pre-wrap;margin:0 0 var(--sp2)}

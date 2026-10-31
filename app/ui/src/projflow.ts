@@ -46,7 +46,8 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   const confirmBtn = (k: string, label: string, fn: () => Promise<void>) => {
     const b = document.createElement("button"); b.className = "btn pri"; b.type = "button"; b.textContent = label;
     b.onclick = async () => { b.disabled = true; try { await fn(); } catch { b.disabled = false; } };
-    res(k).append(b);
+    const n = document.createElement("p"); n.className = "hint"; n.textContent = "只授权写入文件，不会提交（git 提交另有确认卡）";
+    res(k).append(b, n);
   };
   const inp = (id: string) => document.getElementById(id) as HTMLInputElement;
   // 确认一步后自动跑下一步的预览（预览只写暂存区，不算替人做决定）；下一步缺输入就只把光标放过去。

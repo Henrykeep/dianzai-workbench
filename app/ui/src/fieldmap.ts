@@ -121,3 +121,10 @@ export function toMetricsCard(src: any): MetricsCard | null {
   });
   return { kind, kindBasis: str(o[MC_F.kindBasis]), items };
 }
+// #91 报错字段：正文 message_zh，原因 reason_zh / cause_zh / why，修复按钮 fix_action（部分回复里叫 l，草案未定）
+export const ERR_F = { msg: "message_zh", why: ["reason_zh", "cause_zh", "why"], fix: ["fix_action", "l"] } as const;
+export const NO_REASON_ZH = "后端未给原因";
+export const errFixAction = (e: any): string => { for (const k of ERR_F.fix) { const v = e?.[k]; if (typeof v === "string" && v) return v; } return ""; };
+export const errWhy = (e: any): string => { for (const k of ERR_F.why) { const v = e?.[k]; if (typeof v === "string" && v && !/^[\x00-\x7f]*$/.test(v)) return v; } return ""; };
+// #88 提交确认卡（后端另出 git commit 确认，字段草案）
+export const COMMIT_F = { kind: "commit", files: "files", msg: "commit_message", path: "path", status: "status" } as const;
