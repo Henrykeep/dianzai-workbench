@@ -23,11 +23,12 @@ import { humanize, humanHtml } from "./errors";
 import { conn, onLinkState, linkStateActive } from "./conn";
 import { linkView, runState, modeLabel } from "./linkmsg";
 import { initProject } from "./project";
-import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
+import { saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
+import { FlashNag, stripFlash } from "./flashnag";
 import { holdOf, restoreAllowed, restoreClick } from "./sprestore";
-import { clearedEvent, latchHead, portsWithSession } from "./r8pre";
+import { clearedEvent, latchHead, portsWithSession, clearBtnHidden } from "./r8pre";
 import { bannerHint, clearedLine, EstopSpans, RestoreTarget } from "./estophist";
 import { purgeEstopBlockers, resolveEstopAlerts, dropEstopBlockers } from "./estopclear";
 import { fireEstop, handleEstopMsg, latchedCause, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE, clearedOnce, CLEARED_NOTICE, markClearClick, markClearedShown } from "./estopbtn";
@@ -64,7 +65,7 @@ function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   // 锁存只认本地服务上报（S.latched ← status.tx_locked），断开 / 重连都不由前端清（#20）
   const latched = S.latched;
-  document.getElementById("cmd-r")?.classList.toggle("attn", latched);
+  { const r = document.getElementById("cmd-r"); if (r) { r.classList.toggle("attn", latched); r.hidden = clearBtnHidden(latched); } }   // 「解除」只在急停锁存时出现
   $("estop").classList.toggle("locked", latched);
   if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); const nn = document.getElementById("sp-restore-note"); if (nn) nn.textContent = ""; showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
@@ -154,7 +155,7 @@ function resolveEstop() {
   if (prev || S.latched) estopHist = clearedLine(Date.now(), estopView(prev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs).head);
   if (wasLatchedUi || S.latched) { SPANS.clear(plot.now()); RESTORE.onClear(); syncMarks(); } wasLatchedUi = false;
   S.latched = false; resolveEstopAlerts(AL);
-  document.getElementById("cmd-r")?.classList.remove("attn"); $("estop").classList.remove("locked");
+  { const r = document.getElementById("cmd-r"); if (r) { r.classList.remove("attn"); r.hidden = true; } } $("estop").classList.remove("locked");
   renderAlerts(); purgeEstopBlockers(document); agent.resolveEstop?.();
   if (estopHist) markClearedShown();
   if (estopHist && tl.all().at(-1)?.kind !== "estop_clear") tl.add(clearedEvent(tl.all(), null, plot.now()));   // r8pre：时间线最新一条是中性「急停已解除」
@@ -473,7 +474,7 @@ async function sendPending(only?: string[], undoing = false) {
       const r = await call("param_set", { name: p.name, value: clampLocal(p, +S.edit[p.name]) });
       if (!undoing) UNDO.push(p.name, before);
       delete S.edit[p.name];
-      S.applied[p.name] = r.applied;
+      S.applied[p.name] = r.applied; FN.onUserChange();
       if (r.status === "clamped") toast(`${p.name} 被限幅为 ${fmt(r.applied, p)}`, "warn", 4000);
     } catch { break; }
   }
@@ -483,7 +484,7 @@ $("p-send").onclick = () => sendPending();
 $("p-revert").onclick = () => { S.edit = {}; syncParams(); };
 $("p-read").onclick = async () => { await call("param_read_all"); };
 $("p-rb").onclick = async () => { const r = await call("params_readback", {}); toast(`已回读到 ${r.path}`, "ok", 5000); };
-$("p-def").onclick = async () => { if (confirm("把全部参数恢复成固件默认值？")) { await call("params_restore", { source: "default" }); toast("已恢复默认参数", "ok", 3000); } };
+$("p-def").onclick = async () => { if (confirm("把全部参数恢复成固件默认值？")) { await call("params_restore", { source: "default" }); userChangedParams(); toast("已恢复默认参数", "ok", 3000); } };
 
 // 顶栏流程：连接 → 调参 → 阶跃 → 判读 → 定稿，按当前状态点亮（done = 已经过，now = 下一步该做的）
 // 定稿 = 本次会话里参数 yaml 已经 git 提交（写回卡片确认 + 门禁通过）。之后再改参数就回到“调参”。
@@ -514,7 +515,7 @@ async function loadSnaps(list?: any[]) {
      <button class="btn ghost sm" data-s="${esc(s.name)}">恢复</button></div>`).join("") || `<div class="hint">调到好用的一组就保存为快照，翻车时一键恢复。</div>`;
   $("snaps").querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
     const ramp_s = Math.max(0, Math.min(10, Number($<HTMLInputElement>("snap-ramp").value) || 0));
-    await call("params_restore", { source: "snapshot", name: b.dataset.s, ramp_s }); toast(`已恢复快照 ${b.dataset.s}${ramp_s ? `（${ramp_s} s 平滑过渡）` : ""}`, "ok", 3000);
+    await call("params_restore", { source: "snapshot", name: b.dataset.s, ramp_s }); userChangedParams(); toast(`已恢复快照 ${b.dataset.s}${ramp_s ? `（${ramp_s} s 平滑过渡）` : ""}`, "ok", 3000);
   });
 }
 async function saveSnap() {
@@ -610,8 +611,9 @@ function renderStatus(st: Msg) {
   $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.reconnecting ? `重连中…${st.reconnect_attempt ? "（第 " + st.reconnect_attempt + " 次）" : ""}` : st.baud || ""}</i>` : "未连接";
   $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
   // 心跳 status 字（dzctl 0.5.0）：复位原因 + 安全态/堵转/急停标志；旧固件没有 → 不显示
-  $("ro-schema").title = st.reset ? `板子复位原因：${st.reset}${st.hb_flags?.length ? "；" + st.hb_flags.join("、") : ""}` : "";
-  if (st.hb_flags?.length) $("ro-schema").innerHTML += `<i class="hb-flag">${esc(st.hb_flags.join("·"))}</i>`;
+  const hbf: string[] = (st.hb_flags ?? []).filter((f: string) => f !== "参数未保存");   // #63 只在「保存参数」旁提示
+  $("ro-schema").title = st.reset ? `板子复位原因：${st.reset}${hbf.length ? "；" + hbf.join("、") : ""}` : "";
+  if (hbf.length) $("ro-schema").innerHTML += `<i class="hb-flag">${esc(hbf.join("·"))}</i>`;
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
   if (st.log && st.log !== S.lastLog) { S.lastLog = st.log; loadLogs(); }   // 新开的记录马上出现在回放列表
@@ -677,7 +679,9 @@ $("import").onclick = async () => {
 };
 $("chans").innerHTML = emptyState("activity", "连上后列出通道");
 $("props").innerHTML = AGENT_IDLE;
+function userChangedParams() { FN.onUserChange(); renderBoard(S.status); }
 link.on(m => {
+  if (m?.type === "iterate.round") FN.onUserChange();
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
   switch (m.type) {
     case "telem": {
@@ -798,8 +802,10 @@ let goStepRef: (s: any) => void = () => {};
 // 板上状态：保存参数 / 运行模式 / 自检失败项（文案取侧车 message_zh、label_zh，前端不拼）
 let stSeenT: number | undefined, stSeenAt: number | null = null;
 let savedAt: string | null = null, noSave = "", noMode = "";
+const FN = new FlashNag(); let wasBoard = false;
 function renderBoard(st: any) {
-  const sv = $("tb-saved"); sv.textContent = noSave || savedView(st, savedAt); sv.classList.toggle("ok", !noSave && st.params_saved === true);
+  const sv = $("tb-saved"); if (conn.get().board && !wasBoard) FN.onConnect(); wasBoard = !!conn.get().board;
+  sv.textContent = noSave || FN.label(st, savedAt); sv.classList.toggle("ok", !noSave && st.params_saved === true);
   $<HTMLButtonElement>("tb-save").disabled = !!noSave; $("tb-save").title = noSave || "把板上当前参数写入掉电保存区（save_params）";
   $("seal-mode-cur").textContent = st.run_mode?.label_zh ?? "—";
   const g = modeGate(st), b = $<HTMLButtonElement>("seal-mode");
@@ -815,7 +821,7 @@ function renderBoard(st: any) {
 }
 $("tb-save").onclick = async () => {
   const r = await saveParams((op, a) => link.rpc(op, a ?? {}));
-  if (r.ok) { savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false }); }
+  if (r.ok) { FN.onSaved(); savedAt = new Date().toLocaleTimeString("zh-CN", { hour12: false }); }
   else if (r.disable) noSave = r.note!; else toast({ code: "save_params", message: r.note!, fix: "" }, "warn", 6000);
   renderBoard(S.status);
 };
@@ -860,7 +866,7 @@ const refreshProgress = async () => { const p: any = await fetchProgress(op => l
   paramsDirty: pending().length > 0,
   selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) agent.onBlockers(p.blockers); if (p && "project" in p) void proj.show(p.project ?? null); };
+}); stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) agent.onBlockers(p.blockers); if (p && "project" in p) void proj.show(p.project ?? null); };
 refreshProgressRef = refreshProgress;
 window.addEventListener("dz-step", () => void refreshProgress());
 initPjAsk(call, goStep);

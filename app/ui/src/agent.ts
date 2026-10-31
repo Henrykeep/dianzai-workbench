@@ -1,5 +1,6 @@
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
+import { dropFlashBlockers, isFlashNotice } from "./flashnag";
 import { Msg } from "./ws";
 import { runAction, resolveFix } from "./progress";
 import { Receipts, RECEIPT_LABEL, newMsgId, blockedCard, newBlockers, noticeView, NoticeGate, Notice } from "./receipt";
@@ -456,13 +457,13 @@ export function initAgent(call: Call) {
     if (other?.kind === "run") c.querySelector("button")!.onclick = () => runAction(fa!, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
   }
   function onBlockers(bs: { code: string; message: string; fix_action?: string | null }[] = []) {
-    const fresh = newBlockers(seenBlk, bs);
+    bs = dropFlashBlockers(bs); const fresh = newBlockers(seenBlk, bs);
     gateN.sync(bs.map(b => b.code)); for (const k of [...notes.keys()]) if (!seenBlk.has(k)) notes.delete(k);
     if (!primed) { primed = true; bs.forEach(b => gateN.offer(b.code)); return; }   // 打开页面时已有的 blocker 不刷屏
     for (const b of fresh) if (gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
   }
   function onNotice(n: Notice) {
-    if (!n?.blocker_code) return;
+    if (!n?.blocker_code || isFlashNotice(n)) return;   // #63 未写入 Flash 只在保存参数旁
     if (n.blocker_code === "estop_cleared") return;   // 解除提示由主界面统一一张卡（estopbtn.clearedOnce），这里不重复
     const fallback = notes.get(n.blocker_code)?.dataset.src !== "notice" && notes.has(n.blocker_code);
     if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复

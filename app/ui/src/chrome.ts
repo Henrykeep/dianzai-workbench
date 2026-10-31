@@ -1,3 +1,4 @@
+import { THEMES, pickTheme } from "./theme";
 import { createElement, Activity, SlidersHorizontal } from "lucide";
 // 外壳行为：主题切换（记在 localStorage）、弹出菜单点外面 / Esc / 点菜单项后收起。
 const KEY = "dz.theme";
@@ -21,10 +22,10 @@ document.addEventListener("toggle", e => { const d = e.target as HTMLElement; if
 addEventListener("resize", () => document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach(placePop));
 export function initChrome(): void {
   const saved = localStorage.getItem(KEY);
-  const order = ["dark", "light", "hc"];
-  applyTheme(order.includes(saved ?? "") ? saved! : "dark");
+  const order = THEMES;
+  applyTheme(pickTheme(saved));
   document.getElementById("theme")?.addEventListener("click", () => {
-    const t = order[(order.indexOf(document.documentElement.dataset.theme ?? "dark") + 1) % order.length];
+    const t = order[(order.indexOf(document.documentElement.dataset.theme ?? "light") + 1) % order.length];
     localStorage.setItem(KEY, t);
     applyTheme(t);
   });
