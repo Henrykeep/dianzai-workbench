@@ -683,6 +683,31 @@ class AgentService:
         return {"running": bool(th and th.is_alive()), "result": getattr(self, "iter_result", None) or (last or {}).get("result"),
                 "last": last}
 
+    def _step_amp(self, m: dict) -> float | None:
+        """阶跃幅度 |sp − y0|：本轮记下的 target / start_y（或上位机口径 target / y0），没有就用 step_test 的 high − low。"""
+        t = m.get("target")
+        y0 = m.get("start_y", m.get("y0"))
+        if isinstance(t, (int, float)) and isinstance(y0, (int, float)) and abs(t - y0) > 0:
+            return abs(float(t) - float(y0))
+        st = self.step_cfg() or {}
+        try:
+            return abs(float(st["high"][0]) - float(st["low"][0])) or None
+        except (KeyError, IndexError, TypeError, ValueError):
+            return None
+
+    def _unit_per(self, y: str | None, frm: str, to: str) -> tuple[float | None, str | None]:
+        """板子声明的换算（app/project.yaml 遥测字段 cal: {unit, pts}，如 2026H 600 px ↔ 100 cm → 6 px = 1 cm）。"""
+        f = next((f for f in (self.s.schema.fields if self.s.schema else []) if f["name"] == y), None) or {}
+        cal = f.get("cal") or {}
+        pts = cal.get("pts") or []
+        if not (frm and to and f.get("unit") == frm and cal.get("unit") == to and len(pts) >= 2):
+            return None, None
+        (x0, v0), (x1, v1) = pts[0], pts[-1]
+        if x1 == x0:
+            return None, None
+        per = abs((v1 - v0) / (x1 - x0))
+        return per, f"按板子声明换算 {abs(x1 - x0) / abs(v1 - v0):g} {frm} = 1 {to}（遥测 {y}.cal）"
+
     def _ss_band(self, m: dict) -> dict:
         """最好参数卡上的稳态误差：实测值 + 题目误差带（出处）+ 本次在不在带内。单位对不上（如测得 px、题目 cm）
         不硬判：inside=None 并说明需要标定（#51）。题目没写误差带时用默认口径，并标明出处是默认值。"""
@@ -710,10 +735,19 @@ class AgentService:
             band = {"limit": GOOD_REL["ss_err_pct"], "unit": "%", "source": "默认口径 |稳态误差| ≤ 2%（题目没写误差带）"}
         same = band["unit"] == unit and bool(unit)
         judged, conv_note = val, None
+        if unit == "%" and band["unit"] not in ("%", "") and yu:      # 相对口径：ss% × |sp − y0| / 100 → y 的物理单位（px），再按板子声明换算
+            amp = self._step_amp(m)
+            if amp:
+                val, unit = val * amp / 100.0, yu
+                judged, same = val, band["unit"] == unit
         conv = (self.step_cfg() or {}).get("sim_nominal") if self.sim else None
         if not same and conv and conv.get("from") == unit and conv.get("to") == band["unit"] and unit:
             judged, same = val * float(conv["per"]), True               # 仿真对象自己的几何（dzbench.json step_tests.*.sim_nominal）
             conv_note = f"仿真标称换算，未实机标定（{conv.get('source', '')}）"
+        per, src = self._unit_per(y, unit, band["unit"])
+        if not same and per is not None:
+            judged, same = val * per, True
+            conv_note = src
         inside = (judged <= band["limit"]) if same else None
         if inside is None:
             why = "仿真对象没有到该单位的标称几何" if self.sim else "要先标定换算（#51）"
@@ -862,7 +896,7 @@ class AgentService:
         r0 = g.rounds[0] if g.rounds else None
         round0 = {"round": r0.n, "metrics": r0.metrics, "score": round(r0.score, 4),
                   "passed": log[0].get("action") == "done" and step_invalid(r0.metrics) is None} if r0 else None
-        if v.get("action") != "done" and g.rounds:
+        if v.get("action") != "done" and g.rounds and g.best():
             self.rollback_best(_auto=True)
         return {"rounds": log, "final": v.get("action"), "best_round": best, "round0": round0, "gains_now": self._gains(),
                 "passed": v.get("action") == "done" and (best is None or step_invalid(best["metrics"]) is None)}

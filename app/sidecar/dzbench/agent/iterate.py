@@ -141,6 +141,9 @@ class Iterator:
                "local_hash": f"{local:08x}", "source": "firmware",
                **{k: r.get(k) for k in ("ss_err_pct", "overshoot_pct", "settle_ms", "rise_ms", "metric_mode", "u_sat_ratio", "n", "band")},
                "unit": "abs" if r.get("metric_mode") == "abs" else "%"}
+        rec["target"] = self.plan["target"]               # 相对口径 ss_err % → 物理单位要用 |sp − y0|
+        if r.get("start_y") is not None:
+            rec["start_y"] = r["start_y"]
         if r.get("start_offset") is not None:             # 没回到起点：用实测起点当基线，这一轮标出来
             rec["start_offset"], rec["start_y"] = r["start_offset"], r.get("start_y")   # abs 口径：超调 / 稳态误差是物理单位，不是百分比
         why = None

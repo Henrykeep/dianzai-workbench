@@ -181,3 +181,24 @@ def test_2026h_hold_override_is_backend_owned():
     assert S.AgentService.step_override(o)["hold_s"] == 5.0
     o2 = types.SimpleNamespace(s=types.SimpleNamespace(port="sim:motor_pos"))
     assert S.AgentService.step_override(o2) == {}
+
+
+# ---------------------------------------------------------------- 相对口径 ss_err % → px → cm（板子声明 cal：600 px ↔ 100 cm）
+def test_ss_band_relative_pct_converts_via_board_cal(tmp_path):
+    f = {"name": "cam_x_px", "unit": "px", "cal": {"unit": "cm", "pts": [[0, 0], [600, 100]]}}
+    o = types.SimpleNamespace(s=types.SimpleNamespace(schema=types.SimpleNamespace(fields=[f]), port="hw:COM3"), sim=False)
+    o.step_cfg = lambda: {"y": "cam_x_px", "low": [0], "high": [60]}
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / "requirements.yaml").write_text("items:\n  - id: '1'\n    metrics:\n      - {name: 稳态误差, op: '<=', value: 1, unit: cm}\n", "utf-8")
+    o._project_path = lambda: str(proj)
+    o._step_amp = lambda m: S.AgentService._step_amp(o, m)
+    o._unit_per = lambda *a: S.AgentService._unit_per(o, *a)
+    o._pass_basis = S.AgentService._pass_basis
+    # 5% × |60 − 0| = 3 px = 0.5 cm ≤ 1 cm
+    r = S.AgentService._ss_band(o, {"ss_err_pct": 5.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})
+    assert r["inside"] is True and r["unit"] == "px" and r["measured"] == pytest.approx(3.0)
+    # 20% × 60 = 12 px = 2 cm > 1 cm
+    assert S.AgentService._ss_band(o, {"ss_err_pct": 20.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})["inside"] is False
+    f.pop("cal")                                    # 板子没声明换算 → 不硬判
+    assert S.AgentService._ss_band(o, {"ss_err_pct": 5.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})["inside"] is None
