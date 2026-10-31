@@ -7,7 +7,7 @@ const D = "—";
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 const fmt = (v: number | null | undefined) => v == null || !Number.isFinite(v) ? D : String(+(+v).toPrecision(5));
 const u = (x: string) => x ? ` ${x}` : "";
-export const VERDICT_LABEL: Record<McItem["verdict"], string> = { pass: "达标", fail: "不达标", unknown: "待标定" };
+export const VERDICT_LABEL: Record<McItem["verdict"], string> = { pass: "达标", fail: "不达标", partial: "未验题面幅度", unknown: "待标定" };
 export const SOURCE_LABEL: Record<string, string> = { sim: "仿真标称", real: "实机实测", calibrated: "实机 · 已标定", manual: "人工录入", "": "来源未上报" };
 const HOW_LABEL: Record<string, string> = { auto: "自动测量", manual: "人工测量", "": "" };
 export const KIND_LABEL: Record<TaskKind, string> = { control: "控制类", measure: "测量类", power: "电源类", other: "其他" };
@@ -28,14 +28,14 @@ export function itemWarnings(it: McItem, kind: TaskKind): string[] {
 }
 // 排序：不达标在前（最需要处理）→ 待标定 → 达标；测量题再按条款号；其余保持后端顺序
 export function sortItems(c: MetricsCard): McItem[] {
-  const rank = { fail: 0, unknown: 1, pass: 2 } as const;
+  const rank = { fail: 0, partial: 1, unknown: 2, pass: 3 } as const;
   const ix = new Map(c.items.map((x, i) => [x, i]));
   return [...c.items].sort((a, b) => rank[a.verdict] - rank[b.verdict] || (c.kind === "measure" ? a.clause.localeCompare(b.clause, "zh") : 0) || ix.get(a)! - ix.get(b)!);
 }
-export function summary(c: MetricsCard): { pass: number; fail: number; unknown: number; text: string } {
-  const s = { pass: 0, fail: 0, unknown: 0 };
+export function summary(c: MetricsCard): { pass: number; fail: number; partial: number; unknown: number; text: string } {
+  const s = { pass: 0, fail: 0, partial: 0, unknown: 0 };
   c.items.forEach(i => s[i.verdict]++);
-  return { ...s, text: c.items.length ? `${c.items.length} 项 · 达标 ${s.pass} · 不达标 ${s.fail} · 待标定 ${s.unknown}` : "没有指标项" };
+  return { ...s, text: c.items.length ? `${c.items.length} 项 · 达标 ${s.pass} · 不达标 ${s.fail}${s.partial ? ` · 未验题面幅度 ${s.partial}` : ""} · 待标定 ${s.unknown}` : "没有指标项" };
 }
 function tuningHtml(t: any): string {
   const best = t?.best ?? {}, ps = best.params && typeof best.params === "object" ? Object.entries(best.params) : [];
@@ -62,6 +62,7 @@ export function metricCardHtml(src: any): string {
   <p class="mc-spec">${esc(it.spec || "题目原文未提供")}</p>
   <div class="mc-row num"><span><i>目标</i>${esc(targetText(it))}</span><span><i>实测</i><b>${esc(measuredText(it))}</b></span><span class="mc-src ${it.source || "none"}">${esc(SOURCE_LABEL[it.source])}${it.srcNote ? ` · ${esc(it.srcNote)}` : ""}</span></div>
   ${meth ? `<p class="mc-meth">${esc(meth)}</p>` : ""}${ent}${steps("人工测量步骤", it.manualSteps)}${steps("评审测试步骤", it.procedure)}${basis ? `<p class="mc-basis">依据：${esc(basis)}</p>` : ""}
+  ${it.amp ? `<p class="mc-amp num">题面幅度 ${esc(it.amp.spec)}，实测幅度 ${esc(it.amp.tested)}</p>` : ""}${it.warningZh ? `<p class="mc-warn partial">${esc(it.warningZh)}</p>` : ""}
   ${warn.map(w => `<p class="mc-warn">${esc(w)}</p>`).join("")}
   ${it.tuning ? tuningHtml(it.tuning) : ""}${calibHtml(it.calib)}
   ${it.evidence ? `<a class="mc-ev" href="#" data-evidence="${esc(it.evidence)}" title="${esc(it.evidence)}">打开录波</a>` : ""}
