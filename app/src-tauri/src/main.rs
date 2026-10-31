@@ -10,11 +10,11 @@ use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
-// 侧车连不上时的数据表自检：只跑这一个脚本、只用这几个解释器（与 app/ui/src/fieldmap.ts SELFCHECK_F 一致）
-const SELFCHECK_SCRIPT: &str = "app/sidecar/selfcheck_data.py";
+// 侧车连不上时的数据表自检：只允许这两个入口（与 app/ui/src/fieldmap.ts SELFCHECK_F 一致）
+// Windows：<安装目录>/python/python.exe <安装目录>/app/sidecar/selfcheck_data.py；Linux/macOS：直接运行 <安装目录>/xintai-selfcheck.sh
 const SELFCHECK_PY_WIN: &str = "python/python.exe";
-const SELFCHECK_PY_VENV: &str = ".venv/bin/python";
-const SELFCHECK_PY_SYS: [&str; 2] = ["python3.12", "python3"];
+const SELFCHECK_SCRIPT_WIN: &str = "app/sidecar/selfcheck_data.py";
+const SELFCHECK_SH: &str = "xintai-selfcheck.sh";
 const EXIT_PORT_IN_USE: i32 = 3; // 与 dzbench/__main__.py 一致
 const MAX_RESTARTS: usize = 5;
 const RESTART_WINDOW: Duration = Duration::from_secs(60);
@@ -104,37 +104,30 @@ fn install_dirs() -> Vec<std::path::PathBuf> {
     v
 }
 
-/// 只运行固定的自检脚本（不接受前端任何参数），返回它 stdout 的 JSON 文本 {ok, items}
+/// 只运行固定的自检入口（不接受前端任何参数，不在 PATH 里找解释器），返回 stdout 的 JSON 文本 {ok, items}
 #[tauri::command]
 fn run_selfcheck() -> Result<String, String> {
     for base in install_dirs() {
-        let script = base.join(SELFCHECK_SCRIPT);
-        if !script.is_file() {
-            continue;
-        }
-        let mut pys: Vec<std::ffi::OsString> = Vec::new();
-        if cfg!(windows) {
-            pys.push(base.join(SELFCHECK_PY_WIN).into_os_string());
+        let mut cmd = if cfg!(windows) {
+            let (py, script) = (base.join(SELFCHECK_PY_WIN), base.join(SELFCHECK_SCRIPT_WIN));
+            if !py.is_file() || !script.is_file() {
+                continue;
+            }
+            let mut c = std::process::Command::new(py);
+            c.arg(script);
+            c
         } else {
-            let venv = base.join(SELFCHECK_PY_VENV);
-            if venv.is_file() {
-                pys.push(venv.into_os_string());
+            let sh = base.join(SELFCHECK_SH);
+            if !sh.is_file() {
+                continue;
             }
-            for p in SELFCHECK_PY_SYS {
-                pys.push(p.into());
-            }
-        }
-        for py in pys {
-            if let Ok(out) = std::process::Command::new(&py).arg(&script).current_dir(&base).output() {
-                let s = String::from_utf8_lossy(&out.stdout).to_string();
-                if !s.trim().is_empty() {
-                    return Ok(s);
-                }
-            }
-        }
-        return Err("no_python".into());
+            std::process::Command::new(sh)
+        };
+        let out = cmd.current_dir(&base).output().map_err(|_| "spawn_failed".to_string())?;
+        let s = String::from_utf8_lossy(&out.stdout).to_string();
+        return if s.trim().is_empty() { Err("no_output".into()) } else { Ok(s) };
     }
-    Err("no_script".into())
+    Err("not_installed".into())
 }
 
 fn main() {

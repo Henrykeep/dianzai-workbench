@@ -1182,4 +1182,4 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .rc-blk{color:var(--warn);font-size:13px;margin:4px 0}.rc-blk a{color:inherit;text-decoration:underline}
 .hl{outline:2px solid var(--warn);outline-offset:2px}
 #ro-data{font-size:16px;white-space:nowrap}
-.sc-host{position:fixed;right:16px;bottom:48px;z-index:60;max-width:560px}.sc-card{box-shadow:0 6px 24px rgba(0,0,0,.18)}.sc-t{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}.sc-t td,.sc-t th{padding:4px 8px;border-bottom:1px solid var(--line,#e5e5e5);text-align:left}.sc-missing td:nth-child(2),.sc-invalid td:nth-child(2){color:var(--warn)}
+.sc-host{position:fixed;right:16px;bottom:48px;z-index:60;max-width:560px}.sc-card{box-shadow:var(--shadow-2)}.sc-t{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}.sc-t td,.sc-t th{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left}.sc-missing td:nth-child(2),.sc-invalid td:nth-child(2){color:var(--warn)}

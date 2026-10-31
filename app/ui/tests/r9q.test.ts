@@ -31,7 +31,9 @@ assert.match(lastResortZh("Mozilla/5.0 (X11; Linux)"), /应用菜单里的『芯
 assert.equal(parseSelf("not json"), null); assert.equal(parseSelf({ ok: true }), null);
 // Tauri：只开放 run_selfcheck，脚本 / 解释器路径与 fieldmap 一致，不接受参数
 const rs = readFileSync("../src-tauri/src/main.rs", "utf8"), cap = JSON.parse(readFileSync("../src-tauri/capabilities/default.json", "utf8")), br = readFileSync("../src-tauri/build.rs", "utf8");
-assert.ok(rs.includes(`SELFCHECK_SCRIPT: &str = "${SELFCHECK_F.script}"`) && rs.includes(`"${SELFCHECK_F.pyWin}"`) && rs.includes(`"${SELFCHECK_F.pyVenv}"`) && rs.includes('["python3.12", "python3"]'));
+assert.ok(rs.includes(`SELFCHECK_SCRIPT_WIN: &str = "${SELFCHECK_F.scriptWin}"`) && rs.includes(`SELFCHECK_PY_WIN: &str = "${SELFCHECK_F.pyWin}"`) && rs.includes(`SELFCHECK_SH: &str = "${SELFCHECK_F.sh}"`));
+const fnBody = rs.slice(rs.indexOf("fn run_selfcheck"), rs.indexOf("fn main()"));
+assert.doesNotMatch(fnBody, /python3|\.venv|\bwhich\b|var(_os)?\("PATH"/);   // 不在应用里找解释器
 assert.match(rs, /fn run_selfcheck\(\) -> Result<String, String>/);
 assert.deepEqual(cap.permissions, ["core:default", "allow-run-selfcheck"]); assert.match(br, /commands\(&\["run_selfcheck"\]\)/);
 assert.doesNotMatch(rs, /\.bat/);
