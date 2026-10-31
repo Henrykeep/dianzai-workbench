@@ -6,12 +6,12 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import gen_link as G
 fail = 0; rows = []
-for y in sorted([*ROOT.glob("apps/*/app.yaml"), *ROOT.glob("examples/*/app.yaml")]):
+for y in sorted([*ROOT.glob("apps/*/app.yaml"), *ROOT.glob("examples/*/app.yaml"), *ROOT.glob("examples/*/project.yaml")]):
     spec, params, _ = G.load(y)
     if not spec.get("telemetry"):
         continue
     sch = G.schema(spec, params)
-    src = "".join(p.read_text(encoding="utf-8", errors="replace") for p in y.parent.glob("*.c"))
+    src = "".join(p.read_text(encoding="utf-8", errors="replace") for p in y.parent.rglob("*.c"))
     want = "timeout" if re.search(r"\bcmd_timeout", src) else "latched"
     for f, raw in zip(sch["telemetry"]["fields"], spec["telemetry"]["fields"]):
         if not (raw.get("ref_for") or raw.get("hold")):

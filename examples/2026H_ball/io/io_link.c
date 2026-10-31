@@ -5,7 +5,9 @@
  *   PC→板：PARAM_SET 读写“当前参数档”（板端限幅）；DATA 0x7F 急停；DATA 0x7E u8 命令：
  *          'T'+n 选测试项（n = 测试项 id，即 project.yaml tests[].id，不是下标；在第 2 字节）  'P'+n 选参数档  'G' 开始  'S' 停止  'R' 复位
  *          DATA id=1 <f32 px>：上位机给钢珠目标位置（覆盖 hooks 里的默认 0；钳到 ±400 px，非有限值忽略，急停清零）。
- *          工作台的阶跃实验 / Agent 评测用它（dzbench.json step_test）。
+ *          工作台的阶跃实验 / Agent 评测用它（dzbench.json step_test）。目标保持到改为止（schema hold: latched）。
+ *          DATA 0x7B：#38 阶跃实验（firmware/proto/dzctl/README.md 0.13.0），板上算指标回 step_result。
+ *          给目标 / 开始阶跃时协调器若在 IDLE/DONE，自动开始当前小题（钢珠环只在 RUNNING 下跑，否则摆杆回零、角度恒 0）。
  *
  */
 #include <math.h>
@@ -25,6 +27,7 @@
 #include "rtosmon.h"
 #define DZRT_PARAMS_T params_t
 #include "dz_runtime.h"
+#include "link_step.h"   /* #38 阶跃实验 DATA 0x7B（通道见 project.yaml link.step） */
 
 #define LINK_ID_BALL_SP 0x01u
 static dzctl_wd_t WD;
@@ -82,6 +85,16 @@ static void select_test_id(uint8_t id)
         if (c->tests[i].id == id) { (void)coord_select_test(io_coord(), i); return; }
 }
 
+/* 钢珠环只在协调器 RUNNING 时跑（子系统 IDLE 态 ball 被复位、io 层下发零点角）。上位机给目标 / 开始阶跃 = 显式“开始控制”：
+ * IDLE/DONE 下自动开始当前小题；restart=true（阶跃）时运行中也重开一次，保证本轮实验不会撞上小题限时进 DONE。急停/故障不动。 */
+static void ensure_running(bool restart)
+{
+    coord_t *c = io_coord();
+    if (c->st == COORD_RUNNING && restart) (void)coord_event(c, COORD_EV_STOP);
+    if (c->st == COORD_DONE) (void)coord_event(c, COORD_EV_RESET);
+    if (c->st == COORD_IDLE) (void)coord_event(c, COORD_EV_START);
+}
+
 static void handle_cmd(const dzframe_t *f)
 {
     uint8_t n = f->len > 1u ? f->payload[1] : 0u;
@@ -100,7 +113,8 @@ static uint8_t s_relay_seq;
 void io_link_read(void)
 {
     uint8_t buf[32]; uint16_t got = 0, i;
-    dzframe_t f, ack;
+    dzframe_t f, ack, rej;
+    uint8_t sch; float stg; int sr; bool has_rej;
     dzctl_table_t t = link_param_table(&g_project_params[io_coord()->profile_idx]);
     if (dzrt_needs_host(&RT) && dzctl_wd_expired(&WD, pal_millis())) {
         dzctl_estop_note(DZCTL_ES_HB_TIMEOUT, pal_millis(), (float)(uint32_t)(pal_millis() - WD.last_ms));
@@ -114,7 +128,16 @@ void io_link_read(void)
         dzctl_wd_feed(&WD, &f, pal_millis());
         if (dzctl_is_estop(&f)) { dzctl_estop_note(DZCTL_ES_MANUAL, pal_millis(), 0.0f); coord_event(io_coord(), COORD_EV_ESTOP); s_host_sp_px = 0.0f; }
         else if (link_relay_frame(&f, stop, &s_relay_seq, &ack)) link_send(&ack);
-        else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);
+        else if ((sr = link_step_rx(&f, stop, !dzrt_needs_host(&RT), pal_millis(), &t, &link_seq, link_send_c, &sch, &stg)) != 0) {
+            if (sr == 2) {                                   /* 阶跃 = 显式新目标（槽位 0 = 钢珠目标，钳位同 DATA id=1） */
+                s_host_sp_px = stg > 400.0f ? 400.0f : (stg < -400.0f ? -400.0f : stg);
+                ensure_running(true);
+            }
+        }
+        else if (dzctl_handle_checked(&t, &f, stop || link_step_busy(), &ack, &rej, &has_rej)) {   /* 0.13.0 越界/类型/状态/步长 → 拒绝 */
+            link_send(&ack);
+            if (has_rej) link_send(&rej);
+        }
         else if (dzctl_is_bb_request(&f)) {                 /* 黑匣子导出（dzctl 0.6.0） */
             const bb_t *bb = io_safety_bb();
             for (uint16_t k = 0; k < bb_count(bb); k++) {
@@ -127,7 +150,11 @@ void io_link_read(void)
         else if (f.kind == DZF_DATA && f.id == DZCTL_ID_CMD && f.len >= 1u) handle_cmd(&f);
         else if (f.kind == DZF_DATA && f.id == LINK_ID_BALL_SP && f.len == 4u) {
             float v; memcpy(&v, f.payload, 4u);
-            if (isfinite(v)) s_host_sp_px = v > 400.0f ? 400.0f : (v < -400.0f ? -400.0f : v);
+            if (isfinite(v) && !stop) {
+                if (link_step_busy() && v != s_host_sp_px) link_step_preempt();   /* 实验中途改目标：这一轮作废 */
+                s_host_sp_px = v > 400.0f ? 400.0f : (v < -400.0f ? -400.0f : v);
+                ensure_running(false);
+            }
         }
     }
 }
@@ -153,6 +180,8 @@ void io_link_write(uint32_t now)
         t.imu_ax_mps2 = io_state()->io_in.imu_ax_mps2; t.imu_ok = io_state()->io_in.imu_ok ? 1u : 0u;
         t.cpu_pm = rtosmon_cpu_permille(&g_rtosmon); t.stk_min_w = rtosmon_stack_min_words(&g_rtosmon);   /* 裸机 = 0xFFFF */
         if (link_telem_pack(&f, &t)) link_send(&f);
+        if (link_step_busy())                                /* #38：样本 = 这一帧遥测 */
+            link_step_on_telem(now, link_step_y(&t, s_link_step.ch), link_step_u(&t, s_link_step.ch), &link_seq, link_send_c);
     }
     RT.p = &g_project_params[io_coord()->profile_idx];
     {

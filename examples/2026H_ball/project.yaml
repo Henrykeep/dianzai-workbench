@@ -73,10 +73,10 @@ params:
   - { name: bb_alpha,   type: float, default: 0.55, min: 0, max: 1, unit: "", desc: P2，未验证 }
   - { name: bb_beta,    type: float, default: 0.20, min: 0, max: 1, unit: "", desc: P2，未验证 }
   - { name: bb_lead_s,  type: float, default: 0.07, min: 0, max: 0.3, unit: "s", desc: P2 超前 70 ms，未验证 }
-  - { name: pos_k,      type: float, default: 0.72, min: 0, max: 5, unit: "(px/s)/px", desc: "(px/s)/px，P1，未验证" }
+  - { name: pos_k,      type: float, default: 0.72, min: 0, max: 5, max_delta: 1.0, unit: "(px/s)/px", desc: "(px/s)/px，P1，未验证" }
   - { name: vel_max,    type: float, default: 320,  min: 0, max: 2000, unit: "px/s", desc: px/s，P1，未验证 }
-  - { name: vel_k,      type: float, default: 0.016, min: 0, max: 0.2, unit: "°/(px/s)", desc: "°/(px/s)，P1，未验证" }
-  - { name: ball_ki,    type: float, default: 0.055, min: 0, max: 1, unit: "°/(px·s)", desc: P1，单位按 °/(px·s) 解读（P1 代码单位未写明，未验证） }
+  - { name: vel_k,      type: float, default: 0.016, min: 0, max: 0.2, max_delta: 0.02, unit: "°/(px/s)", desc: "°/(px/s)，P1，未验证" }
+  - { name: ball_ki,    type: float, default: 0.055, min: 0, max: 1, max_delta: 0.1, unit: "°/(px·s)", desc: P1，单位按 °/(px·s) 解读（P1 代码单位未写明，未验证） }
   - { name: i_zone_px,  type: float, default: 55, min: 0, max: 400, unit: "px", desc: P1，未验证 }
   - { name: i_max_deg,  type: float, default: 2.5, min: 0, max: 15, unit: "°", desc: P1，未验证 }
   - { name: i_decay,    type: float, default: 0.5, min: 0, max: 1, unit: "", desc: 误差变号时积分衰减系数（P1 衰减比例未整理，TODO 核对） }
@@ -140,7 +140,7 @@ link:
       - { name: state,      type: uint8, enum: [IDLE, RUNNING, DONE, ESTOP, FAULT] }
       - { name: test_id,    type: uint8 }
       - { name: cam_x_px,   type: int16, unit: px, cal: { unit: cm, pts: [[0, 0], [600, 100]] } }   # 仿真 1 m = 600 px（io/sim_setup.c SIM_PX_PER_M）；真机用 O/±5 cm 多点实测重标
-      - { name: ball_sp_px, type: float, unit: px, ref_for: cam_x_px }
+      - { name: ball_sp_px, type: float, unit: px, ref_for: cam_x_px, hold: latched }   # 固件无命令超时：上位机给的目标保持到改为止（io_link.c）
       - { name: angle_deg,  type: float, unit: "°" }
       - { name: beam_fb_deg, type: float, unit: "°" }
       - { name: wheel_a_mps, type: float, unit: m/s }
@@ -156,6 +156,11 @@ link:
       - { name: imu_ok,     type: uint8 }
       - { name: cpu_pm,     type: uint16, na: 65535, unit: "‰" }      # CPU 负载千分比；0xFFFF = 无数据（裸机 / 没开运行时统计）
       - { name: stk_min_w,  type: uint16, na: 65535, unit: 字 }      # 所有任务里最小的栈余量（4 字节/字）；0xFFFF = 无数据
+  # #38 阶跃实验（DATA 0x7B）：设定值槽位 0 = ball_sp_px（DATA id=1 第 1 个 f32），y = 视觉 x，u = 摆杆角（饱和按 angle_max_deg）。
+  # 量程 = 上位机目标钳位 ±400 px；abs_tol 6 px = 1 cm（仿真 600 px/m，与 accept band 同口径）。目标钳到 ±400 px（同 DATA id=1）；时长不在 [0.2, 30] s 回 bad_arg（dzstep_parse）。
+  # 空闲/DONE 时开始阶跃会自动（重新）开始当前小题，钢珠环才在跑（io_link.c ensure_running）。
+  step:
+    - { sp: 0, y: cam_x_px, u: angle_deg, u_max: angle_max_deg, range: 800, abs_tol: 6 }
 
   # 验收（评委口径，来源见 docs/参考来源.md）：误差 ≤1 cm、保持 300 ms、O→+5→−5 一次计时 ≤5 s、连续 3 次按最差。
   # 速度门限题目只说“静止”，没给数，留空（填了才判）；只有位置环有设定值上报，不声明 loops（内环没有 sp/y 遥测）
