@@ -108,6 +108,7 @@ class Session:
         self.selftest_at: str | None = None       # 自检完成时间（ISO，本机时区）
         self.selftest_ph: int | None = None       # 自检时的参数 hash；与当前 params_hash 不同 → stale
         self.estop_cause: dict | None = None     # dzctl 0.8.0 心跳里的急停原因（estop_cause_dict），没急停 = None
+        self.sensor_sat_at: float | None = None  # #102：最近一次心跳带 bit18 SENSOR_SAT 的 monotonic 时刻（bit18 不锁存，这里记住；旧固件永远 None）
         self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
         self.h_supported = False                 # 本次连接里板子回过 'H'（dzctl 0.12.0+）
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
@@ -156,7 +157,15 @@ class Session:
         with self._conn_lock:
             if port.startswith(SIM_PREFIX) and port == self.port and self.tr is not None:
                 return {"port": port, "baud": self.baud, "note": "已连上（复用刚启动的仿真板）", "reused": True}
-            return self._connect(port, baud, log)
+            prev = getattr(self, "_last_port", None)
+            r = self._connect(port, baud, log)
+            self._last_port = port
+            for h in list(getattr(self, "connect_hooks", [])):   # #101：重连 / 换板 → 服务层清结果卡
+                try:
+                    h(port, prev)
+                except Exception:  # noqa: BLE001  钩子出错不影响连接本身
+                    pass
+            return r
 
     def _connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
         self.disconnect()
@@ -198,7 +207,7 @@ class Session:
             if rec:                                # 缺口 #20：重连只恢复通信/遥测，急停锁存保持
                 self.tx_locked = True
                 self.estop_source = rec.get("source") or "latch_restored"
-                self.estop_cause = rec.get("cause")    # 原因随锁存一起保留，直到人解除急停（重连后不再变 null）
+                self.estop_cause = latch.restored_view(rec)   # 原因随锁存一起保留（「HH:MM 原因，已锁存」+ restored），直到人解除急停
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
@@ -208,37 +217,70 @@ class Session:
             gen = self._gen
         tr.start(self._on_bytes, lambda msg: self._on_transport_error(msg, gen))
         if self.tx_locked:
-            self.emit({"type": "tx_locked", "on": True, "source": self.estop_source, "restored": True})
-            self.mark("estop", "重连后保持急停锁存（上次急停尚未由人解除）", source=self.estop_source or "latch_restored")
+            ev = {"type": "tx_locked", "on": True, "source": self.estop_source, "restored": True, "fix_action": "estop_clear"}
+            if self.estop_cause and self.estop_cause.get("restored"):
+                ev.update(message_zh=self.estop_cause["message_zh"], cause=self.estop_cause)
+            self.emit(ev)
+            self.mark("estop", (self.estop_cause or {}).get("message_zh") or "重连后保持急停锁存（上次急停尚未由人解除）", source=self.estop_source or "latch_restored")
         if not isinstance(tr, ReplayTransport):
-            threading.Thread(target=self._host_heartbeat, args=(gen,), daemon=True).start()
+            threading.Thread(target=self._host_heartbeat, args=(gen,), daemon=True, name="dz-host-hb").start()
+            threading.Thread(target=self._stall_loop, args=(gen,), daemon=True, name="dz-stall").start()
         return {"port": port, "baud": baud, "note": note}
 
-    HOST_HB_PERIOD_S = 0.25   # 固件 dzctl_wd 超时 1000 ms：侧车崩溃/拔线 -> 板子输出归零并锁存急停
+    HOST_HB_PERIOD_S = 0.25   # 板端看门狗阈值归固件（握手 wd_timeout_ms）；侧车崩溃/拔线 -> 板子输出归零并锁存急停
 
     def _host_heartbeat(self, gen: int) -> None:
         """认出工作台固件（收到带 schema 的心跳）后，每 250 ms 发一帧上位机心跳（HEARTBEAT, LEN=0）。
-        非工作台设备（AT 模块、printf）从不绑定 schema，就不会收到这些字节。急停锁定期间照发（心跳不驱动执行器）。"""
+        非工作台设备（AT 模块、printf）从不绑定 schema，就不会收到这些字节。急停锁定期间照发（心跳不驱动执行器）。
+        心跳根因修复：以前每拍先拿 session.lock（日志、遥测入库、参数回执、阶跃等长活都持有它），再经 _send 又拿一次，
+        长持锁时这一拍被拖到 750 ms 以上 → 板端看门狗（当时固件 1000 ms）差 1 ms 就锁存急停。现在：专用线程、按单调时钟定拍（不累积漂移），
+        不碰 session.lock，只用写锁 wlock 发 0 字节心跳帧；串口卡死检查挪到单独线程 _stall_loop。"""
+        nxt = time.monotonic()
         while True:
+            nxt += self.HOST_HB_PERIOD_S
+            dt = nxt - time.monotonic()
+            if dt > 0:
+                time.sleep(dt)
+            else:
+                nxt = time.monotonic()                       # 落后了就从现在重新定拍，不连发补拍
+            if gen != self._gen and not self.reconnecting:
+                return
+            tr = self.tr
+            if self.schema_hash is not None and tr is not None and self.host_hb:
+                self._send_hb(tr)
+
+    def _stall_loop(self, gen: int) -> None:
+        """USB 串口卡死检查单独一个线程（不放在心跳线程里，心跳线程只发帧）。"""
+        while gen == self._gen or self.reconnecting:
             time.sleep(self.HOST_HB_PERIOD_S)
-            with self.lock:
-                if gen != self._gen and not self.reconnecting:
-                    return
-                bound = self.schema_hash is not None and self.tr is not None
             self._stall_check(gen)
-            if bound and self.host_hb:
-                try:
-                    self._send(HEARTBEAT, 0, b"")
-                except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
-                    pass
+
+    def _send_hb(self, tr) -> None:
+        """上位机心跳专用发送：只拿写锁，不拿 session.lock；记下实际发送间隔（hb_gap_max_ms）。"""
+        now = time.monotonic()
+        last = getattr(self, "hb_sent_at", None)
+        if last is not None:
+            self.hb_gap_max_ms = max(getattr(self, "hb_gap_max_ms", 0.0), (now - last) * 1000)
+        self.hb_sent_at = now
+        try:
+            with self.wlock:
+                self.seq = (self.seq + 1) & 0xFF
+                frame = encode(HEARTBEAT, 0, self.seq, b"")
+                tr.write(frame)
+        except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
+            pass
 
     def _stall_check(self, gen: int) -> None:
         """USB 转串口卡死（CH340 / CP210x 偶发：口还在、驱动不报错、就是不来数据）：开了 stall_s 才查。"""
-        with self.lock:
+        if not self.lock.acquire(blocking=False):        # 心跳线程里调：别人持锁就下一拍再查，绝不让心跳等锁
+            return
+        try:
             if not (self.stall_s > 0 and self.tr is not None and not self.reconnecting and gen == self._gen
                     and getattr(self.tr, "ser", None) is not None and self._rx_seen):
                 return
             idle = time.monotonic() - self.last_rx
+        finally:
+            self.lock.release()
         if idle > self.stall_s:
             self._on_transport_error(f"{idle:.1f} s 没收到任何字节（串口卡死？）", gen)
 
@@ -547,6 +589,8 @@ class Session:
                         if len(payload) == 32:       # 0.6.x 后续：28 字节尾 + u32 clear_t_ms（解除时的板上时刻）；40+ 字节的 28.. 是自检，不算
                             self._hb_clear_t_ms = struct.unpack_from("<I", payload, 28)[0] or None
                         self._confirm_clear(w)
+                        if w & (1 << 18):
+                            self.sensor_sat_at = time.monotonic()
                         if w != self.hb_status:
                             was = self.hb_status or 0
                             self.hb_status = w
@@ -562,7 +606,8 @@ class Session:
                                 self.emit(self.estop_ev("latched", self.estop_source, message_zh="板子心跳报急停"))
                                 self._pending_marks.append(("estop", "板子心跳报急停（急停位）", self.estop_source))
                     if len(payload) >= 28:
-                        es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
+                        es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16),
+                                              threshold_ms=getattr(self.schema, "wd_timeout_ms", None) if self.schema else None)
                         if len(payload) >= 40:
                             m_, t_, ph = struct.unpack_from("<III", payload, 28)
                             self.selftest, self.params_hash = selftest_dict(m_, t_), ph
@@ -570,11 +615,16 @@ class Session:
                                 self._selftest_key, self.selftest_at, self.selftest_ph = (m_, t_), _iso_now(), ph
                         if es:
                             es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
-                        if es and self.tx_locked and not self._cause_announced and es == self.estop_cause:
+                        if es and self.estop_cause and self.estop_cause.get("restored") and es["cause"] == self.estop_cause.get("cause"):
+                            es = self.estop_cause                # 恢复的锁存：保留「HH:MM 原因，已锁存」
+                        if es and self.tx_locked and not self._cause_announced and es == _sans_latched_at(self.estop_cause):
                             self.estop_cause = None          # 锁存恢复带回了同一个原因：也走下面的分支，把 cause 推给界面
                         if es is None and self.tx_locked and self.estop_cause is not None:
                             pass                     # 板子复位/重连后不再报原因：锁存期间保留已知原因，到人解除才清
-                        elif es != self.estop_cause:
+                        elif es != _sans_latched_at(self.estop_cause):
+                            prev = self.estop_cause or {}
+                            if es:
+                                es["latched_at"] = prev.get("latched_at") if prev.get("cause") == es["cause"] and prev.get("latched_at") else _iso_now()
                             self.estop_cause = es
                             if es:
                                 src = "selftest" if es["cause"] == "selftest" else "firmware:" + es["cause"]
@@ -1437,7 +1487,7 @@ def bb_record(t_ms: int, code: int, arg: int, a: float, b: float) -> dict:
 
 
 RESET_NAMES = {0: "未知", 1: "上电", 2: "复位键", 3: "欠压", 4: "看门狗", 5: "软件复位", 6: "内核锁死"}
-HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存", 1 << 17: "迭代中"}
+HB_FLAGS = {1 << 8: "安全态", 1 << 9: "堵转", 1 << 10: "急停", 1 << 11: "自检失败", 1 << 14: "脱机模式", 1 << 15: "脱机运行中", 1 << 16: "参数未保存", 1 << 17: "迭代中", 1 << 18: "被控量到量程"}
 
 
 # dzctl 0.11.0 dzctl_selftest_item_t（0.12.0 起应用可注册 6..32 的自定义项）：心跳 selftest_mask 的 bit (code−1)
@@ -1446,6 +1496,11 @@ SELFTEST_ITEMS = {1: ("subsys", "子系统自检没通过（某个子系统的 s
                   3: ("nvm", "flash 存储区不可用：参数存不下，掉电后恢复默认"),
                   4: ("sensor", "传感器无数据（编码器 / 视觉 / IMU）"),
                   5: ("power", "电源电压不在允许范围")}
+
+
+def _sans_latched_at(d: dict | None) -> dict | None:
+    """比较急停原因是否变了：latched_at 是本地锁存时刻，不算原因的一部分。"""
+    return None if d is None else {k: v for k, v in d.items() if k != "latched_at"}
 
 
 def _iso_now() -> str:
@@ -1477,7 +1532,7 @@ def run_mode_dict(w: int | None) -> dict | None:
 # dzctl 0.8.0 dzctl_estop_cause_t → (cause 键, 中文说明模板)。{v} = 触发值，{t} = 板上时刻 s。
 ESTOP_CAUSES = {
     1: ("manual", "手动急停：上位机发出急停指令（急停按钮 / Esc / 空格）"),
-    2: ("hb_timeout", "心跳超时：上位机 {v:.0f} ms 未发送心跳（阈值 1000 ms），板端看门狗已切断输出"),
+    2: ("hb_timeout", "心跳超时 {v:.0f} ms"),          # 详情放 detail_zh；阈值归固件，握手 wd_timeout_ms
     3: ("stall", "电机堵转：输出 {v:.2f} 时转速持续接近 0，已刹车保护"),
     4: ("undervolt", "电池欠压：电压 {v:.2f} V 低于临界值，已停机（电压回升也不会自动恢复）"),
     5: ("overcurrent", "过流：电流 {v:.2f} A 超过上限，已切断输出"),
@@ -1491,14 +1546,20 @@ ESTOP_CAUSES = {
 FIX_HINT_ZH = "确认安全后点“解除急停”"
 
 
-def estop_cause_dict(cause: int, t_ms: int, value: float) -> dict | None:
+def estop_cause_dict(cause: int, t_ms: int, value: float, threshold_ms: int | None = None) -> dict | None:
     """心跳尾部 u32 cause, u32 t_ms, f32 value → {cause, cause_id, message_zh, value, t}；cause 0 → None。"""
     if not cause:
         return None
     key, tpl = ESTOP_CAUSES.get(cause, (f"unknown_{cause}", "未知急停原因 #{c}"))
     msg = tpl.format(v=value, c=cause, r=RESET_NAMES.get(int(value), f"#{int(value)}"))
-    return {"cause": key, "cause_id": cause, "message_zh": msg, "cause_zh": msg,
-            "value": round(float(value), 4), "t": round(t_ms / 1000.0, 3), "board_t_ms": int(t_ms)}
+    base = {"cause": key, "cause_id": cause, "reason": key, "reason_zh": msg, "message_zh": msg, "cause_zh": msg,
+            "restored": False, "fix_action": "estop_clear",
+            "t": round(t_ms / 1000.0, 3), "board_t_ms": int(t_ms)}
+    if key == "hb_timeout":                       # #118：实测间隔只用 measured_ms（不再给 value / gap_ms）；阈值归固件握手 wd_timeout_ms
+        thr = f"（阈值 {threshold_ms} ms）" if threshold_ms else ""   # #138：阈值只取握手 wd_timeout_ms；没报就整段不写
+        base |= {"measured_ms": round(value), "threshold_ms": threshold_ms,
+                 "detail_zh": f"上位机 {value:.0f} ms 未发送心跳{thr}，板端看门狗已切断输出"}
+    return base
 
 
 def hb_status_dict(w: int | None) -> dict:

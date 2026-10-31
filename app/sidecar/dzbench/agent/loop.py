@@ -42,6 +42,7 @@ SYSTEM = """你是“芯台”内置调参与代码助手，用户是正在比�
 19. 文风：专业、书面、简洁。用准确术语（超调量、调节时间、稳态误差、相位裕度等），先结论后依据；不寒暄、不客套、不用语气词和表情符号，不用感叹号。
 20. 新建项目 / 从零做到仿真跑通这类大任务：第一轮就给出编号计划和最多 3 个关键问题（缺的只问真缺的）；题型是电机速度环/位置环时直接调 quick_start（一句话起项目，一张卡确认后自动建项目、上仿真、调参、评分），不要等题目 PDF，也不要先逐个读文件。上下文里已附仓库地图和板卡/项目清单，不要再为这些调 list_files / project_state。
 21. 只观察不写：传感器/信号失效（丢帧、丢线、读数恒定或跳变、目标丢失），或实验结论不稳（verdict 显示 warming_up/still_drifting），或用户只问“结果怎么样”时，本轮不调 propose_param_change / tune_autopilot / 任何写参数工具；先只读取证、observe 或加长实验，先恢复信号再谈调参，并说明为什么暂不改参数。结论不稳（warming_up/still_drifting）时本轮必须调 observe（或 run_step_test 加长实验）拿新数据，不能只给文字。
+22. 改代码卡分两步：写文件卡（propose_edit）只写工作区，git 提交另有提交卡要用户单独确认；make check 不会自动提交。说某个改动“待确认/已写入/已提交/被拒绝”之前必须先调 change_status，按它返回的状态原样说，不要凭记忆推断。
    标定先 polarity_check（push 再 jog）；联调看振荡/噪声用 fft、wave_measure。"""
 
 READ_ONLY = {"read_file", "list_files", "repo_map", "list_params", "read_telemetry", "step_analysis", "board_memory", "read_symbol",
@@ -67,9 +68,11 @@ TOOLS = [
      "input_schema": {"type": "object", "required": ["note", "reason"], "properties": {"note": {"type": "string"}, "reason": {"type": "string"}}}},
     {"name": "list_files", "description": "列出仓库文件（glob）", "input_schema": {"type": "object", "properties": {"glob": {"type": "string"}}}},
     {"name": "read_file", "description": "读仓库文件", "input_schema": {"type": "object", "required": ["path"], "properties": {"path": {"type": "string"}}}},
-    {"name": "propose_edit", "description": "提议修改仓库文件（SEARCH/REPLACE；用户看 diff 确认，通过 make check 后自动 git 提交）",
+    {"name": "propose_edit", "description": "提议修改仓库文件（SEARCH/REPLACE）。只写文件：用户看 diff 确认、过门禁后写入工作区，不会自动 git 提交；提交要另出一张提交卡（commit_confirm_request）由用户单独确认，可能被拒绝",
      "input_schema": {"type": "object", "required": ["path", "search", "replace", "reason"], "properties": {
          "path": {"type": "string"}, "search": {"type": "string"}, "replace": {"type": "string"}, "reason": {"type": "string"}}}},
+    {"name": "change_status", "description": "只读：每张改代码卡的真实状态（写入：pending/written/rejected/failed/committed；提交卡：pending/rejected/committed/failed）。描述任何改动是否已写入/已提交之前必须先调它",
+     "input_schema": {"type": "object", "properties": {}}},
     {"name": "tune_context", "description": "调参上下文：阶跃指标、约 20 个关键样本、带 best/last_rejected 标签的历史表、护栏规则",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "observe", "description": "证据不足：本轮保持参数不变", "input_schema": {"type": "object", "properties": {"reason": {"type": "string"}}}},
@@ -158,7 +161,7 @@ assert not any(human_only_error(t["name"]) or "cloud" in t["name"] or "contest" 
 # 审批分级（risk.py）照旧独立生效。没有“全自动”模式。
 _READ = {"read_telemetry", "list_params", "step_analysis", "tune_context", "board_memory", "repo_map", "list_files", "read_file",
          "read_symbol", "decode_hardfault", "build_log", "update_plan", "observe", "project_state", "progress_get", "project_list", "project_open", "score_items",
-         "polarity_check", "fft", "wave_measure"}
+         "polarity_check", "fft", "wave_measure", "change_status"}
 MODES = {
     "general": {"name": "通用", "tools": None, "prompt": ""},
     "diagnose": {"name": "诊断（只读）", "tools": _READ,
@@ -209,9 +212,11 @@ def tagged(text: str, results: list[dict]) -> str | None:
 class AgentLoop:
     def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8,
                  project_rules: str = "", gate: Callable | None = None, knowledge: Callable[[str], list[dict]] | None = None,
-                 memory: Callable[[], str] | None = None, preload: Callable[[], str] | None = None):
+                 memory: Callable[[], str] | None = None, preload: Callable[[], str] | None = None,
+                 card_states: Callable[[], str] | None = None):
         self.llm, self.handlers, self.emit, self.max_steps = llm, handlers, emit, max_steps
         self.preload = preload or (lambda: "")
+        self.card_states = card_states or (lambda: "")      # #99：每轮附改代码卡真实状态（只读）
         self.knowledge = knowledge or (lambda text: [])
         self.gate = gate or (lambda tool, args, run: run())
         self._rules, self._memory = project_rules, memory or (lambda: "")
@@ -290,6 +295,8 @@ class AgentLoop:
         kn = "".join(f"[工作台知识 {k['name']}，按触发词附上]\n{k['body']}\n\n" for k in self.knowledge(text))
         first = not any(m["role"] == "user" for m in self.messages)
         pre = (self.preload() if first else "") or ""        # 第一轮附仓库地图 + 板卡/项目清单：省掉 list_files / project_state 的来回
+        cs = self.card_states() or ""
+        pre = (pre + ("\n" if pre else "") + cs) if cs else pre
         self.messages.append({"role": "user", "content": (f"[工作台上下文，不是用户提问]\n{pre}\n\n" if pre else "") + kn + (f"（{mp}）\n" if mp else "") + text})
         results, checked, reads = [], False, 0
         det = StuckDetector()
