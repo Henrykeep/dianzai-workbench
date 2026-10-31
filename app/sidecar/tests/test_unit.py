@@ -4,7 +4,9 @@ import struct
 from dzbench import downsample, logfile, snapshots
 from dzbench._dzlink import DATA, HEARTBEAT, PARAM_ACK, encode
 from dzbench.schema import Schema
-from dzbench.session import Session
+import pytest
+
+from dzbench.session import LinkError, Session
 from dzbench.transport import LoopbackTransport
 
 SCHEMA = {"version": 1, "hash": 0x12345678,
@@ -19,9 +21,11 @@ def test_schema_decode_clamp():
     assert s.size == 10
     assert s.decode(struct.pack("<Ifh", 1000, 1.5, -3)) == {"t_ms": 1000, "x": 1.5, "s": -3}
     assert s.decode(b"\0" * 9) is None
-    assert s.clamp("kp", 5) == (2, True)
-    assert s.clamp("n", 3.6) == (4.0, True)
-    assert s.clamp("kp", 1.0) == (1.0, False)
+    for name, v in (("kp", 5), ("n", 3.6)):        # #40：越界 / 整数参数给小数 → 拒绝，不钳位
+        with pytest.raises(LinkError) as e:
+            s.check(name, v)
+        assert e.value.code == "invalid_param"
+    assert s.check("kp", 1.0) == 1.0
 
 
 def test_downsample_keeps_peaks():
@@ -80,7 +84,8 @@ def test_session_loopback(tmp_path, monkeypatch):
 
 def test_estop_when_disconnected_is_honest():
     r = Session().estop()
-    assert r["sent"] is False and "没有送达" in r["message"]
+    assert r["ok"] is False and r["reason"] == "no_board" and "没有送达" in r["message_zh"]
+    assert set(r) == Session.ESTOP_REPLY_KEYS                 # 精确等于约定：没有 sent / message / nolink / src
 
 
 def test_unknown_schema_gives_fix(tmp_path, monkeypatch):
@@ -126,11 +131,11 @@ def test_estop_without_board_does_not_latch_or_alert():
     from dzbench.events import from_broadcast
     s = Session()
     r = s.estop("Esc 键")
-    assert r["nolink"] and r["src"] == "Esc 键" and s.tx_locked is False
+    assert r["reason"] == "no_board" and "Esc 键" in r["message_zh"] and s.tx_locked is False
     assert from_broadcast(r) is None
     kind, text, source = from_broadcast({"type": "estop", "sent": True, "src": "急停按钮"})
     assert source == "ui"
-    assert kind == "estop" and "急停按钮" in text and "解除急停 R" in text
+    assert kind == "estop" and "急停按钮" in text and "解除急停" in text
 
 
 def test_estop_cause_fields():
@@ -143,3 +148,10 @@ def test_estop_cause_fields():
     assert "6.10 V" in estop_cause_dict(4, 0, 6.1)["message_zh"]
     assert "看门狗" in estop_cause_dict(8, 0, 4.0)["message_zh"]
     assert estop_cause_dict(42, 0, 0.0)["cause"] == "unknown_42"
+
+
+def test_estop_reply_contract_documented():
+    import pathlib
+    doc = (pathlib.Path(__file__).resolve().parents[3] / "docs/dev/events.md").read_text(encoding="utf-8")
+    for k in Session.ESTOP_REPLY_KEYS | {"no_board", "replay"}:
+        assert f"`{k}`" in doc, k

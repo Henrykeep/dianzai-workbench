@@ -13,9 +13,14 @@ import re
 
 import yaml
 
+from .. import paths
+
 PIN = re.compile(r"^P[A-K]\d{1,2}$")
 STEP_CN = {"req": "读题", "scheme": "方案", "import": "导入工程", "scratch": "从零新建", "alloc": "资源分配", "gen": "生成工程", "keil": "Keil 工程"}
 
+
+# 卡片自带中文标题的 human 级工具（界面 c.title 优先于 agent.ts TOOL_CN）
+TITLED = {"iterate_start": "自动迭代调参"}
 
 def _read(p: pathlib.Path) -> str | None:
     try:
@@ -75,7 +80,7 @@ def chain_step(root: pathlib.Path, code: str, s: dict, stage_home: pathlib.Path,
     if not s.get("ok"):
         st["facts"] = [x for x in (s.get("why"), s.get("fix")) if x]
         return st
-    tgt = root / "examples" / code
+    tgt = paths.project_dir(root, code)
     if step == "req":
         st["facts"] = [f"拆出 {s.get('items')} 个评分项"] + [f"· {t}" for t in s.get("first") or []]
     elif step == "scheme":
@@ -100,7 +105,7 @@ def chain_step(root: pathlib.Path, code: str, s: dict, stage_home: pathlib.Path,
     if step == "scratch":                                  # 从零新建的分配结果落在沙盒 alloc/ 里
         files = {f"alloc/{k}": v for k, v in _stage_files(stage_home / code / "sandbox" / "alloc").items()} | files
     if step in ("req", "scheme", "scratch", "alloc"):
-        ch, diff = file_changes(files, tgt, f"examples/{code}/", prior)
+        ch, diff = file_changes(files, tgt, f"projects/{code}/", prior)
         st["changes"] += ch
         st["detail"] = ("其他候选芯片：\n" + "\n".join("  " + x for x in s["others"]) + "\n\n" if s.get("others") else "") + diff
         if prior is not None:
@@ -116,6 +121,11 @@ def build(svc, tool: str, args: dict) -> dict | None:
     from . import steptools
     root = pathlib.Path(svc.gw.root)
     where = "仿真" if svc.sim else "实机"
+    if tool == "iterate_start":
+        try:
+            return {"title": TITLED[tool]} | svc.iterate_card(args)
+        except Exception as e:  # noqa: BLE001
+            return {"title": TITLED[tool], "error": str(e)}
     if tool == "project_apply":
         c = svc.chains.get(args.get("code")) or {}
         home = steptools._flow(root).home
@@ -125,14 +135,15 @@ def build(svc, tool: str, args: dict) -> dict | None:
         npin = sum(1 for s in steps for x in s["changes"] if x["k"] == "pin")
         return {"title": f"写入项目 {args.get('code')}", "steps": steps,
                 "summary": f"{len(c.get('batch') or [])} 步 · {nf} 个文件" + (f" · {npin} 个引脚" if npin else "") + " · 都已在暂存区预览过",
-                "after": ("写入后自动：连仿真板 → 一键起步调参 → 评分" if args.get("code") in getattr(svc, "quick", {}) else "按顺序写入仓库；某步失败就停在那一步，已写的保留")}
+                "after": ("写入后自动：连仿真板 → 一键起步调参 → 评分" if args.get("code") in getattr(svc, "quick", {}) else "按顺序写入工程目录；某步失败就停在那一步，已写的保留")}
     if tool == "flow_accept":
         step, code = args.get("step"), args.get("code")
         home = steptools._flow(root).home
         files = _stage_files(home / str(code) / "stage" / str(step))
-        ch, diff = file_changes(files, root / "examples" / str(code), f"examples/{code}/")
+        pd = paths.project_dir(root, str(code))
+        ch, diff = file_changes(files, pd, f"projects/{code}/")
         if files.get("board.yaml"):
-            ch += pin_changes(files["board.yaml"], _read(root / "examples" / str(code) / "alloc" / "board.yaml"))
+            ch += pin_changes(files["board.yaml"], _read(pd / "alloc" / "board.yaml"))
         return {"title": f"写入 {STEP_CN.get(step, step)}", "summary": f"项目 {code} · {len([x for x in ch if x['k'] == 'file'])} 个文件",
                 "steps": [{"title": STEP_CN.get(step, step), "state": "ok", "facts": [], "changes": ch, "detail": diff}],
                 "after": "写入后自动把下一步的预览备好"}
@@ -143,7 +154,7 @@ def build(svc, tool: str, args: dict) -> dict | None:
         return {"title": f"保存评分项 {args.get('item')} 的证据", "summary": f"{where} · {ok}/{len(runs)} 次通过 · 规格 {r.get('spec')}",
                 "steps": [{"title": f"第 {x['n']} 次", "state": "ok" if x["result"].get("pass") else "fail",
                            "facts": [x["result"].get("why") or "到位并保持"], "changes": [{"k": "file", "name": f"run_{x['n']:02d}.csv", "old": None, "new": f"{x['csv'].count(chr(10)) - 1} 行"}], "detail": ""} for x in runs],
-                "after": "写到 docs/verify/<题号>/logs/ 下（每次一个 CSV + result.json）"}
+                "after": "写到工程目录 $DZBENCH_HOME/projects/<题号>/verify/logs/ 下（每次一个 CSV + result.json）"}
     if tool == "score_writeback":
         from .. import scoring
         r = getattr(svc, "score_runs", {}).get(str(args.get("item"))) or {}

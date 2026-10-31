@@ -65,7 +65,7 @@ def test_auto_reconnect_backoff_and_user_disconnect(monkeypatch):
     Flaky.fail_next = 10 ** 6
     Flaky.alive[-1].dead.set()
     assert wait(lambda: s.reconnecting)
-    assert s.estop()["sent"] is False and "重连" in s.status()["hint"]
+    assert s.estop()["ok"] is False and "重连" in s.status()["hint"]
     s.disconnect()                                         # 主动断开 → 不再重连
     Flaky.fail_next = 0
     time.sleep(0.1)

@@ -13,8 +13,11 @@ import json
 import os
 import pathlib
 import re
+import socket
+import ssl
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Callable
 
@@ -122,16 +125,12 @@ def save_config(update: dict) -> dict:
     if "provider" in update and update["provider"] != cfg.get("provider"):
         base = PROVIDERS.get(update["provider"], PROVIDERS["custom"])
         cfg.update(base_url=base["base_url"], model=base["model"])
-    for k in KEYS:
+    for k in KEYS:                                   # 只认 KEYS：contest_mode / cloud_enabled（GUARDED_KEYS）传了也忽略
         if k in update and (k != "api_key" or update[k]):     # 空 key 不覆盖已存的
             cfg[k] = update[k]
     p = config_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps({k: v for k, v in cfg.items() if k in KEYS}, ensure_ascii=False, indent=1), encoding="utf-8")
-    try:
-        os.chmod(p, 0o600)
-    except OSError:
-        pass
+    old = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    _write_raw({k: v for k, v in cfg.items() if k in KEYS} | {k: old[k] for k in GUARDED_KEYS if k in old})   # 合规开关原样保留
     return public_config(cfg)
 
 
@@ -155,14 +154,125 @@ def _req(url: str, body: dict | None = None, key: str = "", timeout: float = 15)
     return urllib.request.urlopen(urllib.request.Request(url, data=json.dumps(body).encode() if body is not None else None, headers=h), timeout=timeout)
 
 
-def list_models(form: dict) -> list[str]:
-    """GET /models：设置里的“换模型”下拉。失败返回空表（有的服务不开放这个接口）。"""
-    cfg = load_config() | {k: v for k, v in form.items() if v}
+LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+MODELS_KEYS = {"ok", "models", "reason", "fix_action", "message_zh"}   # agent_models 返回约定（docs/dev/events.md）
+MODELS_FIX = {"unsupported": "manual_model", "empty": "manual_model", "auth": "check_key", "error": "retry", "contest_mode": "enable_cloud"}
+_NET_ZH = {"timeout": "连接超时", "dns": "域名解析失败（DNS）", "refused": "连接被拒绝", "tls": "TLS/证书握手失败", "other": "网络错误"}
+
+
+def _is_local(url: str) -> bool:
+    host = (urllib.parse.urlsplit(url).hostname or "").lower()
+    return host in LOCAL_HOSTS
+
+
+def contest_blocks_cloud(cfg: dict) -> bool:
+    """比赛模式且没启用云端 → 不许连外部服务。
+    TODO(contest_mode)：contest_mode 还没有设置入口，暂读 ~/.dzbench/config.json；cloud_enabled 只能经 set_cloud_enabled(confirmed=True) 改。"""
+    return bool(cfg.get("contest_mode")) and not cfg.get("cloud_enabled", False)
+
+
+def _net_kind(e: BaseException) -> str:
+    r = getattr(e, "reason", e)
+    txt = f"{type(r).__name__} {r}".lower()
+    if isinstance(r, (TimeoutError, socket.timeout)) or "timed out" in txt:
+        return "timeout"
+    if isinstance(r, socket.gaierror) or "name or service" in txt or "getaddrinfo" in txt or "nodename" in txt:
+        return "dns"
+    if isinstance(r, ConnectionRefusedError) or "refused" in txt:
+        return "refused"
+    if isinstance(r, ssl.SSLError) or "ssl" in txt or "certificate" in txt or "tls" in txt:
+        return "tls"
+    return "other"
+
+
+def _models_log(line: str, key: str) -> None:
+    """原始报错只进本地日志（先脱敏），不回给界面。"""
     try:
-        with _req(cfg["base_url"].rstrip("/") + "/models", key=cfg.get("api_key", ""), timeout=8) as r:
-            return sorted(m["id"] for m in json.loads(r.read()).get("data", []))
-    except (OSError, ValueError, KeyError, urllib.error.URLError):
-        return []
+        d = config_path().parent / "logs"
+        d.mkdir(parents=True, exist_ok=True)
+        with open(d / "llm_models.log", "a", encoding="utf-8") as f:
+            f.write(time.strftime("%Y-%m-%dT%H:%M:%S%z ") + _redact(line, key).replace("\n", " ")[:500] + "\n")
+    except OSError:
+        pass
+
+
+def _models_fail(reason: str, message_zh: str) -> dict:
+    r = {"ok": False, "models": [], "reason": reason, "fix_action": MODELS_FIX[reason], "message_zh": message_zh}
+    if r["fix_action"] == "enable_cloud":          # 合规底线：启用云端只能由人做 → human_only + goto settings:cloud
+        from ..human_only import mark
+        r = mark(r, "enable_cloud")
+    return r
+
+
+# 合规开关：不在 KEYS 里，save_config / agent_config 改不动（但会原样保留）；唯一写入口是 set_cloud_enabled(confirmed=True)
+GUARDED_KEYS = ("contest_mode", "cloud_enabled")
+
+
+def set_cloud_enabled(enabled: bool, confirmed=False) -> dict:
+    """比赛模式下启用 / 关闭云端。只能由人：界面确认卡确认后带 confirmed=True 调用（op set_cloud_enabled）。
+    Agent 工具表、script_ops、自动流程都不得调用这里（tests/test_cloud_guard.py 守着）。"""
+    from ..human_only import require_confirmed
+    nc = require_confirmed(confirmed, "启用云端需要确认：比赛模式下启用后会把数据发往外部模型服务" if enabled else "关闭云端需要确认")
+    if nc:
+        return nc
+    p = config_path()
+    raw = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    raw["cloud_enabled"] = bool(enabled)
+    _write_raw(raw)
+    return {"ok": True, "cloud_enabled": bool(enabled), "message_zh": "已启用云端" if enabled else "已关闭云端"}
+
+
+def _write_raw(raw: dict) -> None:
+    p = config_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(raw, ensure_ascii=False, indent=1), encoding="utf-8")
+    try:
+        os.chmod(p, 0o600)
+    except OSError:
+        pass
+
+
+def discover_models(form: dict, timeout: float = 8) -> dict:
+    """首次配置：GET {base_url}/models（OpenAI 兼容）列出可选模型。
+
+    返回 {ok, models, reason, fix_action, message_zh}（键集合 MODELS_KEYS；成功时 reason/fix_action 为 None）：
+    unsupported（404/405/501/非 OpenAI 格式）、empty（列表为空）→ manual_model；auth（401/403）→ check_key；
+    error（其他 HTTP / 网络）→ retry；contest_mode（比赛模式未启用云端且地址非本机，不发请求）→ enable_cloud。
+    文案只按类别给中文，不含原始异常与 Key；原文脱敏后写本地日志。
+    """
+    cfg = load_config() | {k: v for k, v in form.items() if v}
+    key = cfg.get("api_key", "") or ""
+    url = (str(form["base_url"]) if "base_url" in form else cfg.get("base_url") or "").strip().rstrip("/")   # 表单里给了（哪怕空）就以表单为准
+    if url and not _is_local(url) and contest_blocks_cloud(cfg):     # 先判，再拼 URL / 发请求
+        return _models_fail("contest_mode", "比赛模式下未启用云端，不请求外部服务；请手动填写模型名或启用云端。")
+    if not url:
+        return _models_fail("error", "未填写接口地址。")
+    try:
+        with _req(url + "/models", key=key, timeout=timeout) as r:
+            data = json.loads(r.read())
+        ids = sorted({str(m["id"]) for m in data["data"] if isinstance(m, dict) and m.get("id")})
+    except urllib.error.HTTPError as e:
+        _models_log(f"GET /models HTTP {e.code} {e.reason}", key)
+        if e.code in (404, 405, 501):
+            return _models_fail("unsupported", f"该服务未提供模型列表接口（HTTP {e.code}）。")
+        if e.code in (401, 403):
+            return _models_fail("auth", f"鉴权失败（HTTP {e.code}），请检查 API Key。")
+        return _models_fail("error", f"获取模型列表失败（HTTP {e.code}）。")
+    except (KeyError, TypeError, ValueError) as e:
+        _models_log(f"GET /models 非 OpenAI 格式 {type(e).__name__}: {e}", key)
+        return _models_fail("unsupported", "该服务的模型列表响应不符合 OpenAI 格式。")
+    except (OSError, urllib.error.URLError) as e:
+        k = _net_kind(e)
+        _models_log(f"GET /models 网络错误 [{k}] {type(e).__name__}: {getattr(e, 'reason', e)}", key)
+        return _models_fail("error", f"无法连接服务：{_NET_ZH[k]}。")
+    if not ids:
+        return _models_fail("empty", "该服务返回的模型列表为空。")
+    return {"ok": True, "models": ids, "reason": None, "fix_action": None, "message_zh": f"已获取 {len(ids)} 个可用模型。"}
+
+
+def list_models(form: dict) -> list[str]:
+    """兼容旧调用：只要模型 id 列表，失败返回空表。"""
+    return discover_models(form)["models"]
 
 
 def ollama(action: str, model: str = "", host: str = "") -> dict:

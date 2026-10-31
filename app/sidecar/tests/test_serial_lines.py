@@ -100,3 +100,23 @@ def test_no_stall_without_data(monkeypatch):
     time.sleep(0.4)
     assert s.reconnects == 0 and len(Port.opened) == 1              # 从没来过数据（波特率不对 / 设备不说话）不算卡死
     s.disconnect()
+
+
+def test_stall_detect_with_coarse_clock(monkeypatch):
+    """Windows 的 time.monotonic 粒度 15.6 ms：第一包字节的 last_rx 可能正好等于开口时间 _t_tr，
+    旧判据 last_rx > _t_tr 为假 → 永远不判卡死、不重连（Windows CI 41159432364 test_stall_triggers_reconnect）。"""
+    import math
+    from dzbench import session as S
+    real = time.monotonic
+
+    class Coarse:
+        def __getattr__(self, k):
+            return getattr(time, k)
+
+        def monotonic(self):
+            return math.floor(real() / 0.015625) * 0.015625
+
+    monkeypatch.setattr(S, "time", Coarse())
+    for _ in range(5):
+        Port.opened = []
+        test_stall_triggers_reconnect(monkeypatch)

@@ -1,21 +1,20 @@
 """CubeMX 无头生成：用假 STM32CubeMX（读 -q 脚本、在 project path 下写 Core/Src/main.c）验证脚本内容与调用；没装时退回合成。"""
-import os
-import stat
-import sys
-
 import pytest
 
+from conftest import write_fake
 from dzbench import cubemx
 
-pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="假 CubeMX 是 sh 脚本")
+FAKE_CUBEMX = """import os, pathlib, shutil, sys
+sp = sys.argv[2]                                                   # STM32CubeMX -q <脚本>
+shutil.copy(sp, os.path.join(os.path.dirname(os.path.abspath(__file__)), "last_script.txt"))
+out = next(l[len("project path "):] for l in open(sp, encoding="utf-8").read().splitlines() if l.startswith("project path "))
+src = pathlib.Path(out, "Core", "Src"); src.mkdir(parents=True, exist_ok=True)
+(src / "main.c").write_text("/* real */\\n")
+"""
 
 
 def _fake(tmp_path):
-    exe = tmp_path / "STM32CubeMX"
-    exe.write_text('#!/bin/sh\ncp "$2" "$(dirname "$0")/last_script.txt"\n'
-                   'out=$(sed -n "s/^project path //p" "$2")\nmkdir -p "$out/Core/Src" && echo "/* real */" > "$out/Core/Src/main.c"\n')
-    exe.chmod(exe.stat().st_mode | stat.S_IEXEC)
-    return exe
+    return write_fake(tmp_path / "STM32CubeMX", FAKE_CUBEMX)
 
 
 def test_generate_with_fake_cubemx(tmp_path, monkeypatch):

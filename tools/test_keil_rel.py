@@ -12,5 +12,5 @@ try:
     got = K.rel(p, b)
 finally:
     os.path.relpath = orig
-assert got == p.resolve().as_posix() and "\\" not in got, got
+assert got == str(p.resolve()).replace("/", "\\"), got
 print("✓ keil_inject.rel：同盘相对、跨盘符退回绝对路径")

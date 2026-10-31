@@ -274,17 +274,17 @@
         <form method="dialog" id="cfg-form">
           <button class="dlg-x" id="cfg-x" value="cancel" formnovalidate title="关闭（Esc 为急停键）" aria-label="关闭"><i data-lucide="x"></i></button>
           <header class="lh"><span class="glyph"><i data-lucide="sparkles"></i></span><div>
-            <h3 id="cfg-title">接上大模型</h3>
-            <p class="hint"><b>Esc 为急停键</b>，不用于关闭本窗口；关闭请点击右上角 × 或窗口外部。任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。没网时自动切本机 Ollama 模型；调参、示波、急停、评分页本来就不依赖 Agent。</p></div></header>
+            <h3 id="cfg-title">配置大模型</h3>
+            <p class="hint"><b>Esc 为急停键</b>，不用于关闭本窗口；关闭请点击右上角 × 或窗口外部。支持任意 OpenAI 兼容接口：选择服务商，填写 API Key，然后测试连接。API Key 仅保存在本机 <code>~/.dzbench/config.json</code>（权限 600），不写入仓库，界面不回显。网络不可用时自动切换到本机 Ollama 模型；调参、示波、急停和评分页均不依赖 Agent。</p></div></header>
           <div class="sec">1 · 服务商</div>
           <div id="cfg-provs" class="provs" role="radiogroup"></div>
           <div class="sec">2 · 接口</div>
           <label>接口地址<input id="cfg-url" class="in mono" placeholder="https://…/v1" spellcheck="false"></label>
           <div class="row2"><label><span class="lrow">模型<button type="button" class="lk" id="cfg-list">列出可用模型</button></span><input id="cfg-model" class="in mono" spellcheck="false" list="cfg-models"><datalist id="cfg-models"></datalist></label>
             <label>API Key<span class="keyw"><input id="cfg-key" class="in mono" type="password" autocomplete="off" spellcheck="false"><button type="button" class="ib" id="cfg-eye" title="显示 / 隐藏"><i data-lucide="eye"></i></button></span></label></div>
-          <div class="sec">3 · 试运行</div>
-          <div class="testrow"><button type="button" class="btn" id="cfg-test"><i data-lucide="plug-zap"></i>测试连接</button><div id="cfg-st" class="cst" aria-live="polite">还没测试</div></div>
-          <div class="sec">4 · 没网时：本地模型兜底（Ollama）</div>
+          <div class="sec">3 · 测试连接</div>
+          <div class="testrow"><button type="button" class="btn" id="cfg-test"><i data-lucide="plug-zap"></i>测试连接</button><div id="cfg-st" class="cst" aria-live="polite">尚未测试连接</div><button type="button" class="btn" id="cfg-retry" hidden><i data-lucide="rotate-ccw"></i>重试</button></div>
+          <div class="sec">4 · 离线备用：本机模型（Ollama）</div>
           <label class="sw"><input type="checkbox" id="cfg-fo"><span>云端连不上时自动切到本机模型，界面会标出现在是谁在答</span></label>
           <div class="testrow"><select id="cfg-local" class="in mono"></select><button type="button" class="btn" id="cfg-ol"><i data-lucide="download"></i>检查 Ollama 并拉模型</button></div>
           <div id="cfg-ol-st" class="cst"></div>
@@ -292,7 +292,7 @@
             <div class="row2"><label>工具调用<select id="cfg-tm" class="in"><option value="auto">自动（原生，不支持时转 JSON）</option><option value="json">总是 JSON（小模型更稳）</option></select></label>
               <label>单价 元/百万 token（不填只显示 token）<span class="row2"><input id="cfg-pin" class="in mono" inputmode="decimal" placeholder="输入"><input id="cfg-pout" class="in mono" inputmode="decimal" placeholder="输出"></span></label></div>
             <label>工程仓库（Agent 改文件、跑 make check、git 提交的地方）<input id="cfg-repo" class="in mono" placeholder="D:\dianzai\my-project"></label></details>
-          <div class="act"><button class="btn" value="cancel" id="cfg-later">以后再说</button><button class="btn pri" value="save" id="cfg-save">保存</button></div>
+          <div class="act"><button class="btn" value="cancel" id="cfg-later">稍后配置</button><button class="btn pri" value="save" id="cfg-save">保存</button></div>
         </form>
       </dialog>
 

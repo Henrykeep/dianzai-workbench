@@ -36,4 +36,5 @@ def rewrite(text: str, values: dict[str, float]) -> tuple[str, list[str]]:
 
 
 def param_files(root: pathlib.Path) -> list[pathlib.Path]:
-    return sorted([*root.glob("apps/*/app.yaml"), *root.glob("examples/*/project.yaml")])
+    from .. import paths
+    return sorted([*root.glob("apps/*/app.yaml"), *(d / "project.yaml" for d in paths.project_dirs(root) if (d / "project.yaml").exists())])

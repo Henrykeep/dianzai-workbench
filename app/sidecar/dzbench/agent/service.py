@@ -8,12 +8,14 @@ import pathlib
 import math
 import struct
 import time
+import threading
 
 from .. import config as cfg_mod
 from .. import elfsym, hardfault, keil
 from ..agent_api import AgentTools
 from . import cards, steptools
 from .. import pageops
+from .. import paths
 from ..flash import FlashError, Flasher, schema_hash_of
 from ..session import LinkError, Session
 from ..transport import ROOT
@@ -106,6 +108,7 @@ class AgentService:
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
             "tune_autopilot": self.tune_autopilot,
+            "iterate_start": self.iterate_start, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
@@ -169,7 +172,13 @@ class AgentService:
         return knowledge.match(text, knowledge.load(self.gw.root), self._kn_seen)
 
     def memory(self) -> BoardMemory:
-        return BoardMemory(board_key(self.s.schema_hash, self.s.board_uid))
+        return BoardMemory(board_key(self.s.schema_hash, self.s.board_uid), self._project_path())
+
+    @staticmethod
+    def _project_path() -> str | None:
+        from .. import project
+        cur = project.current()
+        return cur["path"] if cur else None
 
     def _gw_emit(self, e: dict) -> None:
         if e.get("type") == "change" and e.get("status") == "committed" and e.get("source") == "agent" and e.get("commit"):
@@ -289,7 +298,7 @@ class AgentService:
         from .. import ports as ports_mod
         root = pathlib.Path(self.gw.root)
         st = steptools.project_state(root, None)
-        cm = {"apps": "应用固件（每个子目录一个应用）", "examples": "比赛项目（读题/方案/分配/生成的产物）", "boards": "板卡定义 board.yaml",
+        cm = {"apps": "应用固件（每个子目录一个应用）", "examples": "内置例题（只读；用户工程在 $DZBENCH_HOME/projects/）", "boards": "板卡定义 board.yaml",
               "firmware": "通用固件库（algo/drivers/proto，冻结层）", "tools": "命令行工具（req/scheme/alloc/gen/keil_inject）", "subsys": "子系统库"}
         lines = [f"- {k}/：{v}" for k, v in cm.items() if (root / k).is_dir()]
         try:
@@ -304,6 +313,7 @@ class AgentService:
         """一句话起项目：解析 → ①–⑤ 整链预览（只写暂存区）→ 一张确认卡（方案 + 引脚表）。
         用户点确认 → 写入项目 → 连仿真板 → 一键起步调参 → 评分。返回 action_id 给界面。"""
         sp = steptools.quick_spec(text)
+        sp["code"] = steptools.fresh_code(self.gw.root, sp["code"])     # 新建一律落新目录，不复用旧项目/示例（#39）
         d = steptools._flow(self.gw.root).home / sp["code"]; d.mkdir(parents=True, exist_ok=True)
         (d / "problem.txt").write_text(sp["problem"], encoding="utf-8")
         ch = self.project_chain(sp["code"], src=str(d / "problem.txt"), mcu=sp["mcu"])
@@ -325,7 +335,7 @@ class AgentService:
         if not self.sim:
             return {"written": written, "stopped": "不在仿真板上：实机调参每轮要人确认，没有自动连跑"}
         tune = self.tune_autopilot(4)
-        items = (steptools._yaml(pathlib.Path(self.gw.root) / "examples" / code / "requirements.yaml").get("items") or [])
+        items = (steptools._yaml(paths.project_dir(self.gw.root, code) / "requirements.yaml").get("items") or [])
         score = self.score_run(str(items[0]["id"]), n=1, band=sp["band"]) if items else {"error": "没有评分项"}
         return {"written": written, "sim": self.s.port, "tune": tune, "score": score}
 
@@ -398,6 +408,73 @@ class AgentService:
         return scoring.writeback(self, m | {"confirm": True, "sha": d.get("sha")}) if d.get("sha") else d
 
     # -------------------------------------------------------------- 仿真自动调参
+    # -------------------------------------------------------------- #38 自动迭代（板上阶跃 step_result）
+    def iterate_plan(self, params: list | None = None, target: float | None = None, dur_ms: int = 2000, ch: int = 0) -> dict:
+        """按 link_schema.json 拼迭代方案：参数的 [min, max] / max_delta、阶跃通道（link.step）。"""
+        sch = self.s.schema
+        if not sch:
+            raise GatewayError("no_schema", "还没识别出参数表", "先连上板子等心跳")
+        steps = sch.step
+        if not steps or not 0 <= int(ch) < len(steps):
+            raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "固件升到 dzctl 0.13.0 并在 app.yaml 加 link.step")
+        names = list(params or self._gains().keys())
+        bad = [n for n in names if n not in sch.param_index]
+        if bad or not names:
+            raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
+        st = steps[int(ch)]
+        if target is None:
+            raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {st['range']:g} 的 1/4")
+        return {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(st["abs_tol"]),
+                "params": [dict(sch.params[sch.param_index[n]]) for n in names]}
+
+    def iterate_card(self, args: dict) -> dict:
+        from .iterate import Iterator, SessionIO
+        plan = self.iterate_plan(**args)
+        io = SessionIO(self.s)
+        return Iterator.card(plan, io.read_params(), io.order(), self.sim)
+
+    def iterate_start(self, **args) -> dict:
+        """一张批量确认卡（参数范围 / max_delta / 起始值 + hash / 预算）→ 人点一次 → 后台自动迭代到达标或停止条件。"""
+        self.iterate_plan(**args)                                # 先校验，错了不出卡
+
+        def run():
+            from .iterate import Iterator, SessionIO
+            th = getattr(self, "iter_thread", None)
+            if th and th.is_alive():
+                raise GatewayError("iterate_running", "已经在自动迭代", "先点“停止迭代”")
+            it = Iterator(SessionIO(self.s), self.iterate_plan(**args), self.sim, emit=self._iter_emit)
+            self.iterator, self.iter_result = it, None
+            self.iter_thread = threading.Thread(target=self._iter_run, args=(it,), daemon=True, name="iterate")
+            self.iter_thread.start()
+            return {"status": "started", "budget": {"time_s": it.budget_s, "rounds": it.max_rounds}}
+        return self.gate("iterate_start", args, run)
+
+    def _iter_emit(self, e: dict) -> None:
+        if e.get("type") == "iterate.round" and e.get("valid"):
+            self.memory().add("iterate", iter=e["iter"], params=e["params"], score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
+        self.emit(e)
+
+    def _iter_run(self, it) -> None:
+        try:
+            self.iter_result = it.run()
+        except Exception as e:  # noqa: BLE001  后台线程不能把异常漏掉
+            self.iter_result = {"type": "iterate.stopped", "reason": "error", "message_zh": f"{type(e).__name__}: {e}"}
+            self.emit(self.iter_result)
+
+    def iterate_cancel(self) -> dict:
+        it = getattr(self, "iterator", None)
+        if it is None:
+            return {"ok": False, "message_zh": "没有正在进行的自动迭代"}
+        it.stop()
+        try:
+            self.s.step_stop()
+        except Exception:  # noqa: BLE001
+            pass
+        th = getattr(self, "iter_thread", None)
+        if th:
+            th.join(5)
+        return {"ok": True, "result": self.iter_result}
+
     def tune_autopilot(self, rounds: int = 6) -> dict:
         """仅仿真：提议→采纳→阶跃→护栏判，直到护栏说 done/stop 或轮数用完；最后回到最好的一轮。实机每次写都要人点，不走这里。"""
         if not self.sim:
@@ -467,7 +544,9 @@ class AgentService:
 
     # -------------------------------------------------------------- 调参护栏
     def _guard(self) -> TuneGuard:
-        if self.guard is None or self.guard.sim != self.sim:
+        proj = self._project_path()
+        if self.guard is None or self.guard.sim != self.sim or getattr(self, "_guard_proj", None) != proj:
+            self._guard_proj = proj            # 换项目 = 新的调参历史（不带上个项目的 best / 初值，#39）
             b = {p["name"]: (p["min"], p["max"]) for p in (self.s.schema.params if self.s.schema else [])}
             t = self.cfg["tune"]
             self.guard = TuneGuard(b, self.sim, limits={"vbat_min": t["vbat_min"], "temp_max": t["temp_max"]},
@@ -640,7 +719,7 @@ class AgentService:
         if not st.get("start"):
             return
         if self.s.tx_locked or self.s.estop_cause or (self.s.hb_status or 0) & (1 << 10):   # 板子已报急停（心跳还没让本地锁上）也拒绝
-            raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停 R”")
+            raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停”")
         w = self.s.window(0.3)
         sf, done = st.get("state_field", "state"), st.get("done_state")
         if done is not None and w and w[-1][1].get(sf) == done:

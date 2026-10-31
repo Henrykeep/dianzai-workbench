@@ -1,0 +1,323 @@
+"""#38 自动迭代（本地服务侧）。协议见 docs/dev/iterate.md，帧格式见 firmware/proto/dzctl/README.md「0.13.0」。
+
+一次人工确认（批量卡）→ 从板上当前参数出发（iter 0 基线 + params_hash）→ 每轮 改参 → 板上阶跃（DATA 0x7B）→
+step_result 判定 → 直到达标或停止条件（预算 180 s / 轮数上限 实机 8 · 仿真 20 / 急停 / 人停 / 连续无效 / 无改进 / 不稳定 / 被挡住）。
+帧编解码直接用 tools/dzstep.py（与固件 dzstep.c 同口径），不另写一份。
+
+引擎只依赖一个 io 适配器（Session 侧实现见 SessionIO；测试里用 mock step_result）：
+  io.order() -> [参数名（参数表顺序）]       io.read_params() -> {name: value}（板上当前值）
+  io.write(name, v) -> {"status": "ok"} | {"status": "rejected", "reason": range|type|state|step}
+  io.step(it, ch, target, dur_ms) -> step_result dict（dzstep.decode_step_result 的结构）；开始被拒抛 IterError
+  io.locked() -> bool（急停锁存）           io.busy() -> bool（心跳 bit17 DZCTL_HB_ITER_BUSY）
+"""
+from __future__ import annotations
+
+import threading
+import time
+
+from ..stepproto import dzstep        # tools/dzstep.py：0.13.0 帧格式的参考实现
+
+BUDGET_S = 180.0
+MAX_ROUNDS = {"hw": 8, "sim": 20}
+GOOD_REL = {"overshoot_pct": 10.0, "ss_err_pct": 2.0}
+MIN_SAMPLES = 20
+CONSEC_PASS, CONSEC_INVALID, CONSEC_NO_IMPROVE = 2, 3, 3
+UNSTABLE_OVERSHOOT = 40.0
+HW_RATIO = (0.7, 1.5)          # 实机 HW 档：新值在当前值 ×0.7~×1.5
+HW_SPAN_FRAC, HW_ZERO_FRAC = 0.10, 0.02
+ACK_ZH = {"bad_arg": "开始帧参数不对（通道/时长 200–30000 ms）", "estop": "板子急停中", "busy": "板上已有阶跃实验在跑",
+          "unsupported": "这个应用没配阶跃通道（app.yaml link.step）", "offline": "板子在脱机模式"}
+
+
+class IterError(Exception):
+    def __init__(self, code: str, message_zh: str):
+        super().__init__(message_zh)
+        self.code, self.message_zh = code, message_zh
+
+
+def params_hash(order: list[str], values: dict) -> int:
+    return dzstep.params_hash([values[n] for n in order])
+
+
+def judge(r: dict, abs_tol: float | None, good: dict | None = None) -> dict:
+    """每项是否达标。rel：超调 ≤10%、|稳态误差| ≤2%、进了 2% 带；abs（物理单位）：稳态误差 ≤ abs_tol、进带，
+    超调按 max|e| 不另设门限（口径本身就是绝对误差，记录但不判）。"""
+    g = {**GOOD_REL, **(good or {})}
+    settled = r.get("settle_ms") is not None
+    if r.get("metric_mode") == "abs":
+        tol = abs_tol if abs_tol else r.get("band") or 0.0
+        p = {"ss_err": abs(r["ss_err_pct"]) <= tol, "overshoot": None, "settle": settled, "rise": None}
+    else:
+        p = {"ss_err": abs(r["ss_err_pct"]) <= g["ss_err_pct"], "overshoot": r["overshoot_pct"] <= g["overshoot_pct"],
+             "settle": settled, "rise": r.get("rise_ms") is not None}
+    p["all"] = all(v for k, v in p.items() if v is not None and k != "rise")
+    return p
+
+
+def gaps(r: dict, abs_tol: float | None, good: dict | None = None) -> dict:
+    """离达标还差多少（只列没达标的项；单位：rel 为 %，abs 为物理单位）。"""
+    g = {**GOOD_REL, **(good or {})}
+    out = {}
+    if r.get("metric_mode") == "abs":
+        tol = abs_tol if abs_tol else r.get("band") or 0.0
+        if abs(r["ss_err_pct"]) > tol:
+            out["ss_err"] = {"value": r["ss_err_pct"], "limit": tol, "gap": round(abs(r["ss_err_pct"]) - tol, 6), "unit": "abs"}
+    else:
+        if r["overshoot_pct"] > g["overshoot_pct"]:
+            out["overshoot"] = {"value": r["overshoot_pct"], "limit": g["overshoot_pct"], "gap": round(r["overshoot_pct"] - g["overshoot_pct"], 4), "unit": "%"}
+        if abs(r["ss_err_pct"]) > g["ss_err_pct"]:
+            out["ss_err"] = {"value": r["ss_err_pct"], "limit": g["ss_err_pct"], "gap": round(abs(r["ss_err_pct"]) - g["ss_err_pct"], 4), "unit": "%"}
+    if r.get("settle_ms") is None:
+        out["settle"] = {"value": None, "limit": "进带", "gap": None, "unit": "ms"}
+    return out
+
+
+def score(r: dict, abs_tol: float | None, good: dict | None = None) -> float:
+    """越小越好：各项超出门限的比例之和；没进带 +1。"""
+    g = {**GOOD_REL, **(good or {})}
+    if r.get("metric_mode") == "abs":
+        tol = abs_tol or r.get("band") or 1.0
+        s = abs(r["ss_err_pct"]) / tol + 0.1 * r["overshoot_pct"] / tol
+    else:
+        s = r["overshoot_pct"] / g["overshoot_pct"] + abs(r["ss_err_pct"]) / g["ss_err_pct"]
+    return s + (0.0 if r.get("settle_ms") is not None else 1.0)
+
+
+def limits_for(p: dict, cur: float, sim: bool) -> tuple[float, float]:
+    """本轮允许的 [lo, hi]：参数范围 ∩ |Δ| ≤ max_delta ∩（实机）×0.7~×1.5、单步 ≤ 量程 10%、0 起步 ≤ 量程 2%。"""
+    lo, hi = float(p["min"]), float(p["max"])
+    md = float(p.get("max_delta") or (hi - lo))
+    a, b = max(lo, cur - md), min(hi, cur + md)
+    if not sim:
+        span = hi - lo
+        if cur == 0:
+            a, b = max(a, -HW_ZERO_FRAC * span), min(b, HW_ZERO_FRAC * span)
+        else:
+            r1, r2 = sorted((cur * HW_RATIO[0], cur * HW_RATIO[1]))
+            a, b = max(a, r1, cur - HW_SPAN_FRAC * span), min(b, r2, cur + HW_SPAN_FRAC * span)
+    return a, b
+
+
+class Iterator:
+    def __init__(self, io, plan: dict, sim: bool, emit=lambda e: None, now=time.monotonic,
+                 budget_s: float = BUDGET_S, max_rounds: int | None = None):
+        self.io, self.plan, self.sim, self.emit, self.now = io, plan, sim, emit, now
+        self.budget_s = budget_s
+        self.max_rounds = max_rounds or MAX_ROUNDS["sim" if sim else "hw"]
+        self.abs_tol = plan.get("abs_tol")
+        self.good = plan.get("good")
+        self.stop_ev = threading.Event()
+        self.rounds: list[dict] = []
+        self.best: dict | None = None
+
+    # ------------------------------------------------------------ 批量确认卡
+    @staticmethod
+    def card(plan: dict, start: dict, order: list[str], sim: bool, budget_s: float = BUDGET_S, max_rounds: int | None = None) -> dict:
+        mr = max_rounds or MAX_ROUNDS["sim" if sim else "hw"]
+        return {"title": "自动迭代调参（一次确认）",
+                "params": [{"name": p["name"], "min": p["min"], "max": p["max"],
+                            "max_delta": p.get("max_delta") if p.get("max_delta") is not None else float(p["max"]) - float(p["min"]),
+                            "start": start.get(p["name"])} for p in plan["params"]],
+                "start_hash": f"{params_hash(order, start):08x}",
+                "budget": {"time_s": budget_s, "rounds": mr, "where": "仿真" if sim else "实机"},
+                "step": {"ch": plan.get("ch", 0), "target": plan["target"], "dur_ms": plan["dur_ms"]},
+                "stop": ["连续 2 轮达标", f"{budget_s:.0f} s 或 {mr} 轮先到", "急停 / 点“停止迭代”立即停",
+                         "连续 3 轮无效", "连续 3 轮无改进", "振荡发散（超调 > 40%）", "所有方向被板子拒绝或限幅挡住"],
+                "note": "从板上当前参数出发（iter 0 = 基线）；每轮只改 1 个参数，单步不超过 max_delta；超出卡上范围会停下重新确认"}
+
+    # ------------------------------------------------------------ 一轮
+    def _round(self, it: int, values: dict, changed: dict) -> dict:
+        order = self.io.order()
+        r = self.io.step(it, self.plan.get("ch", 0), self.plan["target"], self.plan["dur_ms"])
+        local = params_hash(order, values)
+        rec = {"iter": it, "params": dict(values), "changed": changed,
+               "params_hash": f"{r['params_hash']:08x}",          # 以板上 step_result 的 CRC32 为准
+               "local_hash": f"{local:08x}", "source": "firmware",
+               **{k: r.get(k) for k in ("ss_err_pct", "overshoot_pct", "settle_ms", "rise_ms", "metric_mode", "u_sat_ratio", "n", "band")},
+               "unit": "abs" if r.get("metric_mode") == "abs" else "%"}   # abs 口径：超调 / 稳态误差是物理单位，不是百分比
+        why = None
+        if r.get("aborted"):
+            why = "aborted"
+            rec["abort_cause"] = "host_stop" if r.get("abort_cause") == dzstep.ABORT_HOST_STOP else r.get("abort_cause")
+        elif (r.get("n") or 0) < MIN_SAMPLES:
+            why = "too_few_samples"
+        elif r["params_hash"] != local:
+            why = "hash_mismatch"
+        rec["valid"], rec["why_invalid"] = why is None, why
+        if why is None:
+            rec["pass"] = judge(r, self.abs_tol, self.good)
+            rec["score"] = round(score(r, self.abs_tol, self.good), 4)
+        return rec
+
+    def _write(self, name: str, v: float) -> dict:
+        if self.io.locked():
+            raise IterError("estop", "急停中，不写参数")
+        if self.io.busy():
+            raise IterError("busy", "板上阶跃实验进行中（bit17），不写参数")
+        return self.io.write(name, v)
+
+    def _stopped(self, reason: str, msg: str) -> dict:
+        best = self.best
+        out = {"type": "iterate.stopped", "reason": reason, "message_zh": msg, "rounds": len([r for r in self.rounds if r["valid"]]),
+               "best": None if not best else {"iter": best["iter"], "params": best["params"], "params_hash": best["params_hash"],
+                                              "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
+                                              "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
+               "next_zh": self._next_hint(reason)}
+        self.emit(out)
+        return out
+
+    def _next_hint(self, reason: str) -> str:
+        return {"pass": "已连续达标：点“保存参数”写入 flash",
+                "budget_time": "预算用完：先采用最好一轮的参数，看差距最大的一项再定方向，确认后可再开一次迭代",
+                "budget_rounds": "轮数用完：先采用最好一轮，再按差距最大的一项继续",
+                "estop": "急停：确认安全后解除急停，再决定是否重新开始迭代",
+                "stopped": "已按你的指令停止，参数停在当前值",
+                "invalid": "连续 3 轮无效：检查通道/遥测（样本太少、被打断或参数哈希对不上）",
+                "no_improve": "连续 3 轮没改进：换参数或换策略（例如先调 ki/kd）",
+                "unstable": "发散：已回到最好一轮" if self.sim else "发散：请确认回到最好一轮的参数",
+                "blocked": "各方向都被板子拒绝或限幅挡住：放宽 max_delta / 范围后重新确认"}.get(reason, "")
+
+    # ------------------------------------------------------------ 主循环
+    def run(self) -> dict:
+        t0 = self.now()
+        order = self.io.order()
+        cur = self.io.read_params()                       # 从板上当前参数出发（不沿用上次运行 / 别的工程）
+        self.emit({"type": "iterate.started", "plan": self.plan, "start": cur, "start_hash": f"{params_hash(order, cur):08x}",
+                   "limits": {"time_s": self.budget_s, "rounds": self.max_rounds}})
+        it = 0
+        cand_params = [p for p in self.plan["params"]]
+        pi, direction, tried = 0, -1.0, set()             # 坐标搜索：当前参数下标、方向（先降增益）、已试过的(参数,方向)
+        streak_pass = streak_invalid = streak_noimp = 0
+        changed: dict = {}
+        while True:
+            if self.stop_ev.is_set():
+                return self._stopped("stopped", "人点了停止迭代")
+            if self.io.locked():
+                return self._stopped("estop", "急停")
+            if self.now() - t0 >= self.budget_s:
+                return self._stopped("budget_time", f"预算 {self.budget_s:.0f} s 用完")
+            if it > self.max_rounds:
+                return self._stopped("budget_rounds", f"轮数上限 {self.max_rounds} 用完")
+            try:
+                rec = self._round(it, cur, changed)
+            except IterError as e:
+                if e.code == "estop" or self.io.locked():
+                    return self._stopped("estop", e.message_zh)
+                rec = {"iter": it, "params": dict(cur), "valid": False, "why_invalid": e.code, "source": "firmware"}
+            self.rounds.append(rec)
+            self.emit({"type": "iterate.round", **rec})
+            if self.io.locked():
+                return self._stopped("estop", "急停")
+            if not rec["valid"]:
+                streak_invalid += 1
+                if rec["why_invalid"] == "aborted" and rec.get("abort_cause") == "host_stop" and self.stop_ev.is_set():
+                    return self._stopped("stopped", "人点了停止迭代")
+                if streak_invalid >= CONSEC_INVALID:
+                    return self._stopped("invalid", "连续 3 轮无效")
+                continue                                   # 无效轮不占号：同一 iter 重跑
+            streak_invalid = 0
+            improved = self.best is None or rec["score"] < self.best["score"]
+            if improved:
+                self.best, streak_noimp = rec, 0
+            else:
+                streak_noimp += 1
+            streak_pass = streak_pass + 1 if rec["pass"]["all"] else 0
+            if streak_pass >= CONSEC_PASS:
+                return self._stopped("pass", "连续 2 轮达标")
+            if rec.get("metric_mode") == "rel" and rec["overshoot_pct"] > UNSTABLE_OVERSHOOT:
+                if self.sim and self.best is not rec:
+                    for n, v in self.best["params"].items():
+                        if v != cur.get(n):
+                            self._write(n, v)
+                return self._stopped("unstable", f"超调 {rec['overshoot_pct']:.1f}% > 40%")
+            if streak_noimp >= CONSEC_NO_IMPROVE:
+                return self._stopped("no_improve", "连续 3 轮没有改进")
+            if it >= self.max_rounds:
+                return self._stopped("budget_rounds", f"轮数上限 {self.max_rounds} 用完")
+            if not improved and changed:                   # 变差：回到最好一轮的值，换方向
+                tried.add((cand_params[pi]["name"], direction))
+                direction = -direction
+            base = self.best["params"]
+            while True:                                    # 选下一步（每轮只改 1 个参数）；被板子拒绝就换方向再选，不空跑阶跃
+                nxt = None
+                for _ in range(2 * len(cand_params) + 2):
+                    p = cand_params[pi]
+                    if (p["name"], direction) in tried:
+                        direction = -direction
+                        if (p["name"], direction) in tried:
+                            pi, direction = (pi + 1) % len(cand_params), -1.0
+                        continue
+                    c0 = float(base[p["name"]])
+                    a, b = limits_for(p, c0, self.sim)
+                    v = b if direction > 0 else a
+                    if ((rec.get("u_sat_ratio") or 0) > 0.5 and direction > 0) or abs(v - c0) < 1e-9:
+                        tried.add((p["name"], direction))      # 饱和不往更激进走；到边了
+                        continue
+                    nxt = (p, c0 + (v - c0) * (0.5 if self.sim else 1.0))   # 仿真先走一半，实机用 HW 档上限
+                    break
+                if nxt is None:
+                    return self._stopped("blocked", "所有方向都被拒绝或限幅挡住")
+                p, v = nxt
+                try:
+                    for n, bv in base.items():                 # 其余参数先回到最好一轮的值
+                        if cur.get(n) != bv and n != p["name"]:
+                            self._write(n, bv)
+                            cur[n] = bv
+                    w = self._write(p["name"], v)
+                except IterError as e:
+                    return self._stopped("estop" if e.code == "estop" else "blocked", e.message_zh)
+                if w.get("status") == "rejected":          # param_reject：换方向，不重试同一个值
+                    self.emit({"type": "iterate.param_reject", "name": p["name"], "value": v, "reason": w.get("reason")})
+                    tried.add((p["name"], direction))
+                    continue
+                break
+            cur = dict(base) | {p["name"]: w.get("applied", v)}
+            changed = {p["name"]: {"from": base[p["name"]], "to": cur[p["name"]]}}
+            it += 1
+
+    def stop(self) -> None:
+        self.stop_ev.set()
+
+
+class SessionIO:
+    """Iterator 的实机 / 仿真适配：全部走 Session（校验、急停锁、bit17 都在 Session 里）。"""
+
+    def __init__(self, s):
+        self.s = s
+
+    def order(self) -> list[str]:
+        return [p["name"] for p in (self.s.schema.params if self.s.schema else [])]
+
+    def read_params(self) -> dict:
+        return self.s.read_all_params()
+
+    def locked(self) -> bool:
+        return bool(self.s.tx_locked)
+
+    def busy(self) -> bool:
+        return self.s.iter_busy()
+
+    def write(self, name: str, v: float) -> dict:
+        from ..session import LinkError
+        try:
+            r = self.s.set_param(name, v)
+        except LinkError as e:
+            if e.code == "invalid_param" and (e.extra or {}).get("reject") == "step":
+                return {"status": "rejected", "reason": "step"}
+            if e.code == "invalid_param":
+                return {"status": "rejected", "reason": "range"}
+            if e.code in ("param_locked", "tx_locked"):
+                raise IterError("estop" if self.s.tx_locked else "busy", e.message) from e
+            raise
+        return {"status": "rejected" if r["status"] == "rejected" else "ok", "reason": r.get("reason"), "applied": r["applied"]}
+
+    def step(self, it: int, ch: int, target: float, dur_ms: int) -> dict:
+        from ..session import LinkError
+        try:
+            self.s.step_start(ch, it, target, dur_ms)
+        except LinkError as e:
+            raise IterError("estop" if e.code in ("step_estop", "tx_locked") else e.code, e.message) from e
+        r = self.s.step_wait(it, dur_ms / 1000.0 + 2.0)
+        if r is None:
+            raise IterError("no_result", "板子没发 step_result")
+        return r

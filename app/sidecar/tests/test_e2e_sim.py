@@ -29,9 +29,12 @@ def test_car_2wd_params(home):
         assert wait(lambda: s.schema and len(s.params) == len(s.schema.params))
         assert s.params["kp"] == pytest.approx(0.08)
         assert wait(lambda: len(s.window(1)) > 10)
-        r = s.set_param("kp", 9)
-        assert r["applied"] == 2.0 and r["status"] == "clamped"
-        assert s.read_param("kp") == 2.0
+        with pytest.raises(LinkError) as e:              # #40：越界直接拒绝，不再悄悄钳位
+            s.set_param("kp", 9)
+        assert e.value.code == "invalid_param" and e.value.fix_action == "params" and "0 ~ 2" in e.value.extra["message_zh"]
+        assert s.read_param("kp") == pytest.approx(0.08)
+        r = s.set_param("kp", 2.0)
+        assert r["applied"] == 2.0 and r["status"] == "ok"
         s.snapshot_save("hot")
         s.set_param("kp", 0.3)
         s.snapshot_restore("hot")
@@ -101,7 +104,8 @@ def test_2026h_estop_and_replay(home):
         assert wait(lambda: r.tr.done, 15)
         assert r.schema and abs(len(r.samples) - n_live) <= 2
         assert r.samples[-1][1]["state"] == 3
-        assert r.estop()["sent"] is False
+        rr = r.estop()
+        assert rr["ok"] is False and rr["reason"] == "replay" and set(rr) == Session.ESTOP_REPLY_KEYS
     finally:
         r.disconnect()
 
@@ -122,21 +126,26 @@ def test_websocket_server(home):
             except OSError:
                 await asyncio.sleep(0.05)
         async with websockets.connect(f"ws://127.0.0.1:{port}", open_timeout=30) as ws:
+            seen: set = set()               # rpc 等回包时顺手收到的推送类型（schema 只推一次，可能早于 connect 的回包到）
+
             async def rpc(**m):
                 await ws.send(json.dumps(m | {"rid": m["op"]}))
                 while True:
                     x = json.loads(await ws.recv())
+                    seen.add(x.get("type"))
                     if x.get("type") == "reply" and x["rid"] == m["op"]:
                         return x
             assert any(p["port"] == "sim:car_2wd" for p in (await rpc(op="hello"))["data"]["ports"])
             assert (await rpc(op="connect", port="sim:car_2wd"))["ok"]
-            got = set()
+            got = set(seen)
             t0 = time.monotonic()
             while not {"telem", "status", "schema"} <= got and time.monotonic() - t0 < 6:
                 got.add(json.loads(await ws.recv())["type"])
             assert {"telem", "status", "schema"} <= got
             await asyncio.sleep(0.5)
-            p = await rpc(op="propose", name="kp", value=7, reason="test")
+            over = await rpc(op="propose", name="kp", value=7, reason="test")   # 超出 link_schema 范围：拒绝，不钳位（#40）
+            assert not over["ok"] and over["error"]["code"] == "invalid_param", over
+            p = await rpc(op="propose", name="kp", value=2.0, reason="test")
             assert p["ok"] and p["data"][0]["status"] == "pending_user_confirmation"
             assert srv.session.params["kp"] == pytest.approx(0.08), "提议不能直接生效"
             d = await rpc(op="proposal_decide", id=p["data"][0]["id"], accept=True)
@@ -260,8 +269,11 @@ def test_2026h_imu_module_path(home):
         assert s.set_param("imu_grav_comp", 0)["status"] == "ok"
         time.sleep(0.3)
         assert -0.7 < s.window(0.1)[-1][1]["imu_ax_mps2"] < -0.3   # 不去重力：≈ −g·sin3°
-        r = s.set_param("imu_axis", 9)
-        assert r["applied"] == 5 and r["status"] == "clamped"
+        with pytest.raises(LinkError) as e:              # #40：本地先拒；固件那层限幅仍在（绕过本地校验直发也只会被钳到 5）
+            s.set_param("imu_axis", 9)
+        assert e.value.code == "invalid_param"
+        import struct
+        assert s._param_rpc("imu_axis", struct.pack("<f", 9.0)) == (5, "clamped")
     finally:
         s.disconnect()
 

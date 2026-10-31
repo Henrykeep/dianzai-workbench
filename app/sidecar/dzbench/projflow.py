@@ -4,12 +4,14 @@
 用户点“确认”才把（可能改过的）文件写到目标位置。没确认之前，仓库和用户原工程一个字不动。
   req     tools/req.py init <题目> -o stage/requirements.yaml            → 确认写 <题目目录>/requirements.yaml
   scheme  tools/scheme.py <req> --init-scheme stage/scheme.yaml -o stage → 确认写 <题目目录>/scheme.yaml
-  import  tools/import_project.py <用户工程> --root <暂存根>              → 确认把 boards/<板>/ 拷进仓库
-          （暂存根 = 仓库顶层逐项软链，boards/ 是真目录；USER CODE 修复 diff 要另点“接受修复”才带 --accept-repair 重跑）
+  import  tools/import_project.py <用户工程> --root <暂存根>              → 确认把 <板>/ 拷进 $DZ_BOARDS_DIR（不进仓库）
+          （暂存根 = 仓库顶层逐项软链，boards/ 是真目录、内置 + 用户板卡逐个软链；USER CODE 修复 diff 要另点“接受修复”才带 --accept-repair 重跑）
   alloc   tools/alloc.py <题目目录>/scheme.yaml -o stage [--fixed 导入的 board.yaml] → 确认写 <题目目录>/alloc/
   gen     没有 project.yaml 就按能力标签从 tools/catalog/subsys_catalog.yaml 挑子系统、add_subsys.py 装进暂存草稿；
           tools/gen_project.py -o stage/gen；有 .uvprojx 时 keil_inject --dry-run
-          → 确认写草稿（只补没有的文件）+ build/<题号>/gen/
+          → 确认写草稿（只补没有的文件）+ <题目目录>/build/gen/
+写盘只认两处（#29，见 paths.py）：<题目目录> = $DZBENCH_HOME/projects/<题号>/、板卡 = $DZ_BOARDS_DIR/<板>/；
+仓库 examples/、boards/ 只读（内置例题第一次确认时整份复制到工程根目录再改）。
   keil    第二次确认（confirm_uvprojx 等于要改的路径）才真跑 keil_inject（它先备份 <x>.uvprojx.bak）
 """
 from __future__ import annotations
@@ -24,12 +26,14 @@ import sys
 
 import yaml
 
+from . import paths
+
 TEXT_EXT = {".yaml", ".yml", ".md", ".txt", ".h", ".c", ".json", ".csv", ".mk", ".ld", ".sct"}
 
 
 class FlowError(Exception):
-    def __init__(self, code: str, msg: str, fix: str = ""):
-        super().__init__(msg); self.code, self.msg, self.fix = code, msg, fix
+    def __init__(self, code: str, msg: str, fix: str = "", fix_action: str | None = None):
+        super().__init__(msg); self.code, self.msg, self.fix, self.fix_action = code, msg, fix, fix_action
 
 
 def _safe(name: str) -> str:
@@ -158,13 +162,34 @@ def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
     return out
 
 
-def syscfg_cli() -> pathlib.Path:
-    """SYSCFG_CLI → 仓库 third_party/sysconfig_1.28.0（make fetch 装的）→ ~/ti/sysconfig_1.28.0。"""
+SYSCFG_VER = "sysconfig_1.28.0"
+
+
+def syscfg_cli_name() -> str:
+    """TI SysConfig CLI 的入口脚本名：Windows 是 sysconfig_cli.bat，其他平台 sysconfig_cli.sh。"""
+    return "sysconfig_cli.bat" if os.name == "nt" or sys.platform.startswith("win") else "sysconfig_cli.sh"
+
+
+def syscfg_cli() -> pathlib.Path | None:
+    """SYSCFG_CLI → 仓库 third_party/sysconfig_1.28.0（make fetch 装的）→ ~/ti/sysconfig_1.28.0；按平台找 .bat / .sh。找不到 → None。"""
     if os.environ.get("SYSCFG_CLI"):
-        return pathlib.Path(os.environ["SYSCFG_CLI"])
+        p = pathlib.Path(os.environ["SYSCFG_CLI"])
+        return p if p.exists() else None
     repo = pathlib.Path(os.environ.get("DZBENCH_REPO") or pathlib.Path(__file__).resolve().parents[3])
-    local = repo / "third_party/sysconfig_1.28.0/sysconfig_cli.sh"
-    return local if local.exists() else pathlib.Path.home() / "ti/sysconfig_1.28.0/sysconfig_cli.sh"
+    name = syscfg_cli_name()
+    for p in (repo / "third_party" / SYSCFG_VER / name, pathlib.Path.home() / "ti" / SYSCFG_VER / name):
+        if p.exists():
+            return p
+    return None
+
+
+def require_syscfg_cli() -> pathlib.Path:
+    """要用 SysConfig CLI 的地方调它：找不到 → missing_deps + fix_action fetch_deps（界面一键“装依赖”）。"""
+    p = syscfg_cli()
+    if p is None:
+        raise FlowError("missing_deps", f"找不到 TI SysConfig CLI（{syscfg_cli_name()}）",
+                        "在仓库根目录运行 make fetch 自动安装，或设环境变量 SYSCFG_CLI 指向它", "fetch_deps")
+    return p
 
 
 def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work: pathlib.Path) -> tuple[bool, str]:
@@ -173,7 +198,7 @@ def alloc_fit(repo: pathlib.Path, scheme: dict, mcu: str, tpl: str | None, work:
     (work / "scheme.yaml").write_text(yaml.safe_dump(dict(scheme, mcu=mcu), allow_unicode=True, sort_keys=False), encoding="utf-8")
     args = [sys.executable, "tools/alloc.py", work / "scheme.yaml", "-o", work / "out"]
     if tpl:
-        args += ["--fixed", repo / "boards" / tpl / "board.yaml"]
+        args += ["--fixed", paths.board_dir(repo, tpl) / "board.yaml"]
     p = subprocess.run([str(a) for a in args], cwd=repo, capture_output=True, text=True, timeout=60)
     out = p.stdout + p.stderr
     miss = re.findall(r"^!\s*(\S+?)：.*没分到", out, re.M)
@@ -188,7 +213,7 @@ def scratch_options(repo: pathlib.Path, scheme: dict, work: pathlib.Path | None 
     """从零新建：芯片 × 板卡模板的候选（scheme 的 mcu 排第一；能生成 .ioc 的系列在前；同芯片的现有板卡可当接线模板）。"""
     sc = _scheme_mod(repo); parts = sc.load_catalog()
     boards = []
-    for b in sorted((repo / "boards").glob("*/board.yaml")):
+    for b in [d / "board.yaml" for d in paths.board_dirs(repo)]:
         try:
             d = yaml.safe_load(b.read_text(encoding="utf-8")) or {}
         except Exception:
@@ -200,7 +225,7 @@ def scratch_options(repo: pathlib.Path, scheme: dict, work: pathlib.Path | None 
         if x["kind"] != "mcu" or "mcu" not in x:
             continue
         fam, part = x["mcu"]["family"], x["mcu"]["part"].upper()
-        ok = fam in IOC_FAMILIES or (fam == "mspm0" and syscfg_cli().exists())
+        ok = fam in IOC_FAMILIES or (fam == "mspm0" and syscfg_cli() is not None)
         why = "" if ok else ("MSPM0 从零要 TI SysConfig CLI（免费，在仓库根目录运行 make fetch 自动装，或设 SYSCFG_CLI），没有就在 SysConfig 里配完用“导入已有工程”" if fam == "mspm0" else f"{fam} 还不能生成配置文件")
         tpls = [n for n, bp in boards if bp.rstrip("X")[:11] == part.rstrip("X")[:11]]
         for t in [None, *tpls]:
@@ -274,10 +299,23 @@ class Flow:
         return d
 
     def target(self, code: str, dest: str | None = None) -> pathlib.Path:
-        p = pathlib.Path(dest).expanduser() if dest else self.repo / "examples" / _safe(code)
+        """写入落点：默认 $DZBENCH_HOME/projects/<题号>/；dest 相对路径也算在工程根目录下，绝对路径必须在白名单里。"""
+        p = pathlib.Path(dest).expanduser() if dest else paths.projects_dir() / _safe(code)
         if not p.is_absolute():
-            p = self.repo / p
+            p = paths.projects_dir() / p
+        if not (paths.is_writable(p) or p.resolve().is_relative_to(self.home.resolve())):   # 暂存区沙盒（project_chain）也算
+            raise FlowError("readonly_dest", f"{p} 不在工程根目录里（仓库 examples/ 只读）", f"工程放在 {paths.projects_dir()}/<名称>/ 下")
         return p
+
+    def source(self, code: str, dest: str | None = None) -> pathlib.Path:
+        """读取位置：写入落点已有就用它；否则（没指定 dest 时）回落到仓库内置例题（只读）。"""
+        p = self.target(code, dest)
+        return p if p.exists() or dest else paths.project_dir(self.repo, _safe(code))
+
+    def _fork(self, code: str, tgt: pathlib.Path) -> None:
+        """内置例题第一次被确认改写：先整份复制到工程根目录（仓库里的不动）。"""
+        if tgt == paths.projects_dir() / code:
+            paths.fork(self.repo, code)
 
     def _run(self, args: list, cwd: pathlib.Path | None = None) -> dict:
         cmd = [os.environ.get("DZBENCH_PYTHON") or sys.executable, *map(str, args)]
@@ -302,7 +340,8 @@ class Flow:
     # ---------------------------------------------------------------- 各步预览（只写暂存区）
     def preview(self, step: str, m: dict) -> dict:
         code = _safe(m.get("code") or "题目")
-        tgt = self.target(code, m.get("dest"))
+        tgt = self.source(code, m.get("dest"))          # 读：工程根目录，没有就回落内置例题
+        dst = self.target(code, m.get("dest"))          # 界面上显示的写入落点
         if step == "req":
             st = self.stage(code, "req")
             if m.get("pdf_b64"):
@@ -314,7 +353,7 @@ class Flow:
                 raise FlowError("no_src", "先拖入题目 PDF（或 .txt）")
             r = self._run(["tools/req.py", "init", src, "-o", st / "requirements.yaml", "--code", code])
             d = yaml.safe_load((st / "requirements.yaml").read_text(encoding="utf-8")) if (st / "requirements.yaml").exists() else {}
-            return r | {"items": (d or {}).get("items") or [], "constraints": (d or {}).get("constraints") or [], "target": str(tgt / "requirements.yaml")}
+            return r | {"items": (d or {}).get("items") or [], "constraints": (d or {}).get("constraints") or [], "target": str(dst / "requirements.yaml")}
         if step == "scheme":
             req = tgt / "requirements.yaml"
             if not req.exists():
@@ -325,7 +364,7 @@ class Flow:
             ch = None
             if (st / "scheme.yaml").exists():
                 ch = scheme_choices(self.repo, yaml.safe_load(req.read_text(encoding="utf-8")) or {}, yaml.safe_load((st / "scheme.yaml").read_text(encoding="utf-8")) or {})
-            return {"cmd": r["cmd"] + "\n" + r2["cmd"], "rc": r["rc"] or r2["rc"], "out": r["out"] + r2["out"], "files": self._files(st), "target": str(tgt / "scheme.yaml"), "choices": ch}
+            return {"cmd": r["cmd"] + "\n" + r2["cmd"], "rc": r["rc"] or r2["rc"], "out": r["out"] + r2["out"], "files": self._files(st), "target": str(dst / "scheme.yaml"), "choices": ch}
         if step == "scratch":
             # 从零新建：alloc（芯片知识表自动分配引脚 / 定时器 / DMA）→ gen_ioc 写 .ioc → ioc_import 反导核对
             sch_p = tgt / "scheme.yaml"
@@ -349,7 +388,7 @@ class Flow:
             s2 = dict(sch, mcu=m["mcu"]); (st / "scheme.yaml").write_text(yaml.safe_dump(s2, allow_unicode=True, sort_keys=False), encoding="utf-8")
             args = ["tools/alloc.py", st / "scheme.yaml", "-o", st / "alloc", "--name", name]
             if o["tpl"]:
-                args += ["--fixed", self.repo / "boards" / o["tpl"] / "board.yaml"]
+                args += ["--fixed", paths.board_dir(self.repo, o["tpl"]) / "board.yaml"]
             if (tgt / "app.yaml").exists():
                 args += ["--app", tgt / "app.yaml"]
             r1 = self._run(args)
@@ -361,7 +400,7 @@ class Flow:
                 r3 = self._run(["tools/syscfg_import.py", bd / "ccs" / f"{name}.syscfg", "--check", bd / "board.yaml"]) if not r2["rc"] else {"cmd": "", "rc": 0, "out": ""}
                 files = {"alloc.md": (st / "alloc" / "alloc.md").read_text(encoding="utf-8")} | ({k: v for k, v in self._files(bd).items() if k in ("board.yaml", f"ccs/{name}.syscfg")} if bd.exists() else {})
                 return {"cmd": "\n".join(r["cmd"] for r in (r1, r2, r3) if r["cmd"]), "rc": r2["rc"] or r3["rc"], "out": r1["out"] + r2["out"] + r3["out"], "files": files,
-                        "options": opts, "name": name, "kind": "syscfg", "target": str(self.repo / "boards" / name), "overwrite": (self.repo / "boards" / name).exists()}
+                        "options": opts, "name": name, "kind": "syscfg", "target": str(paths.boards_dir() / name), "overwrite": (paths.boards_dir() / name).exists()}
             proj = st / "cubemx" / name
             r2 = self._run(["tools/gen_ioc.py", st / "alloc" / "board.yaml", "-o", proj / f"{name}.ioc", "--name", name])
             if r2["rc"]:
@@ -390,11 +429,12 @@ class Flow:
             for e in self.repo.iterdir():                      # 暂存根：仓库顶层逐项软链，boards/ 另建
                 if e.name not in ("boards", ".git"):
                     (root / e.name).symlink_to(e)
-            for b in (self.repo / "boards").iterdir():
+            for b in paths.board_dirs(self.repo):              # 内置 + 用户板卡（同名用户优先）
                 if b.name != name:
                     (root / "boards" / b.name).symlink_to(b)
-            if (self.repo / "boards" / name / "aliases.yaml").exists():   # 已有别名表沿用（与 --force 的行为一致）
-                (root / "boards" / name).mkdir(); shutil.copy(self.repo / "boards" / name / "aliases.yaml", root / "boards" / name)
+            old = paths.board_dir(self.repo, name)
+            if (old / "aliases.yaml").exists():   # 已有别名表沿用（与 --force 的行为一致）
+                (root / "boards" / name).mkdir(); shutil.copy(old / "aliases.yaml", root / "boards" / name)
             args = ["tools/import_project.py", src, "--name", name, "--root", root, "--report", st / "report.json", "--force"]
             if m.get("accept_repair"):
                 args.append("--accept-repair")
@@ -402,9 +442,9 @@ class Flow:
             bd = root / "boards" / name
             al = alias_rows((bd / "aliases.yaml").read_text(encoding="utf-8")) if (bd / "aliases.yaml").exists() else []
             need_repair = "USER CODE 标记被改坏" in r["out"] and not m.get("accept_repair")
-            exists = (self.repo / "boards" / name).exists()
+            exists = (paths.boards_dir() / name).exists()
             return r | {"name": name, "aliases": al, "need_repair": need_repair, "files": self._files(bd) if bd.is_dir() else {},
-                        "target": str(self.repo / "boards" / name), "overwrite": exists, "uvprojx": find_uvprojx(src)}
+                        "target": str(paths.boards_dir() / name), "overwrite": exists, "uvprojx": find_uvprojx(src)}
         if step == "alloc":
             sch = tgt / "scheme.yaml"
             if not sch.exists():
@@ -412,16 +452,16 @@ class Flow:
             st = self.stage(code, "alloc")
             args = ["tools/alloc.py", sch, "-o", st]
             if m.get("board"):
-                fb = self.repo / "boards" / _safe(m["board"]) / "board.yaml"
+                fb = paths.board_dir(self.repo, _safe(m["board"])) / "board.yaml"
                 if fb.exists():
                     args += ["--fixed", fb]
             if (tgt / "app.yaml").exists():
                 args += ["--app", tgt / "app.yaml"]
-            return self._run(args) | {"files": self._files(st), "target": str(tgt / "alloc")}
+            return self._run(args) | {"files": self._files(st), "target": str(dst / "alloc")}
         if step == "gen":
             st = self.stage(code, "gen")
             pj = tgt / "project.yaml"
-            out = {"cmd": "", "rc": 0, "out": "", "files": {}, "target": str(self.repo / "build" / code / "gen")}
+            out = {"cmd": "", "rc": 0, "out": "", "files": {}, "target": str(dst / "build" / "gen")}
             if not pj.exists():
                 # 没有 project.yaml：按能力标签从子系统目录挑现成子系统，用 tools/add_subsys.py 装进暂存区的草稿题目
                 req = yaml.safe_load((tgt / "requirements.yaml").read_text(encoding="utf-8")) if (tgt / "requirements.yaml").exists() else {"items": []}
@@ -438,7 +478,7 @@ class Flow:
                 if not (dr / "project.yaml").exists():
                     (dr / "project.yaml").write_text(MIN_PROJECT.format(name=code, board=board), encoding="utf-8")
                 pj = dr / "project.yaml"
-                out["draft"] = plan | {"files": self._files(dr), "target": str(tgt)}
+                out["draft"] = plan | {"files": self._files(dr), "target": str(dst)}
                 note = ("起稿 project.yaml：" + ("、".join(f"{c['name']}（{'/'.join(c['tags'])}）" for c in plan["chosen"]) or "没有匹配的现成子系统，先留空")
                         + ("；这些能力没有现成子系统，要用 tools/new_subsys.py 新建：" + "、".join(plan["missing"]) if plan["missing"] else "") + "\n")
                 out["cmd"] = "\n".join(cmds); out["out"] = note + "".join(logs)
@@ -465,7 +505,7 @@ class Flow:
         ide = []
         if not p.returncode:
             gens = [["tools/gen_eide.py", "--board", board, "--app", app]]
-            if (self.repo / "boards" / board / "syscfg" / "ti_msp_dl_config.c").exists():
+            if (paths.board_dir(self.repo, board) / "syscfg" / "ti_msp_dl_config.c").exists():
                 gens += [["tools/gen_ccs_projectspec.py", "--board", board, "--app", app], ["tools/gen_m0_keil.py", "--board", board, "--app", app]]
             for g in gens:
                 r = self._run(g); ide.append({"cmd": r["cmd"], "rc": r["rc"], "out": r["out"][-800:]})
@@ -496,6 +536,8 @@ class Flow:
         if not st.exists():
             raise FlowError("no_preview", "先点“运行”看结果，再确认")
         written: list[str] = []
+        if step not in ("import",):
+            self._fork(code, tgt)
 
         def put(p: pathlib.Path, text: str):
             p.parent.mkdir(parents=True, exist_ok=True); p.write_text(text, encoding="utf-8"); written.append(str(p))
@@ -514,9 +556,9 @@ class Flow:
                 if (st / f).exists():
                     put(tgt / "scheme" / f, (st / f).read_text(encoding="utf-8"))
         elif step == "scratch" and (st / "board" / _safe(m["name"])).is_dir():   # MSPM0：板目录直接进 boards/
-            name = _safe(m["name"]); dst = self.repo / "boards" / name
+            name = _safe(m["name"]); dst = paths.boards_dir() / name
             if dst.exists() and not m.get("overwrite"):
-                raise FlowError("exists", f"boards/{name}/ 已存在", "换个板名，或勾“覆盖”")
+                raise FlowError("exists", f"{dst} 已存在", "换个板名，或勾“覆盖”")
             if dst.exists():
                 shutil.rmtree(dst)
             shutil.copytree(st / "board" / name, dst); written.append(str(dst))
@@ -549,9 +591,9 @@ class Flow:
             name = _safe(m["name"]); src = st / "root" / "boards" / name
             if not (src / "board.yaml").exists():
                 raise FlowError("import_failed", "暂存区里没有导入成功的板卡，看上面的输出")
-            dst = self.repo / "boards" / name
+            dst = paths.boards_dir() / name
             if dst.exists() and not m.get("overwrite"):
-                raise FlowError("exists", f"boards/{name}/ 已存在", "勾“覆盖已有板卡”再确认（别名表会保留你改过的）")
+                raise FlowError("exists", f"{dst} 已存在", "勾“覆盖已有板卡”再确认（别名表会保留你改过的）")
             if m.get("alias_edits"):                       # 只改别名本身，注释（原标签）原样留着
                 p = src / "aliases.yaml"; p.write_text(apply_alias_edits(p.read_text(encoding="utf-8"), m["alias_edits"]), encoding="utf-8")
             if dst.exists():
@@ -568,7 +610,7 @@ class Flow:
                     if f.is_file() and f.suffix != ".bak" and not (tgt / rel).exists():
                         (tgt / rel).parent.mkdir(parents=True, exist_ok=True); shutil.copy2(f, tgt / rel); written.append(str(tgt / rel))
             for rel, text in self._files(st / "gen").items() if (st / "gen").exists() else []:
-                put(self.repo / "build" / code / "gen" / rel, text)
+                put(tgt / "build" / "gen" / rel, text)
             if m.get("board") and m.get("app"):
                 return {"written": written} | self.build_ide(_safe(m["board"]), _safe(m["app"]))
         else:

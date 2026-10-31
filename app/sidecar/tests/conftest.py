@@ -74,6 +74,26 @@ def _hermetic_env(tmp_path_factory, monkeypatch):
         if k.startswith(("DZBENCH_", "PYOCD_")):
             monkeypatch.delenv(k)
     monkeypatch.setenv("DZBENCH_HOME", str(tmp_path_factory.mktemp("dzhome")))
+    monkeypatch.setenv("DZ_TEST_PY", sys.executable)     # 假工具的 .cmd 包装用跑测试的这个 Python
+
+
+def fake_exe(p):
+    """假工具（Python 脚本，带 shebang）的可执行入口：POSIX 直接用脚本，Windows 用同名 .cmd 包装。"""
+    p = pathlib.Path(p)
+    return p.with_name(p.name + ".cmd") if os.name == "nt" else p
+
+
+def write_fake(p, body: str):
+    """写一个假工具：POSIX 上是带 shebang 的可执行 Python 脚本；Windows 上再配 .cmd 包装。返回可执行入口。"""
+    p = pathlib.Path(p)
+    p.write_text("#!/usr/bin/env python3\n" + body, encoding="utf-8")
+    p.chmod(p.stat().st_mode | 0o111)
+    p.with_name(p.name + ".cmd").write_text(CMD_WRAPPER, encoding="utf-8", newline="\r\n")
+    return fake_exe(p)
+
+
+# 同目录同名无后缀的 Python 脚本；DZ_TEST_PY 由 _hermetic_env 设，单独跑时退回 PATH 上的 python
+CMD_WRAPPER = '@if not defined DZ_TEST_PY set "DZ_TEST_PY=python"\n@"%DZ_TEST_PY%" "%~dpn0" %*\n'
 
 
 @pytest.fixture(autouse=True)

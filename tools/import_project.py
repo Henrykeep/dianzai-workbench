@@ -30,6 +30,7 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import ioc_import as ii  # noqa: E402
+from boardlib import user_boards_dir  # noqa: E402
 
 SKIP_DIRS = {"Core", "Drivers", "Middlewares", "MDK-ARM", "EWARM", "STM32CubeIDE", ".git", "build", "Debug", "Release"}
 KEEP_TAGS = {"WHILE", "Header", "Error_Handler_Debug", "6", "Header_StartDefaultTask", "Callback 0"}
@@ -236,9 +237,9 @@ def main() -> int:
     ap.add_argument("project", type=pathlib.Path, help="你的 CubeMX 工程目录（有 .ioc 和 Core/）")
     ap.add_argument("--name", help="板名（默认由目录名转成 a-z0-9-）")
     ap.add_argument("--app", help="顺便检查这个应用的 requires（如 car_2wd）")
-    ap.add_argument("--root", type=pathlib.Path, default=ROOT, help="工作台根目录（测试用）")
+    ap.add_argument("--root", type=pathlib.Path, default=None, help="暂存根：给了就写 <root>/boards/<板>（项目页预览用），不给就写 $DZ_BOARDS_DIR")
     ap.add_argument("--boards-dir", type=pathlib.Path, default=None,
-                    help="板卡目录放哪（默认 $DZ_BOARDS_DIR，再默认 <root>/boards；测试指到临时目录，不写进仓库）")
+                    help="板卡目录放哪（默认 $DZ_BOARDS_DIR；测试指到临时目录，不写进仓库）")
     ap.add_argument("--accept-repair", action="store_true", help="USER CODE 标记损坏时，接受打印出的修复")
     ap.add_argument("--force", action="store_true", help="板卡目录已存在时覆盖（别名表 aliases.yaml 若已存在会保留）")
     ap.add_argument("--report", type=pathlib.Path, help="把“还需要人做的事”写成 JSON")
@@ -253,8 +254,11 @@ def main() -> int:
     name = a.name or slug(src.name)
     if name == "my-board":
         name = slug(iocs[0].stem)
-    boards = a.boards_dir or (pathlib.Path(os.environ["DZ_BOARDS_DIR"]) if os.environ.get("DZ_BOARDS_DIR") else a.root / "boards")
-    dest = boards.resolve() / name
+    if a.boards_dir:
+        dest = a.boards_dir.resolve() / name
+    else:
+        dest = (a.root / "boards" / name) if a.root else (user_boards_dir() / name)   # #29：默认写 $DZ_BOARDS_DIR（不进仓库 boards/）；--root = 暂存
+    a.root = a.root or ROOT
     keep_alias = None
     if dest.exists():
         if not a.force:
@@ -292,10 +296,10 @@ def main() -> int:
         (dest / "aliases.yaml").write_text(
             "# 引脚别名表（tools/import_project.py 按引脚功能自动生成）：引脚 → 工作台逻辑标签。\n"
             "# 你的 .ioc 不用改；哪一行猜错了（比如左右电机反了），改这里，然后\n"
-            f"#   python3 tools/ioc_import.py boards/{name}/cubemx/{iocs[0].name} --out boards/{name}/board.yaml --base boards/{name}/board.yaml\n"
+            f"#   python3 tools/ioc_import.py {dest}/cubemx/{iocs[0].name} --out {dest}/board.yaml --base {dest}/board.yaml\n"
             "pins:\n" + "".join(f"  {w}\n" for w in why), encoding="utf-8")
     if alias:
-        todo.append({"kind": "confirm", "what": f"看一眼 boards/{name}/aliases.yaml 的 {len(alias)} 条自动别名（电机 A/B、LINK 串口是按顺序猜的）"})
+        todo.append({"kind": "confirm", "what": f"看一眼 {dest}/aliases.yaml 的 {len(alias)} 条自动别名（电机 A/B、LINK 串口是按顺序猜的）"})
 
     # 2) 节拍定时器 + board.yaml
     meta0 = ii.extract(ii.apply_alias(ioc, alias), {}, ii.Rep())[1]
@@ -396,7 +400,7 @@ def main() -> int:
                 if "缺资源" in ln:
                     todo.append({"kind": "edit", "what": ln.strip() + "（在 aliases.yaml 里给对应引脚起这个名字）"})
 
-    print(f"✓ 已导入 boards/{name}/（原工程 {src} 未改动）")
+    print(f"✓ 已导入 {dest}/（原工程 {src} 未改动）")
     for n in notes:
         print(f"  · {n}")
     for w in why:

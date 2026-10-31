@@ -12,4 +12,14 @@ while i < len(a) and a[i].startswith("-"):
     i += 2
 cmd = " ".join(a[i + 1:])
 env = dict(os.environ, HOME=os.environ.get("FAKE_SSH_HOME", os.environ.get("HOME", "/tmp")))
-sys.exit(subprocess.run(["sh", "-c", cmd], env=env, cwd=env["HOME"]).returncode)
+sh = "sh"
+if os.name == "nt":   # 远端是 Linux：Windows 上借 Git for Windows 自带的 sh（及 nohup/kill/tail）模拟
+    import shutil, tempfile
+    git = shutil.which("git")
+    cand = [os.path.join(os.path.dirname(os.path.dirname(git)), "bin", "sh.exe")] if git else []
+    sh = next((c for c in cand if os.path.exists(c)), None) or shutil.which("sh") or "sh"
+    shim = tempfile.mkdtemp(prefix="fakessh_")   # 远端的 python3 → 跑测试的这个 Python
+    with open(os.path.join(shim, "python3"), "w", newline="\n") as f:
+        f.write('#!/bin/sh\nexec "%s" "$@"\n' % (os.environ.get("DZ_TEST_PY") or sys.executable).replace("\\", "/"))
+    env["PATH"] = shim + os.pathsep + env.get("PATH", "")
+sys.exit(subprocess.run([sh, "-c", cmd], env=env, cwd=env["HOME"]).returncode)

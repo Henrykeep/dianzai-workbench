@@ -49,6 +49,8 @@ jobs:
         with: { workspaces: app/src-tauri }
       - uses: actions/download-artifact@v4
         with: { name: dz-repo, path: app/dz-repo }
+      - run: npm ci                    # 先装前端依赖：许可扫描/UI 单测要 node_modules（setup-node 已按 lock 缓存）
+        working-directory: app/ui
       - name: Arm GNU Toolchain 13.3.rel1（Windows 版 zip，锁版本 + sha256；test_toolchain 要 arm-none-eabi-gcc）
         shell: bash
         run: |
@@ -58,8 +60,6 @@ jobs:
           unzip -q "$RUNNER_TEMP/$f.zip" -d "$RUNNER_TEMP/arm"
           g=$(find "$RUNNER_TEMP/arm" -name arm-none-eabi-gcc.exe | head -1); test -n "$g"
           cygpath -w "$(dirname "$g")" >> "$GITHUB_PATH"
-      - run: npm ci                    # 先装前端依赖：许可扫描/UI 单测要 node_modules（setup-node 已按 lock 缓存）
-        working-directory: app/ui
       - name: 单元测试（Windows 上自动跳过仿真 e2e）
         shell: bash
         env:

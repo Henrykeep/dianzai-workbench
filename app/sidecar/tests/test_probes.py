@@ -8,7 +8,7 @@ import pytest
 from dzbench import probes
 from dzbench.flash import FlashError
 
-FAKE = pathlib.Path(__file__).parent / "fakeprobes"
+FAKE = pathlib.Path(__file__).parent / "fakeprobes"   # Python 假工具；Windows 上 shutil.which 找同名 .cmd 包装
 
 
 @pytest.fixture
@@ -23,7 +23,6 @@ def free_port():
     s = socket.socket(); s.bind(("127.0.0.1", 0)); p = s.getsockname()[1]; s.close(); return p
 
 
-@pytest.mark.skipif(os.name == "nt", reason="假探针是 POSIX 脚本")
 @pytest.mark.parametrize("kind,iface", [("stlink", "interface/stlink.cfg"), ("daplink", "interface/cmsis-dap.cfg")])
 def test_openocd_spawn(log, kind, iface):
     be = probes.make_backend({"tool": "openocd", "target": "stm32f407vetx", "probe_kind": kind, "probe": "SN123",
@@ -41,7 +40,6 @@ def test_openocd_spawn(log, kind, iface):
     assert "tcl program {/tmp/x.elf} verify" in t and "tcl reset run" in t
 
 
-@pytest.mark.skipif(os.name == "nt", reason="假探针是 POSIX 脚本")
 def test_jlink_and_probe_rs(log):
     j = probes.make_backend({"tool": "jlink", "target": "mspm0g3507"})
     assert j.idcode() == 0x0BC11477 and j.read(0x20200000, 20)[:3] == b"\x00\x01\x02"
@@ -69,7 +67,6 @@ def test_errors(monkeypatch):
     assert not st["ok"] and "cargo install" in st["fix"]
 
 
-@pytest.mark.skipif(os.name == "nt", reason="假探针是 POSIX 脚本")
 def test_list_probes_per_backend(log):
     r = probes.list_probes_for("probe-rs")
     assert [(p["uid"], p["kind"]) for p in r["probes"]] == [("0483:374b:066DFF555", "stlink"), ("0d28:0204:0240000034", "daplink")]

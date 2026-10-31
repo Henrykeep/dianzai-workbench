@@ -1,6 +1,6 @@
 """评分页后端：读评分项、按 docs/verify 规范存证据（dzbench/scoring.py；目录由 tools/req.py newlog 建）。"""
 import base64, json, pathlib, types, pytest
-from dzbench import scoring
+from dzbench import paths, scoring
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 
@@ -21,8 +21,9 @@ def test_save_evidence(tmp_path):
     png = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
     r = scoring.save(_svc(tmp_path), {"code": "T1", "item": "B1", "layer": "bench", "summary": {"verdict": "台架通过（未现场验收）", "result": "PASS"},
                                       "runs": [{"n": 1, "csv": "t_s,y\n0,1\n", "png_b64": "data:image/png;base64," + png, "result": {"pass": True}}]})
-    d = tmp_path / r["dir"]
-    assert r["dir"].startswith("docs/verify/T1/logs/") and "_taskB1_bench" in r["dir"]
+    d = pathlib.Path(r["dir"])
+    assert d.is_relative_to(paths.projects_dir() / "T1" / "verify" / "logs") and "_taskB1_bench" in d.name   # #29：证据落工程根目录
+    assert not (tmp_path / "docs").exists() and "path: verify/logs/" in r["evidence"]
     assert (d / "run_01.csv").read_text() == "t_s,y\n0,1\n" and (d / "run_01.png").read_bytes().startswith(b"\x89PNG")
     assert json.loads((d / "result.json").read_text())["summary"]["result"] == "PASS"
     assert "现场" in (d / "notes.md").read_text(encoding="utf-8")
@@ -35,16 +36,18 @@ def test_writeback_preview_then_confirm(tmp_path):
     (tmp_path / "tools").symlink_to(REPO / "tools"); (tmp_path / "schema").symlink_to(REPO / "schema")
     ex = tmp_path / "examples/2026H_ball"; ex.mkdir(parents=True)
     shutil.copy(REPO / "examples/2026H_ball/requirements.yaml", ex / "requirements.yaml")
-    rq = ex / "requirements.yaml"; before = rq.read_text(encoding="utf-8")
+    src = ex / "requirements.yaml"; orig = src.read_text(encoding="utf-8")
+    rq = paths.projects_dir() / "2026H_ball" / "requirements.yaml"; before = orig      # 仓库 examples/ 只读：写回落到工程根目录
     svc = _svc(tmp_path); m0 = {"path": "examples/2026H_ball/requirements.yaml"}
     for item in ("B3", "B4"):                          # B3 已有一条两行的证据，B4 没有 evidence 键
-        d = scoring.save(svc, {"code": "2026H", "item": item, "layer": "bench", "runs": [{"n": 1, "csv": "t_s\n0\n"}], "summary": {}})["dir"]
+        d = scoring.save(svc, {"code": "2026H_ball", "item": item, "layer": "bench", "runs": [{"n": 1, "csv": "t_s\n0\n"}], "summary": {}})["dir"]
         m = m0 | {"item": item, "dir": d, "layer": "bench", "result": "pass", "note": "台架通过（未现场验收）：最慢 1.2 s"}
         pv = scoring.writeback(svc, m)
-        assert "+" in pv["diff"] and "台架通过" in pv["diff"] and rq.read_text(encoding="utf-8") == before   # 预览不写
+        assert "+" in pv["diff"] and "台架通过" in pv["diff"] and (not rq.exists() or rq.read_text(encoding="utf-8") == before)   # 预览不写
         with pytest.raises(scoring.ScoreError):
             scoring.writeback(svc, m | {"confirm": True, "sha": "stale"})
         scoring.writeback(svc, m | {"confirm": True, "sha": pv["sha"]}); before = rq.read_text(encoding="utf-8")
+    assert src.read_text(encoding="utf-8") == orig                                   # 仓库那份一个字节不变
     doc = yaml.safe_load(before)
     it = {x["id"]: x for x in doc["items"]}
     assert len(it["B3"]["evidence"]) == 2 and it["B3"]["evidence"][0]["layer"] == "unit" and it["B4"]["evidence"][0]["result"] == "pass"

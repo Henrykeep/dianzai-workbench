@@ -45,7 +45,7 @@ def test_estop_latch_survives_reconnect_and_restart(home):
         s = _wait_status(ui2, lambda e: e.get("alive"))
         assert s["tx_locked"] is True, "侧车重启后急停锁存要保持"
         assert "estop" in {b["code"] for b in ui2.ok("progress.get")["blockers"]}
-        ui2.ok("cmd", c="R")                              # 只有人点“解除急停 R”才解
+        ui2.ok("cmd", c="R")                              # 只有人点“解除急停”才解
         s = _wait_status(ui2, lambda e: not e.get("tx_locked"))
         assert s["tx_locked"] is False
         ui2.ok("disconnect"); ui2.ok("connect", port="sim:car_2wd")
@@ -224,9 +224,10 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
         orig_hb = s._on_heartbeat
 
         def spy_hb(payload):
+            t_arr = time.monotonic()                    # 到达时刻：在处理（含推 latched 事件）之前取
             orig_hb(payload)
             if s.estop_cause and "cause" not in hb_t:
-                hb_t["cause"] = time.monotonic()        # 带 estop_cause 的那帧心跳到达并处理完（收线程，持锁期间）
+                hb_t["cause"] = t_arr                   # 带 estop_cause 的那帧心跳的到达时刻（收线程，持锁期间）
         s._on_heartbeat = spy_hb
         m = ui.mark()
         t0 = time.monotonic()
@@ -236,6 +237,10 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
         assert s.tx_locked
         la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
         t_l = time.monotonic()
+        # 收线程是在推完 latched 之后才回到 spy 里记 hb_t：主线程可能先收到事件 → 等它记完（只等记录，不影响计时）
+        t1 = time.monotonic()
+        while "cause" not in hb_t and time.monotonic() - t1 < 2:
+            time.sleep(0.001)
         # 本地服务这一段（带原因的心跳到达 → WS latched）必须与持锁无关；总时长另含固件心跳周期（固件侧在修，≤500 ms 一拍）
         side = t_l - hb_t["cause"]
         assert side <= 0.05, f"持锁时 心跳到达→latched {side * 1000:.0f} ms"
@@ -321,10 +326,10 @@ def test_estop_clear_sends_only_R_and_notifies(home):
         sent = []
         orig = s._send
 
-        def spy(kind, id_, payload=b""):
+        def spy(kind, id_, payload=b"", **k):
             if kind == DATA:
                 sent.append((id_, bytes(payload)))
-            return orig(kind, id_, payload)
+            return orig(kind, id_, payload, **k)
         s._send = spy
         m = ui.mark()
         ui.ok("cmd", c="R")
@@ -385,7 +390,10 @@ def test_estop_event_keys_match_contract():
                    ("latched", {}), ("cleared", {"message_zh": "x"})):
         need, opt = Session.ESTOP_EVENT_KEYS[st]
         e = s.estop_ev(st, "ui", **kw)
-        assert need <= set(e) <= need | opt and set(e) == need | set(kw), (st, set(e))
+        assert need <= set(e) <= need | opt and need | set(kw) <= set(e), (st, set(e))
+        assert ("fix_hint_zh" in e) == (st != "cleared" and "message_zh" in kw), (st, set(e))
+        if "message_zh" in kw:
+            assert e["cause_zh"] == "x" and "R" not in e.get("fix_hint_zh", "")
     doc = (pathlib.Path(__file__).resolve().parents[3] / "docs/dev/events.md").read_text(encoding="utf-8")
     for st, (need, opt) in Session.ESTOP_EVENT_KEYS.items():
         for k in need | opt:
@@ -414,3 +422,49 @@ def test_cleared_only_after_firmware_bit10_clears():
     cl = [e for e in ev if e.get("type") == "estop" and e.get("state") == "cleared"]
     assert not s.tx_locked and len(cl) == 1 and cl[0]["latency_ms"] >= 0
     assert set(cl[0]) <= Session.ESTOP_EVENT_KEYS["cleared"][0] | Session.ESTOP_EVENT_KEYS["cleared"][1]
+
+
+def test_estop_cause_survives_reconnect(tmp_path, monkeypatch):
+    """r7：重连后 estop_cause 不再变 null——原因随锁存持久化，锁存期间板子不报原因也保留，人工解除后才清。"""
+    import struct
+    from dzbench import latch
+    monkeypatch.setattr(latch, "_path", lambda: tmp_path / "latch.json")
+    s = Session(emit=lambda e: None)
+    s.port, s.board_uid, s._uid_marked, s.last_hb = "sim:x", None, True, 1.0
+    s._send = lambda *a, **k: True
+    s._on_heartbeat(struct.pack("<IIIIIIf", 0x1234, 0, 0, 1 << 10, 3, 1500, 0.4))
+    assert s.tx_locked and s.estop_cause["cause"] == "stall"
+    assert latch.get("sim:x", None)["cause"]["cause"] == "stall"
+    s2 = Session(emit=lambda e: None)                 # 新会话 = 重连/侧车重启：从锁存恢复
+    rec = latch.get("sim:x", None)
+    s2.tx_locked, s2.estop_cause, s2.port, s2._uid_marked, s2.last_hb = True, rec.get("cause"), "sim:x", True, 1.0
+    s2._send = lambda *a, **k: True
+    s2._on_heartbeat(struct.pack("<IIIIIIf", 0x1234, 0, 0, 1 << 10, 0, 0, 0.0))   # 复位后的板子不再报原因
+    v = s2.status()["estop_cause"]
+    assert v["cause"] == "stall" and v["fix_hint_zh"] and "R" not in v["fix_hint_zh"] and "R" not in v["cause_zh"]
+    s2.cmd("R"); s2._on_heartbeat(struct.pack("<IIIIIIf", 0x1234, 0, 0, 0, 0, 0, 0.0))
+    assert not s2.tx_locked and s2.status()["estop_cause"] is None and latch.get("sim:x", None) is None
+
+
+def test_check_tx_and_write_same_lock():
+    """急停在“检查通过”和“写出”之间到来：帧不能写出（检查在写锁里做）。"""
+    import pytest as _pt
+    from dzbench.session import LinkError
+    s = Session(emit=lambda e: None)
+    wrote = []
+
+    class Tr:
+        def write(self, b): wrote.append(b)
+    s.tr = Tr()
+    orig = s._check_tx
+    calls = []
+
+    def chk():
+        calls.append(1)
+        if len(calls) == 2:                           # 第一次（入口）通过后、写之前急停
+            s.tx_locked = True
+        orig()
+    s._check_tx = chk
+    with _pt.raises(LinkError):
+        s.send_data(1, b"\0\0\0\0")
+    assert not wrote

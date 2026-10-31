@@ -1,4 +1,4 @@
-"""当前项目：侧车记住用户最近创建 / 打开的项目（examples/<题号>/），重启后恢复。
+"""当前项目：侧车记住用户最近创建 / 打开的项目（$DZBENCH_HOME/projects/<题号>/，或只读的内置例题 examples/<题号>/），重启后恢复。
 
 存在 $DZBENCH_HOME/current_project.json（不在仓库里）。项目页引导流程（flow_preview / flow_accept /
 project_chain / project_apply）带 code 调用时即视为打开该项目。
@@ -13,7 +13,7 @@ import re
 
 import yaml
 
-from . import snapshots
+from . import paths, snapshots
 
 _CODE = re.compile(r"^[A-Za-z0-9_\-.]+$")
 
@@ -25,7 +25,7 @@ def _path() -> pathlib.Path:
 def set_current(root: pathlib.Path, code: str) -> dict | None:
     if not code or not _CODE.match(code) or code in (".", ".."):
         return None
-    d = {"path": str(pathlib.Path(root) / "examples" / code), "name": code}
+    d = {"path": str(paths.project_dir(root, code)), "name": code}
     try:
         p = _path()
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -79,14 +79,12 @@ def _mtime(d: pathlib.Path) -> float:
 
 
 def list_projects(root: pathlib.Path) -> list[dict]:
-    """examples/ 下可打开的项目（只读）：[{code, name, updated_at}]，按最近修改倒序。"""
-    ex = pathlib.Path(root) / "examples"
+    """可打开的项目：工程根目录 + 内置例题（builtin=True 只读，同名时工程根目录优先）：[{code, name, updated_at, builtin}]，按最近修改倒序。"""
     out = []
-    if ex.is_dir():
-        for d in ex.iterdir():
-            if d.is_dir() and _CODE.match(d.name) and not d.name.startswith("."):
-                ts = datetime.datetime.fromtimestamp(_mtime(d)).astimezone().isoformat(timespec="seconds")
-                out.append({"code": d.name, "name": d.name, "updated_at": ts})
+    for d in paths.project_dirs(root):
+        if _CODE.match(d.name):
+            ts = datetime.datetime.fromtimestamp(_mtime(d)).astimezone().isoformat(timespec="seconds")
+            out.append({"code": d.name, "name": d.name, "updated_at": ts, "builtin": not paths.is_writable(d)})
     out.sort(key=lambda x: x["updated_at"], reverse=True)
     return out
 
@@ -100,9 +98,9 @@ def open_project(root: pathlib.Path, code) -> dict:
     if "/" in code or "\\" in code or ".." in code or not _CODE.match(code) or code in (".", ".."):
         raise ProjectError("project_code_invalid", f"项目代号「{code}」不合法：只允许字母、数字、下划线、短横线和点，不能包含路径分隔符或“..”。",
                            "从项目列表中选择已有项目的代号，不要输入路径。", "project_list")
-    d = pathlib.Path(root) / "examples" / code
+    d = paths.project_dir(root, code)
     if not d.is_dir():
-        raise ProjectError("project_not_found", f"项目「{code}」不存在：examples/{code}/ 目录未找到。",
+        raise ProjectError("project_not_found", f"项目「{code}」不存在：{paths.projects_dir() / code}/ 目录未找到。",
                            "从项目列表中选择已有项目，或用“一句话新建工程”创建该项目。", "project_list")
     r = set_current(root, code)
     if r is None:

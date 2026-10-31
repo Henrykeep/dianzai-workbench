@@ -72,6 +72,7 @@ actions:
   # ── 封箱 ──
   - {id: precontest,   label: 赛前全绿检查,     at: step:封箱,   ui: pre,        ops: [precontest, precontest_export]}
   - {id: run_mode,     label: 切换运行模式,     at: page:seal,   ui: seal-mode,  ops: [set_run_mode]}   # 先 confirmed=false，needs_confirm 出确认卡，人确认后 confirmed=true；Agent 只给跳转（human_only）
+  - {id: enable_cloud, label: 比赛模式启用云端, at: toolbox:设置, ui: cloud-enable, dynamic: true, human_only: true, ops: [set_cloud_enabled]}   # 合规底线：只能由人——先 confirmed=false 出确认卡，人确认后 confirmed=true；Agent 只给 goto settings:cloud（human_only）。界面入口待前端接（settings:cloud）；没接上前界面查不到 #cloud-enable，进度条/错误卡按“无元素”不出可点按钮（前端测试禁止 ready: false 行）
   - {id: run_selftest, label: 板上自检,         at: page:tune,   ui: seal-selftest, ops: [run_selftest]}   # 也是进度阻塞项 selftest_fail 的修复动作；固件没报时照写 selftest_unreported 的原因 + 处理
   - {id: params_flash, label: 存参数到 flash,   at: page:tune,   ui: tb-save,    ops: [save_params]}   # 调参页页头常驻；也是进度阻塞项 params_not_saved 的修复动作。原赛前检查对话框里的 cmd W 按钮已去掉（一个功能一个入口）
   - {id: readback,     label: 回读参数文件,     at: step:封箱,   ui: p-rb,       ops: [params_readback]}
@@ -89,7 +90,7 @@ actions:
 
 # 同一个 op 被多个动作用、且不算重复入口的（每个写清楚为什么）
 shared_ops:
-  cmd: 板端单字符命令通道：解除急停 R、存 flash W、手发命令共用一条帧，动作各不相同
+  cmd: 板端单字符命令通道：解除急停（'R'）、存 flash（'W'）、手发命令共用一条帧，动作各不相同
   replay_ctl: 回放控制；时间线点一条 = 跳到那一刻（同一回放，不是第二个入口）
   replay: 导入后直接回放
   wave_measure: 工具箱“波形测量”和标定向导录一段求平均用同一个只读测量
@@ -102,12 +103,14 @@ script_ops:
   send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
+  setpoint_set: 只下发目标（DATA id=1），给调参页「恢复急停前目标」用；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
+  project.migrate: 旧版写在仓库 examples/ 的用户工程复制到 $DZBENCH_HOME/projects/（#29，只复制、不删源）；不带 confirmed 只返回清单（needs_confirm），界面确认卡确认后 confirmed=true 才复制。确认卡由前端接（page:req），接上后移到 actions
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）
 agent_tools:
-  step:调参: [read_telemetry, list_params, step_analysis, propose_param_change, tune_context, observe, run_step_test, run_sweep_test, bode_predict, rollback_best, tune_autopilot]
+  step:调参: [read_telemetry, list_params, step_analysis, propose_param_change, tune_context, observe, run_step_test, run_sweep_test, bode_predict, rollback_best, tune_autopilot, iterate_start, iterate_cancel]
   step:烧录: [flash, flash_rollback, build, build_log, board_memory]
   always:排障: [decode_hardfault, read_symbol]
   step:项目: [repo_map, remember, list_files, read_file, propose_edit, update_plan, project_state, progress_get, flow_preview, flow_accept, project_chain, project_apply, quick_start]

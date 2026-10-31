@@ -2,7 +2,7 @@
 
 评分表结构借 DS-land-and-air docs/D题_V23_联调与计分矩阵.md 的“得分验收矩阵”：
   评分项 | 工作台自动判定（accept 规格） | 人工 / 物理证据（metric.how） | 当前结论（默认“未验收”，只有现场层通过才算得分）
-证据目录用 docs/verify 规范，目录由 tools/req.py newlog 建（不另写一套命名）。
+证据目录用 docs/verify 规范（落在工程目录 verify/ 下，不进仓库），目录由 tools/req.py newlog 建（不另写一套命名）。
 """
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ import os
 import sys
 
 import yaml
+
+from . import paths
 
 
 class ScoreError(Exception):
@@ -34,9 +36,9 @@ def _find_req(svc, m: dict) -> pathlib.Path:
             return p
     except Exception:  # noqa: BLE001  没连板 / 没识别参数表：退到仓库里找
         pass
-    c = sorted(root.glob("examples/*/requirements.yaml"))
+    c = [d / "requirements.yaml" for d in paths.project_dirs(root) if (d / "requirements.yaml").exists()]
     if not c:
-        raise ScoreError("no_req", "仓库里没有 requirements.yaml", "先在项目页第 1 步读题起稿")
+        raise ScoreError("no_req", "工程目录和内置例题里都没有 requirements.yaml", "先在项目页第 1 步读题起稿")
     return c[0]
 
 
@@ -50,7 +52,8 @@ def items(svc, m: dict) -> dict:
         rows.append({"id": str(it.get("id")), "part": it.get("part"), "score": it.get("score"), "text": it.get("text", ""),
                      "metrics": [{k: x.get(k) for k in ("name", "op", "value", "unit", "how", "accept", "test_id")} for x in ms],
                      "evidence": it.get("evidence") or [], "accept": it.get("accept"), "runs": it.get("runs")})
-    cands = [q.relative_to(root).as_posix() for q in sorted(root.glob("examples/*/requirements.yaml"))]
+    cands = [(q.relative_to(root).as_posix() if q.is_relative_to(root) else str(q))
+             for q in (d / "requirements.yaml" for d in paths.project_dirs(root)) if q.exists()]
     return {"path": p.relative_to(root).as_posix() if p.is_relative_to(root) else str(p),
             "code": str((d.get("problem") or {}).get("code") or p.parent.name), "items": rows, "candidates": cands}
 
@@ -63,12 +66,14 @@ def save(svc, m: dict) -> dict:
         raise ScoreError("bad_id", "题号 / 评分项编号只能是字母数字")
     if layer not in ("unit", "sim", "bench", "field"):
         raise ScoreError("bad_layer", "层只能是 unit / sim / bench / field")
-    p = subprocess.run([os.environ.get("DZBENCH_PYTHON") or sys.executable, "tools/req.py", "newlog", "--root", f"docs/verify/{code}", "--task", item, "--layer", layer],
+    paths.fork(root, code)                                  # 内置例题只读：先复制到工程根目录，证据和写回都落在那里
+    p = subprocess.run([os.environ.get("DZBENCH_PYTHON") or sys.executable, "tools/req.py", "newlog", "--root", str(paths.projects_dir() / code / "verify"), "--task", item, "--layer", layer],
                        cwd=root, capture_output=True, text=True, timeout=60)
     if p.returncode:
         raise ScoreError("newlog", "建证据目录失败：" + (p.stdout + p.stderr)[-300:])
     d = pathlib.Path(p.stdout.splitlines()[0].strip())
     d = d if d.is_absolute() else root / d
+    assert paths.is_writable(d), d                        # 证据只写工程根目录（#29），不进仓库 docs/
     files = []
     for r in m.get("runs") or []:
         n = int(r["n"])
@@ -83,8 +88,8 @@ def save(svc, m: dict) -> dict:
     with (d / "notes.md").open("a", encoding="utf-8") as f:
         f.write(f"\n## 工作台评分页自动记录\n- 层：{layer}；共 {len(m.get('runs') or [])} 轮；结论：{summ.get('verdict', '未判定')}\n"
                 f"- 最差一轮：{summ.get('worst', '—')}\n- 文件：{'、'.join(files)}\n- 注意：只有 field（现场）层通过才能说已得分。\n")
-    rel = d.relative_to(root).as_posix()
-    return {"dir": rel, "files": files, "evidence": f"- {{ path: {rel}, layer: {layer}, date: {datetime.date.today()}, result: {summ.get('result', 'TODO')} }}"}
+    rel = d.relative_to(paths.projects_dir() / code).as_posix()      # 相对工程目录（requirements.yaml 所在）
+    return {"dir": str(d), "files": files, "evidence": f"- {{ path: {rel}, layer: {layer}, date: {datetime.date.today()}, result: {summ.get('result', 'TODO')} }}"}
 
 
 # ── 写回 requirements.yaml：只在该评分项的 evidence 列表末尾加一行（按行插入，保留注释和原排版），先给 diff，确认才写 ──
@@ -124,7 +129,14 @@ def writeback(svc, m: dict) -> dict:
         raise ScoreError("bad_result", "result 只能是 pass / fail / partial")
     if m.get("layer") not in ("unit", "sim", "bench", "field"):
         raise ScoreError("bad_layer", "层只能是 unit / sim / bench / field")
-    d = pathlib.Path(m["dir"]); d = d if d.is_absolute() else root / d
+    d = pathlib.Path(m["dir"]); d = d if d.is_absolute() else p.parent / d
+    if not paths.is_writable(p):                                # 内置例题只读：写回落到工程根目录的同名工程（第一次先整份复制）
+        wp = paths.projects_dir() / p.parent.name / p.name
+        if not wp.exists():
+            import shutil
+            wp.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(p, wp)
+        p = wp
     if not d.is_dir():
         raise ScoreError("no_dir", f"证据目录 {d} 不存在", "先点“保存证据”")
     old = p.read_text(encoding="utf-8"); sha = hashlib.sha1(old.encode()).hexdigest()[:12]
