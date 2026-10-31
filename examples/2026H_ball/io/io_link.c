@@ -122,6 +122,8 @@ void io_link_read(void)
     }   /* 急停路径负责输出归零 */
     bool stop = io_coord()->st == COORD_ESTOP || io_coord()->st == COORD_FAULT;
     link_relay_guard(stop);                                  /* 急停/故障中结束继电 */
+    if (stop && link_step_busy()) link_step_latch();         /* #38：急停/故障 → 本轮阶跃作废（aborted） */
+    link_step_flush(&link_seq, link_send_c);
     if (link_read(buf, sizeof buf, &got) != DZ_OK) return;
     for (i = 0; i < got; i++) {
         if (!dzframe_feed(&LL, buf[i], &f)) continue;
@@ -134,10 +136,10 @@ void io_link_read(void)
                 ensure_running(true);
             }
         }
-        else if (dzctl_handle_checked(&t, &f, stop || link_step_busy(), &ack, &rej, &has_rej)) {   /* 0.13.0 越界/类型/状态/步长 → 拒绝 */
-            link_send(&ack);
-            if (has_rej) link_send(&rej);
+        else if (f.kind == DZF_PARAM_SET && (stop || link_step_busy())) {                 /* 急停 / 阶跃实验中：参数写锁定（0.13.0 param_reject state） */
+            if (dzctl_handle_checked(&t, &f, true, &ack, &rej, &has_rej)) { link_send(&ack); if (has_rej) link_send(&rej); }
         }
+        else if (dzctl_handle(&t, &f, &ack)) link_send(&ack);   /* 其余照旧：越界钳位回 clamped（侧车 #40 本地先拒 + 固件钳位的既有约定） */
         else if (dzctl_is_bb_request(&f)) {                 /* 黑匣子导出（dzctl 0.6.0） */
             const bb_t *bb = io_safety_bb();
             for (uint16_t k = 0; k < bb_count(bb); k++) {
