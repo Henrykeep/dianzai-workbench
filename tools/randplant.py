@@ -32,6 +32,8 @@ except ImportError:  # pragma: no cover
     sys.exit("缺 python-control：pip install -r app/sidecar/requirements.txt")
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+import plantmodel  # noqa: E402  共享对象模型（plant: 声明也用它）
 DT = 0.001                     # 控制/仿真步长（s），与 app_main.c CTRL_PERIOD_US 一致
 UNITS = {"pos": ["deg", "mm"], "vel": ["rpm"], "temp": ["°C"], "any": ["deg", "mm", "°C", "rpm", "V"]}
 KIND_OF_UNIT = {"deg": "pos", "mm": "pos", "rpm": "vel", "°C": "temp", "V": "vel"}
@@ -174,103 +176,12 @@ link:
 
 
 def sim_c(p: dict) -> str:
-    ss = p["ss"]; n = len(ss["B"])
-    fl = lambda xs: ", ".join(f"{float(x):.9e}f" for x in xs)
-    A = ",\n    ".join("{ " + fl(row) + " }" for row in ss["A"])
-    return f"""/* 由 tools/randplant.py --seed {p['seed']} 生成：随机被控对象（离散 ZOH，dt = {DT} s），仅 host-sim 编译。 */
-#include "board_gen.h"
-#include "host_sim.h"
-#include <math.h>
-#include <stdint.h>
-
-#define RP_N {n}
-static const float A[RP_N][RP_N] = {{
-    {A}
-}};
-static const float B[RP_N] = {{ {fl(ss['B'])} }};
-static const float C[RP_N] = {{ {fl(ss['C'])} }};
-static const float D = {ss['D']:.9e}f;
-static float x[RP_N];
-static uint32_t s_rng = {(p['seed'] * 2654435761) % 2**32 or 1}u;
-
-static float urand(void) {{ s_rng ^= s_rng << 13; s_rng ^= s_rng >> 17; s_rng ^= s_rng << 5; return (float)(s_rng >> 8) * (1.0f / 16777216.0f); }}
-static float gauss(void) {{ float a = urand() + 1e-7f, b = urand(); return sqrtf(-2.0f * logf(a)) * cosf(6.2831853f * b); }}
-
-/* app_main.c 的弱符号覆盖：一步对象（饱和 → 死区 → 线性），返回带噪声的测量值 */
-float randplant_step(float u)
-{{
-    float xn[RP_N], y;
-    if (u > {float(p['sat']):.9e}f) u = {float(p['sat']):.9e}f;
-    if (u < -{float(p['sat']):.9e}f) u = -{float(p['sat']):.9e}f;
-    u = fabsf(u) <= {float(p['deadzone']):.9e}f ? 0.0f : (u > 0 ? u - {float(p['deadzone']):.9e}f : u + {float(p['deadzone']):.9e}f);
-    y = D * u;
-    for (int i = 0; i < RP_N; i++) y += C[i] * x[i];
-    for (int i = 0; i < RP_N; i++) {{ xn[i] = B[i] * u; for (int j = 0; j < RP_N; j++) xn[i] += A[i][j] * x[j]; }}
-    for (int i = 0; i < RP_N; i++) x[i] = xn[i];
-    return y + {float(p['noise_std']):.9e}f * gauss();
-}}
-
-void host_sim_app_setup(void) {{ }}
-"""
+    """对象 C 代码：与 plant: 声明共用 tools/plantmodel.py（滞后已用 Padé 折进状态空间）。"""
+    return plantmodel.sim_c(p["ss"], dt=DT, sat=(-float(p["sat"]), float(p["sat"])), deadzone=float(p["deadzone"]),
+                            noise_std=float(p["noise_std"]), seed=int(p["seed"]), tag=f"tools/randplant.py --seed {p['seed']}")
 
 
-APP_MAIN = """/* 由 tools/randplant.py 生成：通用 PID 回路。链路（0x7B 阶跃、PARAM_SET 校验/param_reject、急停、心跳）全部来自 link_app.h。 */
-#include "board_gen.h"
-#include "app.h"
-#include "pid.h"
-#include "link_app.h"
-#include "dz_compiler.h"
-
-#define CTRL_PERIOD_US 1000u
-
-DZ_WEAK float randplant_step(float u);
-DZ_WEAK float randplant_step(float u) { (void)u; return 0.0f; }   /* 真板没有对象：只在 host-sim 由 sim_setup.c 提供 */
-
-static pid_ctrl_t s_pid;
-static link_app_t L;
-static volatile bool s_dirty = true;
-static volatile float s_y, s_u;
-
-static void apply_params(void) { s_dirty = true; }
-
-static void ctrl_isr(void *ctx)
-{
-    (void)ctx;
-    if (s_dirty) {
-        (void)pid_set_gains(&s_pid, g_link_params.kp, g_link_params.ki, g_link_params.kd);
-        s_pid.cfg.out_min = -g_link_params.u_max; s_pid.cfg.out_max = g_link_params.u_max;
-        s_dirty = false;
-    }
-    float u = 0.0f;
-    if (L.estop) pid_reset(&s_pid);
-    else u = pid_update(&s_pid, L.sp[0], s_y);
-    s_u = u;
-    s_y = randplant_step(u);
-}
-
-dz_err_t app_init(void)
-{
-    dz_err_t e;
-    pid_cfg_t pc = pid_cfg_default(CTRL_PERIOD_US * 1e-6f);
-    pc.kp = g_link_params.kp; pc.ki = g_link_params.ki; pc.kd = g_link_params.kd;
-    pc.out_min = -1.0f; pc.out_max = 1.0f; pc.i_min = -1.0f; pc.i_max = 1.0f;
-    if ((e = pid_init(&s_pid, &pc)) != DZ_OK) return e;
-    link_app_init(&L, apply_params, 0);
-    return pal_timer_start(RES_TIMER_CTRL, CTRL_PERIOD_US, ctrl_isr, 0);
-}
-
-void app_loop(void)
-{
-    uint32_t now = pal_millis();
-    if (!link_app_poll(&L, now)) return;
-    link_telem_t t = { 0 };
-    uint32_t st = pal_irq_save();
-    t.t_ms = now; t.sp = L.sp[0]; t.y = s_y; t.u = s_u;
-    pal_irq_restore(st);
-    t.run = L.estop ? 2u : 1u;
-    link_app_send_telem(&L, &t);
-}
-"""
+APP_MAIN = plantmodel.generic_app(int(round(DT * 1e6)))
 
 
 def write(p: dict, out: pathlib.Path) -> None:
