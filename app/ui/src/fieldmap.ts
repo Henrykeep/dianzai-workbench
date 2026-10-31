@@ -231,3 +231,7 @@ export const RETEST_F = { name: "limit_name", obj: "retest_blocked_by", reason: 
 export const DECL_STEP_F = { list: "step", max: "max_step" } as const;
 // 采用回执：verified:false + unverified_reason（amp_reduced）→ 提示未记为已验证档；前端不发任何「未验证」标志
 export const ADOPT_F = { verified: "verified", why: "unverified_reason", ampReduced: "amp_reduced" } as const;
+
+// 数据文件兜底不静默：缺失 / 格式错 分开说
+export const DATA_FIX_ZH = "修复：运行 python -m dzbench selfcheck-data";
+export const dataNoticeZh = (what: string, st: "ok" | "missing" | "bad") => st === "ok" ? "" : `${what}${st === "missing" ? "缺失" : "格式错误"}，已使用内置列表。${DATA_FIX_ZH}`;
