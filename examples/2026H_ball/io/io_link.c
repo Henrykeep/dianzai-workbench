@@ -3,7 +3,7 @@
  * LINK 串口（可选，板上有 LINK 才编译）：dzframe/1 + dzctl（见 firmware/proto/dzctl），桌面工作台 app/ 直接连。
  *   板→PC：遥测 DATA id=2 每 20 ms（字段见 project.yaml link.telemetry），心跳带 schema 哈希，PARAM_ACK
  *   PC→板：PARAM_SET 读写“当前参数档”（板端限幅）；DATA 0x7F 急停；DATA 0x7E u8 命令：
- *          'T'+n 选测试项（n 在第 2 字节）  'P'+n 选参数档  'G' 开始  'S' 停止  'R' 复位
+ *          'T'+n 选测试项（n = 测试项 id，即 project.yaml tests[].id，不是下标；在第 2 字节）  'P'+n 选参数档  'G' 开始  'S' 停止  'R' 复位
  *          DATA id=1 <f32 px>：上位机给钢珠目标位置（覆盖 hooks 里的默认 0；钳到 ±400 px，非有限值忽略，急停清零）。
  *          工作台的阶跃实验 / Agent 评测用它（dzbench.json step_test）。
  *
@@ -73,11 +73,20 @@ static void link_send(dzframe_t *f)
 DZ_WEAK void io_sim_cmd(uint8_t c, uint8_t n);
 DZ_WEAK void io_sim_cmd(uint8_t c, uint8_t n) { (void)c; (void)n; }
 
+/* 'T' 的 n 是测试项 id（dzbench.json step_tests 的 ["T",1] = 小题 1）。曾经直接当下标用：'T'1 选中了下标 1 = 小题 2（fast 档 + 底盘加速），
+ * 上位机写的 base 档参数全都不生效，阶跃指标与 pos_k 无关。找不到该 id 时不切换。 */
+static void select_test_id(uint8_t id)
+{
+    const coord_t *c = io_coord();
+    for (uint8_t i = 0; i < c->n_tests; i++)
+        if (c->tests[i].id == id) { (void)coord_select_test(io_coord(), i); return; }
+}
+
 static void handle_cmd(const dzframe_t *f)
 {
     uint8_t n = f->len > 1u ? f->payload[1] : 0u;
     switch (f->payload[0]) {
-    case 'T': coord_select_test(io_coord(), n); break;
+    case 'T': select_test_id(n); break;
     case 'P': coord_select_profile(io_coord(), n); break;
     case 'G': coord_event(io_coord(), COORD_EV_START); break;
     case 'S': coord_event(io_coord(), COORD_EV_STOP); break;

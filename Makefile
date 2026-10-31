@@ -247,6 +247,7 @@ test:
 	$(PY) tools/test_swd_pins.py   # #56 SWD 调试脚占用即报错
 	$(PY) tools/test_projgen_build.py   # #52 工程 build/gen 导出物不与 projgen 重复链接
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
+	tools/test_ball_param.sh   # 2026H_ball：PARAM_SET 的 pos_k 真进钢珠环（三组阶跃指标不同）
 	tools/test_estop_sp.sh   # 急停 / 'R' 后设定值归零、不自动恢复（60 相位 × 5 应用）
 	python3 tools/test_step_result.py   # #38 阶跃 step_result 对拍 / param_reject / 心跳 bit17（5 应用）
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
