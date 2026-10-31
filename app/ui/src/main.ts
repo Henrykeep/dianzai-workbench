@@ -315,6 +315,8 @@ $("ln-stall").onchange = e => link.rpc("serial_stall", { s: +(e.target as HTMLIn
 function applySchema(s: Schema | null) {
   S.schema = s;
   queueMicrotask(() => score.refresh());
+  if (s) { ROLES_T.onHandshake(s); REASONS_T.onHandshake(s); } else { ROLES_T.reset(); REASONS_T.reset(); }   // 握手到了才判断数据表来源；到之前不提示
+  queueMicrotask(() => { renderDataNotice(); renderRoleCard(); });
   if (!s) return;
   S.plotted = s.fields.filter(f => f.name !== "t_ms" && !f.enum);
   S.enums = s.fields.filter(f => f.enum);
@@ -774,7 +776,7 @@ function renderStatus(st: Msg) {
   if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); $("ro-lq").textContent = "链路 —"; $("ro-lq").className = "lq mono lq-off"; tl.clear(); AL.reset(); renderAlerts(); }
 }
 function applyNone() {
-  S.schema = null; UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
+  S.schema = null; ROLES_T.reset(); REASONS_T.reset(); queueMicrotask(() => renderDataNotice()); UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
   plot.setChannels([], [], []); $("chans").innerHTML = emptyState("activity", "连上后列出通道"); $("chan-n").textContent = ""; $("plot-sub").textContent = "";
   $("snaps").innerHTML = ""; renderParams();
   document.querySelectorAll(".ro.pin").forEach(e => e.remove());   // 断开后不留上一个对象的状态块
@@ -1140,6 +1142,8 @@ function openDeclField(key: string) {
 }
 
 // 原因表兜底提示：状态栏一处，启动时设一次（不弹 toast，不重复）
-import { reasonCodesNotice } from "./reasoncodes";
+import { reasonCodesNotice, REASONS_T } from "./reasoncodes";
+import { ROLES_T } from "./rolecodes";
 import { reasonStatusText } from "./fieldmap";
-{ const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.textContent = reasonStatusText(t); el.title = t; } }
+function renderDataNotice() { const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.textContent = reasonStatusText(t); el.title = t; } }
+renderDataNotice();

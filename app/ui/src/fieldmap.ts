@@ -236,4 +236,6 @@ export const ADOPT_F = { verified: "verified", why: "unverified_reason", ampRedu
 export const DATA_FIX_ZH = "修复：运行 python -m dzbench selfcheck-data";
 export const dataNoticeZh = (what: string, st: "ok" | "missing" | "bad") => st === "ok" ? "" : `${what}${st === "missing" ? "缺失" : "格式错误"}，已使用内置列表。${DATA_FIX_ZH}`;
 // 状态栏短句：「原因表缺失，已用内置列表 · 修复：python -m dzbench selfcheck-data」
-export const reasonStatusText = (t: string) => t ? `${t.split("，")[0]}，已用内置列表 · 修复：${DATA_FIX_ZH.replace(/^修复：运行 /, "")}` : "";
+export const reasonStatusText = (t: string) => !t ? "" : /不一致/.test(t) ? t : `${t.split(/[，（]/)[0]}，已用内置列表 · 修复：${DATA_FIX_ZH.replace(/^修复：运行 /, "")}`;
+// 握手里的数据表（暂定名）：data_tables {roles:{sha256, content}, reason_codes:{sha256, content}}
+export const DATA_TABLES_F = { obj: "data_tables", sha: "sha256", content: "content", roles: "roles", reasons: "reason_codes" } as const;
