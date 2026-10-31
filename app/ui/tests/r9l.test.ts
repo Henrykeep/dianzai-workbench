@@ -5,8 +5,9 @@ import { roleCellHtml, collectRoles, roleLabel } from "../src/roles";
 import { retestBlock, resultCardHtml } from "../src/iterui";
 // roles.json：v1 用文件里的 zh 显示、回传 code；版本不认识 / 没文件 → 兜底表
 const fb = roleCodes().map(x => x[0]).join();
-let file: any; try { file = JSON.parse(readFileSync("../../docs/dev/roles.json", "utf8")); } catch { file = { schema_version: 1, roles: [{ code: "P", zh: "比例项" }, { code: "NEWX", zh: "新角色" }] }; }
+const file: any = JSON.parse(readFileSync("../../docs/dev/roles.json", "utf8"));   // 真文件（fw-roles b19d59d），没有就让测试红
 setRoleCodes(file);
+assert.equal(roleCodes().length, file.roles.length);
 const req = { missing: ["g1"], suggested: {}, reason: "" };
 for (const r of file.roles) { const h = roleCellHtml("g1", req); assert.ok(h.includes(`value="${r.code}"`) && h.includes(`>${r.zh}<`), r.code); assert.equal(roleLabel(r.code), r.zh); }
 const last = file.roles[file.roles.length - 1].code;

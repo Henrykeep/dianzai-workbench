@@ -10,20 +10,33 @@ import numpy as np
 
 from ..session import LinkError
 
-ROLE_HINT = {"kp": "kp", "ki": "ki", "kd": "kd", "ff": "ff", "ulim": "ulim"}
+# 握手参数表的 role（app.yaml link.params.<名>.role，gen_link 原样带进握手；没写 = null）→ autotune 角色
+ROLE_MAP = {"P": "kp", "I": "ki", "D": "kd", "FF": "ff"}       # LIM / other 不参与整定
+ROLES = ("P", "I", "D", "FF", "LIM", "other")
 
 
-def roles(schema, guess) -> dict:
-    """{role: 参数名}：握手参数表写了 role 的优先；u_max 字段指向的参数 = ulim；其余按名字猜（猜不到就不调那一项）。"""
-    names = [p["name"] for p in schema.params]
-    out = {p["role"]: p["name"] for p in schema.params if p.get("role") in ROLE_HINT}
+def tunable(schema) -> list[dict]:
+    return [p for p in schema.params if isinstance(p.get("min"), (int, float)) and isinstance(p.get("max"), (int, float))
+            and p["max"] > p["min"] and str(p.get("type", "f32")) in ("f32", "f64", "float", "double")]
+
+
+def declared(schema) -> tuple[dict, list[str]]:
+    """({autotune 角色: 参数名}, 没声明 role 的可调参数名)。只认握手里的声明，不按名字猜。"""
+    out, missing = {}, []
+    for p in tunable(schema):
+        r = p.get("role")
+        if r is None:
+            missing.append(p["name"])
+        elif r in ROLE_MAP:
+            out[ROLE_MAP[r]] = p["name"]
+    return out, missing
+
+
+def suggest(schema) -> dict:
+    """只当建议给人确认，只按结构（#123 不按参数名猜）：link.step.u_max 指向的参数 → LIM，其余 null（要人选）。"""
+    names = [p["name"] for p in tunable(schema)]
     st = (schema.step or [{}])[0]
-    if isinstance(st.get("u_max"), str) and st["u_max"] in names:
-        out.setdefault("ulim", st["u_max"])
-    for r in ("kp", "ki", "kd"):
-        if r not in out and (n := guess(names, r)) and n not in out.values():
-            out[r] = n
-    return out
+    return {n: ("LIM" if n == st.get("u_max") else None) for n in names}
 
 
 class SessionBoard:

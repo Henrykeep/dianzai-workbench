@@ -25,8 +25,8 @@ link:
   step:
     - { sp: 0, y: tgt_x_px, range: 320, abs_tol: 2.0 }
   params:
-    - { name: kp,         type: float,  default: 0.5,  min: 0,  max: 1.5, desc: 每帧把误差角的多少比例补上（1 = 一步到位，延迟大时会振） }
-    - { name: ki,         type: float,  default: 0.0,  min: 0,  max: 0.5 }
+    - { name: kp,         type: float,  default: 0.5,  min: 0,  max: 1.5, desc: 每帧把误差角的多少比例补上（1 = 一步到位，延迟大时会振）, role: P }
+    - { name: ki,         type: float,  default: 0.0,  min: 0,  max: 0.5, role: I }
     - { name: px_per_deg, type: float,  default: 10,   min: 1,  max: 50,  unit: px/deg, desc: 相机标定（320 px / 32° 视场） }
     - { name: hold_ms,    type: uint32, default: 100,  min: 20, max: 1000, unit: ms, desc: 超过就 HELD（沿用上一帧） }
     - { name: lost_ms,    type: uint32, default: 500,  min: 50, max: 5000, max_delta: 1000, unit: ms, desc: 超过就 LOST（云台停住） }
