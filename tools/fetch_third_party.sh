@@ -17,6 +17,26 @@ get() {  # get <目录> <仓库> <tag> [稀疏检出路径...]
   fi
 }
 ALL="${*:-}"
+# 带重试 + sha256 校验的下载（CI run 41199129663：m0pack curl exit 56 连接被断）。
+#   fetch_url <url> <输出文件> <sha256>
+# curl 自身重试（指数退避；支持时加 --retry-all-errors，覆盖 exit 56 这类非 HTTP 瞬断），外面再套 N 次整体重试。
+# sha 不符视为下载坏了，也重试；N 次仍不符 → 失败，绝不留下坏文件。
+FETCH_TRIES=${FETCH_TRIES:-4}; FETCH_SLEEP=${FETCH_SLEEP:-5}
+fetch_url() {
+  local url=$1 out=$2 sha=$3 i opts=(-fsSL --connect-timeout 30 --retry 5 --retry-delay 2 --retry-connrefused)
+  [[ "$(curl --help all 2>/dev/null || true)" == *--retry-all-errors* ]] && opts+=(--retry-all-errors)
+  for ((i=1; i<=FETCH_TRIES; i++)); do
+    rm -f "$out.tmp"
+    if curl "${opts[@]}" -o "$out.tmp" "$url"; then
+      if echo "$sha  $out.tmp" | sha256sum -c - >/dev/null 2>&1; then mv "$out.tmp" "$out"; return 0; fi
+      echo "✗ [fetch] $(basename "$out") sha256 不符（第 $i/$FETCH_TRIES 次）"
+    else
+      echo "✗ [fetch] $(basename "$out") 下载失败 exit $?（第 $i/$FETCH_TRIES 次）"
+    fi
+    [ $i -lt $FETCH_TRIES ] && sleep $((FETCH_SLEEP * i))
+  done
+  rm -f "$out.tmp"; echo "✗ [fetch] $url 重试 $FETCH_TRIES 次仍失败 · 处理：检查网络后重跑 make fetch"; return 1
+}
 # CMSIS Core（Apache-2.0）：CMSIS_6 固定 tag 的源码包，校验包的 sha256，只解出 CMSIS/Core/Include（+ RTOS2 API 头，FreeRTOS 的
 # CMSIS_RTOS_V2 封装要 cmsis_os2.h）和 LICENSE。旧做法（CMSIS_5 稀疏克隆）在新克隆里会缺 core_cm3.h / core_cm4.h。
 CMSIS_TAG=v6.1.0
@@ -38,8 +58,7 @@ cmsis_verify() {  # 下载后立即校验：缺任何一个头 / 内容不一致
 cmsis() {
   if [ ! -d CMSIS_6 ]; then
     local t; t=$(mktemp -d)
-    curl -fsSL -o "$t/c.tgz" "https://codeload.github.com/ARM-software/CMSIS_6/tar.gz/refs/tags/$CMSIS_TAG"
-    echo "$CMSIS_SHA  $t/c.tgz" | sha256sum -c - >/dev/null || { echo "✗ [fetch/cmsis] 源码包 sha256 不符"; rm -rf "$t"; return 1; }
+    fetch_url "https://codeload.github.com/ARM-software/CMSIS_6/tar.gz/refs/tags/$CMSIS_TAG" "$t/c.tgz" "$CMSIS_SHA" || { echo "✗ [fetch/cmsis] 源码包下载或 sha256 校验失败"; rm -rf "$t"; return 1; }
     local top="CMSIS_6-${CMSIS_TAG#v}"
     tar xzf "$t/c.tgz" -C "$t" "$top/CMSIS/Core/Include" "$top/CMSIS/RTOS2/Include" "$top/LICENSE"
     mkdir -p CMSIS_6.tmp && mv "$t/$top/CMSIS" "$t/$top/LICENSE" CMSIS_6.tmp/ && mv CMSIS_6.tmp CMSIS_6
@@ -61,8 +80,8 @@ mspm0()    { get mspm0-sdk TexasInstruments/mspm0-sdk mspm0_sdk_2_11_00_07 .meta
 # TI MSPM0G1X0X_G3X0X CMSIS 器件包（BSD-3-Clause，pyOCD 烧 MSPM0 要用；随安装包分发，许可证见包内 01_Pack/license.txt）
 m0pack()   { mkdir -p packs; local f=packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack
              [ -f "$f" ] && { echo "已存在 $f，跳过"; return; }
-             curl -fsSL -o "$f.tmp" https://software-dl.ti.com/msp430/esd/MSPM0-CMSIS/MSPM0G1X0X_G3X0X/latest/exports/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack
-             echo "071bd317fc0f152ded6b2ae594d79c6fc5eb9952370526b4c14ef5b3b9807860  $f.tmp" | sha256sum -c - && mv "$f.tmp" "$f"; }
+             fetch_url "${M0PACK_URL:-https://software-dl.ti.com/msp430/esd/MSPM0-CMSIS/MSPM0G1X0X_G3X0X/latest/exports/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack}" "$f" "$M0PACK_SHA"; }
+M0PACK_SHA=071bd317fc0f152ded6b2ae594d79c6fc5eb9952370526b4c14ef5b3b9807860   # 改版本时同步改 workflow 缓存 key
 for g in f4 f1 freertos mspm0 m0pack; do
   if [ -z "$ALL" ] || [[ " $ALL " == *" $g "* ]]; then $g; fi
 done
