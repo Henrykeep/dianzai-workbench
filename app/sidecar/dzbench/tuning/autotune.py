@@ -25,6 +25,12 @@ def parse_spec(text: str) -> dict:
                      ("settle_s", r"(?:调节|稳定|调整)时间[^0-9]{0,6}?([\d.]+)\s*(?:s|秒)")):
         m = re.search(pat, t)
         out[key] = float(m.group(1)) if m else None
+    ma = re.search(r"阶跃(?:幅度|幅值|大小)?[为是]?\s*([\d.]+)", t)
+    out["amp"] = float(ma.group(1)) if ma else None
+    if out["ss_err_pct"] is None and out["amp"]:                 # 绝对误差（带题面单位）→ 相对阶跃幅度的百分比
+        m = re.search(r"稳态误差[^0-9]{0,6}?([\d.]+)\s*(?!%)", t)
+        if m:
+            out["ss_err_pct"] = float(m.group(1)) / out["amp"] * 100
     out["default"] = all(out[k] is None for k in ("ss_err_pct", "overshoot_pct", "settle_s"))
     if out["default"]:
         out["note_zh"] = "按默认判定"
