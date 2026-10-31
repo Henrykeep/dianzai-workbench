@@ -6,6 +6,7 @@ import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
 import { minmax, windowSlice } from "./decimate";
 import { niceDiv } from "./measure";
+import { zoomSel } from "./r9p6";
 
 const KEEP_S = 32;
 const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -38,6 +39,8 @@ export class Plot {
   annot: { i: number; tPeak: number; yPeak: number; mp: number; ts: number | null; tsv: number } | null = null;   // 本轮 Mp / ts 尺寸标注
   ghost: Ghost | null = null;    // 余辉：上一轮相对 t0 的数据
   layout: Layout = "split";
+  zoom: [number, number] | null = null;   // r9p6 拖选缩放的 x 区间（绝对时间）；双击复位
+  private tip: HTMLElement | null = null;
   private lanes: Lane[] = [];
   private host: HTMLElement;
   private sync = uPlot.sync("dz-lanes");
@@ -104,7 +107,27 @@ export class Plot {
   }
   private resize() { this.lanes.forEach((l, k) => l.u.setSize(this.laneSize(k === 0))); }
   private xRef() { return this.t0 ?? this.now(); }
-  xDiv() { return niceDiv(this.win, 10); }
+  xDiv() { return niceDiv(this.zoom ? this.zoom[1] - this.zoom[0] : this.win, 10); }
+  setZoom(z: [number, number]) { this.zoom = z; this.redraw(); this.repaint(); this.zoomBadge(); }
+  resetZoom() { if (!this.zoom) return; this.zoom = null; this.redraw(); this.repaint(); this.zoomBadge(); }
+  private zoomBadge() {
+    let b = this.host.parentElement?.querySelector<HTMLElement>(".zoom-hint");
+    if (!b && this.host.parentElement) { b = document.createElement("span"); b.className = "zoom-hint"; this.host.parentElement.append(b); }
+    if (b) { b.hidden = !this.zoom; b.textContent = this.zoom ? `已放大 ${(this.zoom[1] - this.zoom[0]).toFixed(2)} s · 双击复位` : ""; }
+  }
+  // r9p6 十字准线读数：鼠标所在时刻，这一格所有曲线的值（缺值写「—」）
+  private hover(u: uPlot, l: Lane) {
+    const k = u.cursor.idx, left = u.cursor.left ?? -1;
+    if (!this.tip) { this.tip = document.createElement("div"); this.tip.className = "chart-tip"; this.tip.hidden = true; this.host.append(this.tip); }
+    if (k == null || left < 0 || !u.over.matches(":hover")) { if (!u.over.matches(":hover")) return; this.tip.hidden = true; return; }
+    const x = u.data[0][k] as number, ids = [l.i, ...l.cols];
+    const v = (j: number) => { const y = u.data[j + 1]?.[k]; return y == null || !Number.isFinite(y as number) ? "—" : num(y as number); };
+    this.tip.innerHTML = `<div><b>${(x - this.xRef() >= 0 && this.t0 != null ? "+" : "") + (x - this.xRef()).toFixed(3)} s</b></div>` + ids.map((c, j) => `<div><i style="background:${chColor(c)}"></i>${esc(this.names[c])} ${v(j)}${this.units[c] ? " " + esc(this.units[c]) : ""}</div>`).join("");
+    const hr = this.host.getBoundingClientRect(), orr = u.over.getBoundingClientRect();
+    this.tip.hidden = false;
+    const px = orr.left - hr.left + left + 16, w = this.tip.offsetWidth;
+    this.tip.style.left = `${px + w > hr.width ? px - w - 32 : px}px`; this.tip.style.top = `${orr.top - hr.top + 8}px`;
+  }
 
   // 叠加层：Δ 带 → 余辉 → t0 → A/B 竖线（顺序决定遮挡）
   private overlay(u: uPlot, l: Lane, first: boolean) {
@@ -177,7 +200,7 @@ export class Plot {
         width: 100, height: 100,
         legend: { show: false },
         padding: [first ? 4 : 8, 28, 8, 16],     // 右侧留固定边距：首条的刻度字不会把它的绘图区挤得比其他 lane 窄（光标/锚点要对齐）
-        cursor: { sync: { key: this.sync.key }, points: { size: 5 }, drag: { x: false, y: false } },
+        cursor: { sync: { key: this.sync.key }, points: { size: 5 }, drag: { x: true, y: false, setScale: false } },   // r9p6 拖选缩放（自己接管 x 区间）
         scales: { x: { time: false }, y: { range: yRange } },
         axes: [
           { show: first, side: 0, size: 24, stroke: css("--dim"), grid, ticks: tick, font,
@@ -192,11 +215,17 @@ export class Plot {
             values: (_u, v) => v.map((y, k) => k === 0 || k === v.length - 1 ? "" : num(Math.abs(y) < 1e-12 ? 0 : y)) },
         ],
         series,
-        hooks: { draw: [uu => this.overlay(uu, lane, first)] },
+        hooks: { draw: [uu => this.overlay(uu, lane, first)],
+          setSelect: [uu => { const sl = uu.select; if (sl.width > 4) { const z = zoomSel(uu.posToVal(sl.left, "x"), uu.posToVal(sl.left + sl.width, "x")); if (z) this.setZoom(z); } uu.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false); }],
+          setCursor: [uu => this.hover(uu, lane)] },
       }, [[], [], ...lane.cols.map(() => [])] as any, el.querySelector(".lc") as HTMLElement);
       // 单击放 A，Shift+单击放 B（Saleae / 示波器惯例），双击清除
       u.over.addEventListener("click", e => this.setCursor(e.shiftKey ? 1 : 0, u.posToVal(e.offsetX, "x")));
-      u.over.addEventListener("dblclick", () => { this.cur = [null, null]; this.setCursor(0, null); });
+      u.over.addEventListener("dblclick", () => { this.cur = [null, null]; this.setCursor(0, null); this.resetZoom(); });   // r9p6 双击 = 清光标 + 复位缩放
+      u.over.addEventListener("mouseleave", () => { if (this.tip) this.tip.hidden = true; });
+      // r9p6 图例开关：点通道名 / 叠加名，隐藏或显示这条曲线（不重建，其他格不受影响）
+      el.querySelector<HTMLElement>(".nm")!.onclick = () => { const on = !u.series[1].show; u.setSeries(1, { show: on }); el.classList.toggle("off", !on); };
+      el.querySelectorAll<HTMLElement>("[data-ov]").forEach(x => x.onclick = () => { const k = lane.cols.indexOf(+x.dataset.ov!) + 2; if (k < 2) return; const on = !u.series[k].show; u.setSeries(k, { show: on }); x.style.opacity = on ? "" : ".4"; });
       lane.u = u;
     });
     if (!idx.length && this.names.length) this.host.innerHTML = `<div class="empty-s">所有通道都已隐藏：在右侧“通道”里点开</div>`;
@@ -206,7 +235,8 @@ export class Plot {
   redraw() {
     if (!this.lanes.length) return;
     this.dirty = false;
-    const tEnd = this.view != null ? this.view + this.win / 2 : this.t.length ? this.t[this.t.length - 1] : this.win, t0 = tEnd - this.win;
+    const z = this.zoom;
+    const tEnd = z ? z[1] : this.view != null ? this.view + this.win / 2 : this.t.length ? this.t[this.t.length - 1] : this.win, t0 = z ? z[0] : tEnd - this.win;
     const [a, b] = windowSlice(this.t, t0, tEnd);
     const px = Math.round(this.lanes[0].u.bbox.width / devicePixelRatio) || 800;
     const [dt, dy] = minmax(this.t, this.ys, a, b, t0, tEnd, px);

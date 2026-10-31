@@ -1,4 +1,4 @@
-import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr } from "./fieldmap";
+import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
 // 纯状态机 + 文案；main.ts 只做 DOM 接线。预算一律以本地服务报的 limits 为准，没报前按板型兜底（实机 8 轮、仿真 20 轮、180 s）。
 export type Limits = { time_s: number; rounds: number };
@@ -20,10 +20,15 @@ export const runText = (iter: number, l: Limits, elapsedS: number) => `第 ${Mat
 void mmss;
 export const REASON_ZH: Record<string, string> = {
   autopilot: "自动调参结束", pass: "满足停止条件", budget_time: "时间预算用完", budget_rounds: "轮数用完", estop: "急停", stopped: "已手动停止",
+  // r9p6 不可行情形：一律白话，结论只能是未达标 / 未判定
+  saturation: "输出一直顶在限幅上（执行器饱和），再调增益也没用", saturated: "输出一直顶在限幅上（执行器饱和），再调增益也没用",
+  delay: "系统延迟太大，按现在的采样周期调不稳", delay_too_large: "系统延迟太大，按现在的采样周期调不稳",
+  unstable_zero: "对象有不稳定零点（非最小相位），单靠 PID 达不到指标", nonmin_phase: "对象有不稳定零点（非最小相位），单靠 PID 达不到指标",
+  infeasible: "按现在的硬件和指标，这组目标达不到", no_signal: "反馈信号没变化，检查传感器或接线",
   invalid: "连续 3 轮无效", no_improve: "连续 3 轮没有改进", unstable: "出现发散", blocked: "各方向都被挡住", error: "出错",
 };
 const GAP_ZH: Record<string, string> = { overshoot: "超调", ss_err: "稳态误差", settle: "调节时间", rise: "上升时间" };
-const n = (v: number) => String(+(+v).toPrecision(4));
+const n = (v: number) => v == null || !Number.isFinite(+v) ? "—" : String(+(+v).toPrecision(4));
 export function gapLines(g: Record<string, Gap> | undefined, pass?: unknown, basis = ""): string[] {
   const ks = Object.keys(g ?? {});
   void basis;   // 结论只来自后端 verdict_zh，前端不再拼「达标」
@@ -43,12 +48,14 @@ export function bandLines(e: SsErr | null | undefined): string[] {
 // 第 0 轮 vs 最好一轮：[指标, 第0轮, 最好, 变化, 好/坏]；越小越好
 export function compareRows(base: Record<string, number> | null | undefined, best: Record<string, unknown> | undefined): string[][] {
   if (!base || !best) return [];
-  return METRIC_F.filter(([k]) => typeof base[k] === "number" && typeof best[k] === "number").map(([k, zh, u]) => {
+  // r9p6：已知指标按固定顺序在前，其余（任意题目的自定义指标）跟在后面；单位按后缀推断，推不出就不写
+  const known = METRIC_F.map(m => m[0]), keys = [...known, ...Object.keys(base).filter(k => !known.includes(k)).sort()];
+  return keys.filter(k => typeof base[k] === "number" && Number.isFinite(base[k]) && typeof best[k] === "number" && Number.isFinite(best[k] as number)).map(k => {
+    const zh = metricZh(k), u = unitOfKey(k), sp = (x: string) => u ? `${x} ${u}` : x;
     const a = Math.abs(base[k]), b = Math.abs(best[k] as number), d = b - a, pct = a ? Math.round(d / a * 100) : 0;
-    return [zh, `${n(a)} ${u}`, `${n(b)} ${u}`, d === 0 ? "—" : `${d < 0 ? "↓" : "↑"} ${n(Math.abs(d))} ${u}${a ? `（${pct > 0 ? "+" : ""}${pct}%）` : ""}`, d < 0 ? "good" : d > 0 ? "bad" : ""];
+    return [zh, sp(n(a)), sp(n(b)), d === 0 ? "—" : `${d < 0 ? "↓" : "↑"} ${sp(n(Math.abs(d)))}${a ? `（${pct > 0 ? "+" : ""}${pct}%）` : ""}`, d < 0 ? "good" : d > 0 ? "bad" : ""];
   });
 }
-// 结论行：只显示 verdict_zh；inside=null 一律「未判定」（不论后端给什么 pass）；达标口径附在后面
 export function verdictLine(v: Verdict | undefined, e: SsErr | null, basis: string): { v: string; text: string } {
   const x: Verdict = !v || e?.inside === null ? { v: "unknown", zh: v?.v === "unknown" && v.zh ? v.zh : "未判定" } : v;
   return { v: x.v, text: `${x.zh}${basis && !x.zh.includes(basis) ? `（${basis}）` : ""}` };
@@ -65,7 +72,7 @@ export function cardView(r: Stopped): { verdict: { v: string; text: string }; ti
   return {
     compare: r.compare && !r.compare.unchanged ? compareRaw(r.compare) : b && !zero ? compareRows(r.base, b.metrics) : [],
     title: !b ? "没有可用的一轮" : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
-    reason: `停止原因：${REASON_ZH[r.reason] ?? "其他"}${r.message_zh ? `（${verdictLine(r.verdict, e, "").v === "pass" ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
+    reason: `停止原因：${REASON_ZH[r.reason] ?? (r.reason ? `其他（${r.reason}）` : "未上报")}${r.message_zh ? `（${verdictLine(r.verdict, e, "").v === "pass" ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
     gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null || b.pass)] : [],
     verdict: verdictLine(r.verdict, e, basis),
@@ -138,14 +145,16 @@ export const iterTarget = (sp: { v: number } | null | undefined): number | null 
 export const CARD_KEYS = /超调|调节|稳态/;
 export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean }): string {
   const v = cardView(r), head = verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");
-  const cells = v.compare.filter(x => CARD_KEYS.test(x[0]));
+  const key = v.compare.filter(x => CARD_KEYS.test(x[0])), cells = key.length ? key : v.compare.slice(0, 4);   // r9p6 别的题没有超调/调节/稳态时，照样列出它自己的指标
   const cmp = cells.length
     ? `<div class="rc-cmp">${cells.map(x => `<div class="rc-m"><span class="rc-k">${esc(x[0])}</span><span class="rc-v num">${esc(x[1])} → <b>${esc(x[2])}</b></span><span class="rc-d num ${x[4] ?? ""}">${esc(x[3])}</span></div>`).join("")}</div>`
     : `<p class="rc-cur num">${esc(currentMetrics(r))}</p><p class="rc-same">${esc(v.title)}</p>`;
   const ps = `<div class="rc-ps">${v.params.map(([k, x]) => `<span class="mono"><i>${esc(k)}</i> ${esc(x)}</span>`).join("")}</div>`;
   const det = `<details class="rc-det"><summary>详情</summary>${[v.verdict.text, ...v.gaps, v.reason, v.next].filter(Boolean).map(t => `<p>${esc(t)}</p>`).join("")}</details>`;
   const btn = o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"'}>采用这组参数</wa-button>` : "";
-  return `<wa-card class="itc rc"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}</h4>${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
+  const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";
+  return `<wa-card class="itc rc"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}</h4>${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
 }
 
 // r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头
@@ -158,7 +167,7 @@ export function currentMetrics(r: Stopped): string {
   const pools: { key: string; value: number; unit: string }[][] = [];
   const c: any = r.compare; if (c?.best?.length) pools.push(c.best); if (c?.round0?.length) pools.push(c.round0);
   const obj = (o: any, unitOf: (k: string) => string) => o ? Object.entries(o).filter(([, v]) => typeof v === "number").map(([key, value]) => ({ key, value: value as number, unit: unitOf(key) })) : [];
-  const uf = (k: string) => METRIC_F.find(m => m[0] === k)?.[2] ?? (/_pct$/.test(k) ? "%" : /_ms$/.test(k) ? "ms" : /_s$/.test(k) ? "s" : "");
+  const uf = unitOfKey;
   pools.push(obj(r.best?.metrics, uf), obj(r.base, uf));
   const e: any = r.ss_err; if (e && typeof e.measured === "number") pools.push([{ key: "ss_err", value: e.measured, unit: e.unit ?? "" }]);
   return CUR_KEYS.map(([zh, keys, f]) => {

@@ -25,6 +25,10 @@ import { initAnalysis, Loop } from "./analysis";
 import { Cal, calMap } from "./calib";
 import { AcceptSpec } from "./accept";
 import { initHbStrip } from "./hbstrip";
+import { statusWords, linkQuality, reconnectText, modeZh, loopLine } from "./r9p6";
+import { initPalette } from "./palette";
+import { metricCardHtml, exportArgs } from "./metriccard";
+import { errFixAction } from "./fieldmap";
 import { initTimeline, kindOf } from "./timeline";
 import { Fixed, protectRows, UndoLog } from "./protect";
 import { Alerts } from "./alerts";
@@ -70,7 +74,7 @@ const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
   if (c.plot_t != null && plot.inBuffer(c.plot_t - 0.5)) { setRun(false); plot.jumpTo(c.plot_t - 0.5); toast(`已暂停在这一秒 · ${where}；按 P 继续`, "info", 4000); }
   else toast(`这一秒已滚出曲线缓冲：${where}，可以在底栏回放这份记录再点`, "warn", 6000);
 };
-const hb = initHbStrip($("hbstrip"), jumpAt);
+const hb = initHbStrip($("hbstrip"), jumpAt, 60, cells => { const q = linkQuality(cells), e = $("ro-lq"); e.textContent = q.text; e.title = q.tip; e.className = "lq mono lq-" + q.tone; });
 const AL = new Alerts();
 let clearedHide = 0;
 let lkMsg: any = null, lkSince: number | null = null, lkNext: number | null = null, lkNextAt = 0;
@@ -166,10 +170,10 @@ function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", 
   const d = document.createElement("div");
   d.className = `toast ${kind}`;
   // 侧车已给出 fix 的按原样显示；否则过翻译层（发生了什么 · 原因 · 处理 + 详情）
-  const f = er.fix_action ? resolveFix(er.fix_action) : null;
-  const btn = f && f.kind !== "wait" ? `<wa-button size="small" variant="brand" class="fx" data-fx="${esc(er.fix_action!)}">${esc(f.label)}</wa-button>` : "";
+  const fa = errFixAction(er), f = fa ? resolveFix(fa) : null;   // #91 修复按钮只来自 fix_action，不自己编
+  const btn = f && f.kind !== "wait" ? `<wa-button size="small" variant="brand" class="fx" data-fx="${esc(fa)}">${esc(f.label)}</wa-button>` : "";
   d.innerHTML = kind === "ok" || kind === "info" ? `<b>${esc(er.message)}</b>` : partsHtml(errParts(er), esc, btn);
-  d.querySelector<HTMLElement>(".fx")?.addEventListener("click", ev => { ev.stopPropagation(); runAction(er.fix_action!, s => goStepRef(s)); d.remove(); });
+  d.querySelector<HTMLElement>(".fx")?.addEventListener("click", ev => { ev.stopPropagation(); runAction(fa, s => goStepRef(s)); d.remove(); });
   d.onclick = e => { if (!(e.target as Element).closest("details")) d.remove(); };
   $("toasts").prepend(d);
   setTimeout(() => d.remove(), ms);
@@ -323,12 +327,12 @@ function renderChans() {
   });
 }
 // 按名字画：输入 "sp_* err" 回车，只显示匹配的通道；空回车恢复默认前 4 路
-// 参数筛选：真实赛题工程常有几十个参数（2026H 有 52 个，机械常数排在前面），要调的几个得能快速找到
+// 参数筛选：真实赛题工程常有几十个参数（常见几十个，机械常数排在前面），要调的几个得能快速找到
 const pq = $<HTMLInputElement>("p-q");
 function filterParams() {
   const rows = [...$("plist").querySelectorAll<HTMLElement>(".prow")], q = pq.value.trim();
   pq.hidden = rows.length <= 8 && !q;           // 选了串级层时即使参数少也显示，好让人看见并清掉筛选
-  // 每个词：=名字 精确，带 * 按通配，否则子串（名字或说明里有就算）；多个词取并集。“ki” 能找到 ball_ki。
+  // 每个词：=名字 精确，带 * 按通配，否则子串（名字或说明里有就算）；多个词取并集。“ki” 能找到 xxx_ki。
   const toks = q.split(/[\s,，]+/).filter(Boolean).map(t => t.startsWith("=") ? new RegExp("^" + t.slice(1).replace(/[.+?^${}()|[\]\\*]/g, "\\$&") + "$", "i") : t.includes("*") ? new RegExp("^" + t.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$", "i") : t.toLowerCase());
   const hit = (r: HTMLElement) => toks.some(t => typeof t === "string" ? (r.id.slice(4) + " " + r.title).toLowerCase().includes(t) : t.test(r.id.slice(4)));
   const on2 = rows.map(r => !toks.length || hit(r));
@@ -472,7 +476,7 @@ function showForked(m: any) {
   const st = document.getElementById("pj-ask-st"); if (!st) return;
   if (m[FORKED_F.project]) hasProject = true;
   const alts: string[] = Array.isArray(m[FORKED_F.alts]) ? m[FORKED_F.alts] : [];
-  st.innerHTML = `<span>${esc(m[FORKED_F.msg] || `已基于 ${m[FORKED_F.example] ?? "示例"} 新建 ${m[FORKED_F.project] ?? ""}`)}</span> <wa-button size="small" appearance="outlined" id="pj-swap">更换示例</wa-button><span class="pj-swap" id="pj-swap-f" hidden><input class="in" id="pj-swap-in" list="pj-swap-l" placeholder="示例名，如 2026H_ball"><datalist id="pj-swap-l">${alts.map(a => `<option value="${esc(a)}">`).join("")}</datalist><wa-button size="small" variant="neutral" id="pj-swap-go">换成这个</wa-button></span>`;
+  st.innerHTML = `<span>${esc(m[FORKED_F.msg] || `已基于 ${m[FORKED_F.example] ?? "示例"} 新建 ${m[FORKED_F.project] ?? ""}`)}</span> <wa-button size="small" appearance="outlined" id="pj-swap">更换示例</wa-button><span class="pj-swap" id="pj-swap-f" hidden><input class="in" id="pj-swap-in" list="pj-swap-l" placeholder="示例名"><datalist id="pj-swap-l">${alts.map(a => `<option value="${esc(a)}">`).join("")}</datalist><wa-button size="small" variant="neutral" id="pj-swap-go">换成这个</wa-button></span>`;
   $("pj-swap").onclick = () => { $("pj-swap-f").hidden = false; $("pj-swap-in").focus(); };
   $("pj-swap-go").onclick = () => { const ex = $<HTMLInputElement>("pj-swap-in").value.trim(); if (ex) void call(SWITCH_EX_OP, { example: ex }).catch(() => {}); };
 }
@@ -586,7 +590,7 @@ async function loadSnaps(list?: any[]) {
   list ??= await link.rpc("snapshot_list").catch(() => []);
   // “自动-最好一轮”只走“回到… → 最好一轮”这一个入口，快照列表不再重复列
   list = list!.filter(s => s.name !== "自动-最好一轮"); S.nsnap = list.length; life();
-  $("snaps").innerHTML = list!.slice(0, 8).map(s => `<div class="hv"><span class="tag">${esc(s.time.slice(5, 16))}</span>${s.mode ? `<span class="tag">${s.mode === "speed" ? "速度环" : "位置环"}</span>` : ""}<span>${esc(s.name)}</span>
+  $("snaps").innerHTML = list!.slice(0, 8).map(s => `<div class="hv"><span class="tag">${esc(s.time.slice(5, 16))}</span>${s.mode ? `<span class="tag">${esc(modeZh(s.mode))}</span>` : ""}<span>${esc(s.name)}</span>
      <button class="btn ghost sm" data-s="${esc(s.name)}">恢复</button></div>`).join("") || `<div class="hint">调到好用的一组就保存为快照，翻车时一键恢复。</div>`;
   $("snaps").querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
     const ramp_s = Math.max(0, Math.min(10, Number($<HTMLInputElement>("snap-ramp").value) || 0));
@@ -691,9 +695,11 @@ function renderStatus(st: Msg) {
   lockParams(iterLocked(st.hb_flags, IT.s.phase === "running"));
   $("ro-schema").innerHTML = st.schema ? `<i>${st.schema_ok ? "协议已识别" : "协议未知"}</i>` : "—";
   // 心跳 status 字（dzctl 0.5.0）：复位原因 + 安全态/堵转/急停标志；旧固件没有 → 不显示
-  const hbf: string[] = (st.hb_flags ?? []).filter((f: string) => f !== "参数未保存");   // #63 只在「保存参数」旁提示
-  $("ro-schema").title = (st.schema ? `协议 ${st.schema}` : "") + (st.reset ? `；板子复位原因：${st.reset}${hbf.length ? "；" + hbf.join("、") : ""}` : "");
-  if (hbf.length) $("ro-schema").innerHTML += `<i class="hb-flag">${esc(hbf.join("·"))}</i>`;
+  // r9p6 状态位白话：已知标志写成一句人话，未知码写「未知（代码 n）」
+  const sw = statusWords({ ...st, hb_flags: (st.hb_flags ?? []).filter((f: string) => f !== "参数未保存") });   // #63 只在「保存参数」旁提示
+  const hbf = sw.flags;
+  $("ro-schema").title = (st.schema ? `协议 ${st.schema}` : "") + (sw.reset ? `；板子上次复位：${sw.reset}${hbf.length ? "；" + hbf.join("、") : ""}` : "");
+  if (hbf.length) $("ro-schema").innerHTML += `<i class="hb-flag">${esc(hbf.join("、"))}</i>`;
   $("ro-rx").innerHTML = st.connected ? `${(S.rate / 1024).toFixed(1)} kB/s<i>${st.good} 帧${st.bad ? ` · 坏 ${st.bad}` : ""}</i>` : "—";
   $("rec").hidden = !st.log;
   if (st.log && st.log !== S.lastLog) { S.lastLog = st.log; loadLogs(); }   // 新开的记录马上出现在回放列表
@@ -724,7 +730,7 @@ function renderStatus(st: Msg) {
     if (o) sel.value = o.value; $("connect").click();
   });
   if (!was && st.connected) { call("health").then(h => hb.set(h)).catch(() => {}); call("timeline").then(r => { tl.set(r.events); AL.ack(r.acked); r.events.forEach((x: any) => AL.offer(x)); renderAlerts(); }).catch(() => {}); }   // 刷新页面/新窗口：补回已有的格子
-  if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); tl.clear(); AL.reset(); renderAlerts(); }
+  if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); $("ro-lq").textContent = "链路 —"; $("ro-lq").className = "lq mono lq-off"; tl.clear(); AL.reset(); renderAlerts(); }
 }
 function applyNone() {
   S.schema = null; UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
@@ -777,7 +783,7 @@ function renderIter() {
   const v = cardView(IT.s.result), id = IT.applyId();
   setVerdict(v.verdict);
   c.hidden = false;
-  c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null });
+  c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null }) + metricCardHtml(IT.s.result);   // r9p6 有 metrics_card 就追加通用指标卡
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
   const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
@@ -800,6 +806,7 @@ setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
   if (IT.onEvent(m, performance.now())) { if (m.type === "iterate.round") FN.onUserChange(); renderIter(); }
   agent.onMsg(m); raw.onMsg(m); send.onMsg(m);
+  if (m.metrics_card && !String(m.type).startsWith("iterate")) { const h = metricCardHtml(m), e = $("mc-card"); e.innerHTML = h; e.hidden = !h; }   // r9p6 测量 / 电源题：独立推送的指标卡
   switch (m.type) {
     case "telem": {
       if (CAL.size) { const y = { ...m.y }; CAL.forEach((c, k) => { if (y[k]) y[k] = y[k].map(c.f); }); plot.push(m.t, y); } else plot.push(m.t, m.y);
@@ -911,7 +918,9 @@ conn.on(c => {
   if (!c.sidecar && !$("banner").querySelector(".sd-x")) {
     $("banner").innerHTML = partsHtml({ ...SIDECAR_DOWN, why: SIDECAR_DOWN.why + "；板子 1 s 收不到心跳会自动急停" }, esc, `<button class="btn sm sd-x" type="button">重新连接</button>`);
     $("banner").querySelector<HTMLElement>(".sd-x")!.onclick = () => location.reload();
+    $("banner").insertAdjacentHTML("beforeend", `<span class="sd-rc mono" id="sd-rc"></span>`);
   }
+  sdTick();
 });
 // link.state reason 横幅（中性/告警）+ 端口下拉高亮；急停锁存告警在 #alerts，独立于连接状态，重连后照常显示
 function simStarting(m: any) {
@@ -1026,3 +1035,28 @@ document.querySelector<HTMLElement>('#rail [data-side="score"]')?.addEventListen
   if (ph && work && "ResizeObserver" in window) new ResizeObserver(() => work.style.setProperty("--pgh", `${ph.offsetHeight}px`)).observe(ph); }
 // 用户自己发起了新目标（阶跃实验）：「恢复急停前目标」收起
 document.addEventListener("click", e => { if ((e.target as Element)?.closest?.("#ag-step")) restoreEdited(); }, true);
+
+// r9p6 本地服务断开横幅：断开多久、已重连几次、下一次什么时候
+function sdTick() { const e = document.getElementById("sd-rc"); if (e) e.textContent = reconnectText(link.downSince, link.attempts, link.nextAt, Date.now()); }
+setInterval(() => { if (!link.open) sdTick(); }, 250);
+// r9p6 环层级（schema.loops，任意层数）：放在参数栏顶，缺字段不显示
+function renderLoops() { const e = document.getElementById("loop-line"); if (!e) return; const t = loopLine(S.schema, IT.s.phase === "running" ? (IT.s as any).loop : undefined); e.hidden = !t; e.textContent = t; }
+setInterval(renderLoops, 1000);
+// r9p6 Ctrl+K 命令面板
+initPalette(() => [
+  ...[...document.querySelectorAll<HTMLElement>("#steps .ns")].map(b => ({ id: "go:" + b.dataset.step, title: `打开 ${b.querySelector(".nl")?.textContent?.trim() || b.dataset.step}`, hint: "页面" })),
+  { id: "connect", title: "连接 / 断开板子", keys: "Ctrl+O" }, { id: "send", title: "下发参数", keys: "Ctrl+Enter" },
+  { id: "snap", title: "存快照", keys: "Ctrl+S" }, { id: "pause", title: "暂停 / 继续曲线", keys: "P" },
+  { id: "iter", title: "开始自动迭代", hint: "Agent" }, { id: "zoom-reset", title: "曲线 复位缩放", hint: "图表" },
+  { id: "theme", title: "切换 浅色 / 深色" }, { id: "estop", title: "急停", keys: "Esc", hint: "危险" },
+], id => {
+  const clk = (sel: string) => document.querySelector<HTMLElement>(sel)?.click();
+  if (id.startsWith("go:")) { clk(`#steps [data-step="${id.slice(3)}"]`); return; }
+  if (id === "connect") toggleConnect(); else if (id === "send") sendPending(); else if (id === "snap") saveSnap();
+  else if (id === "pause") setRun(!plot.running); else if (id === "iter") clk("#it-go"); else if (id === "zoom-reset") plot.resetZoom();
+  else if (id === "theme") clk("#theme"); else if (id === "estop") estop("命令面板");
+});
+// r9p6 指标卡「打开录波」：按证据路径回放
+document.addEventListener("click", e => { const x = (e.target as HTMLElement).closest<HTMLElement>("[data-mc-export]"); if (!x) return; const { op, args } = exportArgs(x.dataset.mcExport!);
+  void call(op, args).then((r: any) => toast(r?.message_zh ?? (r?.path ? `已导出：${r.path}` : "已导出"), "ok", 5000)).catch((er: any) => toast(er)); });
+document.addEventListener("click", e => { const a = (e.target as HTMLElement).closest<HTMLElement>("[data-evidence]"); if (!a) return; e.preventDefault(); void call("replay", { path: a.dataset.evidence }).then(() => plot.clear()).catch((er: any) => toast(er)); });

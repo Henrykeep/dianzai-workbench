@@ -27,7 +27,7 @@ export function tip(c: Cell): string {
     (c.log_t != null ? ` · dzlog ${c.log_t.toFixed(1)} s` : " · 未记录") + "（点击跳到这一秒）";
 }
 
-export function initHbStrip(el: HTMLElement, onJump: (c: Cell) => void, show = 60) {
+export function initHbStrip(el: HTMLElement, onJump: (c: Cell) => void, show = 60, onCells: (c: Cell[]) => void = () => {}) {
   let cells: Cell[] = [];
   const render = () => {
     const tail = cells.slice(-show), ref = median(cells.slice(-30).map(c => c.fps).filter(f => f > 0));
@@ -41,8 +41,9 @@ export function initHbStrip(el: HTMLElement, onJump: (c: Cell) => void, show = 6
     if (c) onJump(c);
   };
   return {
-    add(a: Cell[] | undefined) { if (a?.length) { cells = merge(cells, a); render(); } },
-    set(a: Cell[]) { cells = merge([], a); render(); },
+    add(a: Cell[] | undefined) { if (a?.length) { cells = merge(cells, a); render(); } onCells(cells); },
+    set(a: Cell[]) { cells = merge([], a); render(); onCells(cells); },
     clear() { cells = []; el.innerHTML = ""; },
+    all: () => cells,
   };
 }

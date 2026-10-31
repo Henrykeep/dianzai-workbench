@@ -1,3 +1,4 @@
+import { stripToolMarkup } from "./sanitize";
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
 import { retryText, clearsRetry, LOCAL_LABEL } from "./llmretry";
@@ -425,7 +426,7 @@ export function initAgent(call: Call) {
       R.replied(id);
       if (!t.w) startLive(t);
       const w = t.w!;
-      const txt = typeof r === "string" ? r : r?.text ?? "";
+      const txt = stripToolMarkup(typeof r === "string" ? r : r?.text ?? "");
       if (txt.startsWith("（Agent 暂时用不了")) w.remove();   // 说明已在“重试 / 设置”卡里
       else w.firstElementChild!.outerHTML = `<div>${esc(txt).replace(/\n/g, "<br>")}</div>`;
       const u = parseUsage(r); if (u) { usageLog.push(u); turnUsage = u; }
@@ -627,7 +628,7 @@ export function initAgent(call: Call) {
     streamed += t;
     const first = live.firstElementChild as HTMLElement;
     if (first.classList.contains("lbl")) first.outerHTML = `<div class="stream"></div>`;
-    (live.firstElementChild as HTMLElement).innerHTML = esc(streamed).replace(/\n/g, "<br>");
+    (live.firstElementChild as HTMLElement).innerHTML = esc(stripToolMarkup(streamed)).replace(/\n/g, "<br>");
   }
   // 云端 / 本地模型标识：断网自动切本地（agent_mode.fallback）或直接配 Ollama 时显示「本地模型」
   function badge(k: "local" | "cloud") {

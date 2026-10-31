@@ -1,3 +1,4 @@
+import { errWhy, NO_REASON_ZH } from "./fieldmap";
 // 报错翻译层：git / 门禁、模型服务、侧车报错 → 「发生了什么 · 原因 · 处理」，原文进可展开的「详情」。
 export type Human = { what: string; why: string; fix: string; raw: string };
 const RULES: [RegExp, Omit<Human, "raw">][] = [
@@ -20,13 +21,14 @@ export const humanHtml = (h: Human, esc: (s: string) => string) =>
   `<b>${esc(h.what)}</b> · 原因：${esc(h.why)} · 处理：${esc(h.fix)}<details class="raw"><summary>详情</summary><pre class="mono">${esc(h.raw)}</pre></details>`;
 
 // batch-1：每条报错都是三段（发生了什么 / 原因 / 处理），原始代码收进「详情」
-export function errParts(er: { code?: string; message: string; fix?: string; why?: string; cause_zh?: string }): Human {
+export function errParts(er: { code?: string; message: string; fix?: string; why?: string; cause_zh?: string; message_zh?: string; reason_zh?: string }): Human {
   const h = !er.fix ? humanize(`${er.code ?? ""} ${er.message}`) : null;
   if (h) return h;
   // #72 原始英文 / 代码只进「详情」，正文永远是中文三段
   const ascii = (t?: string) => !t || /^[\x00-\x7f]*$/.test(t);
   const raw = er.code ? (er.message && ascii(er.message) ? `${er.code} · ${er.message}` : er.code) : er.message;
-  return { what: ascii(er.message) ? "操作没有完成" : er.message, why: [er.why, er.cause_zh].find(t => t && !ascii(t)) || "本地服务没有给出中文原因", fix: !ascii(er.fix) ? er.fix! : "按下面的按钮处理；没有按钮就稍后重试", raw };
+  const zh = er.message_zh && !ascii(er.message_zh) ? er.message_zh : !ascii(er.message) ? er.message : "";
+  return { what: zh || "操作没有完成", why: errWhy(er) || NO_REASON_ZH, fix: !ascii(er.fix) ? er.fix! : "按下面的按钮处理；没有按钮就稍后重试", raw };
 }
 export const partsHtml = (h: Human, esc: (s: string) => string, btn = "") =>
   `<b>${esc(h.what)}</b><span>原因：${esc(h.why)}</span><span>处理：${esc(h.fix)}</span>${btn}<details class="raw"><summary>详情</summary><pre class="mono">${esc(h.raw)}</pre></details>`;
