@@ -29,6 +29,10 @@ def regions(html):
         for tag, a in reversed(stack):
             if a.get("data-page"):
                 return "page:" + a["data-page"]
+            if (a.get("data-region") or "").startswith("page:"):
+                return a["data-region"]       # 页内具名区域（旅程 id，如读题页空状态 page:req），比所在 data-page 更具体
+            if tag == "aside" and "nav" in (a.get("class") or "").split():
+                return "nav"                  # 左侧导航（流程步骤 #steps、下一步提示）
             if a.get("id") == "toolbox-m":
                 return "toolbox"
             if a.get("id") == "trouble-m":
@@ -66,6 +70,10 @@ def placed(at, region):
         return True                       # 对话框里的按钮跟着打开它的入口走
     if kind == "toolbox":
         return region == "toolbox"
+    if kind == "nav":
+        return region == "nav"
+    if kind == "page":
+        return region == "page:" + name   # 只认 data-region 标的具名区域，不放宽到整页
     if kind == "always":
         return region == "trouble" if name == "排障" else region in ("header", "footer")
     if region.startswith("page:"):
@@ -80,9 +88,10 @@ def load_sources():
     loop = (APP / "sidecar/dzbench/agent/loop.py").read_text(encoding="utf-8")
     tools_blk = loop.split("TOOLS = [", 1)[1] if "TOOLS = [" in loop else ""
     return {
-        "server_ops": set(re.findall(r'op == "([a-z_0-9]+)"', server)),
-        "ui_ops": set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_0-9]+)"', ui_src)),
+        "server_ops": set(re.findall(r'op == "([a-z_0-9.]+)"', server)),
+        "ui_ops": set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_0-9.]+)"', ui_src)),
         "html_ids": set(re.findall(r'\bid="([^"]+)"', html)),
+        "data_regions": set(re.findall(r'\bdata-region="([a-z_]+)"', html)),   # 独立区域（如告警条 alerts），不含 page:<旅程>
         "regions": regions(html),
         "agent_tools": set(re.findall(r'"name":\s*"([a-z_0-9]+)"', tools_blk)),
     }
@@ -90,7 +99,7 @@ def load_sources():
 
 def check(spec, src):
     err = []
-    places = {f"step:{s}" for s in spec["steps"]} | {f"toolbox:{t}" for t in spec["toolbox"]} | {f"always:{a}" for a in spec["always"]}
+    places = {f"step:{s}" for s in spec["steps"]} | {f"toolbox:{t}" for t in spec["toolbox"]} | {f"always:{a}" for a in spec["always"]} | {f"nav:{n}" for n in spec.get("nav") or []} | {f"page:{n}" for n in spec.get("page") or []} | {f"{n}:" for n in spec.get("regions") or []}
     shared, script = spec.get("shared_ops") or {}, spec.get("script_ops") or {}
     seen = {"id": {}, "label": {}, "ui": {}}
     claim = {}
@@ -100,9 +109,17 @@ def check(spec, src):
             if v in seen[k]:
                 err.append(f"重复入口：{k}={v!r} 同时出现在 {seen[k][v]} 和 {a['id']}")
             seen[k][v] = a["id"]
+        if "ready" in a and not isinstance(a["ready"], bool):
+            err.append(f"{a['id']}: ready 只能是 true / false，收到 {a['ready']!r}")
         if a.get("at") not in places:
             err.append(f"{a['id']}: at={a.get('at')!r} 不是已登记的步 / 工具箱类 / 常驻件")
-        if not a.get("dynamic") and a.get("ui") not in src["html_ids"]:
+        rm = re.fullmatch(r'\[data-region="([a-z_]+)"\]', str(a.get("ui") or ""))
+        if rm:                                   # 独立区域入口：ui 是区域选择器，at 必须是同名区域，index.html 里要有这块区域
+            if a.get("at") != rm[1] + ":":
+                err.append(f"{a['id']}: ui 在区域 {rm[1]}，at 应写 {rm[1]}:，收到 {a.get('at')!r}")
+            if rm[1] not in src.get("data_regions", set()):
+                err.append(f"{a['id']}: index.html 里找不到 data-region=\"{rm[1]}\"")
+        elif not a.get("dynamic") and a.get("ui") not in src["html_ids"]:
             err.append(f"{a['id']}: 界面元素 #{a.get('ui')} 在 index.html 里找不到")
         elif not a.get("dynamic") and "regions" in src and not placed(a.get("at", ""), src["regions"].get(a["ui"], "?")):
             err.append(f"{a['id']}: 表里写在 {a.get('at')}，界面上 #{a['ui']} 却在 {src['regions'].get(a['ui'], '?')}")
@@ -153,6 +170,7 @@ def selftest():
         ("html", lambda s: s["actions"][0].update(ui="nope"), "找不到"),
         ("tool", lambda s: s["agent_tools"]["step:调参"].remove("t2"), "t2 没写归属"),
         ("script", lambda s: s["script_ops"].update(gone="x"), "gone 侧车已没有"),
+        ("ready", lambda s: s["actions"][0].update(ready="no"), "ready 只能是"),
     ]
     for name, mut, want in cases:
         s = copy.deepcopy(base)
@@ -165,8 +183,26 @@ def selftest():
     assert reg == {"h": "header", "toolbox-m": "toolbox", "t": "toolbox", "f": "page:烧录", "i": "scope"}, reg
     assert placed("step:烧录", "page:烧录") and not placed("step:封箱", "page:烧录")
     assert placed("toolbox:记录", "toolbox") and not placed("toolbox:记录", "header")
+    reg2 = regions('<aside class="nav" id="nav"><nav class="steps" id="steps"><button id="s1"></button></nav></aside><aside class="dock"><b id="d"></b></aside>')
+    assert reg2 == {"nav": "nav", "steps": "nav", "s1": "nav", "d": "dock"}, reg2
+    assert placed("nav:进度", "nav") and not placed("nav:进度", "header") and not placed("always:连接", "nav") and not placed("step:调参", "nav")
+    reg3 = regions('<section data-page="项目"><div class="pj-empty" data-region="page:req"><button id="o"></button></div><button id="p"></button></section>')
+    assert reg3 == {"o": "page:req", "p": "page:项目"}, reg3
+    assert placed("page:req", "page:req") and not placed("page:req", "page:项目") and not placed("page:sim", "page:req") and not placed("nav:进度", "page:req")
+    se = copy.deepcopy(base); se["page"] = ["req"]; se["actions"][1].update(at="page:req")
+    assert any("界面上 #y 却在" in x for x in check(se, {**src, "regions": {"x": "page:调参", "y": "page:项目"}})), "page 区位置不符要报"
+    assert not [x for x in check(se, {**src, "regions": {"x": "page:调参", "y": "page:req"}}) if "z" not in x], "page 区位置相符不报"
+    assert check({**se, "page": []}, {**src, "regions": {"x": "page:调参", "y": "page:req"}}), "未声明的 page 区要报"
+    sn = copy.deepcopy(base); sn["nav"] = ["进度"]; sn["actions"][1].update(at="nav:进度")
+    assert any("界面上 #y 却在" in x for x in check(sn, {**src, "regions": {"x": "page:调参", "y": "header"}})), "nav 位置不符要报"
+    assert not [x for x in check(sn, {**src, "regions": {"x": "page:调参", "y": "nav"}}) if "z" not in x], "nav 位置相符不报"
     assert placed("always:急停", "header") and not placed("always:急停", "dock") and placed("step:调参", "dock") and not placed("step:烧录", "dock")
-    print(f"check_entrypoints selftest: {len(cases) + 6} ok")
+    sr = copy.deepcopy(base); sr["regions"] = ["alerts"]; sr["actions"][1].update(at="alerts:", ui='[data-region="alerts"]')
+    assert not [x for x in check(sr, {**src, "data_regions": {"alerts"}}) if "z" not in x], "区域入口登记正确不报"
+    assert any("找不到 data-region" in x for x in check(sr, {**src, "data_regions": set()})), "区域不存在要报"
+    sr["actions"][1].update(at="always:连接")
+    assert any("at 应写 alerts:" in x for x in check(sr, {**src, "data_regions": {"alerts"}})), "区域入口 at 不符要报"
+    print(f"check_entrypoints selftest: {len(cases) + 13} ok")
 
 
 def main():

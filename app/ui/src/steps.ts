@@ -1,7 +1,8 @@
 // 时间线步骤栏（LOGIC_AUDIT §3.1）：项目 → 烧录 → 模块 → 联调 → 标定 → 调参 → 评分 → 封箱。
 // 每步一页；顶栏常驻 急停 / 连接 / 排障 / 工具箱。入口登记在 docs/dev/entrypoints.yaml。
 // 导航形态参考 MICU templates/auto-embedded/workflow.md（每页声明当前阶段）与 PID_Helper App.tsx（单面板流程）。
-export const STEPS = ["项目", "烧录", "模块", "联调", "标定", "调参", "评分", "封箱"] as const;
+// 内部页面键（data-step / data-page）。用户看到的是 7 步旅程（progress.ts JOURNEY），顺序与此一致。
+export const STEPS = ["项目", "烧录", "联调", "模块", "标定", "调参", "评分", "封箱"] as const;
 export type Step = typeof STEPS[number];
 export const STEP_HINT: Record<Step, string> = {
   项目: "读题 → 选型 → 导入工程 → 资源分配 → 生成（每步确认才写）",
@@ -45,7 +46,6 @@ export function initSteps(connected: () => boolean): (s: Step) => void {
     bar.querySelectorAll<HTMLElement>("[data-step]").forEach(b => {
       b.classList.toggle("on", b.dataset.step === s);
       b.classList.toggle("next", b.dataset.step === nextOf(s));
-      b.classList.toggle("done", STEPS.indexOf(b.dataset.step as Step) < STEPS.indexOf(s));
     });
     document.querySelectorAll<HTMLElement>(".work > [data-page]").forEach(p => (p.hidden = p.dataset.page !== s));
     document.querySelector<HTMLElement>(".work > .scope")!.hidden = !L.scope;
@@ -53,10 +53,11 @@ export function initSteps(connected: () => boolean): (s: Step) => void {
     if (L.dockTab) click(`#dock-tabs [data-d="${L.dockTab}"]`);
     if (L.sideTab) click(`#rail [data-side="${L.sideTab}"]`);
     localStorage.setItem(KEY, s);
+    const v = new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")); v.add(s); localStorage.setItem("dz.visited", JSON.stringify([...v]));
     window.dispatchEvent(new CustomEvent("dz-step", { detail: s }));
     hint();
   };
-  const hint = () => { const s = (app.dataset.step || "项目") as Step; document.getElementById("step-hint")!.textContent = hintText(s, connected()); };
+  const hint = () => {};   // 下一步提示由 progress.ts 画（与步骤状态同一套逻辑）
   bar.querySelectorAll<HTMLElement>("[data-step]").forEach(b => (b.onclick = () => go(b.dataset.step as Step)));
   setInterval(hint, 1000);
   const saved = localStorage.getItem(KEY) as Step | null;

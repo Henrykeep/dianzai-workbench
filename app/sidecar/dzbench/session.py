@@ -4,20 +4,23 @@
 """
 from __future__ import annotations
 
+import itertools
 import collections
 import pathlib
 import re
+import datetime
 import struct
 import threading
 import time
 from typing import Callable
 
-from . import lastsession, snapshots
+from . import latch, lastsession, snapshots
 from ._dzlink import DATA, HEARTBEAT, PARAM_ACK, PARAM_SET, Parser, encode
 from .textparse import KvParser
 from .framedef import FrameDefError, FrameDefParser
 from .events import Timeline, crc_spike
 from .linkhealth import LinkHealth
+from .linkstate import LinkState
 from .logfile import RX, TX, LogWriter
 from . import ports as _ports
 from .ports import PortOpenError, explain_open_error, identity, probe_baud
@@ -27,18 +30,21 @@ from .transport import SIM_PREFIX, Transport, open_transport
 
 ID_CMD, ID_ESTOP = 0x7E, 0x7F
 ACK_STATUS = {0: "ok", 1: "clamped", 2: "bad_id", 3: "bad_len", 4: "bad_value"}
-HB_TIMEOUT_S = 1.6
+HB_TIMEOUT_S = 2.0          # = linkstate.LOST_AFTER_S；板子心跳 500 ms，任一合法帧都算活着
 
 
 class LinkError(Exception):
     """带“怎么修”的错误：UI 原样显示 message 和 fix。"""
 
-    def __init__(self, code: str, message: str, fix: str = ""):
+    def __init__(self, code: str, message: str, fix: str = "", fix_action: str | None = None):
         super().__init__(message)
-        self.code, self.message, self.fix = code, message, fix
+        self.code, self.message, self.fix, self.fix_action = code, message, fix, fix_action
 
     def as_dict(self) -> dict:
-        return {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        d = {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        if self.fix_action:
+            d["fix_action"] = self.fix_action
+        return d
 
 
 class Session:
@@ -47,6 +53,17 @@ class Session:
         self.emit = emit
         self.log_dir = log_dir or snapshots.base_dir() / "logs"
         self.lock = threading.RLock()
+        self.wlock = threading.Lock()
+        self._estop_seq = itertools.count(1)
+        # 收线程不等 session.lock：心跳/急停位/estop_cause 只用 hblock（小锁）；要 session.lock 的活（日志、遥测入库、参数回执…）
+        # 拿不到锁就按序排进 _deferred，由 dz-rxapply 线程拿到锁后依次补做（顺序不乱）
+        self.rxlock = threading.Lock()
+        self.hblock = threading.RLock()
+        self.linklock = threading.Lock()
+        self._deferred: collections.deque = collections.deque()
+        self._defer_ev = threading.Event()
+        self._applier: threading.Thread | None = None
+        self._binding_h: int | None = None        # 只护“写串口”这一小段：帧不交错；急停不等 self.lock
         self.history_s = history_s
         self._open = open_transport          # 测试可注入
         self.host_hb = True                  # 测试用开关：False 模拟侧车卡死
@@ -55,6 +72,10 @@ class Session:
         self.stall_s = 0.0                   # >0：串口开着但这么久一个字节都没收到（之前收到过）= 当断线处理并重连
         self.on_sample: Callable[[dict], None] | None = None   # 触发发送用
         self.raw_on = False                  # 原始监视器（文本/HEX）开着才收集，省内存
+        self.link = LinkState()              # 跨连接保留：since / seq 连续
+        self.down_reason = ""                # board=disconnected 时的原因（如 port_not_found）；connect/disconnect 清掉
+        self.resuming = False                # 侧车重启后正在自动连回上次的板子
+        self._uid_marked = False
         self._reset()
 
     def _reset(self) -> None:
@@ -72,8 +93,14 @@ class Session:
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
         self.selftest: dict | None = None        # dzctl 0.10.0 心跳尾部自检结果（selftest_dict），旧固件 / 应用没报 = None
         self.params_hash: int | None = None
+        self._estop_hold = False
+        self._estop_held: list[dict] = []
+        self._selftest_key: tuple | None = None   # 心跳里 (mask, t_ms)：变了才算新的一次自检
+        self.selftest_at: str | None = None       # 自检完成时间（ISO，本机时区）
+        self.selftest_ph: int | None = None       # 自检时的参数 hash；与当前 params_hash 不同 → stale
         self.estop_cause: dict | None = None     # dzctl 0.8.0 心跳里的急停原因（estop_cause_dict），没急停 = None
         self.hb_status: int | None = None        # dzctl 0.5.0 心跳第 4 个 u32：低 8 位复位原因 + DZCTL_HB_* 标志
+        self.h_supported = False                 # 本次连接里板子回过 'H'（dzctl 0.12.0+）
         self.fw_rev: int | None = None           # 心跳里的固件版本（dzctl 0.4.0+：git 短哈希，bit31 = 有未提交改动）
         self.samples: collections.deque = collections.deque()
         self._new: list = []
@@ -82,6 +109,7 @@ class Session:
         self.rx_bytes = 0
         self.last_hb = 0.0
         self.last_rx = 0.0
+        self.last_frame = 0.0                    # 最近一帧合法帧（任意类型），link.state 据此判活
         self.log: LogWriter | None = None
         self.seq = 0
         self.estop_count = 0
@@ -94,7 +122,14 @@ class Session:
         self._raw_bytes = 0
         self.raw_dropped = 0
         self.kv = KvParser()
-        self.tx_locked = False               # 急停后锁住侧车的一切主动发送（预设/定时/触发/原始），R 或重新连接才解
+        self._uid_marked = False
+        self.param_writes = 0                # 本次连接写参数的次数（进度：判断参数是否已写入 Flash）
+        self.flash_saved_writes = -1         # 黑匣子报“参数已存进 flash / 上电读了 flash”时的 param_writes；-1 = 没见过
+        self.run_mode: str | None = None     # 板子运行模式 tethered / standalone；固件上报后才有，否则 None
+        self.tx_locked = False               # 急停后锁住侧车的一切主动发送；只有人点“解除急停 R”才解（重连/侧车重启都不解，见 latch.py）
+        self.clear_pending_at: float | None = None   # 发了 'R'、等固件心跳 bit10 清零确认的起点（monotonic）
+        self.estop_requested_at: float | None = None
+        self.estop_source: str | None = None  # 当前锁存的来源：ui / agent / heartbeat_lost / firmware:<cause> / selftest / latch_restored
 
     # ------------------------------------------------------------------ 连接
     def connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
@@ -116,14 +151,19 @@ class Session:
             what, fix = explain_open_error(port, e)
             raise LinkError("open_failed", what, fix) from e
         self.ident = identity(port) if not port.startswith((SIM_PREFIX, "replay:")) else None
-        lastsession.mark(port, baud or 0)
+        lastsession.mark(port, baud or 0, self.ident)
+        self.down_reason = ""
         self.health.reset()
         with self.lock:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
             self._t_tr = self.t_connect
             self.hb_status = None
             self.estop_cause = None
-            self.selftest = None; self.params_hash = None
+            self.selftest = None; self.params_hash = None; self._selftest_key = self.selftest_at = self.selftest_ph = None
+            rec = None if isinstance(tr, ReplayTransport) else latch.get(port, None)
+            if rec:                                # 缺口 #20：重连只恢复通信/遥测，急停锁存保持
+                self.tx_locked = True
+                self.estop_source = rec.get("source") or "latch_restored"
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
@@ -132,6 +172,9 @@ class Session:
             self._gen += 1
             gen = self._gen
         tr.start(self._on_bytes, lambda msg: self._on_transport_error(msg, gen))
+        if self.tx_locked:
+            self.emit({"type": "tx_locked", "on": True, "source": self.estop_source, "restored": True})
+            self.mark("estop", "重连后保持急停锁存（上次急停尚未由人解除）", source=self.estop_source or "latch_restored")
         if not isinstance(tr, ReplayTransport):
             threading.Thread(target=self._host_heartbeat, args=(gen,), daemon=True).start()
         return {"port": port, "baud": baud, "note": note}
@@ -216,7 +259,8 @@ class Session:
         return {"pulse": name, "steps": len(seq), **self.serial_modem()}
 
     def disconnect(self) -> None:
-        lastsession.clear()                   # 用户主动断开 = 正常结束（侧车崩了不会走到这里）
+        lastsession.clear()                   # 用户主动断开 = 正常结束（侧车崩了不会走到这里）；也取消重启后的自动重连
+        self.down_reason = ""
         with self.lock:
             self._gen += 1                    # 主动断开：取消自动重连
             tr, log = self.tr, self.log
@@ -307,64 +351,210 @@ class Session:
                     pass
             return
 
+    RESUME_TRIES = (0.0, 0.3, 0.6, 1.0)      # 侧车重启后重开原口的间隔（总共约 2 s，留余量给 3 s 内连上）
+
+    def resume(self, rec: dict) -> dict:
+        """侧车重启后自动连回上次的板子：先试原口；打不开就按记下的 USB 身份/板 ID 重扫端口；
+        都不行 → board=disconnected、reason=port_not_found，记录放回去（下次重启再试，用户点“断开”才放弃）。
+        只恢复链路，不解除急停。用户在这期间点了连接/断开（_gen 变了）就让位。
+        硬规则（统筹者）：自动重连只恢复通信和遥测，绝不重发运行/运动命令或目标值。这里只经 connect()，
+        它对外只发上位机心跳（HEARTBEAT, LEN=0）和读参（PARAM_SET 空载荷 = 只读）；不重放参数、预设、
+        定时/触发发送（这些不落盘，重启即清空）。板子原来空闲就仍空闲，急停锁存仍锁存，恢复运动只能靠人。"""
+        port, baud = str(rec.get("port") or ""), int(rec.get("baud") or 0) or None
+        with self.lock:
+            gen0 = self._gen
+            self.resuming = True
+        try:
+            for delay in self.RESUME_TRIES:
+                time.sleep(delay)
+                if self._gen != gen0:
+                    return {"resumed": False, "reason": "user_action"}
+                try:
+                    r = self.connect(port, baud)
+                    self.emit({"type": "resumed", "port": port, "message": f"本地服务重启后已自动连回 {port}（急停仍锁着，确认安全后按 R）"})
+                    return {"resumed": True, **r}
+                except LinkError:
+                    with self.lock:
+                        gen0 = self._gen             # connect() 里的 disconnect() 会 +1：这是我们自己的那一次
+                    continue
+            ident = tuple(rec["ident"]) if rec.get("ident") else None
+            moved, why = (None, "none")
+            if ident and self._gen == gen0:
+                moved, why = _ports.pick_moved(port, ident, rec.get("board_uid"), rec.get("schema_hash"), baud or 0)
+            if moved and self._gen == gen0:
+                try:
+                    r = self.connect(moved, baud)
+                    self.emit({"type": "port_moved", "old": port, "new": moved,
+                               "message": f"本地服务重启后在 {moved} 找回了原来那块板（之前是 {port}），已经连上"})
+                    return {"resumed": True, **r}
+                except LinkError:
+                    with self.lock:
+                        gen0 = self._gen
+            if self._gen != gen0:
+                return {"resumed": False, "reason": "user_action"}
+            self.down_reason = "port_ambiguous" if why == "ambiguous" else "port_not_found"
+            lastsession.restore(rec)
+            self.emit(LinkError(self.down_reason, f"本地服务重启后没能自动连回上次的板子（{port} 不在了，也没在别的口找到它）",
+                                "检查 USB 线，插好后在端口列表里选一下再点“连接”").as_dict())
+            return {"resumed": False, "reason": self.down_reason}
+        finally:
+            with self.lock:
+                self.resuming = False
+
     # ------------------------------------------------------------------ 收
+    def _locked(self, fn: Callable[[], None]) -> None:
+        """在 session.lock 下做 fn；锁被别人长持时不等：排队给 dz-rxapply 线程（有排队的活时新活也排队，保证顺序）。"""
+        if not self._deferred and self.lock.acquire(blocking=False):
+            try:
+                fn()
+            finally:
+                self.lock.release()
+            return
+        self._deferred.append(fn)
+        if self._applier is None or not self._applier.is_alive():
+            self._applier = threading.Thread(target=self._apply_loop, name="dz-rxapply", daemon=True)
+            self._applier.start()
+        self._defer_ev.set()
+
+    def _apply_loop(self) -> None:
+        while True:
+            if not self._defer_ev.wait(5.0) and not self._deferred:
+                return                                       # 闲 5 s 退出，下次排队再起
+            self._defer_ev.clear()
+            with self.lock:
+                while self._deferred:
+                    fn = self._deferred.popleft()
+                    try:
+                        fn()
+                    except Exception:  # noqa: BLE001
+                        pass
+
     def _on_bytes(self, data: bytes) -> None:
         now = time.monotonic()
-        with self.lock:
+        with self.rxlock:
             self.rx_bytes += len(data)
             self.last_rx = now
+            frames = self.parser.feed(data)
+        text_mode = self.schema_hash is None and (self.schema is None or self.schema.d.get("virtual"))
+
+        def _log(data=data, now=now):
             if self.log:
                 self.log.write(RX, data)
             if self.raw_on:
                 self._push_raw(now, RX, data)
-            frames = self.parser.feed(data)
-            text_mode = self.schema_hash is None and (self.schema is None or self.schema.d.get("virtual"))
+        if self.log or self.raw_on:
+            self._locked(_log)
         if text_mode:
             self._on_text(data, now)
+        if frames:
+            self.last_frame = now
         for kind, id_, seq, payload in frames:
             self.health.on_frame(seq)
             if kind == HEARTBEAT:
                 self.last_hb = now
-                if len(payload) >= 4:
-                    h = struct.unpack_from("<I", payload)[0]
-                    if len(payload) >= 8:
-                        self.board_uid = struct.unpack_from("<I", payload, 4)[0] or None
-                    if len(payload) >= 12:
-                        self.fw_rev = struct.unpack_from("<I", payload, 8)[0] or None
-                    if len(payload) >= 16:
-                        w = struct.unpack_from("<I", payload, 12)[0]
-                        if w != self.hb_status:
-                            self.hb_status = w
-                            m = hb_status_event(w)
-                            if m:
-                                self._pending_marks.append(m)
-                    if len(payload) >= 28:
-                        es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
-                        if len(payload) >= 40:
-                            m_, t_, ph = struct.unpack_from("<III", payload, 28)
-                            self.selftest, self.params_hash = selftest_dict(m_, t_), ph
-                        if es:
-                            es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
-                        if es != self.estop_cause:
-                            self.estop_cause = es
-                            if es:
-                                self.emit({"type": "estop_cause", **es})
-                                if es["cause_id"] != 1:          # 手动急停侧车自己已记了一条（带按键来源）
-                                    self._pending_marks.append(("estop", "板子急停：" + es["message_zh"]))
-                    if h != self.schema_hash:
-                        self._bind_schema(h)
+                with self.hblock:
+                    self._on_heartbeat(payload)
             elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("M"):
                 self.mode_ack = payload[1]
             elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
                 self.save_ack = payload[1]
             elif kind == DATA and id_ == ID_CMD and len(payload) == 5 and payload[0] == ord("H"):
-                self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]
+                self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
                 self.relay_ack = payload[0]
+            else:
+                self._locked(lambda k=kind, i=id_, pl=payload, n=now: self._on_frame_locked(k, i, pl, n))
+
+    def _on_heartbeat(self, payload: bytes) -> None:
+        """心跳：板子身份、状态字、急停位、estop_cause。只在 hblock 下（不碰 session.lock），急停锁存不受长持锁影响。"""
+        if True:
+            if True:
+                if len(payload) >= 4:
+                    h = struct.unpack_from("<I", payload)[0]
+                    if len(payload) >= 8:
+                        self.board_uid = struct.unpack_from("<I", payload, 4)[0] or None
+                    if not self._uid_marked:
+                        self._uid_marked = True
+                        lastsession.mark_board(self.port, self.board_uid, h)
+                        rec = latch.get(None, self.board_uid)
+                        if rec and not self.tx_locked:
+                            self.tx_locked = True
+                            self.estop_source = rec.get("source") or "latch_restored"
+                            self.emit({"type": "tx_locked", "on": True, "source": self.estop_source, "restored": True})
+                            self._pending_marks.append(("estop", "按板子身份恢复急停锁存（换了端口也保持）", self.estop_source))
+                    if len(payload) >= 12:
+                        self.fw_rev = struct.unpack_from("<I", payload, 8)[0] or None
+                    if len(payload) < 16:
+                        self._confirm_clear(0)      # 老固件心跳没有状态字（没有 bit10）：发 'R' 后下一帧心跳即视为已解除
+                    if len(payload) >= 16:
+                        w = struct.unpack_from("<I", payload, 12)[0]
+                        self._confirm_clear(w)
+                        if w != self.hb_status:
+                            was = self.hb_status or 0
+                            self.hb_status = w
+                            m = hb_status_event(w)
+                            if m:
+                                self._pending_marks.append(m)
+                            if w & (1 << 10) and not was & (1 << 10) and not self.tx_locked:
+                                # 板子心跳急停位（car_2wd 等置 bit10）：侧车同样锁存并持久化（其他应用只报 estop_cause，下面处理）
+                                self.tx_locked = True
+                                self.estop_source = "firmware:estop_flag"
+                                latch.set(self.port, self.board_uid, self.estop_source, "板子心跳报急停")
+                                self.emit({"type": "tx_locked", "on": True, "source": self.estop_source})
+                                self.emit(self.estop_ev("latched", self.estop_source, message_zh="板子心跳报急停"))
+                                self._pending_marks.append(("estop", "板子心跳报急停（急停位）", self.estop_source))
+                    if len(payload) >= 28:
+                        es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16))
+                        if len(payload) >= 40:
+                            m_, t_, ph = struct.unpack_from("<III", payload, 28)
+                            self.selftest, self.params_hash = selftest_dict(m_, t_), ph
+                            if self.selftest is not None and (m_, t_) != self._selftest_key:   # 新的一次自检结果：记完成时间 + 当时的参数 hash
+                                self._selftest_key, self.selftest_at, self.selftest_ph = (m_, t_), _iso_now(), ph
+                        if es:
+                            es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
+                        if es != self.estop_cause:
+                            self.estop_cause = es
+                            if es:
+                                src = "selftest" if es["cause"] == "selftest" else "firmware:" + es["cause"]
+                                es["source"] = src
+                                # 不再单独推 type:"estop_cause"：cause / message_zh 只随统一事件 estop state:"latched" 下发
+                                if self.estop_requested_at is not None:    # 人/Agent 发的急停：固件锁存确认
+                                    self._emit_latched(self.estop_ev("latched", self.estop_source or src, cause=es["cause"], message_zh=es["message_zh"],
+                                                            latency_ms=round((time.monotonic() - self.estop_requested_at) * 1000)))
+                                    self.estop_requested_at = None
+                                if self.tx_locked and self.estop_source == "firmware:estop_flag":  # 急停位先到、原因后到：换成具体原因
+                                    self.estop_source = src
+                                    latch.set(self.port, self.board_uid, src, "板子报急停原因")
+                                    self.emit(self.estop_ev("latched", src, cause=es["cause"], message_zh=es["message_zh"]))
+                                if not self.tx_locked:           # 板子自己急停（看门狗/堵转/欠压…）：侧车也锁存并持久化
+                                    self.tx_locked = True
+                                    self.estop_source = src
+                                    latch.set(self.port, self.board_uid, src, es["message_zh"])
+                                    self.emit({"type": "tx_locked", "on": True, "source": src})
+                                    self.emit(self.estop_ev("latched", src, cause=es["cause"], message_zh=es["message_zh"]))
+                                if es["cause_id"] != 1:          # 手动急停侧车自己已记了一条（带按键来源）
+                                    self._pending_marks.append(("estop", "板子急停：" + es["message_zh"], src))
+                    if h != self.schema_hash and h != self._binding_h:
+                        self._binding_h = h
+
+                        def _bind(h=h):
+                            try:
+                                self._bind_schema(h)
+                            finally:
+                                self._binding_h = None
+                        self._locked(_bind)
+
+    def _on_frame_locked(self, kind: int, id_: int, payload: bytes, now: float) -> None:
+        """要 session.lock 的帧（黑匣子、遥测、参数回执）：由 _locked 调用（已持锁，RLock 可重入）。"""
+        if True:
+            if False:
+                pass
             elif kind == DATA and id_ == ID_BB and len(payload) == 16:
                 t_ms, code, arg, a, b = struct.unpack("<IHHff", payload)
                 with self.lock:
                     self.bb_recs.append(bb_record(t_ms, code, arg, a, b))
+                    if code in (6, 7) and arg == 0:      # 参数已存进 flash / 上电用的就是 flash 里的
+                        self.flash_saved_writes = self.param_writes
             elif kind == DATA and self.schema and id_ == self.schema.telem_id:
                 v = self.schema.decode(payload)
                 if v is not None:
@@ -501,37 +691,95 @@ class Session:
     def _send(self, kind: int, id_: int, payload: bytes = b"") -> bool:
         with self.lock:
             tr = self.tr
-            self.seq = (self.seq + 1) & 0xFF
-            frame = encode(kind, id_, self.seq, payload)
+            with self.wlock:
+                self.seq = (self.seq + 1) & 0xFF
+                frame = encode(kind, id_, self.seq, payload)
             if self.log:
                 self.log.write(TX, frame)
             if self.raw_on and tr:
                 self._push_raw(time.monotonic(), TX, frame)
         if not tr:
             return False
-        tr.write(frame)
+        with self.wlock:
+            tr.write(frame)
         return True
 
-    def estop(self, src: str = "") -> dict:
+    # 急停事件约定（docs/dev/events.md）：必有键 + 可选键；测试断言键集合精确等于约定
+    ESTOP_EVENT_KEYS = {"requested": ({"type", "seq", "state", "source", "t", "ok", "message_zh"}, set()),
+                        "latched": ({"type", "seq", "state", "source", "t"}, {"cause", "message_zh", "latency_ms"}),
+                        "cleared": ({"type", "seq", "state", "source", "t"}, {"message_zh", "latency_ms"})}
+
+    def estop_ev(self, state: str, source: str | None, **kw) -> dict:
+        """统一急停事件（与 link.state 同风格）：{type:"estop", seq, state: requested|latched|cleared, source, cause?, message_zh?, t}。"""
+        return {"type": "estop", "seq": next(self._estop_seq), "state": state, "source": source or "ui",
+                "t": round(time.time() * 1000)} | {k: v for k, v in kw.items() if v is not None}
+
+    def _send_estop(self, n: int = 3) -> bool:
+        """急停专用通道：不拿 self.lock（别的线程长持它时急停也不排队），只拿短的写锁保证不与半帧交错；
+        3 帧一次写出。写超时（串口 write_timeout 0.1 s）→ 当断线处理并如实返回 False。日志在锁空闲时补记。"""
+        tr = self.tr
+        if tr is None:
+            return False
+        with self.wlock:
+            frames = b""
+            for _ in range(n):
+                self.seq = (self.seq + 1) & 0xFF
+                frames += encode(DATA, ID_ESTOP, self.seq, b"")
+            try:
+                tr.write(frames)
+                ok = True
+            except Exception as e:  # noqa: BLE001  写超时 / 口没了
+                ok = False
+                err = f"急停写串口失败：{type(e).__name__}: {e}"
+        if not ok:
+            threading.Thread(target=self._on_transport_error, args=(err,), daemon=True).start()
+        def _log():
+            with self.lock:
+                if self.log:
+                    self.log.write(TX, frames)
+                if self.raw_on:
+                    self._push_raw(time.monotonic(), TX, frames)
+        threading.Thread(target=_log, daemon=True).start()
+        return ok
+
+    def _emit_latched(self, ev: dict) -> None:
+        """锁存确认可能比 requested 回包先到（即时心跳 ≤ 5 ms）：requested 还没广播时先压住，release 后按序补发。"""
+        with self.hblock:
+            if self._estop_hold:
+                self._estop_held.append(ev)
+                return
+        self.emit(ev)
+
+    def release_estop_events(self) -> None:
+        with self.hblock:
+            self._estop_hold, held, self._estop_held = False, self._estop_held, []
+        for ev in held:
+            self.emit(ev | {"seq": next(self._estop_seq)})   # seq 按实际下发顺序（在 requested 之后）
+
+    def estop(self, src: str = "", hold: bool = False) -> dict:
         """急停：连发 3 帧（丢一帧也能停）。没连接时如实告知，不假装成功，也不锁存（没有板子可停，锁住只会吓到刚打开软件的人）。
         src = 谁按的（急停按钮 / Esc 键 / 空格键），写进告警文字。"""
         by = f"（{src}）" if src else ""
         if self.tr is None:
             return {"type": "estop", "sent": False, "nolink": True, "src": src,
                     "message": f"没连板子：急停{by}没有送达任何板子；连着真板时请直接断电/拔电池"}
-        ok = False
-        for _ in range(3):
-            try:
-                ok = self._send(DATA, ID_ESTOP) or ok
-            except Exception:  # noqa: BLE001
-                pass
+        replay = isinstance(self.tr, ReplayTransport)
+        with self.hblock:                  # 先记“已请求”再发：板子急停上升沿的即时心跳 ≤ 5 ms 就回来，晚记会错过锁存确认
+            self.tx_locked = True
+            self.estop_source = estop_source(src)
+            self.estop_requested_at = None if replay else time.monotonic()
+            self._estop_hold = hold            # 调用方（server）广播完 requested 再 release_estop_events()
+        ok = self._send_estop(3)
         self.estop_count += 1
-        self.tx_locked = True
-        self.emit({"type": "tx_locked", "on": True})
+        if not ok:
+            self.estop_requested_at = None
+        if not isinstance(self.tr, ReplayTransport):
+            latch.set(self.port, self.board_uid, self.estop_source, src)
+        self.emit({"type": "tx_locked", "on": True, "source": self.estop_source})
         if isinstance(self.tr, ReplayTransport):
             return {"type": "estop", "sent": False, "src": src, "message": "回放中：急停没有送达任何板子"}
-        return {"type": "estop", "sent": ok, "src": src,
-                "message": f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池"}
+        return self.estop_ev("requested", self.estop_source, ok=ok,     # 键集合见 ESTOP_EVENT_KEYS（docs/dev/events.md）
+                             message_zh=f"急停已发送{by}（3 帧）：板子已锁存，确认安全后点“解除急停 R”" if ok else f"急停{by}没有送达！直接断电/拔电池")
 
     def send_data(self, id_: int, payload: bytes) -> bool:
         """发任意 DATA 帧（应用自定义命令，如 car_2wd 的 id=1 轮速设定）。0x7E/0x7F 走专用接口。"""
@@ -604,9 +852,13 @@ class Session:
         while time.monotonic() < t_end and getattr(self, "selftest_ack", None) is None:
             time.sleep(0.01)
         m = getattr(self, "selftest_ack", None)
+        if m is not None:
+            self.h_supported = True                # 这块板子认 'H'：以后没回就是超时，而不是旧固件
         if m is None:
             return {"ok": None, "mask": None, "failed_items": [], "message_zh": "板子没回执（固件早于 dzctl 0.12.0？）"}
         d = selftest_dict(m, 1)
+        with self.hblock:                        # 'H' 回包也是一次完成的自检
+            self.selftest_at, self.selftest_ph = _iso_now(), self.params_hash
         msg = "自检全部通过" if d["pass"] else "自检没通过：" + "；".join(i["message_zh"] for i in d["failed_items"])
         self.mark("param", msg)
         return {"ok": d["pass"], "mask": m, "failed_items": d["failed_items"], "message_zh": msg}
@@ -629,15 +881,38 @@ class Session:
         return self._send(DATA, ID_RELAY)
 
     def cmd(self, c: str, n: int | None = None) -> bool:
+        # 人按了“解除急停 R”（界面；Agent 不能发 R）。不提前解锁、不提前宣告：等固件心跳 bit10 清零（_confirm_clear）。
+        # clear_pending_at 必须在 _send 之前置位：固件对 bit10 下降沿会立刻回一帧心跳，晚置会漏掉那一帧、白等下一周期（~500 ms）。
+        no_hb = False
+        if c == "R":
+            with self.hblock:
+                if self.tx_locked:
+                    self.clear_pending_at = time.monotonic()
+                    no_hb = not self.last_hb          # 从没收到过工作台心跳（非工作台固件 / 文本设备）
         ok = self._send(DATA, ID_CMD, c.encode()[:1] + (bytes([n]) if n is not None else b""))
-        if ok and c == "R" and self.tx_locked:        # 人按了“解除急停 R”：侧车发送一起解锁
-            self.tx_locked = False
-            self.emit({"type": "tx_locked", "on": False})
+        if c == "R":
+            with self.hblock:
+                if not ok:
+                    self.clear_pending_at = None      # 没发出去就取消等待
+                elif no_hb:
+                    self._confirm_clear(0)            # 没有 bit10 可等，R 发出即解除
         return ok
+
+    def _confirm_clear(self, w: int) -> None:
+        """心跳处理里调用（持 hblock）：发过 'R' 之后第一帧 bit10=0 的心跳才算固件已解除 → 解锁、清持久化、推 cleared。"""
+        if self.clear_pending_at is None or w & (1 << 10):
+            return
+        ms = round((time.monotonic() - self.clear_pending_at) * 1000)
+        self.clear_pending_at = None
+        latch.clear(self.port, self.board_uid)
+        was, self.tx_locked, self.estop_source = self.tx_locked, False, None
+        if was:
+            self.emit({"type": "tx_locked", "on": False})
+            self.emit(self.estop_ev("cleared", "ui", message_zh="已由人工解除急停", latency_ms=ms))
 
     def _check_tx(self) -> None:
         if self.tx_locked:
-            raise LinkError("tx_locked", "急停后侧车的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停 R”")
+            raise LinkError("tx_locked", "急停后本地服务的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停 R”")
 
     def send_raw(self, data: bytes) -> bool:
         """原样发字节（给非工作台固件的设备，如 AT 指令）。急停后拒绝。"""
@@ -682,6 +957,7 @@ class Session:
         Agent 落地参数、恢复快照时用；拖滑条不用（多一次往返）。"""
         v, clamped_here = self.schema.clamp(name, float(value)) if self.schema and name in self.schema.param_index else (value, False)
         applied, status = self._param_rpc(name, struct.pack("<f", v))
+        self.param_writes += 1
         out = {"name": name, "requested": value, "applied": applied, "status": "clamped" if clamped_here else status}
         if verify:
             rb = self.read_param(name)
@@ -772,19 +1048,59 @@ class Session:
                  else now - self.log.t0 if self.log else None)
         return log_t, (self.samples[-1][0] if self.samples else None)
 
-    def mark(self, kind: str, text: str) -> dict:
-        """往事件时间线记一条（带两种时间）并广播。"""
-        with self.lock:
-            log_t, plot_t = self._times_locked(time.monotonic())
-        e = self.timeline.add(kind, text, log_t, plot_t)
+    def mark(self, kind: str, text: str, source: str | None = None) -> dict:
+        """往事件时间线记一条（带两种时间）并广播。estop / watchdog 一律带 source（不允许“来源未知”）。"""
+        if kind in ("estop", "watchdog") and not source:
+            source = self.estop_source or ("heartbeat_lost" if kind == "watchdog" else "sidecar")
+        # 事件循环里也会调 mark：别的线程长持 self.lock 时不等，时间戳留空也要先把事件推出去
+        now = time.monotonic()
+        if self.lock.acquire(blocking=False):
+            try:
+                log_t, plot_t = self._times_locked(now)
+            finally:
+                self.lock.release()
+        else:
+            log_t, plot_t = None, None
+        e = self.timeline.add(kind, text, log_t, plot_t, source)
         self.emit(e)
         return e
+
+    def link_state(self, now: float | None = None) -> dict | None:
+        """唯一的连接状态（见 linkstate.py）；变化或到保活间隔时返回一条 link.state，否则 None。"""
+        now = time.monotonic() if now is None else now
+        fw = self.fw_status()
+        with self.linklock:                    # 不拿 session.lock：长持锁时 link.state 照推（读的都是单个属性）
+            return self.link.update(now, port=self.port, port_open=self.tr is not None,
+                                    reconnecting=self.reconnecting or (self.resuming and self.tr is None), t_connect=self._t_tr,
+                                    last_frame=self.last_frame,
+                                    reason="resuming" if self.resuming and self.tr is None else self.down_reason,
+                                    mode=(run_mode_dict(self.hb_status) or {}).get("mode") or self.run_mode,
+                                    fw=fw)
+
+    def selftest_snapshot(self) -> dict | None:
+        """selftest 快照 + at（完成时间 ISO）+ params_hash_at（自检时参数 hash）+ stale（参数已变 → 封箱页提示重新自检）。"""
+        if self.selftest is None:
+            return None
+        ph_at = self.selftest_ph
+        return dict(self.selftest) | {"at": self.selftest_at,
+                                      "params_hash_at": None if ph_at is None else f"{ph_at:08x}",
+                                      "stale": ph_at is not None and self.params_hash is not None and ph_at != self.params_hash}
+
+    def fw_status(self) -> dict:
+        """固件上报的板上状态快照（link.state / progress 共用，字段名与固件一致）；没上报 = null。
+        由 hblock 保护（与收线程心跳处理同一把小锁），不拿 session.lock。"""
+        with self.hblock:
+            hb = self.hb_status
+            return {"run_mode": run_mode_dict(hb), "selftest": self.selftest_snapshot(),
+                    "params_saved": None if self.params_hash is None or hb is None else not (hb & (1 << 16)),
+                    "params_hash": None if self.params_hash is None else f"{self.params_hash:08x}",
+                    "estop_cause": self.estop_cause}
 
     def status(self) -> dict:
         now = time.monotonic()
         with self.lock:
             connected = self.tr is not None or self.reconnecting
-            alive = connected and now - self.last_hb < HB_TIMEOUT_S
+            alive = connected and now - self.last_frame <= HB_TIMEOUT_S
             st = {"type": "status", "connected": connected, "port": self.port, "baud": self.baud,
                   "alive": alive, "rx_bytes": self.rx_bytes, "good": self.parser.good, "bad": self.parser.bad,
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
@@ -799,7 +1115,7 @@ class Session:
             st.update(hb_status_dict(self.hb_status))
             st["estop_cause"] = self.estop_cause
             st["run_mode"] = run_mode_dict(self.hb_status)
-            st["selftest"] = self.selftest
+            st["selftest"] = self.selftest_snapshot()
             st["params_saved"] = None if self.params_hash is None or self.hb_status is None else not (self.hb_status & (1 << 16))
             st["params_hash"] = None if self.params_hash is None else f"{self.params_hash:08x}"
             if self.tr is not None:
@@ -808,10 +1124,10 @@ class Session:
                 st["hb"] = self.health.tick(now, self.parser.good, self.parser.bad, self.rx_bytes, log_t, plot_t)
                 marks += [("crc", f"CRC 坏帧突增：1 秒 {c['crc']} 帧") for c in st["hb"] if crc_spike(c, hist)]
                 if self._was_alive and not alive and not self.reconnecting:
-                    marks.append(("watchdog", f"{HB_TIMEOUT_S} s 没收到板子心跳（板端看门狗应已急停）"))
+                    marks.append(("watchdog", f"{HB_TIMEOUT_S} s 没收到板子心跳（板端看门狗应已急停）", "heartbeat_lost"))
             self._was_alive = alive
-        for k, txt in marks:
-            self.mark(k, txt)
+        for mk in marks:
+            self.mark(*mk)
         if self.reconnecting:
             st["hint"] = "连接断开，正在自动重连…（线插回去即可；急停此时送不到板子，板子 1 秒没收到心跳会自己急停）"
         elif connected and self.parser.good >= 20 and self.parser.bad * 10 > self.parser.good:
@@ -819,7 +1135,7 @@ class Session:
                           "检查共地、杜邦线长度、电机线是否和串口线捆在一起；数据仍按校验通过的帧显示")
         elif connected and not alive and now - self.t_connect > HB_TIMEOUT_S:
             st["hint"] = ("收到字节但没有合法帧：波特率可能不对" if self.rx_bytes and not self.parser.good
-                          else "超过 1.6 s 没有心跳：板子没上电/没跑工作台固件/线松了")
+                          else f"超过 {HB_TIMEOUT_S:g} s 没有合法帧：板子没上电/没跑工作台固件/线松了")
         return st
 
 
@@ -859,6 +1175,10 @@ SELFTEST_ITEMS = {1: ("subsys", "子系统自检没通过（某个子系统的 s
                   3: ("nvm", "flash 存储区不可用：参数存不下，掉电后恢复默认"),
                   4: ("sensor", "传感器无数据（编码器 / 视觉 / IMU）"),
                   5: ("power", "电源电压不在允许范围")}
+
+
+def _iso_now() -> str:
+    return datetime.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
 def selftest_dict(mask: int, t_ms: int) -> dict | None:
@@ -927,7 +1247,7 @@ def hb_status_event(w: int) -> tuple[str, str] | None:
         return None
     why = f"板子复位原因：{d['reset']}" + (f"；{'、'.join(d['hb_flags'])}" if d["hb_flags"] else "")
     hint = "（主循环卡住被看门狗复位，板子已进安全态，确认原因后发 R 解除）" if bad else ""
-    return ("watchdog", why + hint)
+    return ("watchdog", why + hint, "firmware:watchdog_reset" if bad else "firmware:safe_state")
 
 
 def fw_rev_str(rev: int | None) -> str:
@@ -942,3 +1262,11 @@ def readback_text(vals: dict, schema_hash: int, fw_rev: int | None, board_uid: i
             f"# schema_hash = {schema_hash:08X}", f"# fw_rev = {fw_rev_str(fw_rev)}",
             f"# board_uid = {board_uid:08X}" if board_uid else "# board_uid = 未知"]
     return "\n".join(head + [f"{k} = {v:.9g}" for k, v in vals.items()]) + "\n"
+
+
+def estop_source(src: str) -> str:
+    """estop(src) 的按键/调用方文字 → 规范 source：agent / ui（急停按钮、Esc、空格、其他界面来源）。"""
+    t = (src or "").strip().lower()
+    if t.startswith("agent"):
+        return "agent"
+    return "ui"

@@ -11,6 +11,14 @@ from dzbench.session import Session
 pytestmark = pytest.mark.needs_sim
 
 
+
+def _unlocked(s, t=3.0):
+    """发 R 后等固件心跳 bit10 清零、侧车解锁。"""
+    t_end = time.monotonic() + t
+    while s.tx_locked and time.monotonic() < t_end:
+        time.sleep(0.01)
+    assert not s.tx_locked
+
 def _wait(cond, t=30.0):
     t0 = time.monotonic()
     while time.monotonic() - t0 < t:
@@ -47,7 +55,7 @@ def test_relay_override_limits_timeout_estop(board):
     assert s.relay(0, 0.3, 0.5, 5.0)["ok"]                     # 能再次开始 = 上一次确已结束
     s.estop(); time.sleep(0.2)
     assert all(v["u"] == 0 for _, v in s.window(0.1))
-    s.cmd("R"); time.sleep(0.1)
+    s.cmd("R"); _unlocked(s)
     assert s.relay(0, 0.3, 0.5, 0.5)["ok"]                     # 急停结束了继电
     assert s.relay(9, 0.3, 0.5, 0.5)["status"] == 1            # 没有这个回路
 
@@ -70,7 +78,7 @@ def test_relay_answers_on_own_link_boards(home, target):
         assert s.relay(0, 0.2, 0.1, 1.0)["ok"]
         assert s.relay(0, 0.2, 0.1, 1.0)["status"] == 1          # 已在继电
         s.estop(); time.sleep(0.3)
-        s.cmd("R"); time.sleep(0.2)
+        s.cmd("R"); _unlocked(s)
         assert s.relay(0, 0.2, 0.1, 1.0)["ok"]                    # 急停结束了上一次继电
         assert s.relay(9, 0.2, 0.1, 1.0)["status"] == 1
         assert s.relay_stop()

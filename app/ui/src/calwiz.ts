@@ -72,7 +72,7 @@ export function initCalWiz(call: Call, fields: () => string[], params: () => P[]
             got[`${b.dataset.s}|${k}`] = r.avg;
             if (r.pp > 0.2 * Math.max(1e-9, Math.abs(r.avg)) && s.id !== "line") warn.push(`${ch[k]} 波动 ${r.pp.toPrecision(3)}，不像静止`);
           }
-          o.textContent = Object.entries(got).map(([k, v]) => `${k}=${v.toPrecision(5)}`).join("  ") + (warn.length ? "  ⚠ " + warn.join("；") : "");
+          o.textContent = Object.entries(got).map(([k, v]) => `${k}=${v.toPrecision(5)}`).join("  ") + (warn.length ? "  注意：" + warn.join("；") : "");
           showRes();
         } finally { b.disabled = false; }
       });
@@ -83,7 +83,7 @@ export function initCalWiz(call: Call, fields: () => string[], params: () => P[]
         res.querySelector<HTMLButtonElement>("[data-w]")?.addEventListener("click", async () => {
           const ch: Record<string, number> = {};
           rows.forEach(r => { const p = res.querySelector<HTMLSelectElement>(`[data-o="${r.x.key}"]`)!.value; if (p) ch[p] = r.v; });
-          if (!Object.keys(ch).length) return toast("选一下写到哪个参数（没有对应参数就先在 app.yaml 里加）");
+          if (!Object.keys(ch).length) return toast("先选择写入哪个参数（没有对应参数就先在 app.yaml 里加）");
           await call("propose", { changes: ch, source: "标定", reason: `标定向导 · ${s.title}` });
         });
       };

@@ -55,6 +55,8 @@ class Sender:
     def _wrap_emit(self, e: dict) -> None:
         if e.get("type") == "tx_locked" and e.get("on"):
             self.stop_all("急停")
+        elif e.get("type") == "error" and e.get("code") == "link_lost":
+            self.stop_all("连接断开")              # 自动重连只恢复通信和遥测，不续发任何运动命令/目标值
         self._prev_emit(e)
 
     def path(self):

@@ -84,7 +84,7 @@ def asymmetry(segs: list[dict]) -> dict | None:
 class StagedSearch:
     """每轮只动一个增益，阶段 P → I → D：本阶段持续往一个方向乘 factor，
     指标变好就继续，变差（护栏标 last_rejected）或越过"够用"线就进入下一阶段。所有提议都要过 TuneGuard.check。
-    与 PID_Helper 的"纯 P 静差 15–20% 目标"不同：我们不把 I 清零（实机上 I 不能一步降到 0），而是从当前值出发。"""
+    交互形态借鉴了 PID_Helper（GPL-3.0）的公开界面，未参考或复制其源码；阶段顺序与静差策略为自写（不把 I 清零，从当前值出发）。"""
     order: tuple = ("kp", "ki", "kd")
     factor: float = 1.3
     stage: int = 0

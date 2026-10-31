@@ -86,7 +86,7 @@ def test_unplug_replug(board, side):
     board.unplug()
     e = ui.wait(lambda e: e.get("code") == "link_lost", start=m)
     assert han(e["message"]) and "重连" in e["fix"]
-    assert ui.ok("estop")["sent"] is False                       # 线拔了：老实说没发出去
+    assert (lambda r: r.get("ok", r.get("sent")) is False)(ui.ok("estop"))                       # 线拔了：老实说没发出去
     time.sleep(1.3)
     direct_go(board)
     time.sleep(0.3)
@@ -98,7 +98,8 @@ def test_unplug_replug(board, side):
     ui.wait(lambda e: e["type"] == "param", start=m, timeout=10)    # 重读了参数
     time.sleep(0.5)
     assert board_sp(board) == 0.0, "插回去不自动解除急停"
-    ui.ok("cmd", c="R")
+    m = ui.mark(); ui.ok("cmd", c="R")
+    ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "cleared", 10, m)   # 固件心跳 bit10 清零才解锁
     drive(ui, board)
 
 
@@ -151,12 +152,12 @@ def test_sidecar_killed_and_restarted(board, home):
         ui = UI(port)                                             # 外壳把侧车重启后，界面自动重连
         h = ui.ok("hello")
         assert h["recovered"]["port"] == str(board.path) and "意外退出" in h["recovered"]["message"]
-        assert not h["status"]["connected"], "重启后不自动连板子"
-        ui.ok("connect", port=str(board.path), baud="auto")
-        ui.wait(lambda e: e["type"] == "schema")
+        assert h["recovered"]["port"] == str(board.path)
+        assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 6), "重启后自动连回原来的板子"
         time.sleep(0.5)
         assert board_sp(board) == 0.0
-        ui.ok("cmd", c="R")
+        m = ui.mark(); ui.ok("cmd", c="R")
+        ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "cleared", 10, m)
         drive(ui, board)
         ui.ok("disconnect")
         ui.close()

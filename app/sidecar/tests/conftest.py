@@ -4,7 +4,17 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import os  # noqa: E402
+
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_shell_llm_env(monkeypatch):
+    """开发机 shell 里常 source 过模型网关配置（DZ_LLM_BASE_URL / DZ_LLM_API_KEY …）：测试一律从干净环境起，
+    要用的测试自己 monkeypatch.setenv。否则 test_first_run_setup_against_mock 这类“留空 = 用已保存配置”的断言会被 shell 带偏。"""
+    for k in [k for k in os.environ if k.startswith("DZ_LLM_")]:
+        monkeypatch.delenv(k, raising=False)
 
 
 @pytest.fixture
@@ -17,7 +27,6 @@ def home(tmp_path, monkeypatch):
 # 用到 host-sim 仿真板的测试统一标 @pytest.mark.needs_sim（或模块级 pytestmark）。
 # Windows（mingw 没有 asan/ubsan、Makefile 用了 POSIX 命令）或没有 make/cc 时统一跳过。
 # 没标却起了仿真板 → 直接失败，免得只在 Windows CI 上才暴露（v0.8.0 的 app-windows 就是这样挂的）。
-import os  # noqa: E402
 import shutil  # noqa: E402
 
 SIM_OK = os.name != "nt" and bool(shutil.which("make")) and bool(shutil.which("cc"))
@@ -75,3 +84,35 @@ def _hermetic_pack(tmp_path_factory, monkeypatch, _hermetic_env):
     if not p.exists():
         p.write_bytes(b"PK\x05\x06" + b"\0" * 18)
     monkeypatch.setenv("DZBENCH_PACK", str(p))
+
+
+# ---------------------------------------------------------------- 结尾汇总：失败用例 + 建议
+# 按错误文本里的特征给通用建议（不看是哪个用例）；匹配不到就只列出来。
+_HINTS = (
+    (("third_party", "STM32Cube", "CMSIS", "mspm0-sdk", "HAL"), "缺器件包/SDK：make fetch（或把已有 third_party 软链进 worktree）"),
+    (("syscfg", "SysConfig"), "缺 TI SysConfig：装 CCS/SysConfig，或设 SYSCFG_CLI 指向 sysconfig_cli"),
+    (("No module named",), "缺 Python 依赖：pip install -r app/sidecar/requirements.txt"),
+    (("make: ***", "cc:", "gcc"), "仿真板编不过：make BOARD=host-sim APP=<应用> 单独复现"),
+    (("TimeoutError", "timed out", "wait("), "仿真时序超时：机器忙时偶发，单独重跑该用例确认"),
+    (("--check", "不一致", "差异"), "生成物与源不一致：按报错提示重跑对应生成命令并提交"),
+)
+
+
+def pytest_terminal_summary(terminalreporter):
+    failed = terminalreporter.stats.get("failed", []) + terminalreporter.stats.get("error", [])
+    if not failed:
+        return
+    terminalreporter.section(f"失败汇总（{len(failed)} 个）与建议")
+    for r in failed:
+        text = str(r.longrepr or "")
+        hint = next((h for keys, h in _HINTS if any(k in text for k in keys)), "看上面的回溯")
+        terminalreporter.write_line(f"✗ {r.nodeid}\n    → {hint}")
+
+
+@pytest.fixture(autouse=True)
+def _no_real_llm_env(monkeypatch):
+    """开发机/评测机上 source 过真 Key（DZ_LLM_*）也不能漏进单测：否则“没配 Key”的测试会拿真 Key 走、断言失败时把 Key 打进日志。
+    需要的测试自己 monkeypatch.setenv。"""
+    import os
+    for k in [k for k in os.environ if k.startswith(("DZ_LLM_", "DZBENCH_API_KEY", "DZBENCH_BASE_URL", "DZBENCH_MODEL"))]:
+        monkeypatch.delenv(k, raising=False)

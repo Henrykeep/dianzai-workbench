@@ -21,7 +21,9 @@ export PYTHONUTF8 := 1
 Q := $(if $(filter 1,$(V)),,@)
 .DEFAULT_GOAL := all
 ROOT      := $(CURDIR)
-BOARD_YML := boards/$(BOARD)/board.yaml
+# 板卡根目录：默认仓库 boards/；测试把临时导入的板放到临时目录（make BOARDS_DIR=/tmp/xxx BOARD=...），不写进仓库
+BOARDS_DIR ?= $(if $(DZ_BOARDS_DIR),$(DZ_BOARDS_DIR),boards)
+BOARD_YML := $(BOARDS_DIR)/$(BOARD)/board.yaml
 APP_DIR   ?= $(firstword $(wildcard apps/$(APP) examples/$(APP)))
 # LINK=rtt：LINK 走调试探针 RTT（firmware/proto/dzrtt），不占串口；默认 uart。换输出目录免得混用目标文件
 LINK      ?= uart
@@ -36,7 +38,7 @@ ifeq ($(APP_DIR),)
 $(error 找不到应用 $(APP)（apps/ 或 examples/ 下）)
 endif
 ifeq ($(wildcard $(BOARD_YML)),)
-$(error 找不到 $(BOARD_YML)。可用板卡：$(notdir $(wildcard boards/*)))
+$(error 找不到 $(BOARD_YML)。可用板卡：$(notdir $(wildcard $(BOARDS_DIR)/*)))
 endif
 
 # 由 board.yaml 生成 board_gen.{h,c,mk}；board.yaml 或 app.yaml 变了自动重新生成
@@ -108,7 +110,7 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval bench preflight
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -184,6 +186,10 @@ vars: $(GEN)/board_gen.mk
 gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
+# 浏览器预览桌面工作台：构建 app/ui、起侧车，打印带 ?ws= 的完整地址（mk/ui-preview.sh）
+ui-preview:
+	PY=$(PY) sh mk/ui-preview.sh
+
 # 端到端基准：4 道题在 host-sim 上 构建 → 阶跃 →（继电起步）→ 验收评分，约 2 分钟；结果 build/bench/results.{json,md}
 # 当前基线（fw-runtime，2026-10-31）：motor_pos 99.5 / 2013C 88.2 / 2023E 71.1 / 2026H 84.7，平均 85.9（新克隆 make fetch 后实测）。ARGS="--only 2026H" 只跑一题
 bench:
@@ -195,7 +201,10 @@ agent-eval:
 selftest:
 	$(MAKE) APP=port_selftest BOARD=$(BOARD)
 
+# 测试前后给仓库拍快照：测试在仓库树里留下文件（boards/zz-test-*、build/zz-test-*、未跟踪文件）就失败
+test check: TREE_SNAP := $(shell mktemp 2>/dev/null || echo /tmp/dz-tree-$$$$)
 test:
+	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
@@ -206,10 +215,15 @@ test:
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
+	$(PY) tools/tree_guard.py check $(TREE_SNAP)
 
 # 推送前：干净克隆 + 空 HOME + 无器件包里跑 CI 同款步骤（tools/preflight.sh）
 # 许可扫描（make check 调用）：vendored/third_party 每目录 LICENSE、Python 依赖 pip-licenses、前端 npm 依赖。
 # 统一输出：✗ [licenses/<类>] 什么 · 原因：… · 处理：…；GPL/LGPL/AGPL、无许可、认不出即失败；CC-BY 登记 docs/ATTRIBUTION.md 即可。
+# 带负载回归：所有核占满时急停 点击→latched、解除→cleared 的 p95 / max ≤ 200 ms（≥50 次）。慢（约 1 min），不进 make test。
+estop-load:
+	$(PY) -m pytest -q -s -p no:cacheprovider app/sidecar/loadtests/test_estop_load.py
+
 licenses:
 	$(PY) tools/check_vendored.py
 	$(PY) tools/test_check_vendored.py
@@ -221,6 +235,10 @@ preflight:
 	tools/preflight.sh
 
 check:
+	$(PY) tools/check_redef.py --selftest
+	$(PY) tools/check_redef.py
+	$(PY) tools/tree_guard.py --selftest
+	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	$(PY) tools/test_port_policy.py
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
@@ -228,6 +246,8 @@ check:
 	$(PY) tools/check_entrypoints.py
 	$(PY) tools/check_ui_layout.py --selftest
 	$(PY) tools/check_ui_layout.py
+	$(PY) tools/check_copy.py --selftest
+	$(PY) tools/check_copy.py
 	$(PY) tools/check_deps.py
 	$(PY) tools/check_deps.py --selftest
 	$(PY) tools/iface_hash.py --check
@@ -252,6 +272,7 @@ check:
 	$(PY) tools/test_params_diff.py
 	$(PY) tools/test_scheme.py
 	$(PY) tools/test_alloc.py
+	$(PY) tools/bench/test_bench.py
 	$(PY) mechanical/calc/test_mech.py
 	$(PY) mechanical/parts/test_parts.py
 	for r in examples/*/requirements.yaml; do $(PY) tools/req.py check $$r >/dev/null || { $(PY) tools/req.py check $$r; exit 1; }; done
@@ -281,6 +302,7 @@ check:
 	cd host/python && $(PY) -m dzlink.test_sender
 	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && for t in tests/*.test.ts; do node_modules/.bin/esbuild $$t --bundle --platform=node --log-level=error | node || exit 1; done; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
+	$(PY) tools/tree_guard.py check $(TREE_SNAP)
 
 fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）
 	tools/fetch_third_party.sh

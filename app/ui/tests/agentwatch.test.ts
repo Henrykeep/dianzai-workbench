@@ -1,0 +1,25 @@
+import { TurnGate, Watch, timeoutCard, errorCard, AGENT_TIMEOUT_MS } from "../src/agentwatch.ts";
+const w = new Watch(); w.start(0);
+if (w.tick(3200).label !== "思考中… 3 s" || w.tick(3200).timeout) throw "计时";
+w.touch(50_000); if (w.tick(100_000).timeout) throw "有事件不超时";
+if (!w.tick(50_000 + AGENT_TIMEOUT_MS + 1).timeout) throw "60 s 无事件超时";
+if (w.tick(200_000).timeout) throw "只触发一次";
+const w2 = new Watch(); w2.start(0); w2.stop(); if (w2.tick(999_999).timeout) throw "已结束不超时";
+const t = timeoutCard(); if (t.title !== "Agent 超过 60 秒未响应" || !t.why.includes("本地服务") || !t.why.includes("模型服务") || !t.retry) throw "超时卡";
+// mock：侧车 ce43c8e 的真实形状
+const c403 = errorCard({ code: "llm_403", message: "网关拒绝了请求（403）。检查 DZ_LLM_API_KEY", detail: "", fix_action: "llm_cfg", retryable: false });
+if (c403.title !== "Agent 出错：模型服务拒绝请求" || !c403.settings || c403.retry) throw "403 " + JSON.stringify(c403);
+const c429 = errorCard({ code: "llm_429", message: "请求太频繁（429）", detail: "", fix_action: "agent_chat", retryable: true });
+if (c429.title !== "Agent 出错：模型服务限流" || c429.settings || !c429.retry) throw "429";
+const cRe = errorCard({ code: "internal", message: "x", detail: "Traceback", fix_action: "agent_chat", retryable: false });
+if (!cRe.retry || cRe.settings || !cRe.detail.includes("Traceback")) throw "agent_chat → 重试";
+const cNull = errorCard({ code: "llm_error", message: "x", detail: "", fix_action: null, retryable: false });
+if (cNull.retry || cNull.settings) throw "null 无按钮";
+const ts = errorCard({ code: "tool_schema", message: "缺字段 input_schema", detail: "Traceback...", fix_action: null, retryable: false });
+if (ts.why !== "这是工作台内部配置错误，不是你的操作问题" || ts.retry || ts.settings || !ts.detail.includes("Traceback")) throw "tool_schema";
+const g = new TurnGate(), cards: string[] = [];
+const feed = (m: any) => { if (m.type === "agent_error") { g.error(); cards.push("err"); } if (m.type === "agent_unreachable" && g.allowUnreachable()) cards.push("down"); };
+g.begin(); feed({ type: "agent_error", code: "llm_403" }); feed({ type: "agent_unreachable" });
+if (cards.join() !== "err") throw "同轮只一张卡";
+g.begin(); feed({ type: "agent_unreachable" }); if (cards.join() !== "err,down") throw "新一轮照常";
+console.log("agentwatch ok");

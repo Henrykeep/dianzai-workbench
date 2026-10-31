@@ -18,7 +18,7 @@ export class Link {
     ws.onopen = () => { this.open = true; this.onState(true); };
     ws.onclose = () => {
       this.open = false; this.onState(false);
-      this.wait.forEach(r => r({ type: "reply", ok: false, error: { code: "ws_closed", message: "与侧车的连接断了", fix: "侧车会自动重启/重连；仍不行重开程序" } }));
+      this.wait.forEach(r => r({ type: "reply", ok: false, error: { code: "ws_closed", message: "与本地服务的连接断了", fix: "本地服务会自动重启/重连；仍不行重开程序" } }));
       this.wait.clear();
       setTimeout(() => this.dial(), 800);
     };
@@ -44,7 +44,7 @@ export class Link {
   async rpc<T = any>(op: string, args: Record<string, unknown> = {}): Promise<T> {
     await this.ready();
     return new Promise((res, rej) => {
-      if (!this.open || !this.ws) return rej({ code: "ws_closed", message: "侧车未连接", fix: "稍等自动重连；开发模式下先运行 python -m dzbench" } as Err);
+      if (!this.open || !this.ws) return rej({ code: "ws_closed", message: "本地服务未连接", fix: "稍等自动重连；开发模式下先运行 python -m dzbench" } as Err);
       const rid = ++this.rid;
       this.wait.set(rid, m => (m.ok ? res(m.data) : rej(m.error)));
       this.ws.send(JSON.stringify({ op, rid, ...args }));

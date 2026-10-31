@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Callable
 
-from .gateway import FORBIDDEN_TOOLS, GatewayError
+from .gateway import FORBIDDEN_TOOLS, GatewayError, human_only_error
 from .stuck import StuckDetector
 from .untrusted import wrap
 from .llm import LLMError
@@ -24,7 +25,7 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
 8. 区分事实与推断：来自工具/数据/源码的标【实测】或【源码】，自己的判断标【推断】；没看过的文件不要说"代码里是这样"。
 9. 不覆盖用户没提交的改动：propose_edit 前先 read_file 看当前内容，只改需要的最小片段。
 10. 实验结论看 verdict：steady.reason 是 warming_up/still_drifting 时先 observe 或加长实验，不要据此改参数；asymmetry 显示上下不对称时优先建议前馈/静摩擦补偿，而不是硬拧 PID。
-11. 结束时列出"待实板确认"的事项（仿真通过 ≠ 实机通过）。
+11. 只要涉及仿真结果、能否上车/上实机，回答里必须有一节“待实板确认”，逐条列出要在实板上验证的项（仿真通过 ≠ 实机通过），不能省。
 12. 要做两步以上的事，先用 update_plan 列 3~5 步计划给用户看（每步 {step, status}，同时只有一步 in_progress），做完一步就整表更新一次。
 13. 要改参数前看一眼 board_memory（这块板以前改过什么、结果如何），不要重复已经被证明变差的改动。
 14. 回答前自查：每个结论至少带一个来自工具的具体数字（如“超调 32%”“调节 0.8 s”）；拿不到数据就直说没有，不要编。
@@ -35,7 +36,15 @@ SYSTEM = """你是“电赛工作台”内置调参与代码助手，用户是�
 17. 评分：score_items → score_run(item, n) → 全过才 score_save → score_writeback(dir=保存返回的目录)。不过就先调参，不要回写 pass。
 18. 仿真调参可用 tune_autopilot 连跑；实机只能逐轮 run_step_test + propose_param_change，每次写都要人确认。
 19. 文风：专业、书面、简洁。用准确术语（超调量、调节时间、稳态误差、相位裕度等），先结论后依据；不寒暄、不客套、不用语气词和表情符号，不用感叹号。
+20. 新建项目 / 从零做到仿真跑通这类大任务：第一轮就给出编号计划和最多 3 个关键问题（缺的只问真缺的）；题型是电机速度环/位置环时直接调 quick_start（一句话起项目，一张卡确认后自动建项目、上仿真、调参、评分），不要等题目 PDF，也不要先逐个读文件。上下文里已附仓库地图和板卡/项目清单，不要再为这些调 list_files / project_state。
+21. 只观察不写：传感器/信号失效（丢帧、丢线、读数恒定或跳变、目标丢失），或实验结论不稳（verdict 显示 warming_up/still_drifting），或用户只问“结果怎么样”时，本轮不调 propose_param_change / tune_autopilot / 任何写参数工具；先只读取证、observe 或加长实验，先恢复信号再谈调参，并说明为什么暂不改参数。结论不稳（warming_up/still_drifting）时本轮必须调 observe（或 run_step_test 加长实验）拿新数据，不能只给文字。
    标定先 polarity_check（push 再 jog）；联调看振荡/噪声用 fft、wave_measure。"""
+
+READ_ONLY = {"read_file", "list_files", "repo_map", "list_params", "read_telemetry", "step_analysis", "board_memory", "read_symbol",
+             "build_log", "project_state", "score_items", "tune_context"}
+PARAM_WRITES = {"propose_param_change", "tune_autopilot", "swarm_search", "rollback_best"}
+READ_CAP = 8                                   # 一轮里只读工具的上限（r4 验收：读了十几次才动手）
+BIG_TASK = re.compile(r"新建|从零|建项目|建工程|一路做|做到.*(跑通|调好)|整个项目")
 
 TOOLS = [
     {"name": "read_telemetry", "description": "最近 seconds 秒每个通道的 min/max/mean/last",
@@ -86,6 +95,12 @@ TOOLS = [
     {"name": "board_memory", "description": "这块板（按数据格式+芯片 ID 区分）跨会话的记忆：以前改过的参数、实验结论、撤销记录",
      "input_schema": {"type": "object", "properties": {}}},
     {"name": "read_symbol", "description": "查 ELF 里变量/函数的地址和大小", "input_schema": {"type": "object", "required": ["name"], "properties": {"name": {"type": "string"}}}},
+    {"name": "progress_get", "description": "项目进度（只读，与界面进度条同一接口 progress.get）：读题→工程→仿真→上板联调→调参→评分→封箱 各步状态、当前步骤、下一步动作和阻塞项（每项带 fix_action）",
+     "input_schema": {"type": "object", "properties": {}}},
+    {"name": "project_list", "description": "列出可打开的项目（只读，与界面 project.list 同一接口）：[{code, name, updated_at}] 和当前项目",
+     "input_schema": {"type": "object", "properties": {}}},
+    {"name": "project_open", "description": "打开已有项目并设为当前项目（与界面 project.open 同一接口；只改“当前项目”指针，不改任何文件）。code 用 project_list 返回的代号",
+     "input_schema": {"type": "object", "required": ["code"], "properties": {"code": {"type": "string"}}}},
     {"name": "project_state", "description": "项目流程状态（只读）：不给 code 列出所有项目和板卡；给 code 返回 ①读题 ②方案 ③导入 ④分配 ⑤生成 哪步已完成、下一步和它需要的输入、评分项数与已有证据数",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string", "description": "题号，即 examples/ 下的目录名"}}}},
     {"name": "flow_preview", "description": "跑项目页某一步的预览（只写暂存区，不动仓库）：step=req|scheme|import|alloc|gen。req 要 src，import 要 project，gen 可带 board/app/uvprojx",
@@ -103,7 +118,9 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}, "src": {"type": "string", "description": "题目 PDF/txt 路径"},
                       "project": {"type": "string", "description": "已有 CubeMX/Keil 工程路径（没有就从零新建）"}, "name": {"type": "string"},
                       "mcu": {"type": "string"}, "uvprojx": {"type": "string", "description": "要注入的 Keil .uvprojx（导入的工程会自动找）"},
-                      "app": {"type": "string", "description": "Keil 注入按哪个应用挑模块（默认 = code）"}}, "required": ["code"]}},
+                      "app": {"type": "string", "description": "Keil 注入按哪个应用挑模块（默认 = code）"}, "hand_edit": {"type": "string", "enum": ["merge", "keep"], "description": "dz/ 组被手改过时用户的选择"}}, "required": ["code"]}},
+    {"name": "quick_start", "description": "一句话起项目（电机速度环/位置环）：解析题型和主控 → ①–⑤ 整链预览 → 一张确认卡（方案+引脚表）；用户确认后自动写项目、连仿真板、一键起步调参、评分",
+     "input_schema": {"type": "object", "properties": {"text": {"type": "string", "description": "用户原话，如“两轮车速度环，STM32F1”"}}, "required": ["text"]}},
     {"name": "project_apply", "description": "把 project_chain 预览过的所有步一次写入仓库（一张确认卡）",
      "input_schema": {"type": "object", "properties": {"code": {"type": "string"}}, "required": ["code"]}},
     {"name": "polarity_check", "description": "标定：只读遥测判方向（step=push 人推一下 / jog 小幅点动）",
@@ -124,13 +141,14 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"rounds": {"type": "integer"}}}},
 ]
 assert not any(f in t["name"] for t in TOOLS for f in FORBIDDEN_TOOLS)
+assert not any(human_only_error(t["name"]) for t in TOOLS)   # 切换运行模式等只能由人做的操作不进工具表
 
 
 # ---------------------------------------------------------------- 模式（工具白名单）
 # 思路：Gemini CLI 的 plan 策略、Cline Plan/Act、OpenCode build/plan、firework 的分任务提示词；模式只“收窄”工具，
 # 审批分级（risk.py）照旧独立生效。没有“全自动”模式。
 _READ = {"read_telemetry", "list_params", "step_analysis", "tune_context", "board_memory", "repo_map", "list_files", "read_file",
-         "read_symbol", "decode_hardfault", "build_log", "update_plan", "observe", "project_state", "score_items",
+         "read_symbol", "decode_hardfault", "build_log", "update_plan", "observe", "project_state", "progress_get", "project_list", "project_open", "score_items",
          "polarity_check", "fft", "wave_measure"}
 MODES = {
     "general": {"name": "通用", "tools": None, "prompt": ""},
@@ -182,8 +200,9 @@ def tagged(text: str, results: list[dict]) -> str | None:
 class AgentLoop:
     def __init__(self, llm, handlers: dict[str, Callable], emit: Callable[[dict], None] = lambda e: None, max_steps: int = 8,
                  project_rules: str = "", gate: Callable | None = None, knowledge: Callable[[str], list[dict]] | None = None,
-                 memory: Callable[[], str] | None = None):
+                 memory: Callable[[], str] | None = None, preload: Callable[[], str] | None = None):
         self.llm, self.handlers, self.emit, self.max_steps = llm, handlers, emit, max_steps
+        self.preload = preload or (lambda: "")
         self.knowledge = knowledge or (lambda text: [])
         self.gate = gate or (lambda tool, args, run: run())
         self._rules, self._memory = project_rules, memory or (lambda: "")
@@ -260,10 +279,13 @@ class AgentLoop:
         self.condense()
         mp = MODES[self.mode]["prompt"]
         kn = "".join(f"[工作台知识 {k['name']}，按触发词附上]\n{k['body']}\n\n" for k in self.knowledge(text))
-        self.messages.append({"role": "user", "content": kn + (f"（{mp}）\n" if mp else "") + text})
-        results, checked = [], False
+        first = not any(m["role"] == "user" for m in self.messages)
+        pre = (self.preload() if first else "") or ""        # 第一轮附仓库地图 + 板卡/项目清单：省掉 list_files / project_state 的来回
+        self.messages.append({"role": "user", "content": (f"[工作台上下文，不是用户提问]\n{pre}\n\n" if pre else "") + kn + (f"（{mp}）\n" if mp else "") + text})
+        results, checked, reads = [], False, 0
         det = StuckDetector()
-        for _ in range(self.max_steps):
+        steps = self.max_steps * 2 if BIG_TASK.search(text) else self.max_steps   # 建项目这类长链给双倍步数
+        for _ in range(steps):
             try:
                 m = self.llm.chat(self.messages, self.tools())
             except LLMError:
@@ -286,11 +308,22 @@ class AgentLoop:
                 name, args = c["function"]["name"], {}
                 try:
                     args = json.loads(c["function"].get("arguments") or "{}")
+                    ho = human_only_error(name)
+                    if ho:
+                        raise GatewayError("human_only", ho["message"], ho["fix"])
                     if name not in self.handlers or any(f in name for f in FORBIDDEN_TOOLS):
                         raise GatewayError("denied", f"没有工具 {name}")
                     allow = MODES[self.mode]["tools"]
                     if allow is not None and name not in allow:
                         raise GatewayError("mode", f"当前是{MODES[self.mode]['name']}模式，不能用 {name}；需要的话请用户切换模式")
+                    if self.guards and name in PARAM_WRITES and any(r["name"] == "observe" for r in results):
+                        raise GatewayError("observe_first", "本轮已经在观察（observe），观察期间不改参数",
+                                           "等观察结果出来、确认信号正常且结论稳定后，下一轮再提改参数")
+                    if name in READ_ONLY:
+                        reads += 1
+                        if reads > READ_CAP:
+                            raise GatewayError("read_cap", f"本轮只读调用已达上限 {READ_CAP} 次",
+                                               "基于已拿到的数据直接给计划/结论，或调用写/执行类工具；真缺信息就问用户")
                     res = {"ok": True, "result": self.gate(name, args, lambda: self.handlers[name](**args))}
                 except (GatewayError, Exception) as e:   # noqa: BLE001 —— 工具错误回给模型，让它自己改
                     res = {"ok": False, "error": getattr(e, "message", str(e))}
@@ -306,6 +339,8 @@ class AgentLoop:
             if self.guards and (why := det.check(self.messages)):    # OpenHands 卡死检测：提醒过还在转 → 停下交给人
                 self.emit({"type": "agent_stuck", "reason": why})
                 return f"（我卡住了：{why}。先停在这里，请你看一下上面的结果，换个问法或给我更多信息。）"
+        self.emit({"type": "agent_continue", "label": "继续", "op": "agent_ask", "text": "继续",      # 结构化“继续”动作：界面给一个按钮
+                   "steps": steps, "tools": [r["name"] for r in results][-8:]})
         if self.guards:      # 真模型：步数到了也要给个结论，不能只丢一句“步数用完”（首轮真模型评测里 2/20 例这样收尾）
             self.messages.append({"role": "user", "content": "[工作台通知，不是用户提问] 工具步数用完了。不要再调工具："
                                   "基于上面已拿到的数据直接给结论和下一步（引用具体数字），并说明还缺什么数据。"})

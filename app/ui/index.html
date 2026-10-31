@@ -7,8 +7,17 @@
 </head>
 <body>
 <div class="app">
+  <aside class="nav" id="nav">
+    <div class="nav-hd"><div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 14 H7 V6 H9 Q10.5 4 12 6 T15 6 H18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg><span>电赛工作台</span></div></div>
+    <div class="nav-sec">流程</div>
+    <nav class="steps" id="steps" title="开发流程：点一步切到那一页；高亮 = 当前页，描边 = 建议的下一步，✓ = 已走过"><button class="ns" data-step="项目" data-pid="req" title="读题定方案"><i data-lucide="file-text"></i><span class="nl">读题定方案</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="烧录" data-pid="project" title="建工程"><i data-lucide="hammer"></i><span class="nl">建工程</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="联调" data-pid="sim" title="仿真"><i data-lucide="activity"></i><span class="nl">仿真</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="模块" data-pid="bringup" title="上板联调"><i data-lucide="cpu"></i><span class="nl">上板联调</span><span class="nd" aria-hidden="true"></span></button><button class="ns sub" data-step="标定" data-pid="bringup" title="标定"><i data-lucide="crosshair"></i><span class="nl">标定</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="调参" data-pid="tune" title="调参"><i data-lucide="sliders-horizontal"></i><span class="nl">调参</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="评分" data-pid="score" title="评分"><i data-lucide="clipboard-check"></i><span class="nl">评分</span><span class="nd" aria-hidden="true"></span></button><button class="ns" data-step="封箱" data-pid="seal" title="封箱"><i data-lucide="package-check"></i><span class="nl">封箱</span><span class="nd" aria-hidden="true"></span></button></nav>
+    <div class="sp"></div>
+    <p class="lbl step-hint" id="step-hint"></p>
+    <button class="nav-fold" id="nav-fold" type="button" title="收起或展开导航"><i data-lucide="panel-left"></i><span class="nl">收起</span></button>
+  </aside>
   <header class="top">
-    <div class="brand"><svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true"><path d="M2 14 H7 V6 H9 Q10.5 4 12 6 T15 6 H18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg><span>电赛工作台</span></div>
+    <span class="top-proj" id="top-proj" hidden></span>
+
     <div class="conn">
       <span id="led" class="led"></span>
       <select id="port" title="端口：插上板子会自动出现并选中；sim: 开头是无需硬件的仿真板"></select>
@@ -24,10 +33,7 @@
         </div></details>
     </div>
 
-    <nav class="steps" id="steps" title="比赛时间线：点一步切到那一页；高亮 = 当前页，下划线 = 建议的下一步">
-      <button data-step="项目">项目</button><button data-step="烧录">烧录</button><button data-step="模块">模块</button><button data-step="联调">联调</button><button data-step="标定">标定</button><button data-step="调参">调参</button><button data-step="评分">评分</button><button data-step="封箱">封箱</button>
-    </nav>
-    <span class="lbl step-hint" id="step-hint" title="当前步与下一步"></span>
+
     <div class="pins" id="stats"></div>
     <div class="sp"></div>
 
@@ -36,7 +42,7 @@
         <button class="mi" type="button" id="sym-open" title="按现象找原因：选一条症状，告诉你可能原因、先验什么、在工作台里点哪儿"><i data-lucide="list-checks"></i>按症状排查…</button>
         <button class="mi" id="doctor" title="自检：工具链 / 探针 / 器件包 / 串口 / 配置，每项给修复提示（只读）"><i data-lucide="stethoscope"></i>自检</button>
         <button class="mi" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；板子有掉电保存区时急停那刻冻进 flash，下次上电还在）"><i data-lucide="history"></i>读黑匣子</button>
-        <span class="mh">HardFault：在调参页 Agent 里问“解一下 HardFault”（decode_hardfault 工具）</span>
+        <span class="mh">HardFault：在调参页 Agent 里问“解析这次 HardFault”（decode_hardfault 工具）</span>
       </div></details>
     <details class="menu right" id="toolbox-m"><summary class="btn" id="toolbox" title="工具箱：不属于时间线某一步的工具"><i data-lucide="sliders-horizontal"></i>工具箱</summary>
       <div class="pop tb">
@@ -62,7 +68,7 @@
     <button id="theme" class="mi" title="切换主题：深色 → 浅色 → 高对比（户外强光下用浅色或高对比）"><i data-lucide="sun-moon"></i>切换主题</button>
       </div></details>
     <span class="vsep"></span>
-    <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span>急停<kbd>Space</kbd></button>
+    <button id="estop" class="estop" title="随时可按：Space（不在输入框时）或 Esc"><span class="sq"></span><span class="es-lbl">急停</span><kbd>Space</kbd></button>
     <button class="btn sm" id="cmd-r" title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除</button>
   </header>
   <div id="banner" class="banner" hidden></div>
@@ -74,14 +80,16 @@
       <div class="life mono" id="life" title="参数从改到定稿的五站：草稿只在界面里 → 下发到板上 RAM（断电丢）→ 存快照（工作台本地）→ 存 flash（下次上电用）→ 写回 app.yaml（进仓库）"><span data-l="edit">草稿<i></i></span><span data-l="ram">RAM<i></i></span><span data-l="snap">快照<i></i></span><span data-l="flash">flash<i></i></span><span data-l="yaml">yaml<i></i></span></div>
       <div class="dk" data-d="params"><input id="p-q" class="in pq" placeholder="筛选参数：pos_ ki*（/ 聚焦）" title="空格/逗号分隔，* 通配；按名字或说明匹配。参数多于 8 个时出现" hidden /><div id="plist" class="plist"></div></div>
       <div class="dk" data-d="protect" hidden><div id="ptab" class="ptab"></div></div>
-      <div class="commit"><div class="pdiff mono" id="pend"></div><div class="btns"><button class="btn" id="p-revert" disabled>撤销</button><button class="btn pri" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button></div></div>
+      <div class="commit"><div class="pdiff mono" id="pend"></div><div class="btns"><button class="btn" id="p-revert" disabled>撤销</button><button class="btn" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button></div></div>
       <div class="dk" data-d="snaps" hidden><div class="row pad"><input id="snap-name" class="in" placeholder="快照名，如 决赛-稳"><select id="snap-mode" class="in" title="快照标签（只是标签，不切换固件环结构）"><option value="">—</option><option value="speed">速度环</option><option value="position">位置环</option></select><input id="snap-ramp" class="in" type="number" min="0" max="10" step="0.1" value="0.5" style="width:4.5em" title="恢复时平滑过渡秒数（0 = 一步写入）"><button class="btn" id="snap-save">存快照 <kbd>⌃S</kbd></button></div><div id="snaps" class="pad"></div></div>
       <div class="dk pad" data-d="board" hidden>
         <div class="row"><span class="lbl">板端命令</span><input id="cmd-c" class="in w-xs" maxlength="1" placeholder="字符"><input id="cmd-n" class="in w-sm" type="number" min="0" max="255" placeholder="参数"><button class="btn" id="cmd-send">发送</button></div>
       </div>
     </aside>
-  <main class="work">
-    <section class="page" data-page="项目" hidden><h3>项目：读题 → 选型 → 导入工程 → 资源分配 → 生成</h3><p class="hint">每步先“运行”（只在暂存区跑仓库里的命令行工具，输出原样给你看），看过再点“确认写入”才真正写文件。</p><div class="row">题号<input id="pf-code" class="in" placeholder="如 2026H" style="width:8em"> 题目目录<input id="pf-dest" class="in" placeholder="默认 examples/&lt;题号&gt;" style="width:18em"></div><div id="pflow" class="pflow"><div class="pf-card" data-f="req"><h4>① 读题<span class="st"></span></h4><div id="pf-drop" class="pf-drop">把题目 PDF（或 .txt）拖到这里，或点一下选择文件</div><input type="file" id="pf-file" accept=".pdf,.txt" hidden><div class="row"><span class="hint">tools/req.py init：只切分文字、抓数字单位，分值和指标要人填</span></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="scheme"><h4>② 方案选型<span class="st"></span></h4><p class="hint">tools/scheme.py：按能力标签从器件库出候选表，起稿 scheme.yaml</p><div class="row"><button class="btn pf-run" type="button">运行</button></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="import"><h4>③ 导入你的工程<span class="st"></span></h4><div class="row">CubeMX / Keil 工程目录<input id="pf-proj" class="in mono" placeholder="有 .ioc 和 Core/ 的那一层" style="width:26em"> 板名<input id="pf-board" class="in mono" placeholder="默认由目录名" style="width:10em"></div><div class="row"><button class="btn pf-run" type="button">运行</button><span class="hint">tools/import_project.py：原工程只读，先导到暂存区</span></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="alloc"><h4>④ 资源分配<span class="st"></span></h4><p class="hint">tools/alloc.py：按 scheme.yaml 分配引脚 / 定时器；有第 ③ 步的板子就当已焊死的接线沿用（--fixed）</p><div class="row"><button class="btn pf-run" type="button">运行</button></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="gen"><h4>⑤ 生成工程 / IDE 文件<span class="st"></span></h4><div class="row">应用<input id="pf-app" class="in mono" placeholder="如 car_2wd" style="width:9em"> Keil 工程（可选）<input id="pf-uv" class="in mono" placeholder="xxx.uvprojx 的完整路径" style="width:22em"></div><p class="hint">tools/gen_project.py（题目目录里有 project.yaml 时）；填了 .uvprojx 再跑 keil_inject --dry-run</p><div class="row"><button class="btn pf-run" type="button">运行</button></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div></div><p class="hint">机械结构（docs 09、21）不在这条流程里。</p></section>
+  <main class="work"><div class="lk-banner" id="lk-banner" role="status" hidden></div><div class="pg-head" id="pg-head" aria-live="polite"><span class="pg-extra" id="pg-tune" data-region="page:tune"><span class="pg-grp" id="tune-board"><span class="lbl">上板</span><button class="btn" type="button" id="seal-selftest" title="调参前先读取板子上电自检的结果（run_selftest）">读取自检</button><span class="hint" id="st-note"></span></span><button class="btn sm" type="button" id="sp-restore" hidden title="按阶跃实验配置把急停前的目标重新下发一次；只在点击时发送，不会自动恢复">恢复急停前目标</button><span class="lbl mono" id="tb-saved"></span><button class="btn" type="button" id="tb-save" title="把板上当前参数写入掉电保存区（save_params）">保存参数</button></span></div>
+    <section class="page pj" data-page="项目" hidden><header class="pg-hd"><h3>新建项目</h3><p class="hint">从需求文档到可编译的工程骨架，共五步。每步先在暂存区运行，看过输出再“确认写入”，之前不会改动任何文件。</p><div class="pj-prog" id="pj-prog" aria-live="polite"><div class="bar"><i style="width:0%"></i></div><span class="mono" id="pj-prog-t">0 / 5 完成 · 下一步：读需求</span></div></header><div class="pj-empty" id="pj-empty" data-region="page:req" hidden><p>还没有打开的项目。新建一个，或打开已保存的项目。</p>
+      <div class="act"><button type="button" class="btn" id="pj-new">新建项目</button><button type="button" class="btn" id="pj-open">打开项目</button></div>
+      <p class="hint" id="pj-empty-note"></p><div class="pj-list" id="pj-list" hidden></div></div><form class="pj-ask" id="pj-ask"><label class="pj-ask-l" for="pj-ask-in">用一句话描述题目或需求，Agent 将生成需求、方案与工程骨架</label><div class="pj-ask-row"><input id="pj-ask-in" class="in" placeholder="例：两轮小车沿黑线循迹，到终点停车并声光提示" autocomplete="off"><button class="btn pri" id="pj-ask-go" type="submit">新建工程</button><button class="btn" id="pj-sample" type="button" title="载入 examples/2026H_ball 示例项目">打开示例</button></div><p class="hint" id="pj-ask-st"></p></form><div class="row pj-meta"><label class="fl">项目编号<input id="pf-code" class="in" placeholder="如 2026H 或 my-robot"></label><label class="fl grow">项目目录<input id="pf-dest" class="in mono" placeholder="默认 examples/&lt;题号&gt;"></label></div><div id="pflow" class="pflow"><div class="pf-card" data-f="req"><div class="pf-hd"><span class="pf-n mono">1</span><div class="pf-ht"><h4>读需求<span class="st"></span></h4><p class="pf-desc">拖入赛题或需求文档，自动切分文字、抓出数字和单位；指标（和分值）由你确认。</p></div></div><div id="pf-drop" class="pf-drop">把需求文档（PDF / .txt）拖到这里，或点击选择文件</div><input type="file" id="pf-file" accept=".pdf,.txt" hidden><div class="row pf-foot"><span class="pf-cmd" title="执行：tools/req.py init">解析需求</span></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="scheme"><div class="pf-hd"><span class="pf-n mono">2</span><div class="pf-ht"><h4>方案选型<span class="st"></span></h4><p class="pf-desc">按能力标签从器件库给出候选器件，起草 scheme.yaml。</p></div></div><div class="row pf-foot"><button class="btn pf-run" type="button">运行</button><span class="pf-cmd" title="执行：tools/scheme.py">生成方案</span></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="import"><div class="pf-hd"><span class="pf-n mono">3</span><div class="pf-ht"><h4>导入你的工程<span class="st"></span></h4><p class="pf-desc">原工程只读，先复制到暂存区。没有现成工程可跳过。</p></div></div><div class="row"><label class="fl grow">CubeMX / Keil 工程目录<input id="pf-proj" class="in mono" placeholder="含 .ioc 和 Core/ 的那一层"></label><label class="fl">板名<input id="pf-board" class="in mono" placeholder="默认取目录名"></label></div><div class="row pf-foot"><button class="btn pf-run" type="button">运行</button><span class="pf-cmd" title="执行：tools/import_project.py">导入工程</span></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="alloc"><div class="pf-hd"><span class="pf-n mono">4</span><div class="pf-ht"><h4>资源分配<span class="st"></span></h4><p class="pf-desc">按方案分配引脚和定时器；导入过工程时沿用已焊死的接线。</p></div></div><div class="row pf-foot"><button class="btn pf-run" type="button">运行</button><span class="pf-cmd" title="执行：tools/alloc.py">分配资源</span></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div><div class="pf-card" data-f="gen"><div class="pf-hd"><span class="pf-n mono">5</span><div class="pf-ht"><h4>生成工程与 IDE 文件<span class="st"></span></h4><p class="pf-desc">生成工程骨架；填了 Keil 工程会先预演注入。</p></div></div><div class="row"><label class="fl">应用<input id="pf-app" class="in mono" placeholder="如 car_2wd"></label><label class="fl grow">Keil 工程（可选）<input id="pf-uv" class="in mono" placeholder="xxx.uvprojx 的完整路径"></label></div><div class="row pf-foot"><button class="btn pf-run" type="button">运行</button><span class="pf-cmd" title="执行：tools/gen_project.py">生成工程</span></div><pre class="mono pf-out" hidden></pre><div class="pf-res"></div></div></div><p class="hint pj-foot">机械结构（docs 09、21）不在这条流程里。</p></section>
     <section class="page" data-page="烧录" hidden><h3>编译与烧录</h3>
               <p class="hint" title="编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash">编译 → 烧录（弹确认卡，先显示 dry-run 计划）→ 心跳核对；不对就回滚到烧前备份。需要 dzbench.json 配好 build / flash。</p>
               <button class="btn" id="fw-probe" title="选烧录/调试后端（pyOCD / OpenOCD / J-Link / probe-rs）、探针类型（ST-Link / DAPLink / J-Link）和序列号；存本机 ~/.dzbench/machine.json"><i data-lucide="settings"></i>调试探针…</button>
@@ -91,11 +99,14 @@
       <div class="fwst"><span class="lbl" id="fw-st"></span></div></section>
     <section class="page" data-page="标定" hidden><h3>标定</h3><p class="hint">从上往下做：先验方向，再标传感器。每步只读遥测；算出的值点“提议写入”后在右边提议卡确认才下发，下发后到封箱页存 flash / 写回 yaml。</p><div class="calgrid"><div id="calwiz"></div><div><h4>提议卡</h4><div id="cal-props" class="feed"><p class="hint">标定得出的写入提议出现在这里</p></div></div></div></section>
     <section class="page" data-page="封箱" hidden><h3>封箱</h3>
+      <div class="seal-mode" data-region="page:seal"><span class="lbl">运行模式</span><b id="seal-mode-cur">—</b><button class="btn" type="button" id="seal-mode" disabled title="切换联机 / 脱机运行（set_run_mode），确认卡上由你本人确认">切换模式</button><span class="hint" id="seal-mode-why"></span></div>
+      <div class="st-seal" id="st-seal"><span class="lbl">板上自检</span><b id="st-seal-r">—</b><span class="hint" id="st-seal-t"></span><span class="hint" id="st-seal-why"></span><button class="btn sm" type="button" id="st-seal-go" hidden title="跳到调参页上板区重新读取自检">去调参页自检</button></div>
+      <div class="st-fail" id="st-fail" hidden><b>自检未通过</b><ul id="st-fail-l"></ul></div>
       <div class="act">
     <button id="pre" class="btn pri" title="赛前全绿检查：自检 + 板子固件/参数/急停/告警/链路 + 仓库已提交；可导出封箱清单（只读）"><i data-lucide="list-checks"></i>赛前全绿检查</button>
       <button class="btn" id="p-rb" title="回读：逐个问板子当前参数值，写 params.txt（带固件版本），可用 tools/params_diff.py 对比">回读参数文件</button>
       <button class="btn" id="ag-yaml" title="把板上当前参数写回 app.yaml 的 default：先出 diff，确认后跑 make check 并 git 提交"><i data-lucide="file-pen"></i>写回 yaml</button></div>
-      <p class="hint">存参数到 flash 在“赛前全绿检查”对话框里。</p></section>
+      <p class="hint">存参数到 flash：调参页右上角「保存参数」。</p></section>
     <section class="scope">
       <div class="vh"><div class="tabs" id="view"><span data-v="plot" class="on">示波</span><span data-v="raw" title="原始：看串口收发的原始字节（文本/HEX），用于不是工作台固件的设备">原始</span><span data-v="fft" title="频谱：按固件遥测周期做 FFT（去直流 + Hann 窗），找振荡频率">频谱</span></div>
         <span class="lbl mono" id="plot-sub"></span><span class="lbl mono po" id="xdiv"></span><div class="sp"></div>
@@ -113,7 +124,7 @@
             <label class="lbl"><input type="checkbox" id="raw-ts" checked> 时间戳</label>
             <div class="sp"></div><span class="lbl" id="raw-stat"></span><button class="btn ghost sm" id="raw-clr">清空</button></div>
           <div id="raw-list" class="rawlist"></div>
-          <div class="rawbar" id="snd" title="侧车发送；急停后全部锁定，按“解除急停”(R)才恢复">
+          <div class="rawbar" id="snd" title="本地服务发送；急停后全部锁定，按“解除急停”(R)才恢复">
             <select id="snd-k" class="in"><option value="text">文本</option><option value="hex">HEX</option></select>
             <select id="snd-eol" class="in"><option value="">无换行</option><option value="\n">\n</option><option value="\r\n" selected>\r\n</option></select>
             <input id="snd-in" class="in" placeholder="要发的内容，回车发送">
@@ -137,14 +148,14 @@
 
     <section class="tunebar" data-page="调参">
       <div class="grp">
-    <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button><details class="menu up more" id="tune-more"><summary class="btn" title="次要实验与建议来源：不常用的收在这里">更多实验 <i data-lucide="chevron-down"></i></summary><div class="pop"><button class="mi" id="ag-relay" title="没有初值时用：设定值停在 step_test 的工作点，板子把 PID 输出换成继电器 ±amp（板端限幅、超时自动恢复），测临界增益 Ku/周期 Pu → 按 Tyreus–Luyben 给第一组 PID 提议卡（你采纳才写入）">无初值一键起步</button><button class="mi" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button><button class="mi" id="ag-search" title="开环给控制量一个台阶后点：辨识 FOPDT → 仿真里 PSO/分阶段搜索 → 列出 top-k；每个候选点“上板验证”才发提议卡，你确认后才写入">仿真搜索</button><button class="mi" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button><button class="mi" id="ag-pre" title="调参前先回答几个问题：对象类型、执行器、安全限、能接受的超调……Agent 和护栏按这些出初值、打分（只收紧护栏）"><i data-lucide="list-checks"></i>调参前问答</button><button class="mi" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button></div></details></div>
+    <button class="btn go" id="ag-step" title="按 dzbench.json 的 step_test 做一次标准阶跃实验，程序判定继续/达标/回滚（你点 = 已确认）"><i data-lucide="play"></i>阶跃实验</button><details class="menu up more" id="tune-more"><summary class="btn" title="次要实验与建议来源：不常用的收在这里">更多实验 <i data-lucide="chevron-down"></i></summary><div class="pop"><button class="mi" id="ag-relay" title="没有初值时用：设定值停在 step_test 的工作点，板子把 PID 输出换成继电器 ±amp（板端限幅、超时自动恢复），测临界增益 Ku/周期 Pu → 按 Tyreus–Luyben 给第一组 PID 提议卡（采纳后写入）">自整定</button><button class="mi" id="ag-sweep" title="闭环正弦扫频（复用 step_test 的通道和工作点，可在 step_test.sweep 里设 f0/f1/n/amp）：给出带宽、谐振峰、相位滞后 90° 频率（你点 = 已确认）">扫频</button><button class="mi" id="ag-search" title="开环给控制量一个台阶后点：辨识 FOPDT → 仿真里 PSO/分阶段搜索 → 列出 top-k；每个候选点“上板验证”才发提议卡，你确认后才写入">仿真搜索</button><button class="mi" id="ag-tune" title="离线可用：分析最近一次设定值阶跃（超调/上升/调节时间/振荡/稳态误差），按规则给出调参建议">分析阶跃</button><button class="mi" id="ag-pre" title="调参前先回答几个问题：对象类型、执行器、安全限、能接受的超调……Agent 和护栏按这些出初值、打分（只收紧护栏）"><i data-lucide="list-checks"></i>调参前问答</button><button class="mi" id="ag-rule" title="不用大模型：按规则（分阶段 P→I→D）给一项参数建议，仍要你点采纳"><i data-lucide="list-checks"></i>规则建议</button></div></details></div>
       <div class="grp verdict"><span class="lbl">判定</span>
     <nav class="flow" id="flow" title="这一轮调参的进度：改参 → 阶跃 → 判读 → 定稿"><span data-s="conn">连接</span><span data-s="tune">调参</span><span data-s="step">阶跃</span><span data-s="read">判读</span><span data-s="save">定稿</span></nav><span class="lbl mono" id="verdict"></span></div>
       <details class="menu up right" id="goback"><summary class="btn" title="所有“回到过去”的操作都在这里，每项写清楚回到哪里">回到… <i data-lucide="undo-2"></i></summary>
         <div class="pop">
           <span class="mh">参数（板上 RAM）</span>
           
-              <button class="mi" id="ag-best" title="把参数一键恢复到本次调参护栏记录的最好一轮（先弹确认框）；侧车重启后可在快照页恢复“自动-最好一轮”"><i data-lucide="undo-2"></i>最好一轮（本次调参护栏记录）</button>
+              <button class="mi" id="ag-best" title="把参数一键恢复到本次调参护栏记录的最好一轮（先弹确认框）；本地服务重启后可在快照页恢复“自动-最好一轮”"><i data-lucide="undo-2"></i>最好一轮（本次调参护栏记录）</button>
           <button class="mi" id="gb-snap" title="打开快照列表，点一个快照恢复（可平滑过渡）"><i data-lucide="history"></i>某个快照…</button>
           
         <button class="mi" id="p-def" title="默认：把全部参数恢复成固件编译时的默认值" ><i data-lucide="rotate-ccw"></i>恢复固件默认</button>
@@ -177,7 +188,7 @@
       </details>
     </section>
     <section class="pane agent" data-side="agent" hidden>
-      <div class="vh"><span class="ttl">Agent</span><select id="ag-workmode" class="sel-q" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
+      <div class="vh"><span class="ttl">Agent</span><span class="ag-badge" id="ag-badge" hidden></span><select id="ag-workmode" class="sel-q" title="Agent 工作模式：只收窄它能用的工具，审批规则不变。诊断/审查只读；调参不改代码；改代码不动板上参数">
             <option value="general">通用</option><option value="diagnose">诊断（只读）</option><option value="tune">调参</option>
             <option value="edit">改代码</option><option value="review">审查</option></select><div class="sp"></div><button class="ib" id="ag-new" title="新对话：清空和 Agent 的对话上下文"><i data-lucide="message-square-plus"></i></button></div>
       <div id="props" class="feed"></div>
@@ -207,7 +218,7 @@
     <dialog id="doc" class="dlg"><form method="dialog"><h3>自检</h3><ul id="doc-list" class="doc"></ul><p class="hint">✓ 正常　! 部分功能不可用　✗ 必须处理。命令行同样：<code>python -m dzbench --doctor</code></p><button class="btn">关闭</button></form></dialog>
       <dialog id="predlg" class="dlg"><form method="dialog"><h3>赛前检查</h3><div id="pre-sum" class="pre-sum"></div><ul id="pre-list" class="doc"></ul><ul id="pre-bb" class="doc" hidden></ul>
         <p class="hint">板上参数要等于固件默认值：调好的值先“定稿”重烧，不然一复位就丢。人工项（电池、螺丝、线束…）在导出的清单里打勾。</p>
-        <div class="act"><label class="hint" title="勾上：板上固件必须就是仓库 HEAD；不勾：烧录之后只改了文档/上位机也算一致"><input type="checkbox" id="pre-strict"> 严格</label><button class="btn" type="button" id="pre-save" title="把板上当前参数存进 flash（board.yaml mcu.nvm_kb；只在停车/急停时写），下次上电自动用">存参数</button><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
+        <div class="act"><label class="hint" title="勾上：板上固件必须就是仓库 HEAD；不勾：烧录之后只改了文档/上位机也算一致"><input type="checkbox" id="pre-strict"> 严格</label><button class="btn" type="button" id="pre-re">重新检查</button><button class="btn pri" type="button" id="pre-exp">导出封箱清单</button><button class="btn">关闭</button></div></form></dialog>
       <dialog id="probe-dlg" class="dlg">
         <form method="dialog" id="probe-form">
           <h3>调试探针</h3>
@@ -261,16 +272,17 @@
       </dialog>
       <dialog id="cfg" class="dlg llm">
         <form method="dialog" id="cfg-form">
+          <button class="dlg-x" id="cfg-x" value="cancel" formnovalidate title="关闭（Esc 为急停键）" aria-label="关闭"><i data-lucide="x"></i></button>
           <header class="lh"><span class="glyph"><i data-lucide="sparkles"></i></span><div>
             <h3 id="cfg-title">接上大模型</h3>
-            <p class="hint">任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。没网时自动切本机 Ollama 模型；调参、示波、急停、评分页本来就不依赖 Agent。</p></div></header>
+            <p class="hint"><b>Esc 为急停键</b>，不用于关闭本窗口；关闭请点击右上角 × 或窗口外部。任何 OpenAI 兼容接口都行：选一家、贴 Key、点“测试连接”。Key 只存本机 <code>~/.dzbench/config.json</code>（权限 600），不进仓库、不回显。没网时自动切本机 Ollama 模型；调参、示波、急停、评分页本来就不依赖 Agent。</p></div></header>
           <div class="sec">1 · 服务商</div>
           <div id="cfg-provs" class="provs" role="radiogroup"></div>
           <div class="sec">2 · 接口</div>
           <label>接口地址<input id="cfg-url" class="in mono" placeholder="https://…/v1" spellcheck="false"></label>
           <div class="row2"><label><span class="lrow">模型<button type="button" class="lk" id="cfg-list">列出可用模型</button></span><input id="cfg-model" class="in mono" spellcheck="false" list="cfg-models"><datalist id="cfg-models"></datalist></label>
             <label>API Key<span class="keyw"><input id="cfg-key" class="in mono" type="password" autocomplete="off" spellcheck="false"><button type="button" class="ib" id="cfg-eye" title="显示 / 隐藏"><i data-lucide="eye"></i></button></span></label></div>
-          <div class="sec">3 · 试一下</div>
+          <div class="sec">3 · 试运行</div>
           <div class="testrow"><button type="button" class="btn" id="cfg-test"><i data-lucide="plug-zap"></i>测试连接</button><div id="cfg-st" class="cst" aria-live="polite">还没测试</div></div>
           <div class="sec">4 · 没网时：本地模型兜底（Ollama）</div>
           <label class="sw"><input type="checkbox" id="cfg-fo"><span>云端连不上时自动切到本机模型，界面会标出现在是谁在答</span></label>
@@ -285,9 +297,9 @@
       </dialog>
 
   </aside>
-  <div id="alerts" class="alerts" hidden></div>
+  <div id="alerts" class="alerts" data-region="alerts" hidden></div>
   <footer class="status">
-    <span class="mono" id="ro-link">未连接</span><span class="mono" id="ro-schema">—</span><span class="mono" id="ro-rx">—</span>
+    <span class="mono" id="ro-link">未连接</span><span class="mono" id="ro-mode" hidden></span><span class="mono" id="ro-schema">—</span><span class="mono" id="ro-rx">—</span>
     <span id="hbstrip" class="hbstrip" title="链路心跳：每格 1 秒，绿=正常 黄=帧率掉半 红=有 CRC 坏帧/丢帧 灰=没帧；点格子跳到那一秒"></span>
     <span id="st-hint" class="warn-t"></span>
     <span class="sp"></span>
@@ -296,10 +308,12 @@
     <span id="rp" class="rp" hidden><button class="ib" id="rp-play">⏸</button>
       <input type="range" id="rp-pos" min="0" max="1000" value="0"><span id="rp-t">0.0 / 0.0 s</span>
       <select id="rp-speed"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select></span>
-    <span id="st-ws">侧车 —</span>
+    <span id="st-ws">本地服务 —</span>
   </footer>
   <div id="toasts" class="toasts"></div>
 </div>
 <script type="module" src="/src/main.ts"></script>
+<dialog id="mode-dlg" class="dlg"><form method="dialog"><h3>切换到脱机模式</h3><p id="mode-dlg-t"></p>
+  <div class="act"><button class="btn" value="no">取消</button><button class="btn pri" value="yes">确认切换</button></div></form></dialog>
 </body>
 </html>

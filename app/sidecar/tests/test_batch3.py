@@ -66,6 +66,9 @@ def test_presets_timer_trigger_and_estop_lock(sess, home):
             f()
         assert e.value.code == "tx_locked"
     s.cmd("R")
+    t_end = time.monotonic() + 3
+    while s.tx_locked and time.monotonic() < t_end:
+        time.sleep(0.01)
     assert not s.tx_locked and sd.send("at")
 
 

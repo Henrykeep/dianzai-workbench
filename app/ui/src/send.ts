@@ -27,7 +27,7 @@ export function initSend(rpc: (op: string, a?: Record<string, unknown>) => Promi
       t.title = p.timer ? "停止定时" : `每 ${ms.value} ms 发一次`;
       t.onclick = () => rpc("preset_timer", { name: p.name, on: !p.timer, period_ms: +ms.value }).then(() => rpc("preset_list").then(render)).catch(err);
       const g = document.createElement("button"); g.className = "btn ghost sm" + (p.trigger ? " on" : "");
-      g.textContent = p.trigger ? `⚡${p.trigger.field}${p.trigger.op}${p.trigger.value}·${p.trigger.fired}` : "⚡";
+      g.textContent = p.trigger ? `触发 ${p.trigger.field}${p.trigger.op}${p.trigger.value}·${p.trigger.fired}` : "触发";
       g.title = p.trigger ? "取消触发" : "遥测满足条件时发一次（如 lock >= 1）";
       g.onclick = () => {
         if (p.trigger) { rpc("preset_trigger", { name: p.name, on: false }).then(render).catch(err); return; }

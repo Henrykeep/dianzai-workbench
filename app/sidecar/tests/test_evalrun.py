@@ -81,3 +81,41 @@ def test_run_bench_stable_entry_replays_offline():
     fx = pathlib.Path(__file__).parent / "fixtures/agent_evals/before_glm-5.2.json"
     r = run_bench(replay_from=str(fx))
     assert r["total"] == 20 and set(r["categories"]) == {"state", "act", "data"}
+
+
+def test_read_category_keys_come_from_problem_text():
+    """读题类 8 例（2026 A–H 题要求节选）：每个答案关键数字都确实出现在题面节选里；只读工具，写操作列为禁止。"""
+    import json, pathlib
+    from dzbench.agent import evals
+    root = pathlib.Path(__file__).resolve().parents[3]
+    cs = [c for c in json.loads((root / "app/sidecar/dzbench/agent/evals.json").read_text(encoding="utf-8"))["cases"] if c.get("category") == "read"]
+    assert len(cs) == 8 and "read" in evals.CATEGORIES
+    for c in cs:
+        path = c["user"].split("题目在 ")[1].split("（")[0]
+        txt = (root / path).read_text(encoding="utf-8")
+        assert all(k in txt for k in c["text_all"]), c["id"]
+        assert "flow_accept" in c["must_not_call"]
+
+
+def test_style_range_tilde_and_agent_error_shape():
+    """数字区间里的 ～ 不算口语；llm-ua 的 agent_error 事件让该轮记 error（成绩无效）。"""
+    from dzbench.agent.evals import style_issues
+    from dzbench.agent.evals import turn_mode
+    assert style_issues("Io 在 0.2A～2.0A 间变化") == [] and style_issues("好的～") == ["～"]
+    assert style_issues("增益 -23.70 ～ -45.44 dB；①读题 ✓ ⑤生成 ✗") == [] and style_issues("搞定啦🎉") != []
+    err = {"type": "agent_error", "code": "internal", "message": "x", "detail": "KeyError", "fix_action": None, "retryable": True}
+    assert turn_mode([{"type": "agent_mode", "mode": "llm"}, err]) == "error"
+    assert turn_mode([{"type": "agent_mode", "mode": "llm"}]) == "llm"
+
+
+def test_bench_does_not_fail_over_to_local(monkeypatch):
+    """评测里云端断一次不能切到本地 Ollama 并一直用下去（v7 GLM：15/29 例作废）。"""
+    from dzbench.agent import evalrun, llm as llm_mod
+    seen = {}
+    monkeypatch.setattr(llm_mod, "load_config", lambda: {"api_key": "x", "base_url": "http://127.0.0.1:9", "model": "m"})
+    monkeypatch.setattr(llm_mod, "build", lambda cfg, **k: seen.update(cfg) or (_ for _ in ()).throw(SystemExit(0)))
+    try:
+        evalrun.main(["--only", "nope"])
+    except SystemExit:
+        pass
+    assert seen.get("failover") is False

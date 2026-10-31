@@ -66,6 +66,7 @@ class AgentService:
         self.pretune: pretune_mod.PreTune | None = None   # 调参前问答（人确认过的偏好；只收紧护栏）
         self.staged = StagedSearch()
         self.actions: dict[int, dict] = {}
+        self.quick: dict[str, dict] = {}        # quick_start 的题型/仿真对象（确认后接着调参、评分）
         self.chains: dict[str, dict] = {}       # project_chain 的预览结果（project_apply 卡确认时用这一份，不重新跑）
         self._aid = itertools.count(1)
         self.syms: dict | None = None
@@ -95,6 +96,9 @@ class AgentService:
             "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
+            "progress_get": self.progress_get,
+            "project_list": self.project_list,
+            "project_open": self.project_open,
             "project_state": lambda code=None: steptools.project_state(self.gw.root, code),
             "flow_preview": lambda step, code, **m: steptools.flow_preview(self.gw.root, step, code, **m),
             "flow_accept": lambda step, code, **m: steptools.flow_accept(self.gw.root, step, code, **m),
@@ -105,9 +109,30 @@ class AgentService:
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
             "project_apply": self.project_apply,
-        }, emit, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
+            "quick_start": lambda text: self.quick_start(text),
+        }, emit, preload=self._preload, project_rules=rules.read_text(encoding="utf-8") if rules.exists() else "",
             gate=self.gate, knowledge=self._knowledge, memory=lambda: knowledge.memory_text(self.gw.root))
         self._kn_seen: set[str] = set()
+
+    def project_list(self) -> dict:
+        from .. import project
+        return {"projects": project.list_projects(self.gw.root), "current": project.current()}
+
+    def project_open(self, code: str) -> dict:
+        """与 op project.open 同一校验；错误按 原因 + 怎么解决 返回给模型。进度推送由侧车轮询 progress.changed 负责。"""
+        from .. import project
+        try:
+            return {"project": project.open_project(self.gw.root, code)}
+        except project.ProjectError as e:
+            return {"error": e.code, "message": e.msg, "fix": e.fix, "fix_action": e.fix_action}
+
+    def progress_get(self) -> dict:
+        """与 op progress.get 同一份推导（dzbench/progress.py）；依赖自检沿用侧车缓存，没有就不报 missing_deps。"""
+        src = getattr(self, "progress_src", None)            # 侧车里挂的是 server.Progress（同一份依赖自检缓存）
+        if src is not None:
+            return src.snapshot()
+        from .. import progress
+        return progress.derive(progress.collect(self.s, self, None))
 
     # -------------------------------------------------------------- 计划 / 记忆 / 撤销
     def update_plan(self, steps: list, current: int | None = None) -> dict:
@@ -238,6 +263,9 @@ class AgentService:
             risk.audit(tool, args, t, "denied")
             raise GatewayError("forbidden", f"{tool} 是禁止操作，Agent 永远不能执行")
         if t == risk.HUMAN:
+            dup = next((a for a in self.actions.values() if a["tool"] == tool and a["args"] == args), None)
+            if dup:                                          # 同一操作的卡还挂着（如 quick_start 已出 project_apply 卡，模型又调一次）→ 不重复出卡
+                return {"status": "pending_human_click", "action_id": dup["id"], "note": "这张确认卡已经在界面上了，等用户点，不要再调"}
             aid = next(self._aid)
             preview = cards.build(self, tool, args)          # 卡片内容：人话 + 旧→新，见 agent/cards.py
             self.actions[aid] = {"id": aid, "tool": tool, "args": args, "run": run, "t": time.monotonic()}
@@ -256,11 +284,59 @@ class AgentService:
         self.chains[code] = r
         return {k: v for k, v in r.items() if k != "batch"} | {"to_write": [s for s, _ in r["batch"]]}
 
+    def _preload(self) -> str:
+        """第一轮附上：仓库地图（顶层目录 + 一句话用途）、板卡、项目、仿真对象。几百字，换掉 3~6 次只读调用。"""
+        from .. import ports as ports_mod
+        root = pathlib.Path(self.gw.root)
+        st = steptools.project_state(root, None)
+        cm = {"apps": "应用固件（每个子目录一个应用）", "examples": "比赛项目（读题/方案/分配/生成的产物）", "boards": "板卡定义 board.yaml",
+              "firmware": "通用固件库（algo/drivers/proto，冻结层）", "tools": "命令行工具（req/scheme/alloc/gen/keil_inject）", "subsys": "子系统库"}
+        lines = [f"- {k}/：{v}" for k, v in cm.items() if (root / k).is_dir()]
+        try:
+            sims = ", ".join(ports_mod.sim_apps())
+        except Exception:  # noqa: BLE001
+            sims = ""
+        return ("仓库地图：\n" + "\n".join(lines) + f"\n板卡：{', '.join(st.get('boards') or []) or '无'}"
+                + f"\n项目：{', '.join(st.get('projects') or []) or '无'}" + (f"\n仿真对象：{sims}" if sims else "")
+                + f"\n当前连接：{self.s.port or '未连接'}")
+
+    def quick_start(self, text: str) -> dict:
+        """一句话起项目：解析 → ①–⑤ 整链预览（只写暂存区）→ 一张确认卡（方案 + 引脚表）。
+        用户点确认 → 写入项目 → 连仿真板 → 一键起步调参 → 评分。返回 action_id 给界面。"""
+        sp = steptools.quick_spec(text)
+        d = steptools._flow(self.gw.root).home / sp["code"]; d.mkdir(parents=True, exist_ok=True)
+        (d / "problem.txt").write_text(sp["problem"], encoding="utf-8")
+        ch = self.project_chain(sp["code"], src=str(d / "problem.txt"), mcu=sp["mcu"])
+        if ch.get("stopped_at"):
+            return {"spec": sp, "chain": ch, "action_id": None}
+        self.quick[sp["code"]] = sp
+        card = self.gate("project_apply", {"code": sp["code"]}, lambda: None)
+        return {"spec": sp, "chain": ch, "action_id": card.get("action_id"),
+                "note": "确认卡已出（含方案与引脚表）；用户点确认后自动写项目、上仿真、调参、评分。不要再调 project_apply。"}
+
+    def _quick_after(self, code: str, written: dict) -> dict:
+        """确认后接着跑：仿真板 → 一键起步调参 → 评分（仿真里都是 log 级，不再出卡）。"""
+        sp = self.quick.pop(code)
+        if not self.s.port:
+            self.s.connect(sp["sim"], 115200, log=False)
+            t0 = time.monotonic()
+            while (self.s.schema_hash is None or not self.s.params) and time.monotonic() - t0 < 10:
+                time.sleep(0.05)
+        if not self.sim:
+            return {"written": written, "stopped": "不在仿真板上：实机调参每轮要人确认，没有自动连跑"}
+        tune = self.tune_autopilot(4)
+        items = (steptools._yaml(pathlib.Path(self.gw.root) / "examples" / code / "requirements.yaml").get("items") or [])
+        score = self.score_run(str(items[0]["id"]), n=1, band=sp["band"]) if items else {"error": "没有评分项"}
+        return {"written": written, "sim": self.s.port, "tune": tune, "score": score}
+
     def project_apply(self, code: str) -> dict:
         r = self.chains.pop(code, None)
         if not r or not r["batch"]:
             raise GatewayError("no_chain", f"{code} 还没有可写入的预览", "先 project_chain")
-        return steptools.project_apply(self.gw.root, code, r["batch"])
+        out = steptools.project_apply(self.gw.root, code, r["batch"])
+        if code in self.quick and not out.get("failed"):
+            return self._quick_after(code, out)
+        return out
 
     # -------------------------------------------------------------- 评分：跑 N 次 → 存证据 → 回写
     def score_run(self, item: str, n: int = 3, path: str | None = None, band: float | None = None, hold_s: float = 0.3) -> dict:
@@ -554,7 +630,7 @@ class AgentService:
                     failed.append(f"读不回 {k}：{e}")
                     continue
                 if v is not None and abs(rb - v) > 1e-6 * max(1.0, abs(v)):
-                    failed.append(f"{k} 板上是 {rb:g}，侧车记录是 {v:g}（板子复位过或被改过）")
+                    failed.append(f"{k} 板上是 {rb:g}，本地服务记录是 {v:g}（板子复位过或被改过）")
         return {"ok": not failed, "failed": failed, "checked": checked}
 
     def step_start(self, st: dict) -> None:
@@ -563,7 +639,7 @@ class AgentService:
         时才发 'R'；急停状态下直接拒绝做实验。"""
         if not st.get("start"):
             return
-        if self.s.tx_locked:
+        if self.s.tx_locked or self.s.estop_cause or (self.s.hb_status or 0) & (1 << 10):   # 板子已报急停（心跳还没让本地锁上）也拒绝
             raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停 R”")
         w = self.s.window(0.3)
         sf, done = st.get("state_field", "state"), st.get("done_state")
@@ -980,10 +1056,52 @@ class AgentService:
         self.loop.guards = isinstance(llm, (llm_mod.OpenAICompat, llm_mod.Failover))
         local = getattr(llm, "active", None) is getattr(llm, "local", 0) or getattr(llm, "cfg", {}).get("provider") == "ollama"
         self.emit({"type": "agent_mode", "mode": "local" if local else "llm", "name": getattr(llm, "name", "")})
+        n0 = len(self.loop.messages)
         try:
             return self.loop.ask(text)
         except llm_mod.LLMError as e:
+            del self.loop.messages[n0:]                  # 本轮作废，下一句从干净的对话接着来
+            self._agent_error(e)
             return self._unreachable(e.message, e.fix, text)
+        except Exception as e:                           # noqa: BLE001 —— 任何意外都不能让界面干等
+            del self.loop.messages[n0:]
+            err = self._agent_error(e)
+            return f"（Agent 这一轮出错了：{err['message']}）"
+
+    # agent_error.fix_action 只能是 docs/dev/entrypoints.yaml 里的入口 id（或 None）；测试会核对
+    FIX_SETTINGS, FIX_RESEND = "llm_cfg", "agent_chat"
+
+    def _agent_error(self, e: BaseException) -> dict:
+        """fix_action = docs/dev/entrypoints.yaml 里的入口 id（llm_cfg 大模型设置 / agent_chat 重发）或 None。
+        把本轮异常变成 agent_error 事件：原因 + 怎么解决；密钥打码；调用栈只进 detail 和日志。"""
+        import sys
+        import traceback
+        key = (getattr(getattr(self.loop, "llm", None), "cfg", None) or {}).get("api_key") or ""
+        tb = llm_mod._redact("".join(traceback.format_exception(type(e), e, e.__traceback__)), key)
+        print(f"[dzbench] agent_error\n{tb}", file=sys.stderr)
+        if isinstance(e, llm_mod.LLMError):
+            st = getattr(e, "code", None)
+            if isinstance(st, int):
+                code = f"llm_{st}"
+            else:
+                code = "llm_timeout" if "超时" in e.message else ("llm_network" if e.down else "llm_error")
+            action = self.FIX_SETTINGS if getattr(e, "model_hint", False) or st in (401, 402, 403, 404) or e.down or "Key" in e.message or "地址" in e.message else self.FIX_RESEND
+            retryable = bool(getattr(e, "retry", False) or e.down)
+            msg = f"{e.message}。{e.fix}" if e.fix else e.message
+            detail = ""
+        elif isinstance(e, (KeyError, TypeError)) and any(k in str(e) for k in ("input_schema", "description", "'name'", "parameters")):
+            code, action, retryable, detail = "tool_schema", None, False, tb
+            msg = f"有个 Agent 工具的定义格式不对（缺字段 {e}），这一轮没法调用模型。工作台需要修这个工具定义；先重发一次或换个说法，其它功能不受影响"
+        elif isinstance(e, TimeoutError):
+            code, action, retryable, detail = "timeout", self.FIX_RESEND, True, tb
+            msg = "Agent 这一轮超时了。点“重试”再发一次；一直超时就检查网络或换个更快的模型"
+        else:
+            code, action, retryable, detail = "internal", self.FIX_RESEND, True, tb
+            msg = f"Agent 内部出错（{type(e).__name__}）。点“重试”再发一次；反复出现请把“详情”发给开发者"
+        ev = {"type": "agent_error", "code": code, "message": llm_mod._redact(msg, key), "detail": detail,
+              "fix_action": action, "retryable": retryable}
+        self.emit(ev)
+        return ev
 
     def _unreachable(self, message: str, fix: str, text: str) -> str:
         self.emit({"type": "agent_unreachable", "message": message, "fix": fix, "text": text})

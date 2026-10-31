@@ -10,14 +10,14 @@ import pytest
 
 APP = pathlib.Path(__file__).resolve().parents[2]
 UI_SRC = "\n".join(p.read_text(encoding="utf-8") for p in (APP / "ui/src").glob("*.ts"))
-SERVER_OPS = set(re.findall(r'op == "([a-z_]+)"', (APP / "sidecar/dzbench/server.py").read_text(encoding="utf-8")))
+SERVER_OPS = set(re.findall(r'op == "([a-z_.]+)"', (APP / "sidecar/dzbench/server.py").read_text(encoding="utf-8")))
 # 不在界面上、故意保留的 op（脚本 / 测试接口）：单一来源 = docs/dev/entrypoints.yaml script_ops
 import yaml  # noqa: E402
 SCRIPT_ONLY = yaml.safe_load((APP.parent / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["script_ops"]
 
 
 def ui_ops():
-    return set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_]+)"', UI_SRC))
+    return set(re.findall(r'(?:rpc|call|fire)(?:<[^>]*>)?\(\s*"([a-z_.]+)"', UI_SRC))
 
 
 def test_every_ui_op_is_served():
@@ -26,7 +26,11 @@ def test_every_ui_op_is_served():
 
 
 def test_every_server_op_has_a_caller():
-    orphan = SERVER_OPS - ui_ops() - set(SCRIPT_ONLY)
+    # 进度条的修复按钮按 fix_action 生成（dzbench/progress.py FIX → entrypoints.yaml 里同名动作；位置已固定登记，不再靠 dynamic）
+    from dzbench.progress import FIX
+    acts = yaml.safe_load((APP.parent / "docs/dev/entrypoints.yaml").read_text(encoding="utf-8"))["actions"]
+    fix_ops = {op for a in acts if a["id"] in FIX.values() for op in a.get("ops") or []}
+    orphan = SERVER_OPS - ui_ops() - set(SCRIPT_ONLY) - fix_ops
     assert not orphan, f"侧车 op 没有界面入口也没写进 SCRIPT_ONLY：{orphan}"
     assert not (set(SCRIPT_ONLY) - SERVER_OPS), "SCRIPT_ONLY 里有已删掉的 op"
 
