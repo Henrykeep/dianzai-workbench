@@ -25,7 +25,7 @@ jobs:
           clean="$RUNNER_TEMP/cleanbin"; mkdir -p "$clean"
           for d in /usr/bin /bin; do for f in "$d"/*; do
             b=$(basename "$f"); case "$b" in python*|pip*|idle*|pydoc*) continue;; esac
-            [ -e "$clean/$b" ] || ln -s "$f" "$clean/$b"; done; done
+            [ -e "$clean/$b" ] || [ -L "$clean/$b" ] || ln -s "$f" "$clean/$b"; done; done
           export DZ_NOPAUSE=1; unset PYTHONPATH PYTHONHOME
           if env PATH="$clean" sh -c 'command -v python3 || command -v python'; then echo "::error::PATH 没清干净"; exit 1; fi
           env PATH="$PWD/.venv/bin:$clean" ./xintai-selfcheck.sh || { echo "::error::正例自检失败"; exit 1; }
