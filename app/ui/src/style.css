@@ -1177,3 +1177,7 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .rc-amp{margin:4px 0;font-size:16px;color:var(--warn)} .itc.rc.partial{border-color:var(--warn)}   /* #134 */
 .role-left,.role-err{margin-left:8px;font-size:16px;color:var(--warn)} .role-sel.role-empty{outline:2px solid var(--warn)}   /* #135 */
 .cc-sub{margin:4px 0;color:var(--muted)}
+
+/* #141 复测被挡 */
+.rc-blk{color:var(--warn);font-size:13px;margin:4px 0}.rc-blk a{color:inherit;text-decoration:underline}
+.hl{outline:2px solid var(--warn);outline-offset:2px}

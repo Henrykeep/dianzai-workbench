@@ -223,3 +223,10 @@ export const ROLE_SENDING_ZH = "已发出，等后端结果";
 export const ROLE_CODES = [["P", "比例"], ["I", "积分"], ["D", "微分"], ["FF", "前馈"], ["LIM", "限幅"], ["other", "其他"]] as const;
 export const ROLE_NO_FLASH_ZH = "改角色不用重新烧录", ROLE_LIM_ZH = "不参与整定";   // 角色来源：握手 / link_schema params[i].role（P|I|D|FF|LIM|other|null）
 export const ROLE_SUGGEST_ZH = "建议，待确认", ROLE_BTN_ZH = "确认角色", ROLE_RETRY_ZH = "重试整定";
+
+// #141 复测被挡：partial 卡 retest_blocked_by = null（可复测）| {reason: step_too_large, limit, limit_unit, message_zh, fix_action: edit_declaration}
+export const RETEST_F = { obj: "retest_blocked_by", reason: "reason", limit: "limit", unit: "limit_unit", msg: "message_zh", fix: "fix_action", editDecl: "edit_declaration" } as const;
+// 兜底：握手 schema.step[] 的 max_step（工程声明的单次最大阶跃）
+export const DECL_STEP_F = { list: "step", max: "max_step" } as const;
+// 采用回执：verified:false + unverified_reason（amp_reduced）→ 提示未记为已验证档；前端不发任何「未验证」标志
+export const ADOPT_F = { verified: "verified", why: "unverified_reason", ampReduced: "amp_reduced" } as const;

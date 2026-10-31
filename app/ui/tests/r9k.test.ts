@@ -51,3 +51,24 @@ setReasonCodes(null);
 assert.equal(stopReasonZh({ reason: "zz_not_a_code" } as any, []), "未知原因");
 console.log("r9k ok", codes.size);
 })().catch(e => { console.error(e); process.exit(1); });
+// #141 复测被挡（retest_blocked_by）+ 兜底 max_step + 采用回执
+import("../src/iterui").then(({ retestBlock, resultCardHtml: rh, adoptToastZh }) => {
+  const p: any = { reason: "budget_rounds", amp_reduced: true, amp_spec: 1, amp_tested: 0.5, verdict: { v: "partial", warn: "未验题面幅度" }, best: { params: { a: 1 }, metrics: {} } };
+  const b1 = { ...p, retest_blocked_by: { reason: "step_too_large", limit: 0.6, limit_unit: "m", message_zh: "后端原文：太大", fix_action: "edit_declaration" } };
+  let h = rh(b1, (s: string) => s, { canApply: true, applyReady: true });
+  assert.match(h, /id="it-rerun" disabled/); assert.match(h, /后端原文：太大/); assert.match(h, /id="it-decl" data-field="max_step"/);
+  const b2 = { ...p, retest_blocked_by: { reason: "step_too_large", limit: 0.6, limit_unit: "m", fix_action: "edit_declaration" } };
+  assert.equal(retestBlock(b2)!.text, "题面幅度 1 超过声明的单步上限 0.6 m，需先在声明里放宽 max_step 或确认执行器能承受");
+  assert.equal(retestBlock({ ...p, retest_blocked_by: null }, { step: [{ sp: 0, max_step: 0.1 }] }), null);   // 后端说可复测就不兜底
+  const f = retestBlock(p, { step: [{ sp: 0, max_step: 0.8 }, { sp: 1, max_step: 2 }] })!;
+  assert.ok(f.frontend && /单步上限 0\.8/.test(f.text) && /前端按握手声明判断/.test(f.text));
+  assert.equal(retestBlock(p, { step: [{ sp: 0, max_step: 5 }] }), null);
+  assert.equal(retestBlock(p, {}), null);
+  h = rh(p, (s: string) => s, { canApply: true, applyReady: true }); assert.doesNotMatch(h, /id="it-rerun" disabled/);
+  assert.deepEqual(adoptToastZh({ status: "done", verified: false, unverified_reason: "amp_reduced" }, true).kind, "warn");
+  assert.match(adoptToastZh({ verified: false, unverified_reason: "amp_reduced" }, true).text, /未记为已验证档/);
+  const main = readFileSync("src/main.ts", "utf8");
+  assert.doesNotMatch(main, /unverified\s*:/);   // 不发未验证标志
+  assert.doesNotMatch(main.replace(/^.*fieldmap.*$/gm, ""), /"retest_blocked_by"|"max_step"/);   // 字段名只在 fieldmap
+  console.log("r9k-141b ok");
+});

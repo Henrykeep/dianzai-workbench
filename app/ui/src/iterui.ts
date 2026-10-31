@@ -1,7 +1,7 @@
 import { coarseTagHtml } from "./plant";
 import { reasonZh } from "./reasoncodes";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
-import { ampLine, ampText, MC_F, DOWNSCALE_ZH } from "./fieldmap";
+import { ampLine, ampText, MC_F, DOWNSCALE_ZH, RETEST_F, DECL_STEP_F, ADOPT_F } from "./fieldmap";
 import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH, STOP_F, ABORT_ZH, NO_ROUND_ZH } from "./fieldmap";
 import { pickStr, RESULT_PORT_F, RESULT_CLEAR_EV } from "./fieldmap";
 import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
@@ -188,8 +188,29 @@ export const iterTarget = (sp: { v: number } | null | undefined): number | null 
 export const isAmpReduced = (r: any) => r?.[MC_F.ampReduced] === true || !!r?.verdict?.warn;
 export const partialConfirmZh = (r: any) => `只在 ${ampText(r?.[MC_F.ampTested], r)} 幅度上验证过，未验题面幅度。仍要采用吗？（不会记为已验证档）`;
 export const ampSpecValue = (r: any): number | null => { const a = r?.[MC_F.ampSpec], v = a && typeof a === "object" ? a[MC_F.value] : a; return typeof v === "number" && Number.isFinite(v) ? v : null; };
+export type RetestBlock = { text: string; fix: string | null; frontend: boolean } | null;
+const fnum = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? +v.toPrecision(5) : null;
+// 后端 retest_blocked_by 优先（null = 可复测）；字段不存在才用握手声明的 max_step 兜底；都不知道就放行，由后端拒绝原因说话
+export function retestBlock(r: any, schema?: any): RetestBlock {
+  if (r && RETEST_F.obj in r) {
+    const b = r[RETEST_F.obj]; if (!b || typeof b !== "object") return null;
+    const lim = fnum(b[RETEST_F.limit]), u = typeof b[RETEST_F.unit] === "string" && b[RETEST_F.unit] ? " " + b[RETEST_F.unit] : "";
+    const text = typeof b[RETEST_F.msg] === "string" && b[RETEST_F.msg] ? b[RETEST_F.msg] : stepTooLargeZh(ampText(r[MC_F.ampSpec], r), lim != null ? `${lim}${u}` : "（后端未给）");
+    return { text, fix: typeof b[RETEST_F.fix] === "string" ? b[RETEST_F.fix] : null, frontend: false };
+  }
+  const spec = ampSpecValue(r), lims = (Array.isArray(schema?.[DECL_STEP_F.list]) ? schema[DECL_STEP_F.list] : []).map((c: any) => fnum(c?.[DECL_STEP_F.max])).filter((x: any) => x != null) as number[];
+  if (spec == null || !lims.length) return null;
+  const m = Math.min(...lims);   // 不知道是哪个设定值槽：取最严的那条声明
+  return Math.abs(spec) > m ? { text: stepTooLargeZh(ampText(r[MC_F.ampSpec], r), String(m)) + "（前端按握手声明判断）", fix: RETEST_F.editDecl, frontend: true } : null;
+}
+export const stepTooLargeZh = (x: string, m: string) => `题面幅度 ${x} 超过声明的单步上限 ${m}，需先在声明里放宽 max_step 或确认执行器能承受`;
+// 采用回执：verified:false 时提示原因
+export function adoptToastZh(rep: any, part: boolean): { text: string; kind: "ok" | "warn" } {
+  if (rep?.[ADOPT_F.verified] === false) return { text: rep?.[ADOPT_F.why] === ADOPT_F.ampReduced ? "已采用，但只在实测幅度上验证过，未记为已验证档" : "已采用，未记为已验证档", kind: "warn" };
+  return part ? { text: "已采用（只在实测幅度上验证过，未记为已验证）", kind: "warn" } : { text: "已采用最好参数", kind: "ok" };
+}
 export const CARD_KEYS = /超调|调节|稳态/;
-export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean }): string {
+export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean; schema?: any }): string {
   const v = cardView(r), head = r.verdict?.warn ? r.verdict.warn : verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");   // 降幅警告原文照抄
   const key = v.compare.filter(x => CARD_KEYS.test(x[0])), cells = key.length ? key : v.compare.slice(0, 4);   // r9p6 别的题没有超调/调节/稳态时，照样列出它自己的指标
   const cmp = cells.length
@@ -199,12 +220,13 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   const det = `<details class="rc-det"><summary>详情</summary>${[v.verdict.text, ...v.gaps, v.reason, v.next].filter(Boolean).map(t => `<p>${esc(t)}</p>`).join("")}</details>`;
   // #141 降幅测试：主按钮是「按题面幅度复测」，采用退成次要按钮且要先确认
   const part = isAmpReduced(r), dis = o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"';
-  const btn = part ? `<wa-button variant="brand" size="small" id="it-rerun">按题面幅度复测</wa-button>` + (o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-partial="1"${dis}>仍采用这组参数</wa-button>` : "")
+  const blk = part ? retestBlock(r, o.schema) : null;
+  const btn = part ? `<wa-button variant="brand" size="small" id="it-rerun"${blk ? " disabled" : ""}>按题面幅度复测</wa-button>` + (o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-partial="1"${dis}>仍采用这组参数</wa-button>` : "")
     : o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${dis}>采用这组参数</wa-button>` : "";
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";
   const amp = r.verdict?.warn ? ampLine(r) : "";   // #134 不管有没有对比表都给幅度行
-  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${amp ? `<p class="rc-amp num">${esc(amp)}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${amp ? `<p class="rc-amp num">${esc(amp)}</p>` : ""}${blk ? `<p class="rc-blk warn" id="it-blk">${esc(blk.text)}${blk.fix === RETEST_F.editDecl ? ` <a href="#" id="it-decl" data-field="${DECL_STEP_F.max}">去声明里修改</a>` : ""}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
 }
 
 // r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头
