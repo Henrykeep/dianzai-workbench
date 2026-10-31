@@ -65,3 +65,30 @@ def test_session_status_and_link_state_agree(monkeypatch):
         assert (board == "connected") == alive, (now, board)
     assert board == "lost"
     s.tr = None
+
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.needs_sim
+def test_sim_killed_goes_disconnected():
+    """#57：仿真进程被 kill -9 后，status.connected 必须变 false，link.state = disconnected（reason=sim_exited），不能一直挂 connected。"""
+    import os
+    import signal
+    import time
+    s = session_mod.Session()
+    s.connect("sim:car_2wd")
+    try:
+        t0 = time.monotonic()
+        while s.status()["alive"] is False and time.monotonic() - t0 < 10:
+            time.sleep(0.05)
+        os.kill(s.tr.proc.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+        t0 = time.monotonic()
+        while s.status()["connected"] and time.monotonic() - t0 < 5:
+            time.sleep(0.05)
+        st = s.status()
+        assert st["connected"] is False and st["reconnecting"] is False, st
+        ls = s.link_state(time.monotonic() + 10)
+        assert ls["board"] == "disconnected" and ls["reason"] == "sim_exited", ls
+    finally:
+        s.disconnect()

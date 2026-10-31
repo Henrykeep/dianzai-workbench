@@ -22,11 +22,30 @@
 - 急停锁存中（`tx_locked`）拒绝：`error.code = "estop_locked"`，`fix_action = "estop_clear"`，`extra.reason = "state"`。
 - 按 link_schema 校验，从不钳位：`name` 不是设定值 → `invalid_param`（`reject: "name"`）；非十进制数 / NaN / Inf → `invalid_param`；有 `link.step` 通道且 `|value| > range` → `invalid_param`（`reject: "range"`）。
 - `status.sp_before_latch`：锁存那一刻冻结的急停前主设定值（`link.step[0].sp` 槽位，没有则第 0 槽；取锁存前最后一帧遥测，因为固件锁存时把设定值清零），解除后仍保留供「恢复急停前目标」；`setpoint_set` 成功后变 `null`。没有设定值字段 / 没收到过遥测时为 `null`。
-- 板上阶跃实验进行中下发目标会让这一轮以 cause 0x80 中止（见 iterate.md）。
+- 阶跃实验进行中（心跳 bit17）拒绝且不发：`error.code = "iter_busy"`，`fix_action = "stop_iteration"`，`message_zh` 「阶跃实验进行中，结束或停止后再设定目标」；不中止本轮。
+- 设定值通道 `hold`（`latched` | `timeout`，app.yaml link 设定值通道上的字段，侧车原样透传；**缺省按 `timeout`**）：先看 `link.step` 里 `sp` 同槽的条目，再看遥测字段本身。
+  `hold = timeout` 的通道（板子按 cmd_timeout 自己把目标清零）拒绝且不发：`error.code = "hold_timeout"`，`fix_action = "restart_experiment"`，`message_zh` 「这块板子的目标不会保持，重新开始实验即可」。侧车**不做**保活重发。
+- 透传位置：`schema` 摘要的 `setpoints: [{name, slot, ref_for, hold}]`（另带 `step`），`status.setpoints` 同结构。
 
 ## 自动迭代 `iterate.*`（#38）
 
 `iterate.started` / `iterate.round` / `iterate.param_reject` / `iterate.stopped`，字段见 `docs/dev/iterate.md` 第 7 节。阶跃开始被拒：`step_estop`（带 `fix_action: "estop_clear"`）、`step_busy`、`step_bad_arg`、`step_unsupported`、`step_offline`。
+
+入口（界面 #62 / 脚本，与 Agent 工具 `iterate_start` / `iterate_cancel` 同一实现，见 entrypoints.yaml）：
+
+| op | 请求 | 返回 |
+|---|---|---|
+| `iterate_start` | `{target, params?, dur_ms?, ch?}`；`params` 缺省 = 增益参数 | 仿真：`{status: "started", budget: {time_s, rounds}}`；实机：`{status: "pending_human_click", action_id}`，同时推一张 `agent_action`（tool=`iterate_start`）批量确认卡，确认走 `agent_action_decide`。已在跑 → `error.code = "iterate_running"` |
+| `iterate_cancel` | `{}` | 立即停止（板上本轮中止，参数停在当前值），随后推 `iterate.stopped reason=stopped` |
+| `iterate_status` | `{}` | `{running, result}`，`result` = 最近一次 `iterate.stopped`（含 `best_card`），没跑过为 null |
+
+每次迭代的事件顺序（每条都带 `type`）：
+
+1. `iterate.started` `{plan, start, start_hash, limits: {time_s, rounds}}`——**`limits.rounds` 就是本次的轮数上限 N**（实机 8 / 仿真 20），`limits.time_s` 是时间预算（180 s）。界面显示“第 i / N 轮”用它，不要写死。
+2. 每轮一条 `iterate.round`：`iterate.md` 第 2 节字段（`iter` 0 = 起始参数基线，之后从 1 计；无效轮 `valid=false` 不占号）+ `local_hash` `unit` `band` `changed`。
+3. 0~多条 `iterate.param_reject` `{name, value, reason}`（候选值被本地 / 板子拒，换方向，不算一轮）。
+4. 恰好一条 `iterate.stopped` `{reason, message_zh, rounds, best{iter, params, params_hash, metrics, pass, gaps}, next_zh}`；`reason` ∈ pass / budget_time / budget_rounds / estop / stopped / invalid / no_improve / unstable / blocked / error（`error` 时只有 `reason` `message_zh`）。
+5. 有 `best` 时紧接一张 `agent_action`（tool=`iterate_apply_best`，标题“采用最好参数”，`preview.changes` = 旧→新）：**仿真和实机都要人点**，确认后逐个写回并回读核对；Agent 一轮调参以这张卡收尾（#53）。
 
 ## 模型列表 `op: "agent_models"` 的返回
 
@@ -56,3 +75,22 @@
 - 自动流程（`quick_start`、Agent 步骤）不读写这两个开关。
 - 入口登记：`docs/dev/entrypoints.yaml` 的 `enable_cloud`（`at: toolbox:设置`，`human_only: true`，`ops: [set_cloud_enabled]`），不进 `script_ops`。
 - 守护测试：`app/sidecar/tests/test_cloud_guard.py`。
+
+### J-Link 工具识别（#49）
+
+`flash.tool = jlink` 时只认 SEGGER J-Link：路径里有 `SEGGER` 直接认；否则跑 `<exe> -?`（stdin 关闭、5 s 超时）要求输出含 `SEGGER`。
+Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏感地撞名）。只找到 Java jlink 时：
+`code = "jlink_not_segger"`，`fix_action = "install_jlink"`，`message_zh` 「找到的 jlink 是 Java 工具，不是 SEGGER J-Link，请安装 J-Link 软件包」；
+自检 `tool_status` 与 `list_probes_for("jlink")` 的返回同样带 `fix_action` / `message_zh`。完全找不到也给 `install_jlink`。
+
+### 急停 `board_t_ms` / 连上即已急停
+
+- 心跳尾部（0.6.0 起，偏移 16–27，共 28 字节）`u32 cause, u32 t_ms, f32 value`：`t_ms` 是锁存时的板上时刻 → `latched` 事件的 `board_t_ms`（`status.estop_cause.board_t_ms` 同值）。
+- 32 字节心跳在 28 处再带 `u32 clear_t_ms` → `cleared` 事件的 `board_t_ms`；28 字节心跳的 cleared 不带 `board_t_ms`。按长度解析（40+ 字节的 28.. 是自检，不当 clear_t_ms）。
+- 连上时板子已急停（bit10 一开始就是 1，或按端口/身份恢复了锁存、没有上升沿）：第一帧带原因的心跳也推一次 `latched`（带 `cause` / `cause_zh` / `board_t_ms`），每次连接只推一次。
+
+## 模型重试 `type: "agent_retry"`（r8 llm_503）
+
+模型服务出可重试错误（429 / 5xx / 网络）时，每次自动重试前推一条：`{attempt, max, wait_s, code, why, message_zh}`。
+`message_zh` 直接给用户看（例：「模型服务暂时不可用（HTTP 503），1.6 秒后自动重试（第 2/4 次），不用重发」）；`why` 是服务原话（已截断、打码）。
+502/503/504 最多重试 `RETRIES_5XX = 4` 次（退避 0.8→1.6→3.2→6.4 s），其余按 `retries`（默认 2）；用尽后照常推 `agent_error`（`message` 末尾写明“已自动重试 N 次仍失败”）+ `agent_unreachable`，不会无声挂住。

@@ -2,7 +2,7 @@
 
 board 状态机（只看侧车自己的事实：串口是否打开、是否在重连、最近一帧合法帧的时间）：
   disconnected  没有打开任何端口（含主动断开）；reason 可为 port_not_found / port_ambiguous
-                （侧车重启后自动连回失败），主动断开时为 null
+                （侧车重启后自动连回失败）/ sim_exited（仿真进程退出或被杀，#57），主动断开时为 null
   connecting    端口已打开，但本次连接还没收到合法帧
   connected     最近 LOST_AFTER_S 内收到过合法帧（心跳或遥测都算）
   lost          收到过帧后静默超过 LOST_AFTER_S，或传输层断开正在自动重连（reason=transport_closed），

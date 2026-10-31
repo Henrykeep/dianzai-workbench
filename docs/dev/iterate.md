@@ -94,11 +94,9 @@
 
 停下时给出：最好一轮的参数和指标、停止原因、建议的下一步（一句话）。
 
-## 6. 事件（草案，实现时补进 events.md）
+## 6. 事件
 
-- `iterate.started` `{plan, limits, stop}`
-- `iterate.round` 第 2 节字段
-- `iterate.stopped` `{reason, best, rounds}`
+已定稿，以 `docs/dev/events.md`「自动迭代 `iterate.*`」为准（入口 op、事件顺序、轮数上限 N = `iterate.started.limits.rounds`、结束时的“采用最好参数”卡）。
 
 ## 7. 本地服务实现（dzctl 0.13.0 实帧）
 

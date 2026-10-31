@@ -186,7 +186,8 @@ def test_sim_autopilot_and_page_tools(tmp_path, home, monkeypatch):
         res = json.loads(llm.seen[1][0][-1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])["result"]
         print(json.dumps(res, ensure_ascii=False)[:800])
         assert res["rounds"] and res["best_round"] and "gains" in res["best_round"]
-        assert len(res["rounds"]) <= 4 and not _cards(ev)                      # 仿真：没有一张卡
+        assert len(res["rounds"]) <= 4                                          # 仿真：过程中不出卡，只在收尾出一张“采用最好参数”（#53）
+        assert [c["tool"] for c in _cards(ev)] == ["iterate_apply_best"] and res["best_card"] == _cards(ev)[0]["id"]
         for c in llm.seen[2][0][-2:]:
             assert '"ok": true' in c["content"], c["content"][:300]
         monkeypatch.setattr(AgentService, "sim", property(lambda self: False))
@@ -323,3 +324,49 @@ def test_same_pending_card_not_duplicated(repo):
     a = svc.gate("project_apply", {"code": "X"}, lambda: None)
     b = svc.gate("project_apply", {"code": "X"}, lambda: None)
     assert a["action_id"] == b["action_id"] and len(_cards(ev)) == 1
+
+
+H_SENT = "2026 年 H 题车载平衡滚球：STM32 主控通过舵机调整平板倾角，让小球稳定在中心并按要求运动，从新建工程做到仿真跑通并调好参数。"
+
+
+@pytest.mark.needs_sim
+def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monkeypatch):
+    """#55 / #39 用户主线（r8 user-main 原话）：一句话开局 → 例题只读（project_open / flow_accept 例题被拒）→ quick_start
+    以例题为模板新建项目目录（一张卡）→ 点确认：建目录、设为当前项目、连 2026H 仿真、自动迭代 → “采用最好参数”卡。
+    记忆按 新项目 + 板子 记（不是 _none），第 0 轮带 params_hash；再开局一次落另一个新目录，例题目录始终不动。"""
+    from dzbench import project as project_mod
+    from dzbench.agent.journal import project_slug
+    (repo / "examples" / "2026H_ball").symlink_to(REPO / "examples" / "2026H_ball")
+    monkeypatch.setattr(AgentService, "ITER_ROUNDS", 3)
+    ex_tree = _tree(REPO / "examples" / "2026H_ball")
+    llm = FakeLLM([
+        {"role": "assistant", "content": None, "tool_calls": [call("project_open", code="2026H_ball")]},
+        {"role": "assistant", "content": None, "tool_calls": [call("flow_accept", step="req", code="2026H_ball")]},
+        {"role": "assistant", "content": None, "tool_calls": [call("quick_start", text=H_SENT)]},
+        {"role": "assistant", "content": "已出新建项目确认卡。", "tool_calls": []},
+    ])
+    svc, ev = _svc(repo, llm)
+    try:
+        svc.ask(H_SENT)
+        seen = json.dumps([m for m, _ in llm.seen], ensure_ascii=False)
+        assert seen.count("example_readonly") >= 2, "例题必须只读：project_open / flow_accept 都要被拒"
+        cs = _cards(ev)
+        assert [c["tool"] for c in cs] == ["project_fork"], cs
+        code = cs[0]["args"]["code"]
+        assert code != "2026H_ball" and cs[0]["preview"]["title"] == "以例题为模板新建项目"
+        out = svc.action_decide(cs[0]["id"], True)["result"]                     # 用户唯一一次点击（建项目）
+        pd = _proj(tmp_path) / code
+        assert pd.is_dir() and (pd / "requirements.yaml").exists() and out["path"] == str(pd)
+        assert project_mod.current()["name"] == code
+        assert out["sim"] == "sim:2026H_ball", out
+        assert out.get("best_card"), out                                        # 有板上阶跃走 iterate，没有（2026H 例题固件）走 tune_autopilot，都出卡
+        assert [c["tool"] for c in _cards(ev)][-1] == "iterate_apply_best"      # 以“采用最好参数”卡收尾
+        mem = svc.memory()
+        assert mem.project == project_slug(str(pd)) and mem.project != "_none" and mem.key, (mem.project, mem.key)
+        rows = [r for r in mem.load() if r.get("kind") in ("iterate", "verdict")]
+        assert rows and all(r.get("params_hash") for r in rows), rows           # 第 0 轮起每轮都有 hash
+        r2 = svc.quick_start(H_SENT)                                             # 再开局：又一个新目录
+        assert r2["spec"]["code"] not in (code, "2026H_ball")
+    finally:
+        svc.s.disconnect()
+    assert _tree(REPO / "examples" / "2026H_ball") == ex_tree                    # 例题一字未动

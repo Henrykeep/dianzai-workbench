@@ -26,11 +26,29 @@ def test_memory_isolated_per_project_dir(tmp_path):
 
 def test_fresh_code_never_reuses(tmp_path):
     ex = next(d.name for d in (ROOT / "examples").iterdir() if d.is_dir())
-    assert steptools.fresh_code(ROOT, ex) == ex + "-2"
+    assert steptools.fresh_code(ROOT, ex) == steptools.slug(ex) + "-2"          # 按 slug 和例题比：不复用例题
+    assert steptools.fresh_code(ROOT, "2026H_ball") == "2026h-ball-2"
     from dzbench import paths
-    (paths.projects_dir() / "Qabc123").mkdir(parents=True)
-    assert steptools.fresh_code(ROOT, "Qabc123") == "Qabc123-2"
-    assert steptools.fresh_code(ROOT, "Qnew999") == "Qnew999"
+    (paths.projects_dir() / "qabc123").mkdir(parents=True)
+    assert steptools.fresh_code(ROOT, "Qabc123") == "qabc123-2"
+    assert steptools.fresh_code(ROOT, "Qnew999") == "qnew999"
+
+
+def test_chinese_name_gives_ascii_dir(tmp_path):
+    """#55：项目名是中文也落 ASCII 目录（如 2026h-ball-3 / proj-xxxxxx）；中文显示名存 project.yaml 的 display_name。"""
+    import yaml
+    from dzbench import paths
+    for name in ("平衡滚球", "2026年H题 平衡滚球", "２０２６Ｈ　滚球"):
+        c = steptools.fresh_code(ROOT, name)
+        assert c.isascii() and c == c.lower() and all(ch.isalnum() or ch == "-" for ch in c), c
+        d = paths.projects_dir() / c
+        d.mkdir(parents=True)
+        steptools.set_display_name(d, name)
+        assert str(d.relative_to(paths.projects_dir())).isascii()
+        y = yaml.safe_load((d / "project.yaml").read_text(encoding="utf-8"))
+        assert y["display_name"] == name and y["name"] == c
+        assert steptools.fresh_code(ROOT, name) != c                            # 再建同名 → 新目录
+    assert steptools.fresh_code(ROOT, "２０２６Ｈ　滚球").startswith("2026h")
 
 
 def test_chain_refuses_example_as_new_project():

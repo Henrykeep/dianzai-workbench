@@ -17,7 +17,7 @@ link:
       - { name: t_ms,     type: uint32, unit: ms }
       - { name: mode,     type: uint8, enum: [STOP, RUNNING, ESTOP, SEARCH, ABORT], pin: 跟车, pin_with: [fstate, peer_age_ms] }
       - { name: fstate,   type: uint8, enum: [OK, TOO_CLOSE, LINK_LOST] }
-      - { name: gap_sp_m, type: float, unit: m, ref_for: gap_m }
+      - { name: gap_sp_m, type: float, unit: m, ref_for: gap_m, hold: latched }
       - { name: gap_m,    type: float, unit: m }
       - { name: v_cmd,    type: float, unit: m/s }
       - { name: v_self,   type: float, unit: m/s }

@@ -95,3 +95,34 @@ def test_probe_config_roundtrip(home, tmp_path, monkeypatch):
     assert "probe" not in json.loads((snapshots.base_dir() / "machine.json").read_text())["flash"]
     with pytest.raises(Exception):
         svc.probe_config_set({"tool": "keil"})
+
+
+# ---- #49：PATH 上的 jlink 可能是 JDK 的 Java 模块链接器（Windows 上大小写不敏感地撞 JLink.exe）
+JAVA = pathlib.Path(__file__).parent / "fakejava"
+
+
+def _only(monkeypatch, path):
+    monkeypatch.setattr(probes.shutil, "which", lambda name, *a, **k: str(path))
+
+
+def test_java_jlink_rejected(monkeypatch):
+    _only(monkeypatch, JAVA / ("jlink.cmd" if os.name == "nt" else "jlink"))
+    assert not probes.is_segger_jlink(str(JAVA / ("jlink.cmd" if os.name == "nt" else "jlink")))
+    with pytest.raises(FlashError) as e:
+        probes.make_backend({"tool": "jlink", "target": "mspm0g3507"})
+    assert e.value.code == "jlink_not_segger" and e.value.fix_action == "install_jlink"
+    assert e.value.message == "找到的 jlink 是 Java 工具，不是 SEGGER J-Link，请安装 J-Link 软件包"
+    st = probes.tool_status({"tool": "jlink"})
+    assert not st["ok"] and st["fix_action"] == "install_jlink" and "Java" in st["message_zh"]
+    lp = probes.list_probes_for("jlink")                       # 列探针同样不会把 Java jlink 当探针工具跑
+    assert lp["probes"] == [] and lp["fix_action"] == "install_jlink" and "Java" in lp["message_zh"]
+
+
+def test_segger_jlink_accepted(monkeypatch, tmp_path):
+    exe = FAKE / ("JLinkExe.cmd" if os.name == "nt" else "JLinkExe")
+    _only(monkeypatch, exe)
+    assert probes.is_segger_jlink(str(exe))                     # 跑 -? 认 SEGGER 横幅
+    assert probes.tool_status({"tool": "jlink"}) == {"tool": "jlink", "ok": True, "exe": str(exe)}
+    seg = tmp_path / "SEGGER" / "JLink" / "JLink.exe"            # SEGGER 安装路径：不执行直接认
+    assert probes.is_segger_jlink(str(seg))
+    assert probes.tool_status({"tool": "jlink", "jlink": {"exe": str(seg)}})["ok"]

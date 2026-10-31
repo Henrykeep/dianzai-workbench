@@ -22,7 +22,8 @@ RISK: dict[str, str] = {
     "flash": HUMAN, "flash_rollback": HUMAN, "erase": HUMAN, "mem_write": HUMAN, "run_step_test": HUMAN, "run_sweep_test": HUMAN, "rollback_best": HUMAN,
     "flow_accept": HUMAN, "project_apply": HUMAN, "score_run": HUMAN, "score_save": HUMAN, "score_writeback": HUMAN,                          # 写仓库（requirements/scheme/boards/alloc/build、Keil 工程）
     "open_loop_test": HUMAN,
-    "iterate_start": HUMAN, "iterate_cancel": AUTO,   # #38：实机一张批量卡；停止随时可以                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）
+    "iterate_start": HUMAN, "iterate_cancel": AUTO,
+    "iterate_apply_best": HUMAN, "project_fork": HUMAN,   # project_fork：以内置例题为模板新建项目（#55，写用户项目目录）                   # #53 迭代结束出的“采用最好参数”卡：仿真也要人点（不进 SIM_RELAX）   # #38：实机一张批量卡；停止随时可以                       # 另需 step_test.plant_stable=true（experiment.require_open_loop）
     "swarm_search": FORBID,                        # 群体/随机搜索：实机永远不给，仿真降为 log
     "raw_cmd": FORBID, "disable_estop": FORBID, "unlock_rdp": FORBID, "estop": FORBID,
 }

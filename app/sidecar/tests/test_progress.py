@@ -205,7 +205,7 @@ def test_fetch_deps_reuses_doctor_fixes(tmp_path):
     calls = []
     r = deps.fetch(items, str(tmp_path), runner=lambda c, cwd: calls.append(c) or {"cmd": " ".join(c), "rc": 0, "tail": ""})
     assert calls[0][-3:] == ["pip", "install", "pyserial"]
-    assert calls[1][-1] == "m0pack" and calls[1][1].endswith("tools/fetch_third_party.sh")
+    assert calls[1][-1] == "m0pack" and str(calls[1][1]).replace("\\", "/").endswith("tools/fetch_third_party.sh")
     assert len(calls) == 2                                  # warn 项不装
     assert r["unresolved"] == [{"name": "工程配置 dzbench.json", "fix": "按提示改 JSON 语法"}] and r["ok"] is False
 

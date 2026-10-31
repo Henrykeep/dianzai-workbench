@@ -20,7 +20,7 @@ STEP_CN = {"req": "读题", "scheme": "方案", "import": "导入工程", "scrat
 
 
 # 卡片自带中文标题的 human 级工具（界面 c.title 优先于 agent.ts TOOL_CN）
-TITLED = {"iterate_start": "自动迭代调参"}
+TITLED = {"iterate_start": "自动迭代调参", "iterate_apply_best": "采用最好参数", "project_fork": "以例题为模板新建项目"}
 
 def _read(p: pathlib.Path) -> str | None:
     try:
@@ -126,6 +126,17 @@ def build(svc, tool: str, args: dict) -> dict | None:
             return {"title": TITLED[tool]} | svc.iterate_card(args)
         except Exception as e:  # noqa: BLE001
             return {"title": TITLED[tool], "error": str(e)}
+    if tool == "project_fork":
+        from .. import paths as _paths
+        return {"title": TITLED[tool], "example": args.get("example"), "code": args.get("code"),
+                "dest": str(_paths.projects_dir() / str(args.get("code"))),
+                "note": "把内置例题复制成一个新项目目录（例题本身只读、不改）；确认后连仿真板并自动迭代调参"}
+    if tool == "iterate_apply_best":
+        cur = svc.s.params
+        return {"title": TITLED[tool], "where": where, "iter": args.get("iter"), "params_hash": args.get("params_hash"),
+                "changes": [{"name": n, "from": cur.get(n), "to": v} for n, v in (args.get("params") or {}).items()
+                            if cur.get(n) is None or abs(float(cur[n]) - float(v)) > 1e-9],
+                "note": "写入迭代里最好一轮的参数（逐个校验）；掉电保持需再点“保存参数”"}
     if tool == "project_apply":
         c = svc.chains.get(args.get("code")) or {}
         home = steptools._flow(root).home
