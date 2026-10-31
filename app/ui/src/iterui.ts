@@ -188,7 +188,7 @@ export const iterTarget = (sp: { v: number } | null | undefined): number | null 
 export const isAmpReduced = (r: any) => r?.[MC_F.ampReduced] === true || !!r?.verdict?.warn;
 export const partialConfirmZh = (r: any) => `只在 ${ampText(r?.[MC_F.ampTested], r)} 幅度上验证过，未验题面幅度。仍要采用吗？（不会记为已验证档）`;
 export const ampSpecValue = (r: any): number | null => { const a = r?.[MC_F.ampSpec], v = a && typeof a === "object" ? a[MC_F.value] : a; return typeof v === "number" && Number.isFinite(v) ? v : null; };
-export type RetestBlock = { text: string; fix: string | null; frontend: boolean } | null;
+export type RetestBlock = { text: string; fix: string | null; frontend: boolean; key: string } | null;
 const fnum = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? +v.toPrecision(5) : null;
 // 后端 retest_blocked_by 优先（null = 可复测）；字段不存在才用握手声明的 max_step 兜底；都不知道就放行，由后端拒绝原因说话
 export function retestBlock(r: any, schema?: any): RetestBlock {
@@ -196,12 +196,12 @@ export function retestBlock(r: any, schema?: any): RetestBlock {
     const b = r[RETEST_F.obj]; if (!b || typeof b !== "object") return null;
     const lim = fnum(b[RETEST_F.limit]), u = typeof b[RETEST_F.unit] === "string" && b[RETEST_F.unit] ? " " + b[RETEST_F.unit] : "";
     const text = typeof b[RETEST_F.msg] === "string" && b[RETEST_F.msg] ? b[RETEST_F.msg] : stepTooLargeZh(ampText(r[MC_F.ampSpec], r), lim != null ? `${lim}${u}` : "（后端未给）");
-    return { text, fix: typeof b[RETEST_F.fix] === "string" ? b[RETEST_F.fix] : null, frontend: false };
+    return { text, fix: typeof b[RETEST_F.fix] === "string" ? b[RETEST_F.fix] : null, frontend: false, key: typeof b[RETEST_F.name] === "string" && b[RETEST_F.name] ? b[RETEST_F.name] : DECL_STEP_F.max };
   }
   const spec = ampSpecValue(r), lims = (Array.isArray(schema?.[DECL_STEP_F.list]) ? schema[DECL_STEP_F.list] : []).map((c: any) => fnum(c?.[DECL_STEP_F.max])).filter((x: any) => x != null) as number[];
   if (spec == null || !lims.length) return null;
   const m = Math.min(...lims);   // 不知道是哪个设定值槽：取最严的那条声明
-  return Math.abs(spec) > m ? { text: stepTooLargeZh(ampText(r[MC_F.ampSpec], r), String(m)) + "（前端按握手声明判断）", fix: RETEST_F.editDecl, frontend: true } : null;
+  return Math.abs(spec) > m ? { text: stepTooLargeZh(ampText(r[MC_F.ampSpec], r), String(m)) + "（前端按握手声明判断）", fix: RETEST_F.editDecl, frontend: true, key: DECL_STEP_F.max } : null;
 }
 export const stepTooLargeZh = (x: string, m: string) => `题面幅度 ${x} 超过声明的单步上限 ${m}，需先在声明里放宽 max_step 或确认执行器能承受`;
 // 采用回执：verified:false 时提示原因
@@ -226,7 +226,7 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";
   const amp = r.verdict?.warn ? ampLine(r) : "";   // #134 不管有没有对比表都给幅度行
-  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${amp ? `<p class="rc-amp num">${esc(amp)}</p>` : ""}${blk ? `<p class="rc-blk warn" id="it-blk">${esc(blk.text)}${blk.fix === RETEST_F.editDecl ? ` <a href="#" id="it-decl" data-field="${DECL_STEP_F.max}">去声明里修改</a>` : ""}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${amp ? `<p class="rc-amp num">${esc(amp)}</p>` : ""}${blk ? `<p class="rc-blk warn" id="it-blk">${esc(blk.text)}${blk.fix === RETEST_F.editDecl ? ` <a href="#" id="it-decl" data-field="${esc(blk.key)}">去声明里修改</a>` : ""}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
 }
 
 // r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头

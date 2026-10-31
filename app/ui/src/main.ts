@@ -1132,7 +1132,8 @@ function openDeclField(key: string) {
   goStepRef?.("项目" as any);
   setTimeout(() => {
     const pg = document.querySelector<HTMLElement>('.page[data-page="项目"]');
-    const el = pg?.querySelector<HTMLElement>(`[data-decl-key="${key}"]`) ?? [...(pg?.querySelectorAll<HTMLElement>("input,textarea,code,pre,li,td") ?? [])].find(x => (x.textContent || (x as HTMLInputElement).value || "").includes(key));
+    const leaf = key.split(".").pop() || key;   // limit_name 是声明路径（如 link.params.<名>.max_step）：先按 data-decl-key 精确找，再按末段字段名搜
+    const el = [...document.querySelectorAll<HTMLElement>("[data-decl-key]")].find(x => x.dataset.declKey === key) ?? [...(pg?.querySelectorAll<HTMLElement>("input,textarea,code,pre,li,td") ?? [])].find(x => (x.textContent || (x as HTMLInputElement).value || "").includes(leaf));
     if (el) { el.scrollIntoView({ block: "center" }); el.classList.add("hl"); (el as HTMLInputElement).focus?.(); setTimeout(() => el.classList.remove("hl"), 2400); }
     else toast({ code: "", message: `界面里还没有 ${key} 这一行的编辑框`, fix: `在工程声明文件里找到 ${key} 修改后重新连接` });
   }, 50);

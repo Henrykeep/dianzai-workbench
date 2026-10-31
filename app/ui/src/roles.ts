@@ -1,8 +1,9 @@
 // 参数角色确认（confirm_roles）：纯逻辑 + HTML，字段名只走 fieldmap
-import { ROLE_F, ROLE_CODES, ROLE_SUGGEST_ZH, ROLE_BTN_ZH, ROLE_RETRY_ZH, ROLE_SENDING_ZH, ROLE_REPLY_F, ROLE_NO_FLASH_ZH, ROLE_LIM_ZH, MISSING_ZH } from "./fieldmap";
+import { roleCodes } from "./rolecodes";
+import { ROLE_F, ROLE_SUGGEST_ZH, ROLE_BTN_ZH, ROLE_RETRY_ZH, ROLE_SENDING_ZH, ROLE_REPLY_F, ROLE_NO_FLASH_ZH, ROLE_LIM_ZH, MISSING_ZH } from "./fieldmap";
 export type RoleReq = { missing: string[]; suggested: Record<string, string>; reason: string };
-const CODES = new Set<string>(ROLE_CODES.map(c => c[0]));
-export const roleLabel = (c: unknown) => ROLE_CODES.find(x => x[0] === c)?.[1] ?? "";
+const CODES = { has: (c: unknown) => roleCodes().some(x => x[0] === c) };
+export const roleLabel = (c: unknown) => roleCodes().find(x => x[0] === c)?.[1] ?? "";
 export function toRoleReq(m: any): RoleReq | null {
   for (const o of [m, m?.result, m?.error, m?.err]) {
     if (!o || o[ROLE_F.fix] !== ROLE_F.confirm) continue;
@@ -19,7 +20,7 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;
 export function roleCellHtml(name: string, req: RoleReq | null, hsRole?: unknown, picked: Record<string, string> = {}): string {
   if (req?.missing.includes(name)) {
     const sg = picked[name] || req.suggested[name];   // 已选的优先：参数列表重画不丢用户的选择
-    const opts = `<option value=""${sg ? "" : " selected"} disabled>选角色</option>` + ROLE_CODES.map(([c, zh]) => `<option value="${c}"${c === sg ? " selected" : ""}>${zh}</option>`).join("");
+    const opts = `<option value=""${sg ? "" : " selected"} disabled>选角色</option>` + roleCodes().map(([c, zh]) => `<option value="${c}"${c === sg ? " selected" : ""}>${zh}</option>`).join("");
     return `<span class="role-pick"><select class="role-sel" data-role-n="${esc(name)}" aria-label="${esc(name)} 角色">${opts}</select>${sg ? `<span class="role-sg">${ROLE_SUGGEST_ZH}</span>` : ""}${sg === "LIM" ? `<span class="role-lim">${ROLE_LIM_ZH}</span>` : ""}</span>`;
   }
   const l = roleLabel(hsRole);
