@@ -129,7 +129,7 @@ class AgentService:
             "score_items": lambda path=None: steptools.score_items(self, path),
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
-            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run,
+            "tune_autopilot": self._tune_autopilot_agent,
             "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
