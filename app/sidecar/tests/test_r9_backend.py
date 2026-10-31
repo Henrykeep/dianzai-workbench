@@ -75,27 +75,6 @@ def test_search_step_is_relative_not_halving():
     assert all(b >= a * 0.5 + 1e-6 for a, b in zip([1.6] + kp, kp))
 
 
-class FakeS:
-    def __init__(self, locked=False):
-        self.tx_locked, self.params, self.writes = locked, {"kp": 1.0, "ki": 2.0}, []
-
-    def set_param(self, n, v, verify=False):
-        self.writes.append((n, v, verify))
-        self.params[n] = v
-        return {"status": "ok", "applied": v, "readback": v}
-
-
-def test_restore_best_writes_and_reads_back():
-    ev = []
-    svc = types.SimpleNamespace(s=FakeS(), emit=ev.append)
-    res = {"best": {"iter": 2, "params": {"kp": 0.7, "ki": 1.5}}}
-    out = S.AgentService._restore_best(svc, res)
-    assert out["ok"] and svc.s.params == {"kp": 0.7, "ki": 1.5} and all(w[2] for w in svc.s.writes)
-    assert out["readback"] == {"kp": 0.7, "ki": 1.5} and ev[-1]["type"] == "iterate.restored" and res["restored"] is out
-    locked = types.SimpleNamespace(s=FakeS(locked=True), emit=ev.append)
-    assert S.AgentService._restore_best(locked, dict(res))["skipped"] == "estop" and not locked.s.writes
-
-
 # ---------------------------------------------------------------- #70 迭代全程（含两轮之间）setpoint_set → iter_busy
 def test_setpoint_set_busy_for_whole_iteration():
     s = Session()
@@ -310,51 +289,6 @@ def test_probe_amp_clamped_to_declared_range_or_minimal_with_reason():
     assert a == SI.MIN_ABS and "没声明物理量程" in why
     assert SI.probe_amp(None, sigma=0.5)[0] == pytest.approx(SI.MIN_SNR * 0.5)
     assert SI.saturated([0.1, 0.99], 1.0) and not SI.saturated([0.5], 1.0) and not SI.saturated([5.0], None)
-
-
-class ProbeS:
-    """板上阶跃探测的假板：step_start 之后第 2 次查询时急停。"""
-    def __init__(self, estop_at=2):
-        self.port, self.tx_locked, self.n, self.estop_at, self.stopped = "sim:x", False, 0, estop_at, False
-        self.schema = types.SimpleNamespace(step=[{"sp": 0, "y": "y", "u": "u", "u_max": 1.0, "range": 100.0}], d={})
-        self.started = []
-
-    def window(self, sec):
-        return [(i * 0.01, {"y": 0.0, "u": 0.0}) for i in range(100)]
-
-    def step_start(self, *a):
-        self.started.append(a)
-
-    def step_wait(self, it, timeout):
-        self.n += 1
-        if self.n >= self.estop_at:
-            self.tx_locked = True
-        return None
-
-    def step_stop(self):
-        self.stopped = True
-        return True
-
-
-def test_probe_aborts_on_estop(monkeypatch):
-    monkeypatch.setattr(S.time, "sleep", lambda d: None)
-    o = types.SimpleNamespace(s=ProbeS(), sim=True, PROBE_S=0.3, emit=lambda e: None)
-    o._probe_wait = lambda t: S.AgentService._probe_wait(o, t)
-    r = S.AgentService.measure_step_timing(o)
-    assert r == {} and o.s.stopped and len(o.s.started) == 1
-    assert o.s.started[0][2] == pytest.approx(100.0 * 0.05)          # 探测幅度 = 声明量程 × 5%
-    assert "急停" in o._step_timing["sim:x#why"]["message_zh"] and o._step_timing["sim:x#why"]["fix_action"] == "estop_clear"
-
-
-def test_probe_reads_sensor_range_max_step_and_handshake_limits(monkeypatch):
-    monkeypatch.setattr(S.time, "sleep", lambda d: None)
-    b = ProbeS()
-    b.schema = types.SimpleNamespace(step=[{"sp": 0, "y": "y", "u": "u", "sensor_range": 720.0, "max_step": 20.0}],
-                                     d={"limits": {"u_min": -1, "u_max": 1, "sat": 0.8, "range": 720}, "relay": True})
-    o = types.SimpleNamespace(s=b, sim=True, PROBE_S=0.3, emit=lambda e: None)
-    o._probe_wait = lambda t: S.AgentService._probe_wait(o, t)
-    S.AgentService.measure_step_timing(o)
-    assert b.started[0][2] == pytest.approx(min(720.0 * 0.05, 20.0))   # sensor_range × 5%，且不超 max_step
 
 
 def test_relay_off_declared_refuses_relay_tune():

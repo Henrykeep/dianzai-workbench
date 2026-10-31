@@ -1418,6 +1418,14 @@ class AgentService:
         cache = getattr(self, "_step_timing", None) or {}
         return dict(cache.get(str(getattr(self.s, "port", "") or "")) or {})
 
+    def _probe_estop(self) -> bool:
+        """探测被急停中止：本地已锁存，或板子发来的中止结果原因不是“上位机停止”（固件急停原因先于本地锁存到达）。"""
+        if getattr(self.s, "tx_locked", False):
+            return True
+        from ..stepproto import dzstep
+        r = getattr(self, "_probe_abort", None)
+        return bool(r) and r.get("abort_cause") != dzstep.ABORT_HOST_STOP
+
     def _probe_wait(self, timeout: float) -> bool:
         """等探测阶跃结果；期间急停（tx_locked）→ 立刻 step_stop 并返回 False。"""
         t_end = time.monotonic() + timeout
@@ -1428,8 +1436,11 @@ class AgentService:
                 except Exception:  # noqa: BLE001  急停锁可能拒发，固件急停自己会停
                     pass
                 return False
-            if self.s.step_wait(0, 0.1) is not None:
-                return True
+            r = self.s.step_wait(0, 0.1)
+            if r is not None:
+                # 急停时固件自己中止阶跃并发 aborted 的结果（常比本地 tx_locked 先到）：中止的结果不能当探测数据用
+                self._probe_abort = r if r.get("aborted") else None
+                return not r.get("aborted") and not getattr(self.s, "tx_locked", False)
         return not getattr(self.s, "tx_locked", False)
 
     def measure_step_timing(self) -> dict:
@@ -1472,7 +1483,9 @@ class AgentService:
                     self.s.step_start(0, 0, amp, dur)
                     if not self._probe_wait(self.PROBE_S + 3):
                         cache[port] = {}
-                        cache[port + "#why"] = {"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                        cache[port + "#why"] = ({"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                                                if self._probe_estop() else
+                                                {"message_zh": "探测阶跃被板子中止，没有用这次数据", "fix_action": "measure_step_timing"})
                         return {}
                     w = [x for x in w0 if c.get("y") in x[1]] + [x for x in self.s.window(self.PROBE_S + 2) if x[0] > tb and c.get("y") in x[1]]
                     us = [float(x[1][c["u"]]) for x in w if c.get("u") in x[1]]
@@ -1503,7 +1516,9 @@ class AgentService:
                 while time.monotonic() < t_end:
                     if getattr(self.s, "tx_locked", False):              # 急停：立刻停止探测
                         cache[port] = {}
-                        cache[port + "#why"] = {"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                        cache[port + "#why"] = ({"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                                                if self._probe_estop() else
+                                                {"message_zh": "探测阶跃被板子中止，没有用这次数据", "fix_action": "measure_step_timing"})
                         return {}
                     self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *pr))
                     time.sleep(0.1)

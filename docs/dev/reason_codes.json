@@ -59,6 +59,10 @@
   "zh": "连续 2 轮达标",
   "kind": "stop"
  },
+ "schema_conflict": {
+  "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数",
+  "kind": "blocker"
+ },
  "settle_zero": {
   "zh": "调节时间为 0（窗口没对上）",
   "kind": "round"

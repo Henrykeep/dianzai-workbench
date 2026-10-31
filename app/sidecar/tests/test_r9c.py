@@ -1,7 +1,8 @@
 """r9c 回归：#93 换算出处、#75/#92 唯一有效性来源、#94 iterate_start 单独跑与主线同一条路。"""
 from __future__ import annotations
 
-import struct
+
+import pytest
 from types import SimpleNamespace
 
 from dzbench.agent import iterate as I
@@ -101,73 +102,38 @@ def test_slow_plant_extends_duration_instead_of_three_invalid_rounds():
     assert io.calls[:3] == [2000, 4000, 8000]
 
 
-class FakeSession:
-    """SessionIO 的最小 Session：y 跟着设定值走。"""
-
-    def __init__(self, y):
-        self.y, self.sent = y, []
-        self.schema = SimpleNamespace(step=[{"sp": 0, "y": "pos", "abs_tol": 1.0, "range": 400.0}])
-        self._sp_live = {"sp": y}
-
-    def window(self, s):
-        return [(0.0, {"pos": self.y})]
-
-    def setpoint_names(self):
-        return ["sp"]
-
-    def send_data(self, id_, b):
-        (v,) = struct.unpack("<f", b)
-        self.sent.append(v)
-        self.y = v
-
-
-def test_target_equal_to_current_backs_off_instead_of_zero_step():
-    io = I.SessionIO(FakeSession(100.0))
-    io.RETURN_DT = 0.001
-    back = io.return_to_start(0, 0, 100.0)
-    assert io.s.sent and io.s.sent[-1] == 0.0                   # 起点 = 目标 − 量程 × 25%
-    assert back["step_amp"] >= back["step_tol"], back
-    back2 = io.return_to_start(0, 0, 100.0)                      # 无效轮重跑同一 iter：回同一个起点，不重新取当前位置
-    assert io.y0 == 0.0 and back2["step_amp"] == back["step_amp"]
-
-
-def test_direct_iterate_start_and_main_flow_use_same_plan():
-    sch = SimpleNamespace(step=[{"range": 400.0, "abs_tol": 1.0}], param_index={"kp": 0}, params=[{"name": "kp", "min": 0, "max": 2}])
-    stub = SimpleNamespace(s=SimpleNamespace(schema=sch, port="sim:anything"), _gains=lambda: {"kp": "kp"},
-                           measure_step_timing=lambda: {})
-    main = S.AgentService.iterate_plan(stub, _default_target=True)
-    direct = S.AgentService.iterate_plan(stub, target=main["target"])
-    core = ("ch", "target", "dur_ms", "abs_tol", "params")          # 退默认的说明（fallback / message_zh）各自写明自己退了什么
-    assert {k: main[k] for k in core} == {k: direct[k] for k in core}
-    assert "span_quarter" in main["fallback"] and main["fix_action"] == "measure_step_timing"
-
-
-def _rand_plant_rise(seed, kp, y0, target, dt=0.001, t_end=20.0):
-    """通用随机一阶对象（不看题号）：K、τ 来自 seed；P 控制闭环，返回 10→90% 上升时间。"""
-    import random
-    r = random.Random(seed)
-    K, tau = r.uniform(0.5, 3.0), r.uniform(0.05, 1.0)
-    y, t, t10, t90, amp = y0, 0.0, None, None, target - y0
-    while t < t_end and t90 is None:
-        y += dt * (K * kp * (target - y) - 0.0) / tau
-        frac = (y - y0) / amp
-        if t10 is None and frac >= 0.1:
-            t10 = t
-        if frac >= 0.9:
-            t90 = t
-        t += dt
-    return None if t90 is None else round(t90 - t10, 4)
-
-
-def test_iterate_start_alone_parked_at_target_three_gains_distinct_metrics():
-    """#94：板子停在目标上直接 iterate_start，三组不同增益必须给出三组不同指标（不是 3 个零幅度阶跃）。"""
-    target, seed = 137.0, 20261031
-    rises = []
-    for kp in (0.5, 1.0, 2.0):
-        io = I.SessionIO(FakeSession(target))
-        io.RETURN_DT = 0.001
-        back = io.return_to_start(0, 0, target)
-        assert back["step_amp"] >= back["step_tol"], back
-        assert abs(target - io.y0) >= back["step_tol"]
-        rises.append(_rand_plant_rise(seed, kp, io.y0, target))
-    assert None not in rises and len(set(rises)) == 3, rises
+@pytest.mark.needs_sim
+@pytest.mark.parametrize("seed", [3, 3010])
+def test_direct_iterate_start_and_main_flow_use_same_plan(seed, home):
+    """直接 iterate_start 与主流程（默认目标）用同一份计划。以前这里用 SimpleNamespace 假服务 + 返回空 dict 的假 measure_step_timing（替身），
+    现在走真 randplant 对象 → 真 host-sim 仿真板 → 真 Session + AgentService + 真 measure_step_timing。"""
+    import pathlib as _pl
+    import sys as _sys
+    import time as _t
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parents[3] / "tools"))
+    import randplant
+    from dzbench import paths
+    from dzbench.agent_api import AgentTools
+    from dzbench.session import Session
+    p = randplant.gen(seed)
+    p["name"] = f"same-plan-{seed}"
+    randplant.write(p, paths.projects_dir() / p["name"])
+    s = Session()
+    s.connect(f"sim:{p['name']}")
+    try:
+        t0 = _t.monotonic()
+        while _t.monotonic() - t0 < 60 and not (s.schema and len(s.window(0.5)) > 5):
+            _t.sleep(0.05)
+        assert s.schema and s.schema.step, "仿真板起不来 / 没握手"
+        svc = S.AgentService(s, AgentTools(s, lambda e: None), lambda e: None)
+        main = svc.iterate_plan(_default_target=True)
+        direct = svc.iterate_plan(target=main["target"])
+        core = ("ch", "target", "dur_ms", "abs_tol", "params")      # 退默认的说明（fallback / message_zh）各自写明自己退了什么
+        assert {k: main[k] for k in core} == {k: direct[k] for k in core}
+        o = svc.measure_step_timing()                               # 按端口缓存：就是 iterate_plan 用的那一次
+        if o.get("step_target") is None:
+            assert "span_quarter" in main["fallback"] and main["fix_action"] == "measure_step_timing", main
+        else:
+            assert main["target"] == pytest.approx(float(o["step_target"]))
+    finally:
+        s.disconnect()

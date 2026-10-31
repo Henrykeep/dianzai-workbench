@@ -311,6 +311,16 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 ## 原因码总表 `docs/dev/reason_codes.json`（#139）
 - `{code: {zh, kind}}`，kind ∈ `round`（单轮无效，`iterate.round.invalid_reason`）/ `abort`（开始被拒）/ `stop`（`iterate.stopped.reason`）/ `diverge`（发散）。
 - 由 `tools/gen_reason_codes.py` 从后端 `dzbench.agent.reason_codes` 生成；`make check` 跑 `--check`（过期即红），`tests/test_reason_codes.py` 校验后端每个原因码都在表里且 zh 非空。前端只读这个文件，不手抄。
+- `kind` 取值：`round` / `abort` / `stop` / `diverge`，以及 `blocker`（连接阻塞，目前只有 `schema_conflict`）。
+
+## schema 冲突 `schema_conflict`（r10 阻塞项）
+板子心跳报的 schema 哈希在本机匹配到**多份内容不同**的 `link_schema.json`（例如两块板来回插，两次编译出同哈希、`wd_timeout_ms` 等不同的格式文件）时，侧车**一份都不用**（不取第一份，也不取最新的一份）：
+- 推事件 `{type:"error", code:"schema_conflict", reason:"schema_conflict", message_zh, fix, fix_action:"build", hash:"XXXXXXXX", paths:[…]}`；`status.schema_conflict` 为同一对象（无冲突为 `null`），`status.schema_ok` 为 `false`，不推 `schema` 事件，遥测不解码。
+- `progress` 出阻塞项 `{code/reason:"schema_conflict", message_zh, fix_action:"build", blocks:[sim, bringup, tune, score, seal], detail:{hash, paths}}`。
+- 依赖 schema 的写入一律拒绝，错误码 `schema_conflict`（同上 message_zh / fix_action）：写参数、读参数、阶跃、继电器、存 Flash、应用 DATA 帧。急停、停止阶跃、解除急停不受影响。
+- 修法（`fix` 原文）：按当前这块板重新编译烧录固件后重新连接，或删掉不属于这块板的那份格式文件后重新连接。重新连接时侧车重新查找。
+- 内容完全相同的多份（如 `build/` 与 `~/.dzbench/schemas/` 里的拷贝）不算冲突。导出记录遇到冲突同样报错，不挑一份。
+- 哈希本身把 `wd_timeout_ms` 与板子身份算进去由固件侧（gen_link）负责，本节只管查找时不挑错。
 
 ## 采纳未验证的参数（#141）
 - `agent_action_decide` 采纳 `iterate_apply_best` / `autotune` 卡时，响应多 `verified: bool`、`unverified_reason`。卡（服务端保存的那份，不认客户端标记）verdict 为 `partial` 或任一 item `amp_reduced` → `verified:false, unverified_reason:"amp_reduced"`，不进已验证档 / 封箱清单；否则 `verified:true, unverified_reason:null`。

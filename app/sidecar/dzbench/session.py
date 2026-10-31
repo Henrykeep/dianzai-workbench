@@ -27,7 +27,7 @@ from .ports import PortOpenError, explain_open_error, identity, probe_baud
 from .schema import check_value
 from .stepproto import dzstep, STEP_ID as ID_STEP, REJECT_ID as ID_REJECT, HB_ITER_BUSY
 from .replay import ReplayTransport
-from .schema import Schema, find_by_hash
+from .schema import Schema, SchemaConflict, find_by_hash
 from .transport import SIM_PREFIX, Transport, open_transport
 
 ID_CMD, ID_ESTOP = 0x7E, 0x7F
@@ -97,6 +97,7 @@ class Session:
         self.bb_recs: list[dict] = []             # 最近一次黑匣子导出（DATA 0x7D）
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
+        self.schema_conflict: SchemaConflict | None = None   # 同哈希多份不同内容的 link_schema.json（见 schema.find_by_hash）
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
         self.selftest: dict | None = None        # dzctl 0.10.0 心跳尾部自检结果（selftest_dict），旧固件 / 应用没报 = None
         self.params_hash: int | None = None
@@ -199,6 +200,8 @@ class Session:
             self._t_tr = self.t_connect
             self._rx_seen = False
             self.hb_status = None
+            if self.schema_conflict is not None:   # 重新连接 = 重新查 schema（用户可能已重编固件 / 删掉了多余的那份）
+                self.schema_conflict, self.schema_hash = None, None
             self.estop_cause = None
             self._cause_announced = False          # 本次连接是否已推过带 cause 的 latched（连上时板子已急停、没有 bit10 上升沿也要推一次）
             self._hb_clear_t_ms = None
@@ -745,10 +748,16 @@ class Session:
 
     def _bind_schema(self, h: int) -> None:
         self.schema_hash = h
-        s = find_by_hash(h)
+        try:
+            s, conflict = find_by_hash(h), None
+        except SchemaConflict as e:          # 同哈希多份不同内容：一份都不用，显示和写入都挡住（_check_schema）
+            s, conflict = None, e
         with self.lock:
             self.schema = s
-        if s:
+            self.schema_conflict = conflict
+        if conflict:
+            self.emit(conflict.as_dict())
+        elif s:
             self.emit({"type": "schema", "schema": s.summary()})
             threading.Thread(target=self._read_all_params_bg, daemon=True, name="read_all_params").start()
         else:
@@ -822,6 +831,8 @@ class Session:
             with self.wlock:
                 if check:
                     self._check_tx()
+                    if kind == DATA:
+                        self._check_schema()
                 self.seq = (self.seq + 1) & 0xFF
                 frame = encode(kind, id_, self.seq, payload)
             if self.log:
@@ -1202,6 +1213,12 @@ class Session:
         if self.tx_locked:
             raise LinkError("tx_locked", "急停后本地服务的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停”")
 
+    def _check_schema(self) -> None:
+        """schema_conflict 时挡住依赖 schema 的写入（参数、阶跃、应用 DATA 帧）。急停 / 停止 / 解除急停不走这里。"""
+        c = self.schema_conflict
+        if c is not None:
+            raise LinkError("schema_conflict", c.message_zh, c.fix_zh, c.fix_action, c.as_dict())
+
     def send_raw(self, data: bytes) -> bool:
         """原样发字节（给非工作台固件的设备，如 AT 指令）。急停后拒绝。"""
         self._check_tx()
@@ -1221,6 +1238,7 @@ class Session:
         return True
 
     def _param_rpc(self, name: str, payload: bytes, retries: int = 3, timeout: float = 0.25) -> tuple[float, str]:
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出板子的参数表", "等一两秒收到心跳；仍不行看上面的 schema 提示")
         if name not in self.schema.param_index:
@@ -1301,6 +1319,7 @@ class Session:
 
     def export_readback(self, path: str | pathlib.Path) -> str:
         """参数全量回读（逐个问板子，不是上位机记的值）写成 params.txt，给 tools/params_diff.py 和 docs/verify 用。"""
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表，不能回读")
         vals = self.read_all_params()
@@ -1313,6 +1332,7 @@ class Session:
 
     # ------------------------------------------------------------------ 快照 / 日志
     def snapshot_save(self, name: str, note: str = "", mode: str = "") -> str:
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表，不能存快照")
         if mode not in snapshots.MODES:
@@ -1324,6 +1344,7 @@ class Session:
     def snapshot_restore(self, name: str | None = None, defaults: bool = False, ramp_s: float = 0.0) -> list[dict]:
         """ramp_s > 0：平滑切换（速度环 ↔ 位置环预设），每 RAMP_DT 秒一步线性过渡，最后一步回读校验；
         中途急停 / 断线（set_param 抛错）立刻停在当前步，不再继续写。"""
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表")
         vals = {p["name"]: p["default"] for p in self.schema.params} if defaults else snapshots.load(self.schema.hash, name)
@@ -1421,7 +1442,8 @@ class Session:
             st = {"type": "status", "connected": connected, "port": self.port, "baud": self.baud,
                   "alive": alive, "rx_bytes": self.rx_bytes, "good": self.parser.good, "bad": self.parser.bad,
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
-                  "schema_ok": self.schema is not None, "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
+                  "schema_ok": self.schema is not None,
+                  "schema_conflict": self.schema_conflict.as_dict() if self.schema_conflict is not None else None, "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "reconnect_attempt": self.reconnect_attempt, "stall_s": self.stall_s, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}
