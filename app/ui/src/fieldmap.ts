@@ -154,3 +154,17 @@ export const RESULT_PORT_F = ["port", "board"] as const;
 // #104 list_ports 每个仿真项的应用名（暂定，按顺序取第一个非空）；没有就用目录名
 export const PORT_APP_F = ["app_name", "app", "name", "title"] as const;
 export const pickStr = (o: any, keys: readonly string[]): string => { for (const k of keys) { const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); } return ""; };
+
+// #101 r9f：台账一轮（iterate.round 事件 / 阶跃实验收尾）——暂定字段名，后端定稿改这里
+export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms" } as const;
+
+// #110 r9f：拒绝 / 失败原因按序找：reason_zh → message_zh → detail（顶层、data、error 里都找）——暂定，后端定稿改这里
+export const COMMIT_REASON_KEYS = ["reason_zh", "message_zh", "detail"] as const;
+export const COMMIT_REASON_HOSTS = ["", "data", "error"] as const;
+export const COMMIT_USER_F = "user_declined";   // 界面自己标：这次拒绝是用户点的「取消」
+export const USER_DECLINED_ZH = "你已取消写入";
+export const COMMIT_STORE_KEY = "dz.commitPending";   // #111 sessionStorage：刷新后恢复待确认的提交卡
+
+// r9f 急停横幅：事件 / status 里的字段——暂定名，后端定稿改这里；缺了显示 MISSING_ZH，不编
+export const ESTOP_F = { at: ["at_ms", "ts_ms", "since"], reason: ["reason_zh", "message_zh"], measured: ["measured_ms", "gap_ms"], threshold: ["threshold_ms", "timeout_ms"], restored: "restored", source: "source", restoredSrc: "latch_restored" } as const;
+export const MISSING_ZH = "后端未给";
