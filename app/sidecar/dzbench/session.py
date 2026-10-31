@@ -156,7 +156,15 @@ class Session:
         with self._conn_lock:
             if port.startswith(SIM_PREFIX) and port == self.port and self.tr is not None:
                 return {"port": port, "baud": self.baud, "note": "已连上（复用刚启动的仿真板）", "reused": True}
-            return self._connect(port, baud, log)
+            prev = getattr(self, "_last_port", None)
+            r = self._connect(port, baud, log)
+            self._last_port = port
+            for h in list(getattr(self, "connect_hooks", [])):   # #101：重连 / 换板 → 服务层清结果卡
+                try:
+                    h(port, prev)
+                except Exception:  # noqa: BLE001  钩子出错不影响连接本身
+                    pass
+            return r
 
     def _connect(self, port: str, baud: int | None = None, log: bool = True) -> dict:
         self.disconnect()

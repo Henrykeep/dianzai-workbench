@@ -209,3 +209,10 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 
 导出：后端出 CSV / xlsx，列与 `items` 字段一一对应（计划中，未实现）。
 门禁（#78 `tools/tunegate.py`）用 plant.json 真值对比 `measured` / `verdict` 判假达标。
+
+## r9e（#100 / #101 / #102）
+
+- `result.cleared` `{reason: iterate_start|reconnect|board_change, message_zh}`：迭代开始、重连、换板时推送；前端收到后清空结果 / 判定卡。`iterate_status` 在清空后、新结果出来前返回 `result: null, last: null, cleared: true`。
+- `list_ports` 每次重扫仿真对象；sim 端口新增 `app`、`app_name`（app.yaml `name:`）、`label`（`仿真 · 应用名`）。只声明 `plant:` 的项目也列为仿真板。
+- `iterate.stopped`：没有任何稳定轮（有效且超调 ≤ 40%）时 `best: null`，`message_zh: "发散，未找到稳定参数"`。
+- `ss_err` 新增 `value_source: sim_nominal|hw_measured`，`pass_basis` 末尾写明「测量值为仿真标称值 / 实机实测值」。

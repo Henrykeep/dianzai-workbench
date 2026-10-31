@@ -206,8 +206,15 @@ class Iterator:
             raise IterError("busy", "板上阶跃实验进行中（bit17），不写参数")
         return self.io.write(name, v)
 
+    @staticmethod
+    def stable(r: dict) -> bool:
+        """#102：有效且没发散（相对口径超调 ≤ UNSTABLE_OVERSHOOT）才算稳定一轮。"""
+        return bool(r) and bool(r.get("valid")) and not (r.get("metric_mode") == "rel" and (r.get("overshoot_pct") or 0) > UNSTABLE_OVERSHOOT)
+
     def _stopped(self, reason: str, msg: str) -> dict:
-        best = self.best
+        best = self.best if self.best is not None and self.stable(self.best) else None
+        if best is None and any(r["valid"] for r in self.rounds) and not any(self.stable(r) for r in self.rounds):
+            msg = "发散，未找到稳定参数"                              # #102：没有稳定的一轮就不给“最好参数”
         out = {"type": "iterate.stopped", "reason": reason, "message_zh": msg, "rounds": len([r for r in self.rounds if r["valid"]]),
                "best": None if not best else {"iter": best["iter"], "params": best["params"], "params_hash": best["params_hash"],
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
@@ -280,7 +287,7 @@ class Iterator:
                     return self._stopped("invalid", "连续 3 轮无效")
                 continue                                   # 无效轮不占号：同一 iter 重跑
             streak_invalid = 0
-            improved = self.best is None or rec["score"] < self.best["score"]
+            improved = self.stable(rec) and (self.best is None or rec["score"] < self.best["score"])   # #102：发散轮不当最好
             if improved:
                 self.best, streak_noimp = rec, 0
             else:
@@ -289,7 +296,7 @@ class Iterator:
             if streak_pass >= CONSEC_PASS:
                 return self._stopped("pass", "连续 2 轮达标")
             if rec.get("metric_mode") == "rel" and rec["overshoot_pct"] > UNSTABLE_OVERSHOOT:
-                if self.sim and self.best is not rec:
+                if self.sim and self.best is not rec and self.stable(self.best):
                     for n, v in self.best["params"].items():
                         if v != cur.get(n):
                             self._write(n, v)

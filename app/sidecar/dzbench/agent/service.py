@@ -64,6 +64,10 @@ class AgentService:
         # 工程仓库：DZBENCH_REPO > 配置 repo > 本仓库（开发模式）。安装版必须在 ⚙ 里指定（未在 Windows 实测）
         root = root or os.environ.get("DZBENCH_REPO") or llm_mod.load_config().get("repo") or ROOT
         self.s, self.tools, self.emit = session, tools, emit
+        try:
+            session.__dict__.setdefault("connect_hooks", []).append(self._on_connect)    # #101
+        except AttributeError:
+            pass
         self.journal = Journal()
         self.tune_orig: dict | None = None     # Agent 第一次改参数前的整套参数（ArduPilot 自整定 ORIGINAL 增益的思路）
         self.gw = Gateway(root, self._gw_emit, **({"runner": runner} if runner else {}))
@@ -103,7 +107,8 @@ class AgentService:
             "remember": lambda note, reason: knowledge.propose_memory(self.gw, note, reason),
             "list_files": lambda glob="**/*": self.gw.list_files(glob),
             "read_file": lambda path: self.gw.read_file(path),
-            "propose_edit": lambda path, search, replace, reason: self.gw.propose_edit(path, search, replace, reason, "agent"),
+            "propose_edit": lambda path, search, replace, reason: dict(self.gw.propose_edit(path, search, replace, reason, "agent"),
+                                                                     status_note_zh="status 只是提议这一刻的状态；之后写入/提交由用户在卡上决定，描述状态前先调 change_status"),
             "change_status": lambda: self.gw.change_states(),
             "update_plan": self.update_plan,
             "board_memory": lambda: self.memory().summary(),
@@ -553,7 +558,8 @@ class AgentService:
                 raise GatewayError("iterate_running", "已经在自动迭代", "先点“停止迭代”")
             it = Iterator(SessionIO(self.s), self.iterate_plan(**args), self.sim, emit=self._iter_emit,
                           **({"max_rounds": self.ITER_ROUNDS} if self.ITER_ROUNDS else {}))
-            self.iterator, self.iter_result = it, None
+            self.iterator = it
+            self.clear_result("iterate_start")                    # #101：新一轮迭代开始，旧结果卡作废
             self.iter_thread = threading.Thread(target=self._iter_run, args=(it,), daemon=True, name="iterate")
             self.iter_thread.start()
             return {"status": "started", "budget": {"time_s": it.budget_s, "rounds": it.max_rounds}}
@@ -619,7 +625,7 @@ class AgentService:
         res["pass_basis"] = self._ss_band(b.get("metrics") or {})["pass_basis"]
         self._restore_best(res)
         res["best_card"] = self._best_card(res)
-        self.iter_result = res
+        self.iter_result, self._result_cleared = res, False
         self._persist_last(res)
         self.emit(res)
         return r | {"best_card": res["best_card"], "instruction": "已出“采用最好参数”确认卡；最终回复总结最好一轮并让用户点卡确认，不要以提问结束。"}
@@ -678,8 +684,24 @@ class AgentService:
         except (OSError, ValueError):
             return None
 
+    RESULT_CLEARED_ZH = {"iterate_start": "开始新的迭代，上一次的结果已清空", "reconnect": "重新连接，上一次的结果已清空",
+                         "board_change": "换了板子，上一次的结果已清空"}
+
+    def clear_result(self, reason: str) -> dict:
+        """#101：迭代开始 / 重连 / 换板时清掉结果与判定，并推 result.cleared，前端据此清空结果卡。"""
+        self.iter_result = None
+        self._result_cleared = True
+        ev = {"type": "result.cleared", "reason": reason, "message_zh": self.RESULT_CLEARED_ZH.get(reason, "结果已清空")}
+        self.emit(ev)
+        return ev
+
+    def _on_connect(self, port: str, prev: str | None) -> None:
+        self.clear_result("board_change" if prev and prev != port else "reconnect")
+
     def iterate_status(self) -> dict:
         th = getattr(self, "iter_thread", None)
+        if getattr(self, "_result_cleared", False) and getattr(self, "iter_result", None) is None:
+            return {"running": bool(th and th.is_alive()), "result": None, "last": None, "cleared": True}
         last = self.iterate_last()
         return {"running": bool(th and th.is_alive()), "result": getattr(self, "iter_result", None) or (last or {}).get("result"),
                 "last": last}
@@ -772,6 +794,8 @@ class AgentService:
             ph = self._phys_per(unit, band["unit"])[0]
             if ph is not None:
                 out["calib_initial_guess"] = {"per": ph, "source": "phys"}      # 只给 #51 标定当初值
+        out["value_source"] = "sim_nominal" if self.sim else "hw_measured"          # #93 r9e：依据里写明测量值出处
+        out["pass_basis"] += "；测量值为仿真标称值" if self.sim else "；测量值为实机实测值"
         return out
 
     def _phys_per(self, frm: str, to: str) -> tuple[float | None, str | None]:
@@ -906,7 +930,7 @@ class AgentService:
             res["best_card"] = self._best_card(res)
         except Exception as e:  # noqa: BLE001
             res["best_card"], res["best_card_error"] = None, str(e)
-        self.iter_result = res
+        self.iter_result, self._result_cleared = res, False
         self._persist_last(res)
 
     def iterate_cancel(self) -> dict:

@@ -34,7 +34,7 @@ def test_sim_converts_and_judges(tmp_path):
     assert se["unit"] == "px" and se["converted"] == {"value": pytest.approx(0.5), "unit": "cm",
                                                       "note_zh": se["converted"]["note_zh"]}
     assert se["inside"] is True and "仿真标称换算，未实机标定" in se["note_zh"]
-    assert se["pass_basis"] == "按默认 2% 判定达标，另对照题目 B3：钢球误差绝对值 ≤ 1cm：在带内，按仿真标称换算、未实机标定"  # #93 写明换算出处
+    assert se["pass_basis"] == "按默认 2% 判定达标，另对照题目 B3：钢球误差绝对值 ≤ 1cm：在带内，按仿真标称换算、未实机标定；测量值为仿真标称值"  # #93 写明换算出处
     out = _svc(tmp_path, True)._ss_band({"sse": 12.0})                 # 2 cm
     assert out["inside"] is False and "：超出，按仿真标称换算" in out["pass_basis"]
 
@@ -42,14 +42,14 @@ def test_sim_converts_and_judges(tmp_path):
 def test_hw_keeps_inside_null(tmp_path):
     se = _svc(tmp_path, False)._ss_band({"sse": 3.0})
     assert se["inside"] is None and "#51" in se["note_zh"] and "converted" not in se
-    assert se["pass_basis"] == "按默认 2% 判定，题目误差带待标定：实机未标定"
+    assert se["pass_basis"] == "按默认 2% 判定，题目误差带待标定：实机未标定；测量值为实机实测值"
 
 
 def test_sim_without_geometry_and_no_band(tmp_path):
     se = _svc(tmp_path, True, conv=None)._ss_band({"sse": 3.0})
-    assert se["inside"] is None and se["pass_basis"] == "按默认 2% 判定，题目误差带待标定：仿真对象没有到该单位的标称换算"
+    assert se["inside"] is None and se["pass_basis"] == "按默认 2% 判定，题目误差带待标定：仿真对象没有到该单位的标称换算；测量值为仿真标称值"
     se = _svc(tmp_path, True, req="items: []\n")._ss_band({"ss_err_pct": 1.0})
-    assert se["inside"] is True and se["pass_basis"] == "题目未给误差带，按默认 2% 判定"
+    assert se["inside"] is True and se["pass_basis"] == "题目未给误差带，按默认 2% 判定；测量值为仿真标称值"
 
 
 def test_compare_round0_best_value_unit(tmp_path):

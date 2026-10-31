@@ -20,7 +20,7 @@ import tokenize
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAT = re.compile(r"2026[A-Z]|ball|xiaoqiu|小球|钢珠|motor_pos|pendulum|line_car|car_2wd|pan_tilt", re.I)
-ALLOW = ("firmware/algo/ball_beam/", "tools/check_generic.py", "tools/check_ui_generic.py")
+ALLOW = ("firmware/algo/ball_beam/", "tools/check_generic.py", "tools/check_ui_generic.py", "tools/check_problem_specific.py")   # 检查器自身的关键词表
 CORE = [("firmware", ("*.c", "*.h")), ("tools", ("*.py", "*.sh"))]
 SIDECAR = [("app/sidecar/dzbench", ("*.py",))]
 SKIP = re.compile(r"(^|/)(test_[^/]*|fixtures/|testdata/|tests/)")
