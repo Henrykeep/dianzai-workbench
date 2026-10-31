@@ -165,12 +165,27 @@ def missing_sdk(repo: pathlib.Path, mcu: str, family: str) -> list[str]:
 SYSCFG_VER = "sysconfig_1.28.0"
 
 
-def make_env() -> dict:
-    """给 make（及会调 make 的 keil_inject）的环境：目录变量转正斜杠（as_posix），Windows 的 C:\\ 反斜杠路径 make 认不了。"""
+MAKE_DIR_VARS = ("DZBENCH_HOME", "DZ_BOARDS_DIR", "CUBE_DIR", "CUBE_HAL", "CUBE_DEV", "CMSIS", "M0_SDK")
+
+
+def make_path(p: str, root, relpath=os.path.relpath) -> str:
+    """传给 make 的源路径（Keil / HAL 注入的 CUBE_DIR、M0_SDK 等）：同盘 → 相对工程根（make 的 cwd）；
+    跨盘（Windows C:/D:，relpath 抛 ValueError）→ 正斜杠绝对路径。两种都由 Makefile 的 obj_of / hal_obj_of 处理（fw-runtime 84975c0）。"""
+    if not p or not os.path.isabs(p) and not pathlib.PureWindowsPath(p).drive:
+        return str(p).replace("\\", "/")
+    try:
+        return relpath(p, str(root)).replace("\\", "/")
+    except ValueError:
+        return str(p).replace("\\", "/")
+
+
+def make_env(root=None) -> dict:
+    """给 make（及会调 make 的 keil_inject）的环境：目录变量同盘转成相对 root 的路径、跨盘保留正斜杠绝对路径，
+    Windows 的 C:\\ 反斜杠路径 make 认不了。"""
     env = dict(os.environ)
-    for k in ("DZBENCH_HOME", "DZ_BOARDS_DIR"):
+    for k in MAKE_DIR_VARS:
         if env.get(k):
-            env[k] = pathlib.PureWindowsPath(env[k]).as_posix() if os.name == "nt" else env[k]
+            env[k] = make_path(env[k], root) if root is not None else env[k].replace("\\", "/")
     return env
 
 
@@ -328,7 +343,7 @@ class Flow:
 
     def _run(self, args: list, cwd: pathlib.Path | None = None) -> dict:
         cmd = [os.environ.get("DZBENCH_PYTHON") or sys.executable, *map(str, args)]
-        p = subprocess.run(cmd, cwd=cwd or self.repo, capture_output=True, text=True, timeout=300, env=make_env())
+        p = subprocess.run(cmd, cwd=cwd or self.repo, capture_output=True, text=True, timeout=300, env=make_env(cwd or self.repo))
         shown = " ".join(str(a) for a in args)
         return {"cmd": "python3 " + shown, "rc": p.returncode, "out": (p.stdout + p.stderr)[-20000:]}
 
@@ -509,7 +524,7 @@ class Flow:
 
     def build_ide(self, board: str, app: str) -> dict:
         """生成后顺手：arm-none-eabi-gcc 交叉编译验证 + 各 IDE 工程（EIDE 全部；MSPM0 另出 CCS projectspec 与 Keil）。"""
-        p = subprocess.run(["make", f"BOARD={board}", f"APP={app}"], cwd=self.repo, env=make_env(), capture_output=True, text=True, timeout=900)
+        p = subprocess.run(["make", f"BOARD={board}", f"APP={app}"], cwd=self.repo, env=make_env(self.repo), capture_output=True, text=True, timeout=900)
         b = {"cmd": f"make BOARD={board} APP={app}", "rc": p.returncode, "out": (p.stdout + p.stderr)[-6000:]}
         ide = []
         if not p.returncode:
