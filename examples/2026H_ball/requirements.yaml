@@ -51,7 +51,7 @@ items:
     runs: 3
     accept: 静态定位
     test_id: 1
-    why: 视觉给像素位置 → algo/ball_beam 的 α-β 估计 + 超前补偿相机延迟 + 位置→速度→角度串级 + 条件积分（消静差保 ±1cm），输出角度限幅与斜率限制防冲过；摆杆由 QD4310 执行（subsys/ball）
+    why: 视觉给像素位置 → algo/cascade_pos 的 α-β 估计 + 超前补偿相机延迟 + 位置→速度→角度串级 + 条件积分（消静差保 ±1cm），输出角度限幅与斜率限制防冲过；摆杆由 QD4310 执行（subsys/ball）
     forbidden_claims:
       - 主机单测 35/35 通过所以 B3 能拿分（单测只验逻辑和玩具闭环，不含真实摩擦/相机延迟）
     evidence:

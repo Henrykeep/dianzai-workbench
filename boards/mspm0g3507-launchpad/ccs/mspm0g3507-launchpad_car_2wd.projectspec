@@ -26,8 +26,8 @@
             -I${PROJECT_LOC}/../../../firmware/algo/abobs
             -I${PROJECT_LOC}/../../../firmware/algo/accel_ff
             -I${PROJECT_LOC}/../../../firmware/algo/attitude
-            -I${PROJECT_LOC}/../../../firmware/algo/ball_beam
             -I${PROJECT_LOC}/../../../firmware/algo/capfreq
+            -I${PROJECT_LOC}/../../../firmware/algo/cascade_pos
             -I${PROJECT_LOC}/../../../firmware/algo/dds
             -I${PROJECT_LOC}/../../../firmware/algo/foc
             -I${PROJECT_LOC}/../../../firmware/algo/follow
@@ -117,8 +117,8 @@
         <file path="../../../firmware/algo/abobs/abobs.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/accel_ff/accel_ff.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/attitude/attitude.c" targetDirectory="dz/firmware" action="link"/>
-        <file path="../../../firmware/algo/ball_beam/ball_beam.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/capfreq/capfreq.c" targetDirectory="dz/firmware" action="link"/>
+        <file path="../../../firmware/algo/cascade_pos/cascade_pos.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/dds/dds.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/foc/foc.c" targetDirectory="dz/firmware" action="link"/>
         <file path="../../../firmware/algo/follow/follow.c" targetDirectory="dz/firmware" action="link"/>

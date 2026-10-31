@@ -3,7 +3,7 @@
 #include "tt.h"
 #include "project_gen.h"
 #include "dzframe.h"
-#include "ball_beam.h"
+#include "cascade_pos.h"
 #include "cp_vision_cpu.h"
 #include "io_safety.h"
 
@@ -72,7 +72,7 @@ TEST(ball_subsys_closed_loop_toy)
     CHECK(max_abs <= p->angle_max_deg + 1e-4f);
     CHECK(st.beam_out.target_abs_deg >= p->beam_min_deg && st.beam_out.target_abs_deg <= p->beam_max_deg);
     for (; t < 9000; t += 10) SUBSYS_BALL.step(&st, p, t);   /* 视觉断了 */
-    CHECK(st.beam_out.state == BB_LOST);
+    CHECK(st.beam_out.state == CPOS_LOST);
     CHECK_NEAR(st.beam_out.target_abs_deg, p->beam_zero_deg, 1e-3);
 }
 

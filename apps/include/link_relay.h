@@ -12,13 +12,18 @@
 #include "dzctl.h"
 #include "pid.h"
 
+#ifndef LINK_RELAY_EN
+#define LINK_RELAY_EN 1   /**< link.yaml `relay: off` → link_gen.h 定义为 0：0x7C 一律回 status 1，不接管输出 */
+#endif
+
 /** 是继电帧就处理并填 ack（status 0=ok 1=参数错/无此环 2=急停中拒绝），返回 true；否则 false。 */
 static inline bool link_relay_frame(const dzframe_t *f, bool estop, uint8_t *seq, dzframe_t *ack)
 {
     dzctl_relay_t rl;
     if (!dzctl_relay_parse(f, &rl)) return false;
     uint8_t s = 0u;
-    if (!rl.start) { if (rl.amp < 0.0f) s = 1u; else pid_relay_stop(); }
+    if (!LINK_RELAY_EN) s = 1u;
+    else if (!rl.start) { if (rl.amp < 0.0f) s = 1u; else pid_relay_stop(); }
     else if (estop) s = 2u;
     else if (pid_relay_start(rl.loop, rl.amp, rl.hyst, rl.timeout_s) != DZ_OK) s = 1u;
     dzctl_relay_ack(s, (*seq)++, ack);

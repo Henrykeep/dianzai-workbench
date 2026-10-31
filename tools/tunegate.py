@@ -26,7 +26,11 @@ NEAR_ABS = 0.02
 
 
 def source() -> str:
-    return "randplant" if (ROOT / "tools" / "randplant.py").exists() else "standin"
+    """randplant.py 已推（fw-generic），但 sim:randplant-<seed> 板的 Session 适配是 #78 第二步（后端）：
+    接上之前默认仍用 STAND-IN；TUNEGATE_SOURCE=randplant 显式切过去（未接适配时照旧报错提示）。"""
+    import os
+    want = os.environ.get("TUNEGATE_SOURCE", "standin")
+    return "randplant" if want == "randplant" and (ROOT / "tools" / "randplant.py").exists() else "standin"
 
 
 def one(seed: int, kind: str) -> dict:
@@ -83,7 +87,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", default=None)
     a = ap.parse_args(argv)
     seeds = [a.seed] if a.seed is not None else [(a.seed0 if a.seed0 is not None else int(time.time()) % 100000) * 1000 + i for i in range(a.n)]
-    print(f"tunegate：对象来源 = {source()}{'（STAND-IN，randplant 未推）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
+    print(f"tunegate：对象来源 = {source()}{'（STAND-IN，randplant 板适配未接）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
     rs = []
     for s in seeds:
         try:

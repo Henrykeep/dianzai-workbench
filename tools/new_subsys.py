@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """子系统模板生成器：在题目目录下生成一个新子系统的骨架 + 用模拟数据的单元测试。
 
-  python3 tools/new_subsys.py examples/2026H_ball gimbal --owns gimbal_out --reads vision_out --period 5
+  python3 tools/new_subsys.py examples/<例题> gimbal --owns gimbal_out --reads vision_out --period 5
 
 生成：
   <题目>/subsys/<name>/<name>.c      实现 init/step/on_mode/selftest，只读写共享状态
