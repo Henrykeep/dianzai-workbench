@@ -261,7 +261,7 @@ test:
 	python3 tools/test_step_result.py   # #38 阶跃 step_result 对拍 / param_reject / 心跳 bit17（5 应用）
 	$(PY) tests/plant/test_plant.py   # #89 plant: 声明 → 通用对象板：schema 正反例、随机声明/热对象/不稳定/二阶 闭环跑通
 	$(PY) tests/randplant/test_randplant.py   # 随机对象生成器冒烟：可复现、通用链路全合规、改 kp 指标变（RANDPLANT_SEEDS）
-	TUNEGATE_SOURCE=randplant $(PY) tools/tunegate.py --seeds 3008,3009,3010 --n 3   # #78 硬门禁：假达标必须 0（固定种子 + 3 个按时间取的新种子）；通过率只警告
+	TUNEGATE_SOURCE=randplant $(PY) tools/tunegate.py --seeds $(TUNEGATE_SEEDS) --n 0   # #78/#113 硬门禁：固定种子上假达标必须 0；通过率只警告
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
@@ -375,6 +375,7 @@ clean:
 
 # #78 随机对象门禁：真 randplant 对象（tools/randplant.py → tools/tunegate_plant.py），失败打印 seed（TUNEGATE_N 个、按时间取种子）
 .PHONY: tunegate
-TUNEGATE_N ?= 16
-tunegate:   # 软指标：打印通过率；假达标仍非 0 退出
-	TUNEGATE_SOURCE=randplant $(PY) tools/tunegate.py --n $(TUNEGATE_N)
+TUNEGATE_N ?= 0
+TUNEGATE_SEEDS ?= 3001,3002,3003,3004,3005,3006,3007,3008,3009,3010,3011,3012
+tunegate:   # CI 步骤（#113）：固定种子 + 一个 UTC 日期种子（打印，可 --seed 复现）；假达标非 0 退出（硬），通过率只警告（软）
+	TUNEGATE_SOURCE=randplant $(PY) tools/tunegate.py --seeds $(TUNEGATE_SEEDS) --n $(TUNEGATE_N) --date-seed

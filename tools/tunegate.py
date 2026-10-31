@@ -88,11 +88,17 @@ def main(argv=None) -> int:
     ap.add_argument("--seed0", type=int, default=None, help="默认按时间取（每次 CI 都是新对象）；打印出来便于复现")
     ap.add_argument("--seed", type=int, default=None, help="只跑这一个")
     ap.add_argument("--seeds", default=None, help="逗号分隔的固定种子，再加 --n 个按时间取的新种子")
+    ap.add_argument("--date-seed", action="store_true", help="再加一个按 UTC 日期取的种子（YYYYMMDD，当天可复现：--seed YYYYMMDD）")
     ap.add_argument("--kind", default="any")
     ap.add_argument("--json", default=None)
     a = ap.parse_args(argv)
     fixed = [int(x) for x in a.seeds.split(",")] if a.seeds else []
     seeds = [a.seed] if a.seed is not None else fixed +  [(a.seed0 if a.seed0 is not None else int(time.time()) % 100000) * 1000 + i for i in range(a.n)]
+    if a.date_seed and a.seed is None:
+        ds = int(time.strftime("%Y%m%d", time.gmtime()))
+        seeds.append(ds)
+        print(f"tunegate：日期种子 {ds}（复现：tools/tunegate.py --seed {ds}）")
+    t_start = time.monotonic()
     print(f"tunegate：对象来源 = {source()}{'（STAND-IN，未合入）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
     rs = []
     for s in seeds:
@@ -116,6 +122,9 @@ def main(argv=None) -> int:
     if source() == "standin":
         print("tunegate：未合入——对象来自 STAND-IN（TUNEGATE_SOURCE=standin），结果不算门禁通过")
         return 2
+    print(f"tunegate：用时 {time.monotonic() - t_start:.1f} s")
+    if bad:
+        print(f"::warning::tunegate 通过率 {len(rs) - len(bad)}/{len(rs)}；未通过 seed {','.join(str(r['seed']) for r in bad)}")
     print(f"tunegate：假达标 {len(fake)} 个（硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in fake)}" if fake else "")
           + f"；通过率 {len(rs) - len(bad)}/{len(rs)}（软指标，未通过只警告）")
     return 1 if fake else 0
