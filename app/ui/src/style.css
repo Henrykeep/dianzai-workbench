@@ -1164,4 +1164,4 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .mono,.num,.lbl.mono,.pf-n.mono,.in.mono,[class*=val]:where(.mono,.num){font-size:max(16px,var(--t-sm))}
 .gd li .n,.ag-guide .n{font-size:16px;width:24px;height:24px}
 /* #114 r9g：按“文字含数字”审计（不按 class）漏掉的 12–14px：阶跃读数差值 / 时间线条目 / 参数说明 / 验收汇总 / 台账轮号 / t0 按钮 */
-.dt,.tl-e,.tl-e *,.pdesc,.acc-sum,.ledger td.hn,#t0-mark{font-size:16px}
+.dt,.tl-e,.tl-e *,.pdesc,.kk>span.pdesc,.rc-det>p,.acc-sum,.ledger td.hn,#t0-mark{font-size:16px !important}

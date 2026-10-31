@@ -109,7 +109,7 @@ assert.match(agentSrc, /COMMIT_SENT_F\]: true/); assert.match(agentSrc, /COMMIT_
 assert.equal(simPortLabel({ port: "sim:abc", app_name: "应用A" } as any), "仿真 · 应用A");
 assert.equal(simPortLabel({ port: "sim:abc", app_dir: "apps/abc2" } as any).startsWith("仿真 · "), true);
 // #114
-assert.match(css, /\.dt,\.tl-e,\.tl-e \*,\.pdesc,\.acc-sum,\.ledger td\.hn,#t0-mark\{font-size:16px\}/);
+assert.ok(css.includes(".dt,.tl-e,.tl-e *,.pdesc,.kk>span.pdesc,.rc-det>p,.acc-sum,.ledger td.hn,#t0-mark{font-size:16px !important}"));
 // 通用：不出现例题名
 for (const f of ["ledgerbus.ts", "commitstore.ts"]) assert.doesNotMatch(readFileSync("src/" + f, "utf8"), /car_2wd|motor_pos|2026[A-Z]/);
 console.log("✓ r9g：#76 字号 / #101 台账同源 / #110 取消原因 / #111 刷新恢复 / 急停横幅");
