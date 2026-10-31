@@ -1,5 +1,5 @@
 // 参数角色确认（confirm_roles）：纯逻辑 + HTML，字段名只走 fieldmap
-import { roleCodes } from "./rolecodes";
+import { roleCodes, roleCodesNotice } from "./rolecodes";
 import { ROLE_F, ROLE_SUGGEST_ZH, ROLE_BTN_ZH, ROLE_RETRY_ZH, ROLE_SENDING_ZH, ROLE_REPLY_F, ROLE_NO_FLASH_ZH, ROLE_LIM_ZH, MISSING_ZH } from "./fieldmap";
 export type RoleReq = { missing: string[]; suggested: Record<string, string>; reason: string };
 const CODES = { has: (c: unknown) => roleCodes().some(x => x[0] === c) };
@@ -37,7 +37,7 @@ export function roleCardHtml(req: RoleReq | null, st: RoleUi | boolean = { phase
     : `<button class="btn primary" id="role-ok"${s.phase === "sending" || s.left > 0 || (s.phase === "error" && s.same !== false) ? " disabled" : ""}>${s.phase === "sending" ? ROLE_SENDING_ZH : ROLE_BTN_ZH}</button>` +
       (s.left > 0 && s.phase !== "sending" ? `<span class="role-left">${roleLeftZh(s.left)}</span>` : s.phase === "error" && s.same !== false ? `<span class="role-left">请修改角色后再确认</span>` : "");
   return `<div class="card role-card" id="role-card"><b>需要确认参数角色</b><p class="role-why">${esc(req.reason || MISSING_ZH)}</p>` +
-    `<p class="role-nf">${ROLE_NO_FLASH_ZH}</p><p>待确认：${req.missing.map(esc).join("、") || MISSING_ZH}</p>` +
+    `<p class="role-nf">${ROLE_NO_FLASH_ZH}</p>${roleCodesNotice() ? `<p class="role-data warn-t" id="role-data">${esc(roleCodesNotice())}</p>` : ""}<p>待确认：${req.missing.map(esc).join("、") || MISSING_ZH}</p>` +
     (s.phase === "error" && s.msg ? `<p class="role-err">${esc(s.msg)}</p>` : "") + btn + `</div>`;
 }
 // 缺几个：没在下拉里选、也没有合法建议的

@@ -1138,3 +1138,8 @@ function openDeclField(key: string) {
     else toast({ code: "", message: `界面里还没有 ${key} 这一行的编辑框`, fix: `在工程声明文件里找到 ${key} 修改后重新连接` });
   }, 50);
 }
+
+// 原因表兜底提示：状态栏一处，启动时设一次（不弹 toast，不重复）
+import { reasonCodesNotice } from "./reasoncodes";
+import { reasonStatusText } from "./fieldmap";
+{ const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.textContent = reasonStatusText(t); el.title = t; } }
