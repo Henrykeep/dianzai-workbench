@@ -69,6 +69,14 @@ const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
 const hb = initHbStrip($("hbstrip"), jumpAt);
 const AL = new Alerts();
 let clearedHide = 0;
+let latchAt: number | null = null, writesLocked = false;
+const ESTOP_WHY = "急停已锁存：先在红条上点「解除」";
+const WRITE_IDS = ["p-send", "it-go", "it-write", "tb-save", "seal-mode"];
+function lockWrites(on: boolean) {
+  if (on) WRITE_IDS.forEach(id => { const e = document.getElementById(id) as any; if (e) { e.disabled = true; e.title = ESTOP_WHY; e.dataset.estop = "1"; } });
+  else if (writesLocked) { WRITE_IDS.forEach(id => { const e = document.getElementById(id) as any; if (e?.dataset.estop) { delete e.dataset.estop; e.title = ""; e.disabled = false; } }); syncParams(); renderIter(); }
+  writesLocked = on;
+}
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   // 锁存只认本地服务上报（S.latched ← status.tx_locked），断开 / 重连都不由前端清（#20）
@@ -77,7 +85,10 @@ function renderAlerts() {
   $("estop").classList.toggle("locked", latched);
   if (latched) { if (!wasLatchedUi) { SPANS.latch(plot.now()); RESTORE.onLatch((S.status as any).sp_before_latch); const nn = document.getElementById("sp-restore-note"); if (nn) nn.textContent = ""; showRestore(); syncMarks(); } wasLatchedUi = true; estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
-  el.classList.remove("al-hist");
+  el.classList.remove("al-hist"); el.classList.toggle("latched", latched);
+  document.documentElement.classList.toggle("estop-latched", latched);   // 锁存时全屏只留红色：其余区域去色
+  if (latched && latchAt == null) latchAt = Date.now(); if (!latched) latchAt = null;
+  lockWrites(latched);
   if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.innerHTML = `<span class="al-t">${esc(estopHist)}</span><span class="sp"></span><button class="btn sm" id="al-retune">${esc(RETUNE.label)}</button>`; el.querySelector<HTMLElement>("#al-retune")!.onclick = () => runAction(RETUNE.action, s => goStepRef(s)); } else el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
   const last = l[l.length - 1];
@@ -86,13 +97,14 @@ function renderAlerts() {
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
   if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? (ev ? v.head : latchHead((S.status as any).estop_cause ?? latchedCause())) : "已解除（之前：" + v.head + "）")}</b></span>`;
+  if (latched && latchAt != null) head += `<span class="al-t al-at">锁存于 ${new Date(latchAt).toLocaleTimeString("zh-CN", { hour12: false })}</span>`;
   const fh = bannerHint(latched, ev); if (fh) head += `<span class="al-t al-fix">${esc(fh)}</span>`;
   const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
   if (!head) head = `<b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
   el.innerHTML = `<span class="al-n">${Math.max(l.length, 1)}</span>${head}` +
     (l.length > 1 ? `<span class="al-more">${l.filter(e => !isE(e) && !isW(e)).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
-    `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除急停</button>` : "") +
+    `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除</button>` : "") +
     (l.length ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
   if (shownCleared) markClearedShown();
   // 横幅只给正在发生的危险：已解除且没有别的告警时，降成一行中性提示，800 ms 后收起
@@ -444,7 +456,7 @@ function lockParams(on: boolean) {
   document.querySelectorAll<HTMLElement>("#plist .psl, #plist input.in").forEach(e => { (e as any).disabled = on; });
   const l = document.getElementById("p-lock"); if (l) l.hidden = !on;
   if (on) { $<HTMLButtonElement>("p-send").disabled = true; const w = document.getElementById("it-write") as any; if (w) w.disabled = true; }
-  $("p-send").title = on ? ITER_LOCK_ZH : "";
+  $("p-send").title = on ? ITER_LOCK_ZH : S.latched ? "急停已锁存：先在红条上点「解除」" : "";
 }
 // 首次自动套用最接近的示例：一句话 +「更换示例」（op project_switch_example）
 function showForked(m: any) {
@@ -664,6 +676,7 @@ function renderStatus(st: Msg) {
   $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.baud || ""}</i>` : "";   // 连接状态只在 #ro-lk（link.state）
   { const d = dataTag(st.connected ? st.port : null), e = $("ro-src"); e.hidden = !d; e.textContent = d; e.className = "dtag " + (d === "仿真" ? "sim" : "hw"); }
   renderGuide(!!st.connected);
+  if (S.latched) lockWrites(true);
   lockParams(iterLocked(st.hb_flags, IT.s.phase === "running"));
   $("ro-schema").innerHTML = st.schema ? `${st.schema}<i>${st.schema_ok ? "已识别" : "未知"}</i>` : "—";
   // 心跳 status 字（dzctl 0.5.0）：复位原因 + 安全态/堵转/急停标志；旧固件没有 → 不显示

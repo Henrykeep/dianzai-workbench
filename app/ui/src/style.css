@@ -1006,3 +1006,27 @@ body{font-variant-numeric:tabular-nums}
 .gd li.cur{color:var(--ink);font-weight:600} .gd li.cur .n{border-color:var(--accent);color:var(--accent)}
 .gd li.done{color:var(--ink)}
 .it-verdict{margin:var(--sp2) 0;font-size:var(--t-lg);color:var(--ink)} .it-verdict.unknown{color:var(--muted)} .it-verdict.fail{color:var(--crit)}
+/* r9p2 density: 正文 14、参数名/值 16、卡内边距 ≥16、8/16 网格留白 */
+.prow .k,.prow .in,.prow .in.num{font-size:var(--t-lg)}
+.prow{padding:var(--sp4) 0}
+.prow .u{font-size:var(--t-sm)}
+.page h3{margin-bottom:var(--sp4)}
+.page > section,.page .card,.cal-step,.seal-card,.pj-box{padding:var(--sp4)}
+.page{row-gap:var(--sp4)}
+.it-col span,.hint{font-size:var(--t-sm);line-height:22px}
+/* 去掉一层：各页 h3 下的重复说明（页头一句话已说明这一页做什么） */
+.page > h3 + p.hint,.page > .pg-hd > p.hint{display:none}
+/* r9p2 急停锁存：整条实心红、白字；屏上只剩红色（工作区与侧栏去色） */
+.alerts.latched{background:var(--danger);color:var(--on-danger,var(--bg));box-shadow:none;border-radius:0;margin:0}
+.alerts.latched .al-h,.alerts.latched .al-t,.alerts.latched .al-fix{color:var(--on-danger,var(--bg))}
+.alerts.latched .al-n{background:var(--on-danger,var(--bg));color:var(--danger)}
+.alerts.latched .btn{background:transparent;color:var(--on-danger,var(--bg));border:1px solid var(--on-danger,var(--bg))}
+.alerts.latched #al-r{background:var(--on-danger,var(--bg));color:var(--danger);font-weight:600}
+html.estop-latched .work,html.estop-latched .side,html.estop-latched .nav,html.estop-latched .status{filter:grayscale(1)}
+/* r9p2 每屏 ≤3 个蓝：心跳条异常格、项目步骤序号、RAM≠默认 标记、引导卡当前步改灰阶层级 */
+.hbstrip i.hb-warn,.hbstrip i.hb-bad{background:var(--ink)}
+.pf-card.cur .pf-n{background:var(--ink);color:var(--bg)}
+.life span.hot{color:var(--ink);font-weight:600}
+.gd li.cur .n{border-color:var(--ink);color:var(--ink)}
+.psl{--indicator-color:var(--text-secondary);--wa-color-brand-fill-loud:var(--ink);--wa-color-brand-border-loud:var(--ink)}
+.psl{--wa-form-control-activated-color:var(--ink)} .psl::part(thumb){background-color:var(--ink);border-color:var(--ink)} .psl::part(indicator){background-color:var(--text-secondary)}

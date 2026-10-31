@@ -5,7 +5,7 @@
 :root{
   --f-sans:"Bricolage Grotesque","Noto Sans SC Dz","PingFang SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
   --f-mono:"Geist Mono","Noto Sans SC Dz",Consolas,monospace;
-  --t-xs:12px; --t-sm:12px; --t-md:14px; --t-lg:16px; --t-h:20px; --t-xl:20px;   /* 字号 4 级 12/14/16/20 */
+  --t-xs:12px; --t-sm:14px; --t-md:14px; --t-lg:16px; --t-h:20px; --t-xl:20px;   /* 字号 4 级 12/14/16/20 */
   --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:24px; --sp6:32px;
   --r-xs:4px; --r-sm:4px; --r:8px; --r-lg:8px;
   --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:48px; --h-sb:28px; --w-rail:0px; --w-nav:200px; --w-nav-folded:56px; --h-nav-item:32px; --w-left:280px; --w-side:320px; --w-lab:136px;
@@ -63,7 +63,7 @@
 :root,[data-theme=light],[data-theme=dark]{
   --accent-solid:#0D74CE; --danger-solid:#CE2C31;   /* 浅深统一：白字对比 4.77 / 5.21 */
   --f-sans:var(--font-sans); --f-mono:var(--font-mono);
-  --t-xs:var(--fs-12); --t-sm:var(--fs-12); --t-md:var(--fs-14); --t-lg:var(--fs-16); --t-h:var(--fs-20); --t-xl:var(--fs-20);
+  --t-xs:var(--fs-12); --t-sm:var(--fs-14); --t-md:var(--fs-14); --t-lg:var(--fs-16); --t-h:var(--fs-20); --t-xl:var(--fs-20);
   --sp1:var(--sp-1); --sp2:var(--sp-2); --sp3:var(--sp-3); --sp4:var(--sp-4); --sp5:var(--sp-5); --sp6:var(--sp-6);
   --r-xs:var(--radius-sm); --r-sm:var(--radius-sm); --r:var(--radius-md); --r-lg:var(--radius-lg);
   --h-row:32px; --h-ctl:32px; --h-sm:24px; --h-vh:48px; --h-top:48px; --h-sb:28px; --w-rail:0px; --w-nav:200px; --w-nav-folded:56px; --h-nav-item:32px; --w-left:280px; --w-side:320px; --w-lab:136px;
