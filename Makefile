@@ -265,6 +265,7 @@ test:
 	$(PY) tests/plant/test_plant.py   # #89 plant: 声明 → 通用对象板：schema 正反例、随机声明/热对象/不稳定/二阶 闭环跑通
 	$(PY) tests/randplant/test_randplant.py   # 随机对象生成器冒烟：可复现、通用链路全合规、改 kp 指标变（RANDPLANT_SEEDS）
 	$(PY) tests/randplant/test_clip_relay.py   # #103 对象量程钳位（bit18 SENSOR_SAT）+ 随机对象 0x7C 继电接管
+	$(PY) tests/randplant/test_feasible.py   # #124/#125 可行性标签：独立搜索达标 ⇒ 不许 feasible:false；原因类别对结构分类器
 	$(PY) tests/randplant/test_role.py   # 参数角色 role：gen_link 校验 / null / randplant 角色一致 / host-sim 心跳绑定的表带 role
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
