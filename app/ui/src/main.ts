@@ -1,6 +1,8 @@
 import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
+import { applyBrand } from "./brand";
+applyBrand();
 import "./entry-data";
 import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
@@ -56,6 +58,7 @@ const jumpAt = async (c: { log_t: number | null; plot_t: number | null }) => {
 };
 const hb = initHbStrip($("hbstrip"), jumpAt);
 const AL = new Alerts();
+let clearedHide = 0;
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
   // 锁存只认本地服务上报（S.latched ← status.tx_locked），断开 / 重连都不由前端清（#20）
@@ -80,6 +83,10 @@ function renderAlerts() {
     `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除急停</button>` : "") +
     (l.length ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
   if (shownCleared) markClearedShown();
+  // 横幅只给正在发生的危险：已解除且没有别的告警时，降成一行中性提示，800 ms 后收起
+  el.classList.toggle("cleared", shownCleared && !wd);
+  clearTimeout(clearedHide);
+  if (shownCleared && !wd) clearedHide = window.setTimeout(() => { if (!S.latched) { el.hidden = true; } }, 800);
   el.querySelectorAll<HTMLElement>(".al-t").forEach(t => { if (last) t.onclick = () => jumpAt(last); });
   const r = el.querySelector<HTMLElement>("#al-r"); if (r) r.onclick = async () => { markClearClick(); await call("cmd", { c: "R" }); renderAlerts(); };
   const ak = el.querySelector<HTMLElement>("#al-ack"); if (ak) ak.onclick = async () => { const r = await call("alert_ack", { upto: AL.top() }); AL.ack(r.upto); renderAlerts(); };
@@ -327,12 +334,12 @@ function renderParams() {
   const ps = S.schema?.params ?? [];
   // 参数（docs/26 §6）：名字 + 数值同一行；下面一把刻度尺：板上值（实线）、默认值（○）、草稿（黄铜，连一段改动范围）、量程两端。
   // 全部来自 schema 的 params（名字 / 量程 / 单位 / 说明），界面不认任何题目的参数名。
-  $("plist").innerHTML = ps.length ? ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(p.desc ?? "")}">
-    <div class="pr"><span class="k mono" title="${esc(p.name)}">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
-      <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off"><span class="u">${esc(p.unit ?? "")}</span></div>
-    ${p.desc ? `<div class="pdesc">${esc(p.desc)}</div>` : ""}
-    <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div>
-    <div class="rgx mono"><span>${fmt(p.min, p)}</span><span class="sp"></span><span>${fmt(p.max, p)}</span></div></div>`).join("")
+  // 设计 v9：每行只显示名字、数值、刻度尺；说明 / 单位 / 量程收进悬停提示（title）
+  const tip = (p: Param) => [p.desc, `量程 ${fmt(p.min, p)} … ${fmt(p.max, p)}${p.unit ? " " + p.unit : ""}`, `默认 ${fmt(p.default, p)}`].filter(Boolean).join("\n");
+  $("plist").innerHTML = ps.length ? ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(tip(p))}">
+    <div class="pr"><span class="k mono">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
+      <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off" aria-label="${esc(p.name)}${p.unit ? "（" + esc(p.unit) + "）" : ""}"></div>
+    <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div></div>`).join("")
     : emptyState("sliders", "连上后列出可调参数");
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
@@ -590,8 +597,8 @@ function renderStatus(st: Msg) {
   $("empty").hidden = !!st.connected && !!S.schema;
   // 曲线区空状态即引导：说明这一页做什么 + 一个主按钮（点的是已有入口，不新增功能入口）
   $("empty").innerHTML = st.connected
-    ? `<div class="es"><b>等待目标板心跳</b><p>${st.hint ? esc(st.hint) : "曲线将在收到第一帧数据后显示。"}</p></div>`
-    : `<div class="es"><b>未连接</b><p>曲线区显示目标板实时数据。连接目标板，或选择「仿真板」在无硬件时开始。</p><button class="btn pri" data-go="sim">开始仿真</button></div>`;
+    ? `<div class="es"><b>等待目标板数据</b><p>${st.hint ? esc(st.hint) : "收到第一帧数据后显示曲线。之后点「阶跃实验」开始调参。"}</p></div>`
+    : `<div class="es"><b>还没有曲线</b><p>先连接目标板或仿真板，再点「阶跃实验」开始。</p><button class="btn" data-go="sim">连接仿真板</button></div>`;
   $("empty").querySelector<HTMLElement>("[data-go=sim]")?.addEventListener("click", () => {
     const sel = $<HTMLSelectElement>("port"), o = [...sel.options].find(x => x.value.startsWith("sim:"));
     if (o) sel.value = o.value; $("connect").click();
@@ -756,7 +763,7 @@ let goStepRef: (s: any) => void = () => {};
 let stSeenT: number | undefined, stSeenAt: number | null = null;
 let savedAt: string | null = null, noSave = "", noMode = "";
 function renderBoard(st: any) {
-  const sv = $("tb-saved"); sv.textContent = noSave || savedView(st, savedAt); sv.classList.toggle("ok", !noSave && st.params_saved === true);
+  const sv = $("tb-saved"); sv.textContent = noSave || (st.params_saved === false ? "" : savedView(st, savedAt));   // 未保存只由页头 #tb-notice（progress 的 params_not_saved）显示一次 sv.classList.toggle("ok", !noSave && st.params_saved === true);
   $<HTMLButtonElement>("tb-save").disabled = !!noSave; $("tb-save").title = noSave || "把板上当前参数写入掉电保存区（save_params）";
   $("seal-mode-cur").textContent = st.run_mode?.label_zh ?? "—";
   const g = modeGate(st), b = $<HTMLButtonElement>("seal-mode");

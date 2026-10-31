@@ -128,16 +128,14 @@ export function render(p: Progress, go: (s: Step) => void) {
     b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
   });
   // 每个 blocker 标到它 blocks 列出的那几步导航下：卡住原因 + fix_action 按钮（接口数据才有 blocks；推断数据不标）
+  // 设计 v9：左栏只标一个小圆点（data-blocked），原因写进悬停提示；文字提示只在页头出现一次
   document.querySelectorAll("#steps .nav-blk").forEach(e => e.remove());
+  document.querySelectorAll<HTMLElement>("#steps [data-blocked]").forEach(n => delete n.dataset.blocked);
   for (const s of p.steps) {
     const bs = p.blockers.filter(b => b.blocks?.includes(s.id)); if (!bs.length) continue;
     const nav = document.querySelector<HTMLElement>(`#steps [data-pid="${s.id}"]:not(.sub)`); if (!nav) continue;
-    nav.dataset.blocked = "1";
-    const box = document.createElement("div"); box.className = "nav-blk";
-    for (const b of bs) box.append(blockerRow(b, go));
-    nav.after(box);
+    nav.dataset.blocked = "1"; nav.title += "\n" + bs.map(b => b.message).join("\n");
   }
-  document.querySelectorAll<HTMLElement>("#steps [data-blocked]").forEach(n => { if (!(n.nextElementSibling as HTMLElement | null)?.classList.contains("nav-blk")) delete n.dataset.blocked; });
   const ph = document.getElementById("pg-head");
   if (ph) {
     const view = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step);
@@ -149,22 +147,17 @@ export function render(p: Progress, go: (s: Step) => void) {
     ph.querySelector("p")!.textContent = hd.text;
     const b = ph.querySelector<HTMLButtonElement>(":scope > button.pri")!   /* 不能取第一个 button：调参页常驻的「保存参数」也在页头 */; b.textContent = hd.label; b.disabled = !hd.action && !hd.goto; b.hidden = !!hd.hidden;   // 与页头常驻入口重复：只留入口表登记的那个
     b.onclick = () => { if (hd.action) runAction(hd.action, go); else if (hd.goto) go(JOURNEY.find(j => j.id === hd.goto)!.pages[0] as Step); };
+    if (view === "tune") b.hidden = true;   // 调参页唯一主按钮是「阶跃实验」
+    // params_not_saved：全页只在「保存参数」旁显示一次，直接读 progress 的那一条，不再自己判断
+    const ns = p.blockers.find(x => x.code === "params_not_saved"), sv = document.getElementById("tb-save");
+    let tag = document.getElementById("tb-notice");
+    if (sv && !tag) { tag = document.createElement("span"); tag.id = "tb-notice"; tag.className = "notice"; sv.before(tag); }
+    if (tag) { tag.hidden = !ns; tag.textContent = ns ? "参数未写入 Flash" : ""; tag.title = ns?.message ?? ""; tag.dataset.code = ns ? ns.code : ""; }
   }
   const h = document.getElementById("step-hint"); if (!h) return;
   const run = (a: string) => runAction(a, go);
   h.replaceChildren();
   if (p.next) { const n = document.createElement("span"); n.className = "nx"; n.textContent = `下一步：${p.next.title} — ${p.next.hint}`; h.append(n); }
-  for (const b of p.blockers) {
-    const f = resolveFix(b.fix_action);
-    if (f?.kind === "run") {
-      const a = document.createElement("a"); a.className = "blk"; a.href = "#"; a.dataset.code = b.code;
-      a.textContent = `${b.message} · ${f.label}`; a.onclick = e => { e.preventDefault(); run(b.fix_action!); };
-      h.append(a);
-    } else {   // 未就绪 / 未登记 / 无 fix_action：只写原因，不给可点的链接
-      const n = document.createElement("span"); n.className = "blk off"; n.dataset.code = b.code;
-      n.textContent = b.message + (f?.note ? ` · ${f.note}` : ""); h.append(n);
-    }
-  }
 }
 
 export function blockerRow(b: Blocker, go: (s: Step) => void): HTMLElement {

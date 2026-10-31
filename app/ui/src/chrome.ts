@@ -4,6 +4,7 @@ const KEY = "dz.theme";
 
 export function applyTheme(t: string): void {
   document.documentElement.dataset.theme = t;
+  const sw = document.getElementById("theme") as HTMLInputElement | null; if (sw) sw.checked = t === "dark";
   // plot 通过 getComputedStyle 读变量，切主题后让它重绘
   window.dispatchEvent(new Event("dz-theme"));
 }
@@ -21,10 +22,10 @@ document.addEventListener("toggle", e => { const d = e.target as HTMLElement; if
 addEventListener("resize", () => document.querySelectorAll<HTMLDetailsElement>("details.menu[open]").forEach(placePop));
 export function initChrome(): void {
   const saved = localStorage.getItem(KEY);
-  const order = ["dark", "light", "hc"];
-  applyTheme(order.includes(saved ?? "") ? saved! : "dark");
+  const order = ["light", "dark"];
+  applyTheme(order.includes(saved ?? "") ? saved! : "light");
   document.getElementById("theme")?.addEventListener("click", () => {
-    const t = order[(order.indexOf(document.documentElement.dataset.theme ?? "dark") + 1) % order.length];
+    const t = order[(order.indexOf(document.documentElement.dataset.theme ?? "light") + 1) % order.length];
     localStorage.setItem(KEY, t);
     applyTheme(t);
   });

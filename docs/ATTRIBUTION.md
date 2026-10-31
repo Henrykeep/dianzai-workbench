@@ -9,3 +9,4 @@
 | spdx-ranges | MIT AND CC-BY-3.0 | The Linux Foundation（SPDX 许可范围数据）；Kyle E. Mitchell 打包 | https://github.com/kemitchell/spdx-ranges.js |
 
 | PID_Helper（公开界面形态） | GPL-3.0 | 交互形态借鉴（草稿/生效分离等），未参考或复制其源码；涉及 `app/sidecar/dzbench/snapshots.py`、`app/sidecar/dzbench/agent/experiment.py` | 公开界面；源码未使用 |
+| Radix Colors（色值） | MIT | WorkOS（Radix）；只抄录 blue11 #0D74CE、red11 #CE2C31 等色值进 `app/ui/src/tokens.css`，未引入依赖 | https://github.com/radix-ui/colors |
