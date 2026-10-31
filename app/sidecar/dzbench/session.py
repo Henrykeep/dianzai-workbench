@@ -118,6 +118,7 @@ class Session:
         self.reconnects = 0
         self.reconnect_attempt = 0
         self._t_tr = 0.0
+        self._rx_seen = False               # 当前传输开了以后收到过字节没有（卡死检测用；不用时间戳比较——Windows 时钟粒度 15.6 ms，last_rx 会等于 _t_tr）
         self._raw: collections.deque = collections.deque()
         self._raw_bytes = 0
         self.raw_dropped = 0
@@ -157,6 +158,7 @@ class Session:
         with self.lock:
             self.tr, self.port, self.baud, self.t_connect = tr, port, baud or 0, time.monotonic()
             self._t_tr = self.t_connect
+            self._rx_seen = False
             self.hb_status = None
             self.estop_cause = None
             self.selftest = None; self.params_hash = None; self._selftest_key = self.selftest_at = self.selftest_ph = None
@@ -201,7 +203,7 @@ class Session:
         """USB 转串口卡死（CH340 / CP210x 偶发：口还在、驱动不报错、就是不来数据）：开了 stall_s 才查。"""
         with self.lock:
             if not (self.stall_s > 0 and self.tr is not None and not self.reconnecting and gen == self._gen
-                    and getattr(self.tr, "ser", None) is not None and self.last_rx > self._t_tr):
+                    and getattr(self.tr, "ser", None) is not None and self._rx_seen):
                 return
             idle = time.monotonic() - self.last_rx
         if idle > self.stall_s:
@@ -335,6 +337,7 @@ class Session:
                 self.reconnects += 1
                 self.reconnect_attempt = 0
                 self._t_tr = time.monotonic()
+                self._rx_seen = False
                 self.parser = Parser()
                 self.health.rebase()
                 t_open = time.monotonic()
@@ -434,6 +437,7 @@ class Session:
         with self.rxlock:
             self.rx_bytes += len(data)
             self.last_rx = now
+            self._rx_seen = True
             frames = self.parser.feed(data)
         text_mode = self.schema_hash is None and (self.schema is None or self.schema.d.get("virtual"))
 
