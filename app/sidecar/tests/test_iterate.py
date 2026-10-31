@@ -269,3 +269,46 @@ def test_agent_tuning_run_ends_with_best_params_card(home, tmp_path, monkeypatch
         assert all(abs(s.params[n] - v) < 1e-6 for n, v in best.items())
     finally:
         s.disconnect()
+
+
+@pytest.mark.needs_sim
+def test_iterate_ws_ops_motor_pos(home, tmp_path, monkeypatch):
+    """#54/#62 走 WebSocket（界面同一路）：iterate_start / iterate_status / iterate_cancel 是侧车 op（以前没有 → bad_tool）。
+    sim:motor_pos 是 #54 的复现：以前第 0 轮后自己的 bit17 没清 → 「板上阶跃实验进行中（bit17），不写参数」→ 只跑 1 轮就 blocked。"""
+    import subprocess
+    from dzbench.agent.service import AgentService
+    from wsui import UI, ServerThread
+    monkeypatch.setattr(AgentService, "ITER_ROUNDS", 3)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    st = ServerThread()
+    st.srv.svc = AgentService(st.srv.session, st.srv.agent, st.srv.emit, root=tmp_path)
+    ui = UI(st.port)
+    try:
+        ui.ok("connect", port="sim:motor_pos")
+        ui.wait(lambda e: e["type"] == "schema")
+        t0 = time.monotonic()
+        s = st.srv.session
+        while len(s.params) < len(s.schema.params) and time.monotonic() - t0 < 20:
+            time.sleep(0.05)
+        r = ui.ok("iterate_start", target=90.0, dur_ms=1500, params=["kp"])
+        assert r["status"] == "started" and r["budget"]["rounds"] == 3
+        e = ui.wait(lambda e: e["type"] == "iterate.started", 10)
+        assert e["limits"]["rounds"] == 3
+        assert ui.ok("iterate_status")["running"] is True
+        bad = ui.call("iterate_start", target=90.0, params=["kp"])
+        assert not bad["ok"] and bad["error"]["code"] == "iterate_running", bad
+        stp = ui.wait(lambda e: e["type"] == "iterate.stopped", 120)
+        assert stp["reason"] in ("pass", "budget_rounds", "no_improve"), stp       # 不是 blocked（#54）
+        assert stp["rounds"] >= 2, stp
+        assert ui.wait(lambda e: e["type"] == "agent_action" and e["tool"] == "iterate_apply_best", 10)
+        assert not any("bit17" in json.dumps(x, ensure_ascii=False) for x in ui.events if x.get("type") == "error"), ui.events
+        stt = ui.ok("iterate_status")
+        assert stt["running"] is False and stt["result"]["best_card"]
+        # 取消：再起一次，马上停
+        ui.ok("iterate_start", target=90.0, dur_ms=1500, params=["kp"])
+        ui.ok("iterate_cancel")
+        m = ui.wait(lambda e: e["type"] == "iterate.stopped" and e.get("reason") == "stopped", 30)
+        assert m
+    finally:
+        ui.close()
+        st.stop()
