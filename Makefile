@@ -163,18 +163,18 @@ compdb: $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $
 $(OUT)/obj/%.c.o: %.c $(REQ_OK) $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
 	@mkdir -p $(dir $@)
 	@echo "  CC  $<"
-	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
+	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -MP -c $< -o $@
 define DRV_OBJ_RULE
 $(call obj_of,$(1)): $(1) $$(REQ_OK) $$(GEN)/board_gen.h $$(if $$(PROJECT_YML),$$(PROJ_GEN)/project_gen.h) $$(if $$(LINK_YML),$$(LINK_GEN)/link_gen.h)
 	@mkdir -p $$(dir $$@)
 	@echo "  CC  $$<"
-	$$(Q)$$(CC) $$(CFLAGS) $$(INC) -MMD -c $$< -o $$@
+	$$(Q)$$(CC) $$(CFLAGS) $$(INC) -MMD -MP -c $$< -o $$@
 endef
 $(foreach s,$(DRV_SRCS),$(eval $(call DRV_OBJ_RULE,$(s))))
 $(OUT)/hal/%.c.o: %.c $(GEN)/board_gen.h
 	@mkdir -p $(dir $@)
 	@echo "  CC  $< (第三方，关闭警告)"
-	$(Q)$(CC) $(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$(CFLAGS)) $(INC) -w -c $< -o $@
+	$(Q)$(CC) $(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$(CFLAGS)) $(INC) -w -MMD -MP -c $< -o $@
 $(OUT)/hal/%.s.o: %.s
 	@mkdir -p $(dir $@)
 	@echo "  AS  $<"
@@ -183,7 +183,7 @@ define HAL_DRV_OBJ_RULE
 $(call hal_obj_of,$(1)): $(1) $$(if $$(filter %.c,$(1)),$$(GEN)/board_gen.h)
 	@mkdir -p $$(dir $$@)
 	@echo "  CC  $$< (第三方，关闭警告)"
-	$$(Q)$$(CC) $$(if $$(filter %.c,$$<),$$(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$$(CFLAGS)) $$(INC) -w,$$(MCU)) -c $$< -o $$@
+	$$(Q)$$(CC) $$(if $$(filter %.c,$$<),$$(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$$(CFLAGS)) $$(INC) -w -MMD -MP,$$(MCU)) -c $$< -o $$@
 endef
 $(foreach s,$(HAL_DRV_SRCS),$(eval $(call HAL_DRV_OBJ_RULE,$(s))))
 
@@ -247,6 +247,7 @@ test:
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
 	tools/test_fetch_retry.sh   # 第三方下载重试 + sha256（CI 41199129663 curl exit 56）
+	tools/test_dep_rename.sh   # 头文件改名/删除后不 clean 增量编译（-MMD -MP）
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
@@ -263,6 +264,7 @@ test:
 	python3 tools/test_step_result.py   # #38 阶跃 step_result 对拍 / param_reject / 心跳 bit17（5 应用）
 	$(PY) tests/plant/test_plant.py   # #89 plant: 声明 → 通用对象板：schema 正反例、随机声明/热对象/不稳定/二阶 闭环跑通
 	$(PY) tests/randplant/test_randplant.py   # 随机对象生成器冒烟：可复现、通用链路全合规、改 kp 指标变（RANDPLANT_SEEDS）
+	$(PY) tests/randplant/test_clip_relay.py   # #103 对象量程钳位（bit18 SENSOR_SAT）+ 随机对象 0x7C 继电接管
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
@@ -372,7 +374,7 @@ fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）
 clean:
 	rm -rf build
 
--include $(OBJS:.o=.d)
+-include $(OBJS:.o=.d) $(patsubst %.o,%.d,$(filter %.c.o,$(HAL_OBJS)))
 
 # #78 随机对象门禁：真 randplant 对象（tools/randplant.py → tools/tunegate_plant.py），失败打印 seed（TUNEGATE_N 个、按时间取种子）
 .PHONY: tunegate

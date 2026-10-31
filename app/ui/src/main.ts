@@ -51,7 +51,7 @@ import { initProject } from "./project";
 import { saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { simPortLabel } from "./examples";
-import { estopView, watchdogText, latchedOf } from "./estop";
+import { estopView, watchdogText, latchedOf, estopLine, clearStep, CLEAR_CONFIRM_MS } from "./estop";
 import { FlashNag, stripFlash } from "./flashnag";
 import { IterModel, cardView, iterTarget, APPLY_LABEL } from "./iterui";
 import { holdOf, restoreAllowed, restoreClick } from "./sprestore";
@@ -92,6 +92,7 @@ let clearedHide = 0;
 let lkMsg: any = null, lkSince: number | null = null, lkNext: number | null = null, lkNextAt = 0;
 let sidecarUp = true, simT0: number | null = null;
 let latchAt: number | null = null, writesLocked = false, latchBase = 0;   // 告警计数按锁存段：每次新锁存从 1 数起
+let clearSt: "idle" | "confirm" = "idle", clearTm = 0;   // r9f 解除两步确认
 function lockWrites(on: boolean) {
   if (on) lockWritesIn(document, true);
   else if (writesLocked) { lockWritesIn(document, false); syncParams(); renderIter(); }
@@ -112,7 +113,7 @@ function renderAlerts() {
   if (!latched && (!l.some(e => e.kind !== "estop") || curPage() === "项目")) { el.hidden = true; el.innerHTML = ""; el.classList.remove("latched", "al-hist"); document.documentElement.classList.remove("estop-latched"); lockWrites(false); return; }
   el.classList.remove("al-hist"); el.classList.toggle("latched", latched);
   document.documentElement.classList.toggle("estop-latched", latched);   // 锁存时全屏只留红色：其余区域去色
-  if (latched && latchAt == null) { latchAt = Date.now(); latchBase = Math.max(0, l.length - 1); } if (!latched) latchAt = null;
+  if (latched && latchAt == null) { latchAt = Date.now(); latchBase = Math.max(0, l.length - 1); } if (!latched) { latchAt = null; clearSt = "idle"; }
   lockWrites(latched);
   if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.innerHTML = `<span class="al-t">${esc(estopHist)}</span><span class="sp"></span><button class="btn sm" id="al-retune">${esc(RETUNE.label)}</button>`; el.querySelector<HTMLElement>("#al-retune")!.onclick = () => runAction(RETUNE.action, s => goStepRef(s)); } else el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
@@ -122,14 +123,14 @@ function renderAlerts() {
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
   if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? (ev ? v.head : latchHead((S.status as any).estop_cause ?? latchedCause())) : "已解除（之前：" + v.head + "）")}</b></span>`;
-  if (latched && latchAt != null) head += `<span class="al-t al-at">锁存于 ${new Date(latchAt).toLocaleTimeString("zh-CN", { hour12: false })}</span>`;
+  if (latched) { const el2 = estopLine(ev, S.status, latchAt); head += `<span class="al-t al-at">${esc(el2.line)}</span>` + (el2.restored ? `<span class="al-t al-rest">从上次恢复</span>` : ""); }
   const fh = bannerHint(latched, ev); if (fh) head += `<span class="al-t al-fix">${esc(fh)}</span>`;
   const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
   if (!head) head = `<b class="al-h">链路异常</b><span class="al-t" title="点击跳到这一刻">原因：${esc(last.text)}</span>`;
   el.innerHTML = `<span class="al-n">${Math.max(l.length - latchBase, 1)}</span>${head}` +
     (l.length > 1 ? `<span class="al-more">${l.filter(e => !isE(e) && !isW(e)).reverse().slice(0, 4).map(e => esc(e.text)).join(" · ")}</span>` : "") +
-    `<span class="sp"></span>` + (latched ? `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除</button>` : "") +
+    `<span class="sp"></span>` + (latched ? (clearSt === "confirm" ? `<button class="btn sm pri" id="al-r" title="再点一次才发 R：只解除锁存，不发运动指令">确认解除？</button><button class="btn sm" id="al-rc">取消</button>` : `<button class="btn sm pri" id="al-r" title="确认安全后发 R：板子解除急停锁存；只发 R，不发任何运动指令">解除</button>`) : "") +
     (l.length && !latched ? `<button class="btn sm" id="al-ack">知道了</button>` : "");
   if (shownCleared) markClearedShown();
   // 横幅只给正在发生的危险：已解除且没有别的告警时，降成一行中性提示，800 ms 后收起
@@ -137,7 +138,11 @@ function renderAlerts() {
   clearTimeout(clearedHide);
   if (shownCleared && !wd) clearedHide = window.setTimeout(() => { if (!S.latched) { el.hidden = true; } }, 800);
   el.querySelectorAll<HTMLElement>(".al-t").forEach(t => { if (last) t.onclick = () => jumpAt(last); });
-  const r = el.querySelector<HTMLElement>("#al-r"); if (r) r.onclick = async () => { markClearClick(); await call("cmd", { c: "R" }); renderAlerts(); };
+  const r = el.querySelector<HTMLElement>("#al-r"); if (r) r.onclick = async () => {
+    const st = clearStep(clearSt, "clear"); clearSt = st.state; clearTimeout(clearTm);
+    if (!st.send) { clearTm = window.setTimeout(() => { clearSt = clearStep(clearSt, "timeout").state; renderAlerts(); }, CLEAR_CONFIRM_MS); return renderAlerts(); }
+    markClearClick(); await call("cmd", { c: "R" }); renderAlerts(); };
+  const rc = el.querySelector<HTMLElement>("#al-rc"); if (rc) rc.onclick = () => { clearSt = clearStep(clearSt, "cancel").state; clearTimeout(clearTm); renderAlerts(); };
   const ak = el.querySelector<HTMLElement>("#al-ack"); if (ak) ak.onclick = async () => { const r = await call("alert_ack", { upto: AL.top() }); AL.ack(r.upto); renderAlerts(); };
 }
 // r41b：急停锁存 / 解除竖线 + 区间压暗（所有通道），时间线里已解除的急停用中性色

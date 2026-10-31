@@ -1158,3 +1158,8 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .rc-coarse{margin-left:8px}
 /* #76 数字一律 ≥16px（1366 宽实测，见 fe-shots/numaudit.py）；只有图表轴刻度例外 */
 .rng span, #win span, .lab .lr, .tl-e i, .rc-ps .mono, .rc-v, .rc-v b, .rc-d, .rc-cur, #ro-rx, .status .mono, #framedef-n, .mc-v, .mc-val, .metric .num, .num { font-size: 16px; }
+
+/* #76 r9f：等宽数字类（.mono / .num / *val*）一律 ≥16px——以前 .mono 继承 --t-sm(14px)，
+   #tb-saved / #hist-n / .pf-n / 等宽输入框在 1366 掉回 14px。审计：fe-shots/numaudit.py 按同一选择器查 */
+.mono,.num,.lbl.mono,.pf-n.mono,.in.mono,[class*=val]:where(.mono,.num){font-size:max(16px,var(--t-sm))}
+.gd li .n,.ag-guide .n{font-size:16px;width:24px;height:24px}

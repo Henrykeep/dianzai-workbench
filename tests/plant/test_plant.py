@@ -95,9 +95,16 @@ def trace_test(name: str, d: dict, rng) -> None:
         y = np.array([float(v) for v in subprocess.run([str(t / "x")], input="\n".join(f"{u:.9g}" for u in us), capture_output=True,
                                                        text=True, check=True).stdout.split()])
     r = ref_trace(d, us)
+    ylo, yhi = pm.y_range(d)                          # #103：C 对象把 y 钳在量程内；只在参考轨迹还没出量程的那段对拍
+    out = np.nonzero((r < ylo) | (r > yhi))[0]
+    n = int(out[0]) if out.size else len(r)
+    ok(bool(np.all((y >= ylo - 1e-3 * (yhi - ylo)) & (y <= yhi + 1e-3 * (yhi - ylo)))), f"{name}：C 对象输出始终在量程 [{ylo:.4g}, {yhi:.4g}] 内")
+    if n < 10:
+        return
+    r, y = r[:n], y[:n]
     scale = max(1e-6, float(np.max(np.abs(r - float(d.get("y0", 0))))))
     err = float(np.max(np.abs(y - r))) / scale
-    ok(err < 2e-3, f"对拍 {name}：C 对象 vs python-control 离散仿真 {len(us)} 拍，最大相对误差 {err:.2e}")
+    ok(err < 2e-3, f"对拍 {name}：C 对象 vs python-control 离散仿真 {n} 拍（量程内），最大相对误差 {err:.2e}")
 
 
 # ------------------------------------------------------------------ 3 闭环

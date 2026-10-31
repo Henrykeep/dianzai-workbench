@@ -83,6 +83,9 @@ def validate(d) -> list[str]:
     lo, hi = sat_limits(d)
     if not lo < hi:
         errs.append(f"plant.saturation: min {lo} 必须小于 max {hi}")
+    r = d.get("range")
+    if r is not None and not (isinstance(r, dict) and float(r.get("min", 0)) < float(r.get("max", 0))):
+        errs.append("plant.range: 须为 {min, max} 且 min < max")
     elif d.get("deadzone", 0) >= max(abs(lo), abs(hi)):
         errs.append("plant.deadzone: 不小于饱和幅值，执行器永远没输出")
     dt = d.get("sample_s", 0.001)
@@ -118,21 +121,33 @@ def discretize(g, dt: float) -> dict:
 
 
 def sim_c(ss: dict, *, dt: float, sat: tuple[float, float], deadzone: float = 0.0, noise_std: float = 0.0,
-          delay_n: int = 0, y0: float = 0.0, seed: int = 1, tag: str = "plant", y_clip: float | None = None) -> str:
-    """离散状态空间 → host-sim C：float sim_plant_step(float u)（每个采样周期调一次，返回带噪声的测量值）。"""
+          delay_n: int = 0, y0: float = 0.0, seed: int = 1, tag: str = "plant", y_range: tuple[float, float] | None = None) -> str:
+    """离散状态空间 → host-sim C：float sim_plant_step(float u)（每个采样周期调一次，返回带噪声的测量值）。
+    y_range=(lo, hi)：被控量物理量程。输出到边界就钳在边界，并且状态不再往外走（对象内部不积分饱和，
+    不稳定对象不会发散到 1000+）；钳住期间置心跳 DZCTL_HB_SENSOR_SAT（bit18），离开边界清掉。"""
+    ylo, yhi = (float(v) for v in y_range) if y_range else (-3.0e38, 3.0e38)
     n = len(ss["B"])
     fl = lambda xs: ", ".join(f"{float(x):.9e}f" for x in xs)
     A = ",\n    ".join("{ " + fl(row) + " }" for row in ss["A"])
     lo, hi = sat
-    clip = (f"    if (y > {float(y_clip):.9e}f) y = {float(y_clip):.9e}f;   /* 传感器量程 */\n"
-            f"    if (y < {-float(y_clip):.9e}f) y = {-float(y_clip):.9e}f;\n" if y_clip else "")
     dl = (f"static float s_dl[{delay_n}];\nstatic unsigned s_di;\n" if delay_n else "")
     dstep = (f"    {{ float w = s_dl[s_di]; s_dl[s_di] = u; s_di = (s_di + 1u) % {delay_n}u; u = w; }}\n" if delay_n else "")
     return f"""/* 由 tools/plantmodel.py 生成（{tag}）：离散 ZOH 被控对象，dt = {dt} s，仅 host-sim 编译。不要手改。 */
 #include <math.h>
+#include <stdbool.h>
 #include <stdint.h>
+#if defined(__has_include)
+#if __has_include("dzctl.h")
+#include "dzctl.h"
+_Static_assert(DZCTL_HB_SENSOR_SAT == (1u << 18), "plant sim: sensor-sat bit");
+#endif
+#endif
+#define PLANT_HB_SENSOR_SAT (1u << 18)   /* = DZCTL_HB_SENSOR_SAT */
+__attribute__((weak)) void dzctl_set_flags(uint32_t mask, bool on);   /* 板子里有 dzctl 就报心跳；单独编对象时没有也行 */
 
 float sim_plant_step(float u);
+#define Y_LO {ylo:.9e}f   /* 被控量量程（plant.range / link.step sensor_range / 按对象量级的默认值） */
+#define Y_HI {yhi:.9e}f
 void host_sim_app_setup(void);
 
 #define SP_N {n}
@@ -156,22 +171,46 @@ float sim_plant_step(float u)
     if (u > {hi:.9e}f) u = {hi:.9e}f;
     if (u < {lo:.9e}f) u = {lo:.9e}f;
     u = fabsf(u) <= {float(deadzone):.9e}f ? 0.0f : (u > 0 ? u - {float(deadzone):.9e}f : u + {float(deadzone):.9e}f);
-{dstep}    y = D * u;
-    for (int i = 0; i < SP_N; i++) y += C[i] * x[i];
+{dstep}    float cx = 0.0f, cxn = 0.0f;
+    for (int i = 0; i < SP_N; i++) cx += C[i] * x[i];
+    y = {float(y0):.9e}f + D * u + cx;
     for (int i = 0; i < SP_N; i++) {{ xn[i] = B[i] * u; for (int j = 0; j < SP_N; j++) xn[i] += A[i][j] * x[j]; }}
-    for (int i = 0; i < SP_N; i++) x[i] = xn[i];
-{clip}    return {float(y0):.9e}f + y + {float(noise_std):.9e}f * gauss();
+    for (int i = 0; i < SP_N; i++) cxn += C[i] * xn[i];
+    /* 量程边界：输出已在界外且下一拍还往外走 → 状态停在原地（对象不积分饱和） */
+    if (!((y >= Y_HI && cxn > cx) || (y <= Y_LO && cxn < cx)))
+        for (int i = 0; i < SP_N; i++) x[i] = xn[i];
+    bool at = false;
+    if (y >= Y_HI) {{ y = Y_HI; at = true; }}
+    if (y <= Y_LO) {{ y = Y_LO; at = true; }}
+    if (dzctl_set_flags) dzctl_set_flags(PLANT_HB_SENSOR_SAT, at);
+    return y + {float(noise_std):.9e}f * gauss();
 }}
 
 __attribute__((weak)) void host_sim_app_setup(void) {{ }}
 """
 
 
-def gen_c(d: dict, tag: str = "plant:") -> str:
+def y_range(d: dict, step: dict | None = None) -> tuple[float, float]:
+    """被控量量程，优先级：plant.range {min,max} > link.step[0].sensor_range（以 y0 为中心 ±一半）>
+    默认 y0 ± 10·span（span = 执行器满幅 × |静态增益|，积分对象取 1 s 行程，即 step_limits 的幅度）。
+    默认值故意给得宽：只防不稳定对象在仿真里无界发散，不替题目定量程。"""
+    y0 = float(d.get("y0", 0.0))
+    r = d.get("range")
+    if r:
+        return float(r["min"]), float(r["max"])
+    if step and step.get("sensor_range"):
+        h = 0.5 * float(step["sensor_range"])
+        return y0 - h, y0 + h
+    h = 0.5 * float(step_limits(d)["sensor_range"])   # = 10·span
+    return y0 - h, y0 + h
+
+
+def gen_c(d: dict, tag: str = "plant:", step: dict | None = None) -> str:
     dt = float(d.get("sample_s", 0.001))
     return sim_c(discretize(continuous(d), dt), dt=dt, sat=sat_limits(d), deadzone=float(d.get("deadzone", 0.0)),
                  noise_std=float(d.get("noise_std", 0.0)), delay_n=int(round(float(d.get("delay_s", 0.0)) / dt)),
-                 y0=float(d.get("y0", 0.0)), seed=int(d.get("seed", 1)), tag=f"{tag} estimate={d['estimate']}")
+                 y0=float(d.get("y0", 0.0)), seed=int(d.get("seed", 1)), tag=f"{tag} estimate={d['estimate']}",
+                 y_range=y_range(d, step))
 
 
 # ------------------------------------------------------------------ 通用回路（新题没有控制代码时的脚手架）
@@ -284,12 +323,12 @@ def static_gain(g) -> tuple[float, bool]:
 
 
 def step_limits(d: dict) -> dict:
-    """阶跃通道只写物理上限（gen_link 只要求这两项）：sensor_range = ±执行器满幅下对象能走到的幅度
-    （积分对象取 1 s 行程），max_step = 该幅度。阶跃幅度 range / 回位容差 abs_tol 由后端探测阶跃实测，不写。"""
+    """阶跃通道只写物理上限（gen_link 只要求这两项）：span = 执行器满幅下对象能走到的幅度（积分对象取 1 s 行程），
+    sensor_range = 20·span（±10·span），max_step = span。阶跃幅度 range / 回位容差 abs_tol 由后端探测阶跃实测，不写。"""
     k, _ = static_gain(continuous(d))
     span = abs(k) * max(abs(x) for x in sat_limits(d))
     span = _r(max(span, 1e-3), 3)
-    return {"sensor_range": _r(2 * span, 3), "max_step": span}
+    return {"sensor_range": _r(20 * span, 3), "max_step": span}   # 量程 ±10·span（与 y_range 默认一致），给得宽
 
 
 def scaffold(app_yaml: pathlib.Path, out: pathlib.Path) -> None:
@@ -335,7 +374,9 @@ def main(argv=None) -> int:
             print("\n".join(f"✗ {a.app}: {e}" for e in errs), file=sys.stderr)
             return 1
         a.o.parent.mkdir(parents=True, exist_ok=True)
-        a.o.write_text(gen_c(d), encoding="utf-8")
+        doc = yaml.safe_load(a.app.read_text(encoding="utf-8")) if a.app.is_file() else {}
+        st = ((doc or {}).get("link") or {}).get("step") or [None]
+        a.o.write_text(gen_c(d, step=st[0]), encoding="utf-8")
         return 0
     scaffold(a.app if a.app.is_file() else a.app / "app.yaml", a.out)
     return 0

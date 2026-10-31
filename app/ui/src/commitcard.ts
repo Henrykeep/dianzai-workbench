@@ -1,5 +1,5 @@
 // #88 git 提交确认卡（通用）：commit_confirm_request → 卡片「确认提交 / 取消」→ op commit_confirm；拒绝 / 超时 → commit_declined。字段名只在 fieldmap
-import { COMMIT_F, COMMIT_OP, COMMIT_DECL_F, NO_REASON_ZH } from "./fieldmap";
+import { COMMIT_F, COMMIT_OP, COMMIT_DECL_F, NO_REASON_ZH, COMMIT_REASON_KEYS, COMMIT_REASON_HOSTS, COMMIT_USER_F, USER_DECLINED_ZH } from "./fieldmap";
 export type CommitReq = { id: string; branch: string; files: { path: string; status: string }[]; message: string; messageZh: string };
 const s = (v: unknown) => typeof v === "string" ? v : "";
 export function toCommitReq(raw: any): CommitReq {
@@ -22,10 +22,15 @@ export function commitCardHtml(c: CommitReq, esc: (s: string) => string): string
 }
 // 点击 → op 参数
 export const commitOpArgs = (id: string, approve: boolean) => ({ op: COMMIT_OP.name, args: { [COMMIT_OP.id]: id, [COMMIT_OP.approve]: approve } });
+// #110：原因按 COMMIT_REASON_KEYS 顺序，在顶层 / data / error 里找第一个非空字符串
+export function declReason(raw: any): string {
+  for (const k of COMMIT_REASON_KEYS) for (const h of COMMIT_REASON_HOSTS) { const o = h ? raw?.[h] : raw; const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); }
+  return "";
+}
 // commit_declined → 原因 + 修复动作
 export function toDeclined(raw: any): { id: string; reason: string; fix: string } {
-  const r = raw?.[COMMIT_DECL_F.reason];
-  return { id: raw?.[COMMIT_F.id] != null ? String(raw[COMMIT_F.id]) : "", reason: typeof r === "string" && r.trim() ? r : NO_REASON_ZH, fix: s(raw?.[COMMIT_DECL_F.fix]) };
+  const r = declReason(raw);
+  return { id: raw?.[COMMIT_F.id] != null ? String(raw[COMMIT_F.id]) : "", reason: r || (raw?.[COMMIT_USER_F] ? USER_DECLINED_ZH : NO_REASON_ZH), fix: s(raw?.[COMMIT_DECL_F.fix]) || s(raw?.data?.[COMMIT_DECL_F.fix]) || s(raw?.error?.[COMMIT_DECL_F.fix]) };
 }
 // 挂到 DOM：点一下两个按钮都禁用，结果写在卡上
 export function mountCommitCard(el: HTMLElement, c: CommitReq, send: (op: string, args: any) => Promise<any>) {
