@@ -131,7 +131,14 @@ def sim_c(ss: dict, *, dt: float, sat: tuple[float, float], deadzone: float = 0.
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#if defined(__has_include)
+#if __has_include("dzctl.h")
 #include "dzctl.h"
+_Static_assert(DZCTL_HB_SENSOR_SAT == (1u << 18), "plant sim: sensor-sat bit");
+#endif
+#endif
+#define PLANT_HB_SENSOR_SAT (1u << 18)   /* = DZCTL_HB_SENSOR_SAT */
+__attribute__((weak)) void dzctl_set_flags(uint32_t mask, bool on);   /* 板子里有 dzctl 就报心跳；单独编对象时没有也行 */
 
 float sim_plant_step(float u);
 #define Y_LO {ylo:.9e}f   /* 被控量量程（plant.range / link.step sensor_range / 按对象量级的默认值） */
@@ -170,7 +177,7 @@ float sim_plant_step(float u)
     bool at = false;
     if (y >= Y_HI) {{ y = Y_HI; at = true; }}
     if (y <= Y_LO) {{ y = Y_LO; at = true; }}
-    dzctl_set_flags(DZCTL_HB_SENSOR_SAT, at);
+    if (dzctl_set_flags) dzctl_set_flags(PLANT_HB_SENSOR_SAT, at);
     return y + {float(noise_std):.9e}f * gauss();
 }}
 
@@ -189,8 +196,8 @@ def y_range(d: dict, step: dict | None = None) -> tuple[float, float]:
     if step and step.get("sensor_range"):
         h = 0.5 * float(step["sensor_range"])
         return y0 - h, y0 + h
-    span = 0.5 * float(step_limits(d)["sensor_range"])
-    return y0 - 10 * span, y0 + 10 * span
+    h = 0.5 * float(step_limits(d)["sensor_range"])   # = 10·span
+    return y0 - h, y0 + h
 
 
 def gen_c(d: dict, tag: str = "plant:", step: dict | None = None) -> str:
@@ -311,12 +318,12 @@ def static_gain(g) -> tuple[float, bool]:
 
 
 def step_limits(d: dict) -> dict:
-    """阶跃通道只写物理上限（gen_link 只要求这两项）：sensor_range = ±执行器满幅下对象能走到的幅度
-    （积分对象取 1 s 行程），max_step = 该幅度。阶跃幅度 range / 回位容差 abs_tol 由后端探测阶跃实测，不写。"""
+    """阶跃通道只写物理上限（gen_link 只要求这两项）：span = 执行器满幅下对象能走到的幅度（积分对象取 1 s 行程），
+    sensor_range = 20·span（±10·span），max_step = span。阶跃幅度 range / 回位容差 abs_tol 由后端探测阶跃实测，不写。"""
     k, _ = static_gain(continuous(d))
     span = abs(k) * max(abs(x) for x in sat_limits(d))
     span = _r(max(span, 1e-3), 3)
-    return {"sensor_range": _r(2 * span, 3), "max_step": span}
+    return {"sensor_range": _r(20 * span, 3), "max_step": span}   # 量程 ±10·span（与 y_range 默认一致），给得宽
 
 
 def scaffold(app_yaml: pathlib.Path, out: pathlib.Path) -> None:
