@@ -361,6 +361,7 @@ def parse_json_call(content: str, names: set[str]) -> list[dict]:
 # ------------------------------------------------------------------ 客户端
 class OpenAICompat:
     RETRY_CODES = (429, 500, 502, 503, 504)
+    RETRIES_5XX = 4                                   # 502/503/504 的重试上限（退避 0.8→1.6→3.2→6.4 s，约 12 s 后给出明确错误）
 
     def __init__(self, cfg: dict | None = None, timeout: float = 60, on_event: Callable[[dict], None] | None = None,
                  retries: int = 2, stream: bool = True, backoff: float = 0.8):
@@ -389,13 +390,22 @@ class OpenAICompat:
                     self.json_mode = True
                     self.emit({"type": "agent_toolmode", "mode": "json", "model": self.name})
                     continue
-                if attempt >= self.retries or not getattr(e, "retry", False):
+                code = getattr(e, "code", 0) or 0
+                # 503/502/504（服务商暂时没有可用节点，如 r8 llm_503 “No provider … available”）多给两次、退避更长
+                limit = max(self.retries, self.RETRIES_5XX) if self.retries and code in (502, 503, 504) else self.retries
+                if attempt >= limit or not getattr(e, "retry", False):
+                    if attempt and getattr(e, "retry", False):
+                        e.message += f"（已自动重试 {attempt} 次仍失败）"
                     raise
                 # 限流（429）按服务给的 Retry-After 等；没给就按“每分钟 N 次”这类窗口等够几秒，不再 0.8 s 就重撞
-                wait = getattr(e, "retry_after", None) or (8.0 * (attempt + 1) if getattr(e, "code", 0) == 429 else self.backoff * (2 ** attempt))
+                wait = getattr(e, "retry_after", None) or (8.0 * (attempt + 1) if code == 429 else self.backoff * (2 ** attempt))
                 wait = min(float(wait), 30.0)
                 attempt += 1
-                self.emit({"type": "agent_retry", "attempt": attempt, "wait_s": wait, "why": e.message[:120]})
+                what = (f"模型服务暂时不可用（HTTP {code}）" if code >= 500 else "模型服务限流（HTTP 429）" if code == 429
+                        else "连不上模型服务")
+                self.emit({"type": "agent_retry", "attempt": attempt, "max": limit, "wait_s": wait, "code": code or None,
+                           "why": e.message[:120],
+                           "message_zh": f"{what}，{wait:g} 秒后自动重试（第 {attempt}/{limit} 次），不用重发"})
                 time.sleep(wait)
         if tools and not m.get("tool_calls") and (calls := parse_json_call(m.get("content") or "", {t["name"] for t in tools})):
             m = {"role": "assistant", "content": "", "tool_calls": calls}      # 小模型常把调用写进正文：也认

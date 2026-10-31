@@ -88,3 +88,9 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - 心跳尾部（0.6.0 起，偏移 16–27，共 28 字节）`u32 cause, u32 t_ms, f32 value`：`t_ms` 是锁存时的板上时刻 → `latched` 事件的 `board_t_ms`（`status.estop_cause.board_t_ms` 同值）。
 - 32 字节心跳在 28 处再带 `u32 clear_t_ms` → `cleared` 事件的 `board_t_ms`；28 字节心跳的 cleared 不带 `board_t_ms`。按长度解析（40+ 字节的 28.. 是自检，不当 clear_t_ms）。
 - 连上时板子已急停（bit10 一开始就是 1，或按端口/身份恢复了锁存、没有上升沿）：第一帧带原因的心跳也推一次 `latched`（带 `cause` / `cause_zh` / `board_t_ms`），每次连接只推一次。
+
+## 模型重试 `type: "agent_retry"`（r8 llm_503）
+
+模型服务出可重试错误（429 / 5xx / 网络）时，每次自动重试前推一条：`{attempt, max, wait_s, code, why, message_zh}`。
+`message_zh` 直接给用户看（例：「模型服务暂时不可用（HTTP 503），1.6 秒后自动重试（第 2/4 次），不用重发」）；`why` 是服务原话（已截断、打码）。
+502/503/504 最多重试 `RETRIES_5XX = 4` 次（退避 0.8→1.6→3.2→6.4 s），其余按 `retries`（默认 2）；用尽后照常推 `agent_error`（`message` 末尾写明“已自动重试 N 次仍失败”）+ `agent_unreachable`，不会无声挂住。
