@@ -7,3 +7,4 @@ pypdf>=4  # 读题 PDF（没有 pdftotext 时）
 pypinyin>=0.51  # 中文项目名转拼音目录名（MIT，steptools.slug）
 pip-licenses>=5  # make check 依赖许可扫描（tools/check_py_licenses.py）
 ruff==0.8.6  # 开发：make check 里的重复定义检查（F811，MIT）
+control>=0.10  # 随机被控对象生成器 tools/randplant.py（python-control，BSD-3-Clause；带 numpy/scipy，BSD）
