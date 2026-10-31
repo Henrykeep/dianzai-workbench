@@ -10,4 +10,3 @@ ruff==0.8.6  # 开发：make check 里的重复定义检查（F811，MIT）
 control>=0.10  # python-control（BSD-3）：#78/#82 模型仿真、PID 初值、随机对象 rss/pade
 sysidentpy>=0.9  # BSD-3：#82 从阶跃录波辨识 ARX 模型
 numpy>=1.26  # BSD-3
-control>=0.10  # 随机被控对象生成器 tools/randplant.py（python-control，BSD-3-Clause；带 numpy/scipy，BSD）
