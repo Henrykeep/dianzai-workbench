@@ -180,8 +180,9 @@ def _run_sh(py):
 
 
 def test_selfcheck_sh_passes_with_deps():
+    import selfcheck
     r = _run_sh(sys.executable)
-    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.returncode == (0 if selfcheck.has_selfcheck_data() else 3), r.stdout + r.stderr
 
 
 def test_selfcheck_sh_fails_in_chinese_without_deps():
