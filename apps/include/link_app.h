@@ -94,13 +94,20 @@ static inline void link_app_send(const dzframe_t *f)
     if (n) (void)link_write(out, (uint16_t)n);   /* EBUSY 时丢这一帧，下一帧补上 */
 }
 
+static void link_app_on_target(uint8_t sp_idx, float v, void *ctx)
+{
+    link_app_t *L = (link_app_t *)ctx;
+    L->sp[sp_idx] = v; L->sp_ms = L->now; L->estop = false;   /* 阶跃 = 显式新指令 */
+}
+
 /** 处理收到的帧、看门狗和心跳；到了遥测周期返回 true。 */
 static inline bool link_app_poll(link_app_t *L, uint32_t now)
 {
     uint8_t buf[32]; uint16_t got = 0;
-    dzframe_t f, ack, rej;
-    uint8_t sch; float stg; int sr; bool has_rej;
+    dzframe_t f, ack;
     dzctl_table_t t = link_param_table(&g_link_params);
+    link_step_io_t sio = { .latched = L->latched, .offline = !dzrt_needs_host(&L->rt), .strict_params = true, .now = now,
+                           .tbl = &t, .seq = &L->seq, .send = link_app_send, .on_target = link_app_on_target, .on_params = L->on_params, .ctx = L };
     L->now = now;
     if (link_read(buf, sizeof buf, &got) == DZ_OK) {
         for (uint16_t i = 0; i < got; i++) {
@@ -115,14 +122,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
                     link_app_send(&ack);
                 }
             }
-            else if ((sr = link_step_rx(&f, L->latched, !dzrt_needs_host(&L->rt), now, &t, &L->seq, link_app_send, &sch, &stg)) != 0) {
-                if (sr == 2) { L->sp[g_link_step[sch].sp_idx] = stg; L->sp_ms = now; L->estop = false; }   /* 阶跃 = 显式新指令 */
-            }
-            else if (dzctl_handle_checked(&t, &f, L->latched || link_step_busy(), &ack, &rej, &has_rej)) {   /* 0.13.0 越界/类型/状态/步长 → 拒绝 */
-                if (!has_rej && L->on_params) L->on_params();
-                link_app_send(&ack);
-                if (has_rej) link_app_send(&rej);
-            }
+            else if (link_step_dispatch(&f, &sio)) { }   /* 通用：0x7B 阶跃 + PARAM_SET 校验/拒绝（link_step.h） */
             else if (dzrt_cmd(&L->rt, &f)) { }
             else if (f.kind == DZF_DATA && f.id == 1u && !dzrt_needs_host(&L->rt)) { }   /* 脱机：不收上位机设定值 */
             else if (f.kind == DZF_DATA && f.id == 1u && L->latched) { }   /* 锁存中：设定值整帧丢弃（急停后仍在路上的阶跃/扫频帧），'R' 后要重新给 */

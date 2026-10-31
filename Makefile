@@ -94,7 +94,14 @@ rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(
 # 工程目录下的 build/（工作台给 Keil/IDE 导出的 build/gen/ 生成物，#52）不参与编译：生成物以 $(OUT)/projgen 为准，否则重复定义
 APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f)$(findstring $(APP_DIR)/build/,$f),,$f)))
 SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
-APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC) $(LINK_SRC)
+APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC) $(LINK_SRC) $(PLANT_SRC)
+# 通用对象板（#89）：host-sim 上，应用 app.yaml 有 plant: 且没有自带 sim_setup.c → 由声明生成对象（tools/plantmodel.py）
+PLANT_YML := $(if $(filter host-sim,$(BOARD_PORT)),$(if $(SIM_SETUP),,$(shell grep -l '^plant:' $(APP_DIR)/app.yaml 2>/dev/null)))
+ifneq ($(PLANT_YML),)
+PLANT_SRC := $(OUT)/plantgen/plant_sim.c
+$(PLANT_SRC): $(PLANT_YML) tools/plantmodel.py schema/plant.schema.json
+	$(PY) tools/plantmodel.py gen $(PLANT_YML) -o $@
+endif
 PORT_DIR = ports/$(BOARD_PORT)
 WARN := -Wall -Wextra -Werror -Wshadow -Wdouble-promotion -Wno-unused-parameter
 
@@ -251,6 +258,8 @@ test:
 	tools/test_ball_step7b.sh   # #67 2026H_ball：真实 0x7B 阶跃路径、ball_sp_px 写入、角度/状态（三个 pos_k 指标不同）
 	tools/test_estop_sp.sh   # 急停 / 'R' 后设定值归零、不自动恢复（60 相位 × 5 应用）
 	python3 tools/test_step_result.py   # #38 阶跃 step_result 对拍 / param_reject / 心跳 bit17（5 应用）
+	$(PY) tests/plant/test_plant.py   # #89 plant: 声明 → 通用对象板：schema 正反例、随机声明/热对象/不稳定/二阶 闭环跑通
+	$(PY) tests/randplant/test_randplant.py   # 随机对象生成器冒烟：可复现、通用链路全合规、改 kp 指标变（RANDPLANT_SEEDS）
 	@# 桌面工作台侧车：缺 pytest/pyserial/websockets 时跳过（不阻塞固件测试），见 app/README.md
 	@if $(PY) -c "import pytest, websockets" 2>/dev/null; then \
 	  $(PY) -m pytest -q -rs -W error::pytest.PytestUnhandledThreadExceptionWarning app/sidecar/tests; else echo "skip app/sidecar tests (pip install -r app/sidecar/requirements.txt)"; fi
@@ -285,6 +294,8 @@ check:
 	$(PY) tools/validate_board.py boards/*/board.yaml
 	$(PY) tools/test_port_policy.py
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
+	$(PY) tools/check_generic.py --selftest
+	$(PY) tools/check_generic.py   # 核心代码不认题号/例子名（sidecar 只报告）
 	$(PY) tools/check_entrypoints.py --selftest
 	$(PY) tools/check_entrypoints.py
 	$(PY) tools/check_ascii_paths.py --selftest
