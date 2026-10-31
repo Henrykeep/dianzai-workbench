@@ -16,7 +16,8 @@ export type IterState =
   | { phase: "done"; limits: Limits; result: Stopped };
 const mmss = (s: number) => { const v = Math.max(0, Math.ceil(s)); return `${Math.floor(v / 60)}:${String(v % 60).padStart(2, "0")}`; };
 export const budgetText = (l: Limits) => `最多 ${l.rounds} 轮 / ${l.time_s} s`;
-export const runText = (iter: number, l: Limits, elapsedS: number) => `第 ${Math.min(Math.max(iter, 1), l.rounds)}/${l.rounds} 轮 · 剩余 ${mmss(l.time_s - elapsedS)}`;
+export const runText = (iter: number, l: Limits, elapsedS: number) => `第 ${Math.min(Math.max(iter, 1), l.rounds)}/${l.rounds} 轮，预算还剩 ${Math.max(0, Math.ceil(l.time_s - elapsedS))} s`;
+void mmss;
 export const REASON_ZH: Record<string, string> = {
   autopilot: "自动调参结束", pass: "已连续达标", budget_time: "时间预算用完", budget_rounds: "轮数用完", estop: "急停", stopped: "已手动停止",
   invalid: "连续 3 轮无效", no_improve: "连续 3 轮没有改进", unstable: "出现发散", blocked: "各方向都被挡住", error: "出错",

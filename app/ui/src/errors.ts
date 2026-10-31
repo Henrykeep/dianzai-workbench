@@ -18,3 +18,12 @@ export function humanize(raw: string): Human | null {
 }
 export const humanHtml = (h: Human, esc: (s: string) => string) =>
   `<b>${esc(h.what)}</b> · 原因：${esc(h.why)} · 处理：${esc(h.fix)}<details class="raw"><summary>详情</summary><pre class="mono">${esc(h.raw)}</pre></details>`;
+
+// batch-1：每条报错都是三段（发生了什么 / 原因 / 处理），原始代码收进「详情」
+export function errParts(er: { code?: string; message: string; fix?: string; why?: string; cause_zh?: string }): Human {
+  const h = !er.fix ? humanize(`${er.code ?? ""} ${er.message}`) : null;
+  if (h) return h;
+  return { what: er.message, why: er.why || er.cause_zh || "见详情", fix: er.fix || "稍后重试；仍不行展开详情", raw: er.code || er.message };
+}
+export const partsHtml = (h: Human, esc: (s: string) => string, btn = "") =>
+  `<b>${esc(h.what)}</b><span>原因：${esc(h.why)}</span><span>处理：${esc(h.fix)}</span>${btn}<details class="raw"><summary>详情</summary><pre class="mono">${esc(h.raw)}</pre></details>`;
