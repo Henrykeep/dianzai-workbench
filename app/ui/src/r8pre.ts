@@ -40,3 +40,5 @@ export function latchCauseText(c: { cause_zh?: string | null; message_zh?: strin
   return "原因未知（重连后未上报）";
 }
 export const latchHead = (c: Parameters<typeof latchCauseText>[0]) => `急停已锁存：${latchCauseText(c)}`;
+// 顶栏「解除」(#cmd-r) 只在急停锁存时出现；解除后隐藏
+export const clearBtnHidden = (latched: boolean) => !latched;

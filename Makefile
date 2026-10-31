@@ -1,4 +1,4 @@
-# 电赛工作台 —— 顶层构建
+# 芯台 —— 顶层构建
 #
 #   make                      # = make BOARD=host-sim APP=motor_speed_demo，在电脑上编译
 #   make run                  # 编译并运行仿真（仅 host-sim）
@@ -272,6 +272,8 @@ check:
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
 	$(PY) tools/check_entrypoints.py --selftest
 	$(PY) tools/check_entrypoints.py
+	$(PY) tools/check_ascii_paths.py --selftest
+	$(PY) tools/check_ascii_paths.py
 	$(PY) tools/check_ui_layout.py --selftest
 	$(PY) tools/check_ui_layout.py
 	$(PY) tools/check_copy.py --selftest

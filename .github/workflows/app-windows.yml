@@ -1,4 +1,4 @@
-# 电赛工作台 Windows 安装包：一个 NSIS 安装包（装到 %LOCALAPPDATA%，含 repo\ 工程仓库 + 编好的 Windows 仿真板 + PDF 读题）
+# 芯台 Windows 安装包：一个 NSIS 安装包（装到 %LOCALAPPDATA%，含 repo\ 工程仓库 + 编好的 Windows 仿真板 + PDF 读题）
 # 产物：artifact dzbench-windows；main / 手动触发时同时更新草稿预发布 win-latest（草稿不建 tag）
 name: app-windows
 on:
@@ -99,7 +99,7 @@ jobs:
         shell: bash
         working-directory: app/src-tauri
         run: |
-          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../packaging/使用说明.txt":"使用说明.txt"}}}' > ci-resources.json
+          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
           npx --yes @tauri-apps/cli@2 build --config ci-resources.json
           ls -la target/release/bundle/nsis/
       - uses: actions/upload-artifact@v4
@@ -117,5 +117,5 @@ jobs:
             gh release edit win-latest --draft --prerelease --notes "$notes"
             gh release upload win-latest "$f" --clobber
           else
-            gh release create win-latest "$f" --draft --prerelease --target "$GITHUB_SHA" --title "电赛工作台 Windows 测试版" --notes "$notes"
+            gh release create win-latest "$f" --draft --prerelease --target "$GITHUB_SHA" --title "芯台 Windows 测试版" --notes "$notes"
           fi

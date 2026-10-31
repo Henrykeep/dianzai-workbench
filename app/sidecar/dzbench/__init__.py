@@ -1,4 +1,4 @@
-"""dzbench —— 电赛工作台桌面端 sidecar：串口/仿真板 ↔ dzframe/dzctl ↔ WebSocket ↔ UI。
+"""dzbench —— 芯台桌面端 sidecar：串口/仿真板 ↔ dzframe/dzctl ↔ WebSocket ↔ UI。
 
 模块分工（每个文件只管一件事）：
   transport  串口（pyserial）/ 仿真板（host-sim --stream 子进程）/ 回放
