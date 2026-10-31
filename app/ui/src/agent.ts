@@ -11,7 +11,6 @@ import { TurnGate, Watch, timeoutCard, errorCard, Card } from "./agentwatch";
 import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 import { modelLister, type El } from "./llmcfg";
 import { toCommitReq, commitCardHtml, mountCommitCard, showDeclined, commitResult, committedHtml } from "./commitcard";
-import { errParts, partsHtml } from "./errors";
 import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, writeScopeNote } from "./fieldmap";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
@@ -184,8 +183,8 @@ export function initAgent(call: Call) {
     if (r.state === "committed") { el.classList.add("done-ok"); res.innerHTML = committedHtml(r.commit, esc); return; }
     if (r.state === "rejected") return showDeclined(el, r.decl!, esc, a => resolveFix(a), goFix);
     el.classList.add("failed");   // 提交本身失败：三段（发生了什么 / 原因 / 处理）+ 修复按钮
-    const h = errParts({ code: m?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed, message: "git 提交失败", message_zh: "git 提交失败", reason_zh: r.decl!.reason } as any);
-    showDeclined(el, r.decl!, esc, a => resolveFix(a), goFix, `<div class="cc-fail">${partsHtml(h, esc)}</div>`);
+    const pre = `<div class="cc-fail"><b>git 提交失败</b><span>原因：${esc(r.decl!.reason)}</span><span>处理：文件仍在工作区；${r.decl!.fix ? "点击下方按钮处理" : "检查提交钩子后再请 Agent 发起提交"}</span></div>`;
+    showDeclined(el, r.decl!, esc, a => resolveFix(a), goFix, pre);
     el.querySelector(".cc-decl")?.remove();
   }
   function onCommitDeclined(m: any) { onCommitResult({ ...m, [COMMIT_DECL_F.code]: m?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.declined }); }

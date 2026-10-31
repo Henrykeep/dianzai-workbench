@@ -240,7 +240,7 @@ function renderPorts(keep = true) {
   // 排序：可能是板子的 USB 串口 → 仿真板 → 其余（板载 ttyS0/COM1 放最后）
   const rank = (p: { kind: string; likely?: boolean }) => p.likely ? 0 : p.kind === "sim" ? 1 : 2;
   S.ports = [...S.ports].sort((a, b) => rank(a) - rank(b));
-  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}" title="${esc(p.port)}">${esc(p.port === S.status?.port && S.status?.connected ? portOption(p.port, declared()) : p.kind === "sim" ? boardName(p.port) : `${boardName(p.port)} · ${p.desc}`)}</option>`).join("")
+  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}" title="${esc(p.port)}">${esc(p.port === S.status?.port && S.status?.connected ? portOption(p.port, declared()) : p.kind === "sim" ? boardName(p.port, declared()) : `${boardName(p.port)} · ${p.desc}`)}</option>`).join("")
     || `<option value="">没有找到串口 — 插上 USB 转串口</option>`;
   // 零配置：USB 串口优先；没有就选仿真板（板载 ttyS0/COM1 几乎不会是你的板子，不默认选）
   const last = localStorage.getItem("dz-port") ?? "";   // 记住上次连接的端口
@@ -1028,7 +1028,7 @@ const refreshProgress = async () => { const p: any = await fetchProgress(op => l
 refreshProgressRef = refreshProgress;
 // 切页时先用上一份进度同步重画页头（不等接口往返），避免新页短暂显示上一页的页头
 window.addEventListener("dz-step", () => { if (lastProgress) renderProgress(lastProgress, goStep); void refreshProgress(); });
-initPjAsk(call, goStep);
+initPjAsk(call, goStep, () => S.ports, (op, a) => link.rpc(op, a ?? {}));   // 试例题时 bad_example 不弹提示
 setInterval(() => void refreshProgress(), 1500);
 initSymptoms(s => goStep(s as Parameters<typeof goStep>[0]));
 initProjFlow(call, (t, k) => toast(t, k ?? "info", 6000));

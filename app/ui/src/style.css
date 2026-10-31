@@ -1147,3 +1147,9 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .card.commit.declined{border-color:var(--warn-t)}
 .card.commit .act .cc-res{display:inline-flex;gap:8px;align-items:center}
 #life-rows[hidden]{display:none!important}
+
+/* #88 提交卡结果区：独占一行，三段报错不挤成窄列 */
+.card.commit .act{flex-wrap:wrap}
+.card.commit .cc-res{flex-basis:100%;min-width:0}
+.card.commit .cc-fail{display:block;width:100%}
+.card.commit .cc-fail{display:flex;flex-direction:column;gap:4px}

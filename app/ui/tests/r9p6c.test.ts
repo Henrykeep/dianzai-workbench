@@ -111,3 +111,16 @@ import { commitResult, committedHtml } from "../src/commitcard";
   assert.match(yml, /ops: \[[^\]]*commit_confirm[^\]]*\]/, "commit_confirm 已登记到界面动作");
   console.log("r9p6c status ok");
 }
+// #80 去写死：例题候选只来自后端端口列表，板名只来自声明
+import { exampleCandidates, simBoardZh } from "../src/examples";
+import { forkFirstExample } from "../src/pjask";
+{
+  assert.deepEqual(exampleCandidates([{ port: "COM3", kind: "serial" }, { port: "sim:aa" }, { port: "sim:aa+hw" }, { port: "sim:bb" }]), ["aa", "bb"]);
+  assert.equal(simBoardZh(""), "仿真板"); assert.equal(simBoardZh(" 风扇 "), "风扇");
+  const src = readFileSync("src/examples.ts", "utf8") + readFileSync("src/pjask.ts", "utf8");
+  assert.ok(!/\d{4}[A-Z]_|motor_|ball/.test(src), "不写死例题名");
+  const tried: string[] = [];
+  forkFirstExample(async (_op, a) => { tried.push(a.example); if (a.example === "aa") throw { code: "bad_example" }; return { message_zh: "已基于 bb 新建 p1" }; }, ["aa", "bb"])
+    .then(m => { assert.deepEqual(tried, ["aa", "bb"]); assert.equal(m, "已基于 bb 新建 p1"); console.log("r9p6c #80 ok"); });
+  forkFirstExample(async () => { throw { code: "bad_example" }; }, []).then(m => assert.match(m, /没有找到内置示例/));
+}
