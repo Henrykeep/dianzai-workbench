@@ -31,4 +31,6 @@ eq(v.gaps.includes("各项指标均已达标（按默认 2% 判定，题目误�
 eq(v.reason.endsWith("；按默认 2% 判定，题目误差带待标定"), true, "pass_basis on reason");
 eq(cardView({ reason: "pass", best: { iter: 0, params: { kp: 1 }, pass: { all: true } } }).gaps, ["各项指标均已达标"], "basis optional");
 eq(passBasis({ pass_basis: "a" }), "a", "basis adapter");
+const M3 = new IterModel(true); M3.onEvent(card(mis), 0);
+eq([M3.s.phase, M3.applyId(), cardView((M3.s as any).result).params], ["done", 7, [["kp", "1"]]], "card without iterate.stopped (tune autopilot)");
 console.log("✓ r9 llm_retry / ss_err / pass_basis");

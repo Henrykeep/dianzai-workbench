@@ -65,6 +65,8 @@ export class IterModel {
     if (m?.type === "iterate.round") { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; (this.s as any).iter = Math.max((this.s as any).iter, +m.iter || 0); return true; }
     if (m?.type === "iterate.stopped") { const id = this.s.phase === "done" ? this.s.result.best_card : undefined; const x = this.extra; this.s = { phase: "done", limits: this.s.limits, result: { ...m, best_card: m.best_card ?? id ?? null, ss_err: x.ss_err ?? null, pass_basis: passBasis(m) || x.pass_basis || "" } }; return true; }
     if (m?.type === "agent_action" && m.tool === APPLY_TOOL) { this.cardId = m.id; this.extra = { ss_err: toSsErr(m), pass_basis: passBasis(m) };
+      // 走的是 tune 自动调参（tune_round，无 iterate.stopped）时，卡本身就是结果：用卡参数合成结果，调参页照样出这一张
+      if (this.s.phase !== "done") { const a = m.args ?? {}; this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", best: { iter: +a.iter || 0, params: a.params ?? {}, params_hash: a.params_hash }, best_card: m.id, ss_err: this.extra.ss_err, pass_basis: this.extra.pass_basis } }; return true; }
       if (this.s.phase === "done") { const r = this.s.result; r.best_card = m.id; r.ss_err = this.extra.ss_err; r.pass_basis = r.pass_basis || this.extra.pass_basis; } return true; }
     return false;
   }
