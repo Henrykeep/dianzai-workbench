@@ -76,16 +76,23 @@ def search_dirs() -> list[pathlib.Path]:
 
 
 def find_by_hash(h: int) -> Schema | None:
+    """同一目录层级里可能有多份同 hash 的表（同一应用编给多块板；hash 不含握手字段如 wd_timeout_ms）。
+    以前取 rglob 遇到的第一份 = 文件系统顺序，可能拿到别的板、旧固件生成的表 → threshold_ms 读错。
+    现在：按搜索目录优先级，同一目录内取最新生成（mtime 最大）的那份。"""
     for d in search_dirs():
         if not d.is_dir():
             continue
+        best = None
         for f in d.rglob("link_schema.json"):
             try:
                 s = Schema.load(f)
+                mt = f.stat().st_mtime
             except (ValueError, KeyError, OSError):
                 continue
-            if s.hash == h:
-                return s
+            if s.hash == h and (best is None or mt > best[0]):
+                best = (mt, s)
+        if best:
+            return best[1]
     return None
 
 

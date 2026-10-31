@@ -70,3 +70,18 @@ def test_repo_roles_json_matches_gen_link_when_present():
     spec = importlib.util.spec_from_file_location("gl_t2", root / "tools" / "gen_link.py"); gl = importlib.util.module_from_spec(spec); spec.loader.exec_module(gl)
     if f.exists():
         assert json.loads(f.read_text("utf-8")) == list(gl.ROLES)
+
+
+def test_find_by_hash_prefers_newest_of_same_hash(tmp_path, monkeypatch):
+    """flaky 根因：同一应用编给多块板 → 同 hash 多份 link_schema.json（hash 不含 wd_timeout_ms）；
+    以前按文件系统顺序取第一份，拿到旧固件的表 → threshold 读成 null，测试按 1000 ms 等，板子 1500 ms 才锁存。"""
+    import json, os
+    from dzbench import schema as SC
+    base = {"hash": 0x1234, "telemetry": {"id": 2, "fields": [{"name": "y", "type": "f32"}]}, "params": []}
+    old = tmp_path / "a-old-board" / "app" / "linkgen" / "link_schema.json"
+    new = tmp_path / "b-host-sim" / "app" / "linkgen" / "link_schema.json"
+    for f, d in ((old, base), (new, dict(base, wd_timeout_ms=2300))):
+        f.parent.mkdir(parents=True); f.write_text(json.dumps(d), "utf-8")
+    os.utime(old, (1e9, 1e9))
+    monkeypatch.setattr(SC, "search_dirs", lambda: [tmp_path])
+    assert SC.find_by_hash(0x1234).wd_timeout_ms == 2300
