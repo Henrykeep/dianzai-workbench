@@ -93,7 +93,7 @@ const saysDiverged = (r: Stopped) => { const x: any = r; return x[STOP_F.diverge
 export function stopReasonZh(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): string {
   const x: any = r, why = STOP_F.why.map(k => typeof x[k] === "string" ? x[k].trim() : "").find(Boolean) ?? "";
   if ((STOP_F.abortCodes as readonly string[]).includes(r.reason)) return `${ABORT_ZH}${why ? `（${why}）` : ""}`;
-  if (r.reason === "invalid") {
+  if ((STOP_F.invalidCodes as readonly string[]).includes(r.reason)) {
     const run = x[LEDGER_ROUND_F.runId] != null ? String(x[LEDGER_ROUND_F.runId]) : LEDGER.run();
     let k = Number.isFinite(+x[STOP_F.invalidN]) && x[STOP_F.invalidN] != null ? Math.round(+x[STOP_F.invalidN]) : 0;
     if (!k) for (const q of [...inRun(rs, run)].reverse()) { if (q.valid) break; k++; }
@@ -107,7 +107,7 @@ export function cardView(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()):
   return {
     compare: r.compare && !r.compare.unchanged ? compareRaw(r.compare) : b && !zero ? compareRows(r.base, b.metrics) : [],
     title: part && b ? (amp || DOWNSCALE_ZH) : !b ? (pk.unstable ? NO_STABLE_ZH : NO_ROUND_ZH) : r.compare?.unchanged || zero ? (r.compare?.note && (!/达标/.test(r.compare.note) || verdictLine(r.verdict, e, "").v === "pass") ? r.compare.note : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
-    reason: `停止原因：${stopReasonZh(r, rs)}${r.message_zh && !(STOP_F.abortCodes as readonly string[]).includes(r.reason) ? `（${verdictLine(r.verdict, e, "").v === "pass" && !part ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
+    reason: `停止原因：${stopReasonZh(r, rs)}${r.message_zh && !part && !(STOP_F.abortCodes as readonly string[]).includes(r.reason) ? `（${verdictLine(r.verdict, e, "").v === "pass" && !part ? r.message_zh : r.message_zh.replace(/达标/g, "满足迭代条件")}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
     gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null || b.pass)] : [],
     verdict: verdictLine(r.verdict, e, basis),

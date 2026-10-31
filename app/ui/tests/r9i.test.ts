@@ -4,7 +4,7 @@ import { estopLine } from "../src/estop";
 import { toVerdict, ampLine } from "../src/fieldmap";
 import { cardView, resultCardHtml, stopReasonZh } from "../src/iterui";
 import { fromRoundEvent } from "../src/ledgerbus";
-import { roleCardHtml, roleLeft, roleReply, collectRoles, toRoleReq } from "../src/roles";
+import { roleCardHtml, roleLeft, roleReply, collectRoles, toRoleReq, roleCellHtml as rc } from "../src/roles";
 import { commitCardHtml, toCommitReq } from "../src/commitcard";
 import { statusWords } from "../src/r9p6";
 const css = readFileSync("src/style.css", "utf8"), tok = readFileSync("src/tokens.css", "utf8");
@@ -60,3 +60,15 @@ for (const x of [{}, { reason: "heartbeat" }, { reason: "manual" }, { reason: "z
 // sensor_sat 实时芯片
 assert.deepEqual(statusWords({ sensor_sat: true }).flags, ["传感器饱和"]); assert.deepEqual(statusWords({ sensor_sat: false }).flags, []);
 console.log("✓ r9i：#130 #131 #132 #133 #134 #135 + sensor_sat");
+// #135 用户已选的角色在参数列表重画后仍保留（优先于建议值）
+{
+  assert.match(rc("b", rq, undefined, { b: "I" }), /value="I" selected/);
+  assert.match(rc("a", rq, undefined, { a: "D" }), /value="D" selected/);
+  assert.match(rc("c", rq), /value="" selected disabled/);
+  assert.match(readFileSync("src/main.ts", "utf8"), /paramRole\], ROLE_PICKS\)/); }
+// #134 降幅卡：后端 message_zh 是「初值已是最好一组」也不进原因 / 详情
+{ const h2 = resultCardHtml({ ...r, message_zh: "初值已是最好一组" }, s => s, { canApply: true, applyReady: true });
+  assert.ok(!h2.includes("初值已是最好一组") && !h2.includes("最好一组")); }
+// #131 后端停止码 invalid_streak 同 invalid：用真实计数，不落到「其他（…）」
+assert.equal(stopReasonZh({ reason: "invalid_streak", invalid_streak: 2 } as any, []), "连续 2 轮无效");
+assert.equal(stopReasonZh({ reason: "invalid_streak", invalid_streak: 1 } as any, []), "1 轮无效");

@@ -16,9 +16,9 @@ export function toRoleReq(m: any): RoleReq | null {
 }
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as any)[c]);
 // 参数行里的角色位：待确认 → 下拉（建议值预选 + 「建议，待确认」）；否则握手给了 role → 只读
-export function roleCellHtml(name: string, req: RoleReq | null, hsRole?: unknown): string {
+export function roleCellHtml(name: string, req: RoleReq | null, hsRole?: unknown, picked: Record<string, string> = {}): string {
   if (req?.missing.includes(name)) {
-    const sg = req.suggested[name];
+    const sg = picked[name] || req.suggested[name];   // 已选的优先：参数列表重画不丢用户的选择
     const opts = `<option value=""${sg ? "" : " selected"} disabled>选角色</option>` + ROLE_CODES.map(([c, zh]) => `<option value="${c}"${c === sg ? " selected" : ""}>${zh}</option>`).join("");
     return `<span class="role-pick"><select class="role-sel" data-role-n="${esc(name)}" aria-label="${esc(name)} 角色">${opts}</select>${sg ? `<span class="role-sg">${ROLE_SUGGEST_ZH}</span>` : ""}${sg === "LIM" ? `<span class="role-lim">${ROLE_LIM_ZH}</span>` : ""}</span>`;
   }

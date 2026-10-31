@@ -180,7 +180,7 @@ export const pickStr = (o: any, keys: readonly string[]): string => { for (const
 // #101 r9f：台账一轮（iterate.round 事件 / 阶跃实验收尾）——暂定字段名，后端定稿改这里
 export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", kind: "kind", manual: "manual_step", diverged: "diverged", sat: "sensor_sat", aborted: "aborted", status: "status", why: "reason_zh" } as const;
 // #131 结果卡停止原因：无效轮数用后端 invalid_streak（暂定名），没有就数台账；发散只认 diverged / sensor_sat / 后端 reason；中止带后端原因
-export const STOP_F = { invalidN: "invalid_streak", diverged: "diverged", sat: "sensor_sat", why: ["reason_zh", "message_zh"], abortCodes: ["aborted", "stopped", "abort"], divCodes: ["diverged", "unstable"] } as const;
+export const STOP_F = { invalidN: "invalid_streak", diverged: "diverged", sat: "sensor_sat", why: ["reason_zh", "message_zh"], abortCodes: ["aborted", "stopped", "abort"], invalidCodes: ["invalid", "invalid_streak"], divCodes: ["diverged", "unstable"] } as const;
 export const ABORT_ZH = "中止", NO_ROUND_ZH = "没有可用的一轮";
 
 // #110 r9f：拒绝 / 失败原因按序找：reason_zh → message_zh → detail（顶层、data、error 里都找）——暂定，后端定稿改这里
