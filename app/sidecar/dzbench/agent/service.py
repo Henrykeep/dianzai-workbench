@@ -7,7 +7,6 @@ import os
 import re
 import pathlib
 import json
-import uuid
 import math
 import struct
 import time
