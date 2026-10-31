@@ -5,7 +5,7 @@ third_party/vendored/pid_autotune/pid_atune.py（见 SOURCE.md）。
 再交给 TuneGuard / search.optimize 细调。比开环阶跃辨识（identify.py）更适合积分型/不稳定前的对象（转速、温度、平衡车内环）。
 - 本文件只做：在 FOPDT 仿真对象上跑完整继电实验（relay_sim），以及把任意 step(u)->y 的对象接进来（relay_run）。
 - 实机：继电实验会让对象持续振荡，必须由调用方限幅、看门狗，并走提议确认；这里不碰硬件。
-  只对稳定对象（电机速度环、温控）；钢珠、平衡车须在已闭合的外环下做，调用方先过 agent.experiment.require_open_loop。
+  只对稳定对象（电机速度环、温控）；不稳定/积分对象须在已闭合的外环下做，调用方先过 agent.experiment.require_open_loop。
 - 实板/仿真板：固件 pid 1.2.0 的继电覆盖（dzctl DATA 0x7C，板端限幅、超时自动恢复）出 u，侧车只记录 y 并用 relay_analyze 离线算 Ku/Pu；
   入口 = 调参 → 更多实验 →“无初值一键起步”（op tune_relay → AgentService.run_relay_tune）。
 - 取代了原先自写的 agent/relay.py：同一 FOPDT、同噪声下对比（refs/USAGE_MATRIX.md #1），无噪声时 Ku/Pu 一致，

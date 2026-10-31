@@ -17,7 +17,7 @@ from .tuning import StepMetrics, step_metrics
 FLOORS = {"iae": 0.02, "overshoot": 2.0, "sse": 0.5, "settling": 0.05, "osc": 1.0}
 WEIGHTS = {
     "balanced":     {"iae": 1.0, "overshoot": 1.0, "sse": 1.0, "settling": 0.5, "osc": 0.5},
-    "conservative": {"iae": 0.5, "overshoot": 2.0, "sse": 1.0, "settling": 0.3, "osc": 1.5},   # 怕超调/振荡（钢珠、平衡）
+    "conservative": {"iae": 0.5, "overshoot": 2.0, "sse": 1.0, "settling": 0.3, "osc": 1.5},   # 怕超调/振荡（不稳定/平衡类对象）
     "actuator":     {"iae": 0.5, "overshoot": 1.0, "sse": 0.5, "settling": 0.3, "osc": 2.5},   # 护执行器：振荡=电机来回换向
 }
 
@@ -126,10 +126,10 @@ class StagedSearch:
 
 # ---------------------------------------------------------------- 5. 门禁
 def require_open_loop(cfg_step: dict, sim: bool) -> None:
-    """开环阶跃/FOPDT 辨识只对稳定对象（电机速度环）开放；钢珠、平衡等不稳定/积分对象开环会跑飞。"""
+    """开环阶跃/FOPDT 辨识只对稳定对象（电机速度环）开放；不稳定/积分对象（如平衡类）开环会跑飞。"""
     if not cfg_step.get("plant_stable", False):
         raise GuardError("plant_unstable", "开环实验需要在 dzbench.json step_test.plant_stable=true（只对稳定对象，如电机速度环）；"
-                         "钢珠/平衡车请用闭环小幅阶跃")
+                         "不稳定/积分对象请用闭环小幅阶跃")
     if not sim and not cfg_step.get("open_loop_max"):
         raise GuardError("no_limit", "实机开环必须配置 step_test.open_loop_max（输出幅度上限，建议 0.1–0.4）")
 

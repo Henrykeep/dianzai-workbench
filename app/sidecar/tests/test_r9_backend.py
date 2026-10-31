@@ -139,7 +139,7 @@ def test_reject_zh_covers_board_reasons():
         assert SS.REJECT_ZH.get(k)
 
 
-# ---------------------------------------------------------------- 回起点：tol / 8 s / start_offset；2026H hold_s = 5（后端配置）
+# ---------------------------------------------------------------- 回起点：tol / 8 s / start_offset；阶跃时序由实测辨识推出
 class WinS:
     def __init__(self, ys):
         self.ys, self.sent, self.schema = list(ys), [], None
@@ -178,11 +178,43 @@ def test_return_to_start_timeout_marks_start_offset():
     assert time.monotonic() - t0 < 3
 
 
-def test_2026h_hold_override_is_backend_owned():
-    o = types.SimpleNamespace(s=types.SimpleNamespace(port="sim:2026H_ball"))
-    assert S.AgentService.step_override(o)["hold_s"] == 5.0
-    o2 = types.SimpleNamespace(s=types.SimpleNamespace(port="sim:motor_pos"))
-    assert S.AgentService.step_override(o2) == {}
+def test_step_timing_not_keyed_by_problem():
+    """r10 #80：阶跃时序不再按板名查表；没探测过就是 {}，探测结果按端口缓存。"""
+    o = types.SimpleNamespace(s=types.SimpleNamespace(port="sim:anything"))
+    assert S.AgentService.step_override(o) == {}
+    o._step_timing = {"sim:anything": {"hold_s": 2.5}}
+    assert S.AgentService.step_override(o)["hold_s"] == 2.5
+    assert not hasattr(S.AgentService, "STEP_OVERRIDES")
+
+
+@pytest.mark.parametrize("K,L,T,noise,rate", [(1.0, 0.0, 0.3, 0.0, None), (2.5, 0.2, 1.0, 0.01, None),
+                                              (0.04, 0.5, 4.0, 0.001, None), (1.0, 0.0, 0.05, 0.2, 70.0)])
+def test_stepident_derives_timing_from_measurement(K, L, T, noise, rate):
+    import math
+    import numpy as np
+    from dzbench.agent import stepident as SI
+    rng = np.random.default_rng(7)
+    dt, amp = 0.01, 40.0
+    t = [i * dt for i in range(-100, 1500)]
+    y, cur = [], 0.0
+    for a in t:
+        tgt = K * amp * (1 - math.exp(-(a - L) / T)) if a >= L else 0.0
+        cur = min(tgt, cur + rate * dt) if rate else tgt
+        y.append(cur + noise * rng.standard_normal())
+    idt = SI.identify(t, y, 0.0, amp)
+    assert idt["ok"] and idt["K"] == pytest.approx(K, rel=0.1)
+    d = SI.derive(idt, 800.0, amp)
+    assert d["step_target"] <= 800.0 and d["return_tol"] >= SI.NOISE_K * idt["sigma"] - 1e-9
+    assert SI.HOLD_MIN <= d["hold_s"] <= SI.HOLD_MAX and d["hold_s"] >= min(L + 3 * T, SI.HOLD_MAX)
+    if rate:      # 速度受限：保持时间要够走完正式幅度
+        assert d["hold_s"] >= min(d["step_target"] * K / rate, SI.HOLD_MAX) * 0.9
+
+
+def test_stepident_no_response_is_honest():
+    from dzbench.agent import stepident as SI
+    t = [i * 0.01 for i in range(-50, 300)]
+    idt = SI.identify(t, [0.0] * len(t), 0.0, 10.0)
+    assert idt["ok"] is False and "没有可分辨的响应" in idt["why_zh"] and SI.derive(idt, 100.0) == {}
 
 
 # ---------------------------------------------------------------- 相对口径 ss_err % → px → cm；换算来源 phys / sim_nominal / 实机标定
