@@ -47,7 +47,7 @@ SYSTEM = """你是“芯台”内置调参与代码助手，用户是正在比�
 
 READ_ONLY = {"read_file", "list_files", "repo_map", "list_params", "read_telemetry", "step_analysis", "board_memory", "read_symbol",
              "build_log", "project_state", "score_items", "tune_context"}
-PARAM_WRITES = {"propose_param_change", "tune_autopilot", "iterate_start", "swarm_search", "rollback_best"}
+PARAM_WRITES = {"propose_param_change", "tune_autopilot", "iterate_start", "autotune", "swarm_search", "rollback_best"}
 READ_CAP = 8                                   # 一轮里只读工具的上限（r4 验收：读了十几次才动手）
 BIG_TASK = re.compile(r"新建|从零|建项目|建工程|一路做|做到.*(跑通|调好)|整个项目")
 
@@ -148,6 +148,11 @@ TOOLS = [
      "直到连续 2 轮达标或预算（180 s；实机 8 轮 / 仿真 20 轮）用完；停下时报告最好一组参数和各项差距。params 缺省 = 增益参数",
      "input_schema": {"type": "object", "properties": {"params": {"type": "array", "items": {"type": "string"}}, "target": {"type": "number"},
                                                        "dur_ms": {"type": "integer"}, "ch": {"type": "integer"}}, "required": ["target"]}},
+    {"name": "autotune", "description": "通用自动整定（仿真；与 tunegate 同一份算法）：小幅探测→辨识→模型上设计→上板坐标搜索，按题面逐条判。"
+     "参数角色没声明时返回 needs_human（roles_unconfirmed + suggested），先让用户确认角色（confirm_roles），不要自己猜着跑",
+     "input_schema": {"type": "object", "properties": {"spec_text": {"type": "string", "description": "题面指标原文"}, "ch": {"type": "integer"}}}},
+    {"name": "confirm_roles", "description": "把用户确认的参数角色写回 app.yaml link.params.<名>.role（P/I/D/FF/LIM/other）",
+     "input_schema": {"type": "object", "properties": {"roles": {"type": "object", "description": "{参数名: 角色}"}}, "required": ["roles"]}},
     {"name": "iterate_cancel", "description": "立即停止自动迭代（板上本轮中止，参数停在当前值）", "input_schema": {"type": "object", "properties": {}}},
     {"name": "tune_autopilot", "description": "仅仿真：自动 提议→阶跃→护栏判 连跑到通过或 N 轮，报告最好一轮。实机不可用",
      "input_schema": {"type": "object", "properties": {"rounds": {"type": "integer"}}}},

@@ -76,16 +76,20 @@ def search_dirs() -> list[pathlib.Path]:
 
 
 def find_by_hash(h: int) -> Schema | None:
+    """同一目录树里可能有多份同哈希的表（role 等不进哈希的字段会变）：取最新生成的那份。"""
     for d in search_dirs():
         if not d.is_dir():
             continue
+        hits = []
         for f in d.rglob("link_schema.json"):
             try:
                 s = Schema.load(f)
             except (ValueError, KeyError, OSError):
                 continue
             if s.hash == h:
-                return s
+                hits.append((f.stat().st_mtime, s))
+        if hits:
+            return max(hits, key=lambda x: x[0])[1]
     return None
 
 
