@@ -31,6 +31,22 @@
 
 `iterate.started` / `iterate.round` / `iterate.param_reject` / `iterate.stopped`，字段见 `docs/dev/iterate.md` 第 7 节。阶跃开始被拒：`step_estop`（带 `fix_action: "estop_clear"`）、`step_busy`、`step_bad_arg`、`step_unsupported`、`step_offline`。
 
+入口（界面 #62 / 脚本，与 Agent 工具 `iterate_start` / `iterate_cancel` 同一实现，见 entrypoints.yaml）：
+
+| op | 请求 | 返回 |
+|---|---|---|
+| `iterate_start` | `{target, params?, dur_ms?, ch?}`；`params` 缺省 = 增益参数 | 仿真：`{status: "started", budget: {time_s, rounds}}`；实机：`{status: "pending_human_click", action_id}`，同时推一张 `agent_action`（tool=`iterate_start`）批量确认卡，确认走 `agent_action_decide`。已在跑 → `error.code = "iterate_running"` |
+| `iterate_cancel` | `{}` | 立即停止（板上本轮中止，参数停在当前值），随后推 `iterate.stopped reason=stopped` |
+| `iterate_status` | `{}` | `{running, result}`，`result` = 最近一次 `iterate.stopped`（含 `best_card`），没跑过为 null |
+
+每次迭代的事件顺序（每条都带 `type`）：
+
+1. `iterate.started` `{plan, start, start_hash, limits: {time_s, rounds}}`——**`limits.rounds` 就是本次的轮数上限 N**（实机 8 / 仿真 20），`limits.time_s` 是时间预算（180 s）。界面显示“第 i / N 轮”用它，不要写死。
+2. 每轮一条 `iterate.round`：`iterate.md` 第 2 节字段（`iter` 0 = 起始参数基线，之后从 1 计；无效轮 `valid=false` 不占号）+ `local_hash` `unit` `band` `changed`。
+3. 0~多条 `iterate.param_reject` `{name, value, reason}`（候选值被本地 / 板子拒，换方向，不算一轮）。
+4. 恰好一条 `iterate.stopped` `{reason, message_zh, rounds, best{iter, params, params_hash, metrics, pass, gaps}, next_zh}`；`reason` ∈ pass / budget_time / budget_rounds / estop / stopped / invalid / no_improve / unstable / blocked / error（`error` 时只有 `reason` `message_zh`）。
+5. 有 `best` 时紧接一张 `agent_action`（tool=`iterate_apply_best`，标题“采用最好参数”，`preview.changes` = 旧→新）：**仿真和实机都要人点**，确认后逐个写回并回读核对；Agent 一轮调参以这张卡收尾（#53）。
+
 ## 模型列表 `op: "agent_models"` 的返回
 
 键集合固定为 `ok` `models` `reason` `fix_action` `message_zh`（代码：`llm.MODELS_KEYS`；测试断言精确一致，不再有 `message`）。成功时 `reason` / `fix_action` 为 `null`。

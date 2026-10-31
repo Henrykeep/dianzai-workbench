@@ -253,6 +253,10 @@ def test_agent_tuning_run_ends_with_best_params_card(home, tmp_path, monkeypatch
         reply = svc.ask("把速度环调好")
         res = svc.iter_result
         assert res and res["reason"] != "error" and res.get("best_card"), res
+        st = [e for e in ev if e.get("type") == "iterate.started"]
+        assert len(st) == 1 and st[0]["limits"]["rounds"] == 3            # events.md：limits.rounds = 本次轮数上限 N（#62）
+        assert sum(e.get("type") == "iterate.stopped" for e in ev) == 1
+        assert 1 <= sum(e.get("type") == "iterate.round" for e in ev) <= 3
         cards = [e for e in ev if e.get("type") == "agent_action" and e["tool"] == "iterate_apply_best"]
         assert len(cards) == 1 and cards[0]["id"] == res["best_card"]
         assert cards[0]["preview"]["title"] == "采用最好参数"
