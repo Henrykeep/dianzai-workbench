@@ -28,6 +28,7 @@ from .schema import check_value
 from .stepproto import dzstep, STEP_ID as ID_STEP, REJECT_ID as ID_REJECT, HB_ITER_BUSY
 from .replay import ReplayTransport
 from .schema import Schema, SchemaConflict, find_by_hash
+from . import board_ident
 from .transport import SIM_PREFIX, Transport, open_transport
 
 ID_CMD, ID_ESTOP = 0x7E, 0x7F
@@ -84,6 +85,10 @@ class Session:
         self.resuming = False                # 侧车重启后正在自动连回上次的板子
         self._uid_marked = False
         self._reset()
+        # 跨连接保留（_reset 不清）——板子身份（握手里报一次：board_uid 64 位指纹 + uid_supported；见 board_ident）。未知 = 不复用任何按板缓存
+        self.board_id: dict = board_ident.parse_handshake(None)
+        self._schema_cache: dict[tuple[int, str], Schema] = {}   # (schema 哈希, board_uid) → 已核对过的 schema
+        self._handshake_seen = False
 
     def _reset(self) -> None:
         self.tr: Transport | None = None
@@ -748,13 +753,17 @@ class Session:
 
     def _bind_schema(self, h: int) -> None:
         self.schema_hash = h
+        uid = self.board_id.get("board_uid")
+        cached = self._schema_cache.get((h, uid)) if uid else None   # 身份未知的板子从不复用缓存
         try:
-            s, conflict = find_by_hash(h), None
+            s, conflict = (cached, None) if cached is not None else (find_by_hash(h), None)
         except SchemaConflict as e:          # 同哈希多份不同内容：一份都不用，显示和写入都挡住（_check_schema）
             s, conflict = None, e
         with self.lock:
             self.schema = s
             self.schema_conflict = conflict
+        if s is not None and uid:
+            self._schema_cache[(h, uid)] = s
         if conflict:
             self.emit(conflict.as_dict())
         elif s:
@@ -1213,6 +1222,31 @@ class Session:
         if self.tx_locked:
             raise LinkError("tx_locked", "急停后本地服务的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停”")
 
+    def apply_handshake(self, info: dict | None) -> dict:
+        """固件握手（只报一次）里的板子身份：board_uid / uid_supported → self.board_id。
+        与上一块板身份不同、或任一方身份未知 = 换板：清掉按板缓存的状态（参数读数、schema 绑定），推 board_changed，并重新查 schema。"""
+        new = board_ident.parse_handshake(info)
+        old = self.board_id
+        first = not getattr(self, "_handshake_seen", False)
+        self._handshake_seen = True
+        self.board_id = new
+        swapped = not first and not board_ident.same_board(old.get("board_uid"), new.get("board_uid"))
+        if swapped:
+            with self.lock:
+                self.params = {}
+                self.schema = None
+                self.schema_conflict = None
+            h, self.schema_hash = self.schema_hash, None
+            self.emit({"type": "board_changed", "from": old.get("board_uid"), "to": new.get("board_uid"),
+                       "uid_supported": new["uid_supported"],
+                       "message_zh": "检测到换板：已清掉上一块板的参数读数和数据格式，重新识别" if new["board_id_known"] and old.get("board_uid")
+                       else "板子身份未知，不能确认是不是同一块板：按换板处理，已清掉上一块板的状态" })
+            if h is not None:
+                self._bind_schema(h)
+        if not new["board_id_known"]:
+            self.emit({"type": "board_id", **new})
+        return new
+
     def _check_schema(self) -> None:
         """schema_conflict 时挡住依赖 schema 的写入（参数、阶跃、应用 DATA 帧）。急停 / 停止 / 解除急停不走这里。"""
         c = self.schema_conflict
@@ -1443,7 +1477,9 @@ class Session:
                   "alive": alive, "rx_bytes": self.rx_bytes, "good": self.parser.good, "bad": self.parser.bad,
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
                   "schema_ok": self.schema is not None,
-                  "schema_conflict": self.schema_conflict.as_dict() if self.schema_conflict is not None else None, "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
+                  "schema_conflict": self.schema_conflict.as_dict() if self.schema_conflict is not None else None,
+                  "board_uid": self.board_id.get("board_uid"), "uid_supported": self.board_id.get("uid_supported"),
+                  "board_id_known": self.board_id.get("board_id_known"), "board_id_message_zh": self.board_id.get("message_zh"), "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "reconnect_attempt": self.reconnect_attempt, "stall_s": self.stall_s, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}

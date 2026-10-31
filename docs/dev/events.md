@@ -322,5 +322,14 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - 内容完全相同的多份（如 `build/` 与 `~/.dzbench/schemas/` 里的拷贝）不算冲突。导出记录遇到冲突同样报错，不挑一份。
 - 哈希本身把 `wd_timeout_ms` 与板子身份算进去由固件侧（gen_link）负责，本节只管查找时不挑错。
 
+## 板子身份 `board_uid` / `uid_supported`（换板识别，r10）
+固件在**握手里报一次**（不在心跳里，心跳仍为 40 字节）：`board_uid`（MCU 唯一 ID 的 64 位 FNV-1a）与 `uid_supported`（bool）。侧车只从握手读（`Session.apply_handshake` → `board_ident.parse_handshake`）。
+- `status.board_uid`：16 位小写十六进制字符串，或 `null`。`status.uid_supported`：bool。`status.board_id_known`：bool。`status.board_id_message_zh`：身份未知时为「此芯片暂不支持板子识别，换板检测不可用」，否则 `null`。
+- `uid_supported:false`、`board_uid` 缺失或为 0 → `board_uid:null`，并推 `{type:"board_id", board_uid:null, uid_supported, board_id_known:false, message_zh}`。这种板子**永远不当作**缓存里的任何一块板（不按身份复用缓存）。
+- 按板缓存：schema 绑定按 `(schema 哈希, board_uid)` 缓存；同哈希同内容的两块板不算冲突，同哈希不同内容仍是 `schema_conflict`（不挑最新）。
+- 换板：与上次握手的 `board_uid` 不同，或任一方为 `null` → 推 `{type:"board_changed", from, to, uid_supported, message_zh}`，清掉上一块板的参数读数与 schema 绑定并重新查找。同一块板重启（同 `board_uid`）不推。
+- 旧的 32 位心跳芯片 ID（latch / lastsession 用）不变。
+- 现状：固件握手帧尚未推送；侧车按本规格实现，测试在真仿真板会话上把握手 dict 交给真解析器。
+
 ## 采纳未验证的参数（#141）
 - `agent_action_decide` 采纳 `iterate_apply_best` / `autotune` 卡时，响应多 `verified: bool`、`unverified_reason`。卡（服务端保存的那份，不认客户端标记）verdict 为 `partial` 或任一 item `amp_reduced` → `verified:false, unverified_reason:"amp_reduced"`，不进已验证档 / 封箱清单；否则 `verified:true, unverified_reason:null`。
