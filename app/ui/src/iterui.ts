@@ -1,5 +1,6 @@
 import { coarseTagHtml } from "./plant";
-import { reasonZh } from "./reasoncodes";
+import { reasonZh, reasonKind } from "./reasoncodes";
+import { REASON_KIND_F } from "./fieldmap";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
 import { ampLine, ampText, MC_F, DOWNSCALE_ZH, RETEST_F, DECL_STEP_F, ADOPT_F } from "./fieldmap";
 import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH, STOP_F, ABORT_ZH, NO_ROUND_ZH } from "./fieldmap";
@@ -91,7 +92,7 @@ export function ledgerPick(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()
   const last = inRun(rs, run).at(-1);
   return { best: null, unstable: saysDiverged(r) || last?.state === "diverged" };
 }
-const saysDiverged = (r: Stopped) => { const x: any = r; return x[STOP_F.diverged] === true || x[STOP_F.sat] === true || (STOP_F.divCodes as readonly string[]).includes(r.reason ?? ""); };
+const saysDiverged = (r: Stopped) => { const x: any = r; return x[STOP_F.diverged] === true || x[STOP_F.sat] === true || (STOP_F.divCodes as readonly string[]).includes(r.reason ?? "") || reasonKind(r.reason) === REASON_KIND_F.diverge; };
 // #131 停止原因：无效轮数用真实数；中止带后端原因
 export function stopReasonZh(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): string {
   const x: any = r, why = STOP_F.why.map(k => typeof x[k] === "string" ? x[k].trim() : "").find(Boolean) ?? "";

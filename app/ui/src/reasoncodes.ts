@@ -16,3 +16,4 @@ export function reasonZh(code: string | undefined | null, fallback: Record<strin
   if (!code) return "未上报";
   return REASONS_T.value()[code]?.zh ?? fallback[code] ?? UNKNOWN_REASON_ZH;
 }
+export const reasonKind = (code: string | undefined | null): string => (code && (REASONS_T.value()[code]?.kind as string)) || "";

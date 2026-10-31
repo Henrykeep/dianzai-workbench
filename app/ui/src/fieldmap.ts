@@ -216,7 +216,7 @@ export const COMMIT_SENT_ZH = "已发出，等后端结果";
 // #116 最好一轮在台账里是无效 / 发散：不显示、不给「采用」
 export const NO_STABLE_ZH = "发散，未找到稳定参数";
 // 参数角色确认：自动整定回 needs-manual + fix_action confirm_roles，带 missing[参数名] / suggested{名: 角色}；握手参数表可带 role（只读显示）
-export const ROLE_F = { fix: "fix_action", confirm: "confirm_roles", missing: "missing", suggested: "suggested", reason: "reason_zh", paramRole: "role" } as const;
+export const ROLE_F = { fix: "fix_action", confirm: "confirm_roles", missing: "missing", suggested: "suggested", reason: "reason_zh", msg: "message_zh", code: "reason", unconfirmed: "roles_unconfirmed", paramRole: "role" } as const;   // events.md：autotune 回 {verdict:needs_human, reason:roles_unconfirmed, missing, suggested, message_zh, fix, fix_action:confirm_roles}
 export const ROLE_CONFIRM_OP = "confirm_roles";   // 定稿：confirm_roles {roles:{name: code}} → {ok, roles} 或 {message_zh, fix_action}
 export const ROLE_REPLY_F = { ok: "ok", roles: "roles", msg: "message_zh", fix: "fix_action" } as const;
 export const ROLE_SENDING_ZH = "已发出，等后端结果";
@@ -226,7 +226,7 @@ export const ROLE_NO_FLASH_ZH = "改角色不用重新烧录", ROLE_LIM_ZH = "�
 export const ROLE_SUGGEST_ZH = "建议，待确认", ROLE_BTN_ZH = "确认角色", ROLE_RETRY_ZH = "重试整定";
 
 // #141 复测被挡：partial 卡 retest_blocked_by = null（可复测）| {reason: step_too_large, limit, limit_unit, message_zh, fix_action: edit_declaration}
-export const RETEST_F = { name: "limit_name", obj: "retest_blocked_by", reason: "reason", limit: "limit", unit: "limit_unit", msg: "message_zh", fix: "fix_action", editDecl: "edit_declaration" } as const;
+export const RETEST_F = { name: "limit_name" /* 如 link.step[<ch>].max_step */, obj: "retest_blocked_by", reason: "reason", limit: "limit", unit: "limit_unit", msg: "message_zh", fix: "fix_action", editDecl: "edit_declaration" } as const;
 // 兜底：握手 schema.step[] 的 max_step（工程声明的单次最大阶跃）
 export const DECL_STEP_F = { list: "step", max: "max_step" } as const;
 // 采用回执：verified:false + unverified_reason（amp_reduced）→ 提示未记为已验证档；前端不发任何「未验证」标志
@@ -239,3 +239,5 @@ export const dataNoticeZh = (what: string, st: "ok" | "missing" | "bad") => st =
 export const reasonStatusText = (t: string) => !t ? "" : /不一致/.test(t) ? t : `${t.split(/[，（]/)[0]}，已用内置列表 · 修复：${DATA_FIX_ZH.replace(/^修复：运行 /, "")}`;
 // 握手里的数据表（暂定名）：data_tables {roles:{sha256, content}, reason_codes:{sha256, content}}
 export const DATA_TABLES_F = { obj: "data_tables", sha: "sha256", content: "content", roles: "roles", reasons: "reason_codes" } as const;
+// reason_codes.json kind ∈ round | abort | stop | diverge（events.md #139）
+export const REASON_KIND_F = { kind: "kind", diverge: "diverge", abort: "abort" } as const;

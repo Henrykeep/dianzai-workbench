@@ -6,12 +6,12 @@ const CODES = { has: (c: unknown) => roleCodes().some(x => x[0] === c) };
 export const roleLabel = (c: unknown) => roleCodes().find(x => x[0] === c)?.[1] ?? "";
 export function toRoleReq(m: any): RoleReq | null {
   for (const o of [m, m?.result, m?.error, m?.err]) {
-    if (!o || o[ROLE_F.fix] !== ROLE_F.confirm) continue;
+    if (!o || (o[ROLE_F.fix] !== ROLE_F.confirm && o[ROLE_F.code] !== ROLE_F.unconfirmed)) continue;
     const missing = Array.isArray(o[ROLE_F.missing]) ? o[ROLE_F.missing].filter((x: unknown) => typeof x === "string") : [];
     const sg = o[ROLE_F.suggested] && typeof o[ROLE_F.suggested] === "object" ? o[ROLE_F.suggested] : {};
     const suggested: Record<string, string> = {};
     for (const k of missing) if (CODES.has(sg[k])) suggested[k] = sg[k];
-    return { missing, suggested, reason: typeof o[ROLE_F.reason] === "string" ? o[ROLE_F.reason] : "" };   // reason_zh 原样显示
+    return { missing, suggested, reason: typeof o[ROLE_F.reason] === "string" ? o[ROLE_F.reason] : typeof o[ROLE_F.msg] === "string" ? o[ROLE_F.msg] : "" };   // reason_zh 原样显示
   }
   return null;
 }

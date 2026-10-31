@@ -25,14 +25,15 @@ export function buildCheck(rolesRaw: string | null, reasonRaw: string | null, re
   if (reasonRaw == null) { if (requireReason) e.push("docs/dev/reason_codes.json 缺失"); } else if (!validReasons(reasonRaw)) e.push("docs/dev/reason_codes.json 格式错误");
   return e;
 }
-export type HsState = "pending" | "absent" | "bad" | "mismatch" | "ok";
+export type HsState = "pending" | "absent" | "srvmissing" | "bad" | "mismatch" | "ok";
 export class DataTable<T> {
   bundled: T | null = null; bundledSha: string | null = null; hs: HsState = "pending"; hsVal: T | null = null;
   constructor(readonly key: string, readonly what: string, readonly validate: (c: unknown) => T | null, readonly fallback: T, readonly devMissingNotice = false) {}
   setBundled(c: unknown, sha: string | null = null) { this.bundled = c == null ? null : this.validate(c); this.bundledSha = this.bundled ? sha : null; }
-  // 握手：data_tables[key] = {sha256, content}；没有 → absent（用打包副本 + 提示）；content 不合格 → bad；sha 和打包副本不同 → mismatch（仍用侧车内容）
+  // 握手：data_tables[key] = {sha256（原始文件字节）, content（解析后的 JSON）} | null；没有 → absent（用打包副本 + 提示）；content 不合格 → bad；sha 和打包副本不同 → mismatch（仍用侧车内容）
   onHandshake(hs: any) {
-    const t = hs?.[DATA_TABLES_F.obj]?.[this.key];
+    const dt = hs?.[DATA_TABLES_F.obj], t = dt?.[this.key];
+    if (dt && typeof dt === "object" && this.key in dt && t === null) { this.hs = "srvmissing"; this.hsVal = null; return; }   // 本地服务那边文件缺失 / 损坏（另有 data_file_missing 阻断项）
     if (!t || typeof t !== "object") { this.hs = "absent"; this.hsVal = null; return; }
     const v = this.validate(t[DATA_TABLES_F.content]); this.hsVal = v;
     if (!v) { this.hs = "bad"; return; }
@@ -44,9 +45,10 @@ export class DataTable<T> {
   notice(dev = false): string {
     switch (this.hs) {
       case "pending": return "";
-      case "absent": return `侧车未提供${this.what}，已使用界面内置列表`;
-      case "bad": return `侧车${this.what}格式错误，已使用界面内置列表。${DATA_FIX_ZH}`;
-      case "mismatch": return `界面与侧车${this.what}不一致，请重装或更新`;
+      case "absent": return `本地服务未提供${this.what}，已使用界面内置列表`;
+      case "srvmissing": return `本地服务的${this.what}缺失或损坏，已使用界面内置列表。${DATA_FIX_ZH}`;
+      case "bad": return `本地服务的${this.what}格式错误，已使用界面内置列表。${DATA_FIX_ZH}`;
+      case "mismatch": return `界面与本地服务的${this.what}不一致，请重装或更新`;
       default: return this.devMissingNotice && dev && !this.bundled ? `界面打包里没有${this.what}（仅开发模式提示）` : "";
     }
   }
