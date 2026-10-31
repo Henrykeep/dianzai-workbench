@@ -160,7 +160,7 @@ int dzstep_selftest(void)
 {
     int fail = 0;
     fail += dzctl_crc32("123456789", 9) != 0xCBF43926u;
-    dzstep_ch_t c = { 0, 100.0f, 0.5f, 1.0f, -1 };
+    dzstep_ch_t c = { 0, 100.0f, 0.5f, 1.0f, -1, 0.0f };
     dzstep_t s; dzframe_t f;
     dzstep_begin(&s, &c, 0, 3, 10.0f, 1000, 100, 0x1234u, 1.0f);
     for (uint32_t t = 100; t <= 1100; t += 10) {

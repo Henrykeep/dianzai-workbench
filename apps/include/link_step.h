@@ -19,6 +19,7 @@
 static dzstep_t s_link_step;
 static volatile bool s_link_step_abort;
 static volatile uint8_t s_link_step_cause;
+static const volatile float *s_link_step_sp_now;     /**< 当前设定值槽位（link_step_dispatch 传入；NULL = 不查 max_step） */
 
 static inline bool link_step_busy(void) { return s_link_step.active; }
 
@@ -67,6 +68,10 @@ static inline int link_step_rx(const dzframe_t *f, bool latched, bool offline, u
         if (latched) st = DZSTEP_ST_ESTOP;
         else if (offline) st = DZSTEP_ST_OFFLINE;
         else if (s_link_step.active) st = DZSTEP_ST_BUSY;
+        else if (g_link_step[*ch].max_step > 0.0f && s_link_step_sp_now != NULL) {   /* 物理上限：单次阶跃不超过 link.step.max_step */
+            float d = *target - s_link_step_sp_now[g_link_step[*ch].sp_idx];
+            if (d > g_link_step[*ch].max_step || d < -g_link_step[*ch].max_step) st = DZSTEP_ST_BAD_ARG;
+        }
     }
     dzstep_ack(st, *ch, iter, (*seq)++, &out);
     send(&out);
@@ -99,6 +104,7 @@ typedef struct {
     void (*on_target)(uint8_t sp_idx, float v, void *ctx);
     void (*on_params)(void);
     void *ctx;
+    const volatile float *sp_now;/**< 当前设定值槽位数组（按 sp_idx 索引），给 max_step 检查；NULL = 不查 */
 } link_step_io_t;
 
 /** 设定值的声明量程限幅：±range/2（link.step[ch].range；没有声明 → 不限）。 */
@@ -120,6 +126,7 @@ static inline bool link_step_dispatch(const dzframe_t *f, const link_step_io_t *
 {
     uint8_t sch; float stg; int sr;
     dzframe_t ack, rej; bool has_rej;
+    s_link_step_sp_now = io->sp_now;
     sr = link_step_rx(f, io->latched, io->offline, io->now, io->tbl, io->seq, io->send, &sch, &stg);
     if (sr != 0) {
         if (sr == 2 && io->on_target) io->on_target(g_link_step[sch].sp_idx, stg, io->ctx);

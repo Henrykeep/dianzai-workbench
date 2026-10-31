@@ -99,8 +99,17 @@ def check(spec: dict, params: list) -> list[str]:
                 errs.append(f"step[{k}].{key}={st.get(key)} 不是数值遥测字段")
         if st.get("y") is None:
             errs.append(f"step[{k}] 缺 y")
-        if not (float(st.get("range", 0)) > 0 and float(st.get("abs_tol", 0)) > 0):
-            errs.append(f"step[{k}]: range、abs_tol 须 > 0（物理单位）")
+        if st.get("sensor_range") is not None or st.get("max_step") is not None:
+            # 只声明物理上限（传感器量程 / 执行器能承受的最大阶跃）：阶跃幅度和回位容差由上位机实测决定，不写死
+            if not float(st.get("sensor_range") or 0) > 0:
+                errs.append(f"step[{k}].sensor_range 须 > 0（传感器量程，物理单位）")
+            if st.get("max_step") is not None and not float(st["max_step"]) > 0:
+                errs.append(f"step[{k}].max_step 须 > 0（单次阶跃上限，物理单位）")
+            for key in ("range", "abs_tol"):
+                if st.get(key) is not None and not float(st[key]) > 0:
+                    errs.append(f"step[{k}].{key} 须 > 0")
+        elif not (float(st.get("range", 0)) > 0 and float(st.get("abs_tol", 0)) > 0):
+            errs.append(f"step[{k}]: range、abs_tol 须 > 0（物理单位）；或只写物理上限 sensor_range / max_step")
         ph = st.get("phys")
         if ph is not None and not (isinstance(ph, dict) and set(ph) == {"unit", "per_unit"} and isinstance(ph["unit"], str)
                                    and ph["unit"] and isinstance(ph["per_unit"], (int, float)) and ph["per_unit"] > 0):
@@ -139,7 +148,11 @@ def schema(spec: dict, params: list) -> dict:
                      "max_delta": max_delta(p), "unit": p.get("unit", "")} for p in params]}
     if spec.get("step"):                     # #38：烧进固件的阶跃通道配置，进哈希
         s["step"] = [{"sp": int(st["sp"]), "y": st["y"], "u": st.get("u"), "u_max": st.get("u_max", 0),
-                      "range": float(st["range"]), "abs_tol": float(st["abs_tol"]),
+                      **({"range": float(st["range"])} if st.get("range") is not None else {}),
+                      **({"abs_tol": float(st["abs_tol"])} if st.get("abs_tol") is not None else {}),
+                      # 物理上限（只声明能承受多少，不写阶跃幅度/容差——那由上位机实测）
+                      **({"sensor_range": float(st["sensor_range"])} if st.get("sensor_range") is not None else {}),
+                      **({"max_step": float(st["max_step"])} if st.get("max_step") is not None else {}),
                       **({"phys": {"unit": str(st["phys"]["unit"]), "per_unit": float(st["phys"]["per_unit"])}} if st.get("phys") else {})}
                      for st in spec["step"]]
     s["hash"] = fnv1a(json.dumps(s, sort_keys=True, separators=(",", ":")).encode())
@@ -212,9 +225,10 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
           f'{cnum(p["min"], "float")}, {cnum(p["max"], "float")}, {cnum(max_delta(p), "float")} }},' for p in params] or ['    { "", 0, 0, 0.0f, 0.0f, 0.0f }']
     pidx = {p["name"]: i for i, p in enumerate(params)}
     c += ["};", "", "const dzstep_ch_t g_link_step[] = {"]
-    c += [f'    {{ {int(st["sp"])}u, {cnum(st["range"], "float")}, {cnum(st["abs_tol"], "float")}, '
+    c += [f'    {{ {int(st["sp"])}u, {cnum(step_range(st), "float")}, {cnum(step_tol(st), "float")}, '
           f'{cnum(0 if isinstance(st.get("u_max", 0), str) else st.get("u_max", 0), "float")}, '
-          f'{pidx[st["u_max"]] if isinstance(st.get("u_max"), str) else -1} }},' for st in steps] or ["    { 0u, 1.0f, 1.0f, 0.0f, -1 }"]
+          f'{pidx[st["u_max"]] if isinstance(st.get("u_max"), str) else -1}, {cnum(st.get("max_step") or 0, "float")} }},' for st in steps] \
+        or ["    { 0u, 1.0f, 1.0f, 0.0f, -1, 0.0f }"]
     c += ["};", "", "float link_step_y(const link_telem_t *t, uint8_t ch)", "{", "    switch (ch) {"]
     c += [f"    case {k}: return (float)t->{st['y']};" for k, st in enumerate(steps)]
     c += ["    default: (void)t; return 0.0f;", "    }", "}", "", "float link_step_u(const link_telem_t *t, uint8_t ch)", "{", "    switch (ch) {"]
@@ -233,6 +247,16 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
           f"    dzctl_table_t t = {{ base, g_link_param_desc, (uint8_t)LINK_N_PARAMS, LINK_SCHEMA_HASH }};",
           "    return t;", "}", ""]
     return "\n".join(h), "\n".join(c)
+
+
+def step_range(st: dict) -> float:
+    """板上口径用的量程：写了 range 用 range，否则用传感器量程 sensor_range。"""
+    return float(st.get("range") or st["sensor_range"])
+
+
+def step_tol(st: dict) -> float:
+    """板上 abs 口径门槛：写了 abs_tol 用它；只声明物理上限时取量程的 1%（只决定板上 2%/abs 口径，真正的回位容差由上位机实测）。"""
+    return float(st.get("abs_tol") or 0.01 * step_range(st))
 
 
 def load(path: pathlib.Path) -> tuple[dict, list, str | None]:

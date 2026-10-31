@@ -7,6 +7,7 @@
 扫描（只看代码，不看注释和 Python 文档字符串）：
   失败：firmware/**/*.{c,h}、tools/**/*.{py,sh}（tools/test_*、fixtures、testdata 除外）
   只报告（--strict-sidecar 时也失败）：app/sidecar/dzbench/**/*.py —— 归后端，清单交给后端改
+  只报告：app/ui/src/** —— 归前端
 允许：firmware/algo/ball_beam/（通用的“球杆”被控对象算法库，按需引用，不是某道题）
 用法：check_generic.py [--strict-sidecar] [--selftest]
 """
@@ -20,9 +21,10 @@ import tokenize
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 PAT = re.compile(r"2026[A-Z]|ball|xiaoqiu|小球|钢珠|motor_pos|pendulum|line_car|car_2wd|pan_tilt", re.I)
-ALLOW = ("firmware/algo/ball_beam/", "tools/check_generic.py")
+ALLOW = ("firmware/algo/ball_beam/", "tools/check_generic.py", "tools/check_ui_generic.py")   # 门禁脚本自己要列禁用名
 CORE = [("firmware", ("*.c", "*.h")), ("tools", ("*.py", "*.sh"))]
 SIDECAR = [("app/sidecar/dzbench", ("*.py",))]
+UI = [("app/ui/src", ("*.ts", "*.tsx", "*.vue", "*.js"))]   # 前端：只报告，交前端（check_ui_generic.py 另有前端自己的门禁）
 SKIP = re.compile(r"(^|/)(test_[^/]*|fixtures/|testdata/|tests/)")
 
 
@@ -87,13 +89,15 @@ def selftest() -> int:
 def main(argv) -> int:
     if "--selftest" in argv:
         return selftest()
-    core, side = scan(CORE), scan(SIDECAR)
+    core, side, ui = scan(CORE), scan(SIDECAR), scan(UI)
     for h in side:
         print(f"  [sidecar，归后端] {h}")
+    for h in ui:
+        print(f"  [ui，归前端] {h}")
     for h in core:
         print(f"✗ [通用性] {h}")
     fail = bool(core) or ("--strict-sidecar" in argv and bool(side))
-    print(f"{'✗' if fail else '✓'} 通用性检查：核心 {len(core)} 处，sidecar {len(side)} 处{'（只报告）' if '--strict-sidecar' not in argv else ''}")
+    print(f"{'✗' if fail else '✓'} 通用性检查：核心 {len(core)} 处，sidecar {len(side)} 处，ui {len(ui)} 处{'（只报告）' if '--strict-sidecar' not in argv else ''}")
     return 1 if fail else 0
 
 

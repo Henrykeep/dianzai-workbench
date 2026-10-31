@@ -121,7 +121,16 @@ def ref_for(schema, tel, r, dur, ch_cfg, params_now):
     um = ch_cfg.get("u_max", 0)
     umax = float(params_now[um]) if isinstance(um, str) else float(um)
     samples = [(t["t_ms"], t[y], t[u] if u else None) for t in tel]
-    return dzstep.step_metrics(samples, r["setpoint"], dur, r["t0_ms"], ch_cfg["range"], ch_cfg["abs_tol"], umax)
+    return dzstep.step_metrics(samples, r["setpoint"], dur, r["t0_ms"], ch_range(ch_cfg), ch_tol(ch_cfg), umax)
+
+
+def ch_range(ch: dict) -> float:
+    """同 gen_link.step_range：写了 range 用它，只声明物理上限时用 sensor_range。"""
+    return float(ch.get("range") or ch["sensor_range"])
+
+
+def ch_tol(ch: dict) -> float:
+    return float(ch.get("abs_tol") or 0.01 * ch_range(ch))
 
 
 def app_yaml(app: str) -> pathlib.Path:
@@ -160,9 +169,9 @@ def test_app(app: str) -> tuple[int, int, str]:
         c.ok(r["n"] >= 20, f"iter {it} 样本太少 n={r['n']}")
         ref = ref_for(schema, tel, r, D, ch, defaults)
         compare(c, f"iter {it}({tag})", r, ref, period)
-        if it == 3 and abs(r["initial"]) < ch["abs_tol"]:
+        if it == 3 and abs(r["initial"]) < ch_tol(ch):
             c.ok(r["metric_mode"] == "abs", f"sp=0 且已在 0 附近应为 abs 口径，实际 {r['metric_mode']}（initial={r['initial']}）")
-        if it == 2 and abs(r["initial"]) >= max(0.01 * ch["range"], ch["abs_tol"]):   # car_2wd 命令超时后已自行停下 → 幅度小，按 abs
+        if it == 2 and abs(r["initial"]) >= max(0.01 * ch_range(ch), ch_tol(ch)):   # car_2wd 命令超时后已自行停下 → 幅度小，按 abs
             c.ok(r["metric_mode"] == "rel" and r["setpoint"] == 0.0, f"回零阶跃（幅度 {T}）应为 rel 口径")
         summary.append(f"{tag}: os={r['overshoot_pct']:.2f} rise={r['rise_ms']} settle={r['settle_ms']} ss={r['ss_err_pct']:.3f} n={r['n']}")
     hb = hbs(fr)
