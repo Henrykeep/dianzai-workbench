@@ -4,7 +4,11 @@
 输入（app.yaml 或 project.yaml）：
   link:
     telemetry: { id: 2, period_ms: 20, fields: [ { name: t_ms, type: uint32, unit: ms }, ... ] }
-    params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, unit: "", desc: "" } ]   # 仅 app.yaml
+    params:    [ { name: kp, type: float, default: 0.08, min: 0, max: 2, max_delta: 0.5, unit: "", desc: "" } ]   # 仅 app.yaml
+               max_delta（dzctl 0.13.0）= 上位机单次写入最大改动量，超了板子拒绝（param_reject reason=step）；不写 = max − min
+    step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, range: 720, abs_tol: 0.5 } ]   # 可选：#38 阶跃实验通道
+               sp = 设定值槽位（DATA id=1 第几个 f32）；y / u = 遥测字段（u 可省）；u_max = 数或参数名；
+               range = 该量量程，abs_tol = 绝对容差（物理单位，|阶跃幅度| < max(1% 量程, abs_tol) 时改用绝对口径）
   project.yaml 不写 link.params：直接用顶层 params（params_t，需带 min/max），生效的是当前参数档。
 
 输出（-o 目录）：
@@ -51,8 +55,8 @@ def check(spec: dict, params: list) -> list[str]:
             size += {"f32": 4, "u32": 4, "i32": 4, "u16": 2, "i16": 2, "u8": 1}[WIRE[f["type"]]]
     if size > 64:
         errs.append(f"telemetry 负载 {size} 字节 > 64（dzframe 上限），拆成两个通道")
-    if not 1 <= int(tel.get("id", 2)) <= 0x7D:
-        errs.append("telemetry.id 须在 1..125（0x7E/0x7F 留给命令/急停）")
+    if not 1 <= int(tel.get("id", 2)) <= 0x79:
+        errs.append("telemetry.id 须在 1..121（0x7A..0x7F 留给 param_reject/阶跃/继电/黑匣子/命令/急停）")
     if len(params) > 125:
         errs.append("参数超过 125 个")
     names = {f.get("name") for f in tel.get("fields", [])}
@@ -82,9 +86,27 @@ def check(spec: dict, params: list) -> list[str]:
         for g in lp.get("gains") or []:
             if g not in pnames:
                 errs.append(f"loops.{lp.get('name')}: 增益 {g} 不在参数表里")
+    fnames = {f.get("name"): f for f in tel.get("fields", [])}
+    for k, st in enumerate(spec.get("step") or []):
+        if not isinstance(st.get("sp"), int) or not 0 <= st["sp"] <= 3:
+            errs.append(f"step[{k}].sp 须是 0..3（设定值槽位）")
+        for key in ("y", "u"):
+            if st.get(key) is not None and (st[key] not in fnames or fnames[st[key]].get("type") in ("bool",) or fnames[st[key]].get("enum")):
+                errs.append(f"step[{k}].{key}={st.get(key)} 不是数值遥测字段")
+        if st.get("y") is None:
+            errs.append(f"step[{k}] 缺 y")
+        if not (float(st.get("range", 0)) > 0 and float(st.get("abs_tol", 0)) > 0):
+            errs.append(f"step[{k}]: range、abs_tol 须 > 0（物理单位）")
+        um = st.get("u_max", 0)
+        if isinstance(um, str) and um not in pnames:
+            errs.append(f"step[{k}].u_max={um} 不是参数名")
+    if len(spec.get("step") or []) > 4:
+        errs.append("step 通道最多 4 个")
     for p in params:
         if "min" not in p or "max" not in p:
             errs.append(f"参数 {p['name']}: 缺 min/max（上位机写参数必须限幅）")
+        elif p.get("max_delta") is not None and not 0 < float(p["max_delta"]) <= float(p["max"]) - float(p["min"]) + 1e-12:
+            errs.append(f"参数 {p['name']}: max_delta {p['max_delta']} 须在 (0, max−min]")
         elif not p["min"] <= p.get("default", 0) <= p["max"]:
             errs.append(f"参数 {p['name']}: 默认值 {p.get('default', 0)} 不在 [{p['min']}, {p['max']}]")
     return errs
@@ -103,7 +125,10 @@ def schema(spec: dict, params: list) -> dict:
                                    **({"ref_for": str(f["ref_for"])} if f.get("ref_for") else {})}    # 这个值表示“无数据”，界面显示 —
                                   for f in tel.get("fields", [])]},
          "params": [{"name": p["name"], "type": WIRE[p["type"]], "min": p["min"], "max": p["max"],
-                     "unit": p.get("unit", "")} for p in params]}
+                     "max_delta": max_delta(p), "unit": p.get("unit", "")} for p in params]}
+    if spec.get("step"):                     # #38：烧进固件的阶跃通道配置，进哈希
+        s["step"] = [{"sp": int(st["sp"]), "y": st["y"], "u": st.get("u"), "u_max": st.get("u_max", 0),
+                      "range": float(st["range"]), "abs_tol": float(st["abs_tol"])} for st in spec["step"]]
     s["hash"] = fnv1a(json.dumps(s, sort_keys=True, separators=(",", ":")).encode())
     for p, src in zip(s["params"], params):
         p["default"] = src.get("default", 0)
@@ -118,6 +143,11 @@ def schema(spec: dict, params: list) -> dict:
         if spec.get(k):
             s[k] = spec[k]
     return s
+
+
+def max_delta(p: dict) -> float:
+    """不写 max_delta = 整个量程（只受 min/max 约束）。"""
+    return float(p["max_delta"]) if p.get("max_delta") is not None else float(p["max"]) - float(p["min"])
 
 
 def cnum(v, t: str) -> str:
@@ -135,7 +165,7 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
     struct = struct or "link_params_t"
     hdr = "/* 由 tools/gen_link.py 自动生成，勿手改 */"
     h = [hdr, "#ifndef LINK_GEN_H", "#define LINK_GEN_H", "#include <stdbool.h>", "#include <stdint.h>",
-         '#include "dzframe.h"', '#include "dzctl.h"']
+         '#include "dzframe.h"', '#include "dzctl.h"', '#include "dzstep.h"']
     if not own:
         h.append('#include "project_gen.h"')
     h += ["", f"#define LINK_SCHEMA_HASH 0x{sch['hash']:08X}u", f"#define LINK_TELEM_ID {sch['telemetry']['id']}u",
@@ -149,19 +179,35 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
               for p in params] or ["    uint8_t unused_;"]
         h += ["} link_params_t;", "", "extern link_params_t g_link_params;               /**< 当前生效（上位机可改） */",
               "extern const link_params_t g_link_params_default;", ""]
+    steps = spec.get("step") or []
+    h += [f"#define LINK_STEP_N {len(steps)}u   /**< #38 阶跃实验通道数（0 = 本应用不支持，开始帧回 status 4） */",
+          "extern const dzstep_ch_t g_link_step[];",
+          "/** 阶跃通道 ch 的测量值 / 输出（取自这一帧遥测；没有 u 返回 NaN）。 */",
+          "float link_step_y(const link_telem_t *t, uint8_t ch);",
+          "float link_step_u(const link_telem_t *t, uint8_t ch);", ""]
     h += ["extern const dzctl_param_t g_link_param_desc[];",
           "/** 打包遥测帧（kind/id 已填，seq 由调用方填）。 */",
           "bool link_telem_pack(dzframe_t *f, const link_telem_t *t);",
           f"/** 参数表：base 指向当前生效的 {struct}。 */",
           f"dzctl_table_t link_param_table({struct} *base);", "", "#endif", ""]
-    c = [hdr, "#include <stddef.h>", "#include <string.h>", '#include "link_gen.h"', ""]
+    c = [hdr, "#include <math.h>", "#include <stddef.h>", "#include <string.h>", '#include "link_gen.h"', ""]
     if own:
         body = ", ".join(f".{p['name']} = {cnum(p.get('default', 0), p['type'])}" for p in params) or "0"
         c += [f"const link_params_t g_link_params_default = {{ {body} }};", f"link_params_t g_link_params = {{ {body} }};", ""]
     c.append("const dzctl_param_t g_link_param_desc[] = {")
     c += [f'    {{ "{p["name"]}", (uint16_t)offsetof({struct}, {p["name"]}), {C_TYPES[p["type"]][1]}, '
-          f'{cnum(p["min"], "float")}, {cnum(p["max"], "float")} }},' for p in params] or ['    { "", 0, 0, 0.0f, 0.0f }']
-    c += ["};", "", "bool link_telem_pack(dzframe_t *f, const link_telem_t *t)", "{",
+          f'{cnum(p["min"], "float")}, {cnum(p["max"], "float")}, {cnum(max_delta(p), "float")} }},' for p in params] or ['    { "", 0, 0, 0.0f, 0.0f, 0.0f }']
+    pidx = {p["name"]: i for i, p in enumerate(params)}
+    c += ["};", "", "const dzstep_ch_t g_link_step[] = {"]
+    c += [f'    {{ {int(st["sp"])}u, {cnum(st["range"], "float")}, {cnum(st["abs_tol"], "float")}, '
+          f'{cnum(0 if isinstance(st.get("u_max", 0), str) else st.get("u_max", 0), "float")}, '
+          f'{pidx[st["u_max"]] if isinstance(st.get("u_max"), str) else -1} }},' for st in steps] or ["    { 0u, 1.0f, 1.0f, 0.0f, -1 }"]
+    c += ["};", "", "float link_step_y(const link_telem_t *t, uint8_t ch)", "{", "    switch (ch) {"]
+    c += [f"    case {k}: return (float)t->{st['y']};" for k, st in enumerate(steps)]
+    c += ["    default: (void)t; return 0.0f;", "    }", "}", "", "float link_step_u(const link_telem_t *t, uint8_t ch)", "{", "    switch (ch) {"]
+    c += [f"    case {k}: return (float)t->{st['u']};" for k, st in enumerate(steps) if st.get("u")]
+    c += ["    default: (void)t; return NAN;", "    }", "}", ""]
+    c += ["", "bool link_telem_pack(dzframe_t *f, const link_telem_t *t)", "{",
           "    memset(f, 0, sizeof *f);", "    f->kind = DZF_DATA; f->id = LINK_TELEM_ID;"]
     puts = []
     for x in fields:

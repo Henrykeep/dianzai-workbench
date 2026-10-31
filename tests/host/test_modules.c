@@ -8,6 +8,7 @@
 #include "ssd1306.h"
 #include "ball_beam.h"
 #include "dzctl.h"
+#include "dzstep.h"
 
 TEST(spsc_basic_and_wrap)
 {
@@ -164,11 +165,40 @@ TEST(ball_beam_integral)
     CHECK(b.integ == 0.0f);                           /* 积分区外不积 */
 }
 
+TEST(dzstep_checked_write_and_crc)
+{
+    typedef struct { float kp; uint32_t ms; bool on; } p_t;
+    static const dzctl_param_t d[] = { { "kp", 0, DZCTL_F32, 0.0f, 2.0f, 0.5f }, { "ms", 4, DZCTL_U32, 50.0f, 2000.0f, 0.0f },
+                                       { "on", 8, DZCTL_BOOL, 0.0f, 1.0f, 0.0f } };
+    p_t p = { 0.1f, 200u, false };
+    dzctl_table_t t = { &p, d, 3u, 0xCAFEu };
+    dzframe_t in, ack, rej; bool has = false; float nan = 0.0f; nan = nan / nan;
+    CHECK(dzstep_selftest() == 0);
+    CHECK(dzctl_param_check(&t, 0, 0.6f, false) == 0u);
+    CHECK(dzctl_param_check(&t, 0, 0.7f, false) == DZSTEP_REJ_STEP);
+    CHECK(dzctl_param_check(&t, 0, 2.5f, false) == DZSTEP_REJ_RANGE);
+    CHECK(dzctl_param_check(&t, 0, nan, false) == DZSTEP_REJ_TYPE);
+    CHECK(dzctl_param_check(&t, 1, 100.5f, false) == DZSTEP_REJ_TYPE);
+    CHECK(dzctl_param_check(&t, 2, 1.0f, true) == DZSTEP_REJ_STATE);
+    memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 1; in.seq = 4;
+    CHECK(dzframe_put_f32(&in, 9999.0f) && dzctl_handle_checked(&t, &in, false, &ack, &rej, &has) && has);
+    CHECK(dzframe_get_u8(&ack, 0) == DZCTL_REJECTED && dzframe_get_f32(&ack, 1) == 200.0f && p.ms == 200u);   /* 不限幅、不写 */
+    CHECK(rej.id == DZSTEP_REJECT_ID && dzframe_get_u8(&rej, 0) == 1u && dzframe_get_u8(&rej, 1) == DZSTEP_REJ_RANGE
+          && rej.len == 10u + 2u && memcmp(&rej.payload[10], "ms", 2) == 0);
+    memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 0;
+    CHECK(dzframe_put_f32(&in, 0.4f) && dzctl_handle_checked(&t, &in, false, &ack, &rej, &has) && !has && p.kp == 0.4f);
+    {   /* CRC：kp=0.4 ms=200 on=0 → float32 LE 拼接 */
+        float v[3] = { 0.4f, 200.0f, 0.0f }; uint8_t b[12];
+        for (int i = 0; i < 3; i++) { uint32_t w; memcpy(&w, &v[i], 4); for (int k = 0; k < 4; k++) b[4 * i + k] = (uint8_t)(w >> (8 * k)); }
+        CHECK(dzctl_params_crc32(&t) == dzctl_crc32(b, 12));
+    }
+}
+
 TEST(dzctl_param_and_estop)
 {
     typedef struct { float kp; uint32_t ms; int16_t off; } p_t;
-    static const dzctl_param_t d[] = { { "kp", 0, DZCTL_F32, 0.0f, 2.0f }, { "ms", 4, DZCTL_U32, 50.0f, 2000.0f },
-                                       { "off", 8, DZCTL_I16, -100.0f, 100.0f } };
+    static const dzctl_param_t d[] = { { "kp", 0, DZCTL_F32, 0.0f, 2.0f, 0.0f }, { "ms", 4, DZCTL_U32, 50.0f, 2000.0f, 0.0f },
+                                       { "off", 8, DZCTL_I16, -100.0f, 100.0f, 0.0f } };
     p_t p = { 0.1f, 200u, 0 };
     dzctl_table_t t = { &p, d, 3u, 0xCAFEu };
     dzframe_t in, ack;
@@ -228,5 +258,6 @@ void suite_modules(void)
 {
     RUN(spsc_basic_and_wrap); RUN(key_events); RUN(qd4310_codec_and_resync);
     RUN(ssd1306_fb_text_flush); RUN(ball_beam_estimator_and_limits); RUN(ball_beam_integral); RUN(ball_beam_ab_options);
+    RUN(dzstep_checked_write_and_crc);
     RUN(dzctl_param_and_estop);
 }

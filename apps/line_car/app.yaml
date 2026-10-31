@@ -28,10 +28,13 @@ link:
   # 验收：band 取 8 路灰度的量化间距 12 mm（dzbench.json step_tests.line_car 的说明）；示例，按题目改
   accept:
     - { name: 偏线阶跃（示例）, y: line_mm, band: 12, hold_s: 0.3, runs: 3 }
+  # #38 阶跃实验（DATA 0x7B）：板上按遥测节拍算指标，发 step_result（dzctl 0.13.0，firmware/proto/dzctl/README.md）
+  step:
+    - { sp: 0, y: line_mm, range: 100, abs_tol: 3.0 }
   params:
     - { name: v_base,  type: float, default: 2.0,  min: 0,  max: 6,   unit: rps, desc: 直道基础轮速 }
     - { name: kp_line, type: float, default: 0.05, min: 0,  max: 0.5, unit: rps/mm, desc: 线位置比例 }
     - { name: kd_line, type: float, default: 0.0,  min: 0,  max: 0.05, desc: 线位置微分（每 mm/s） }
     - { name: kp,      type: float, default: 0.08, min: 0,  max: 2,   desc: 轮速 PI }
     - { name: ki,      type: float, default: 1.5,  min: 0,  max: 20 }
-    - { name: v_search, type: float, default: 1.0, min: 0, max: 4, unit: rps, desc: 丢线找线时的轮速 }
+    - { name: v_search, type: float, default: 1.0, min: 0, max: 4, max_delta: 1.0, unit: rps, desc: 丢线找线时的轮速 }

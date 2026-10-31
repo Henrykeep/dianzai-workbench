@@ -19,9 +19,12 @@ link:
       - { name: pos_deg, type: float, unit: deg }
       - { name: u,       type: float }
       - { name: run,     type: uint8, enum: [STOPPED, RUNNING, ESTOP], pin: 状态 }
+  # #38 阶跃实验（DATA 0x7B）：板上按遥测节拍算指标，发 step_result（dzctl 0.13.0，firmware/proto/dzctl/README.md）
+  step:
+    - { sp: 0, y: pos_deg, u: u, u_max: max_u, range: 720, abs_tol: 0.5 }
   params:
     - { name: kp,       type: float, default: 0.02, min: 0,    max: 0.5, desc: 位置 PID（仿真起步值） }
     - { name: ki,       type: float, default: 0.0,  min: 0,    max: 1 }
     - { name: kd,       type: float, default: 0.0008, min: 0,  max: 0.02 }
-    - { name: deadband, type: float, default: 0.03, min: 0,    max: 0.3, desc: 死区补偿（占空比） }
+    - { name: deadband, type: float, default: 0.03, min: 0,    max: 0.3, max_delta: 0.1, desc: 死区补偿（占空比） }
     - { name: max_u,    type: float, default: 0.8,  min: 0.1,  max: 1 }
