@@ -772,7 +772,8 @@ class AgentService:
         spw = [float(v[st["sp"]]) for _, v in w]
         k = max((i for i in range(1, len(spw)) if spw[i] != spw[i - 1]), default=None)   # 最后一次设定值跳变 = 阶跃时刻
         ss = steady_state(t, ys, t_step=t[k] if k else None, window_s=min(0.3, hold / 3),
-                          span_ref=abs(spw[k] - spw[k - 1]) if k else None)
+                          span_ref=abs(spw[k] - spw[k - 1]) if k else None,
+                          base_s=hold / 2 if segs is not None else None)   # 四段：基线 = 上一段后半（同 four_segment_metrics）
         verdict = g.record(m, self._gains(), w[-1][1] if w else {})
         verdict["steady"] = ss
         if not ss["steady"] and ss["reason"] in ("still_drifting", "warming_up"):

@@ -324,3 +324,21 @@ def test_sim_as_hw_step_test_needs_arm_card_and_prearm(home, tmp_path):
         assert out["status"] != "rejected", out
     finally:
         s.disconnect()
+
+
+def test_steady_state_four_segment_baseline_is_previous_segment():
+    """复现 Windows run 41172197090：四段实验的最后一跳（SP+Δ → SP）基线若取全部历史，中位数 ≈ SP → 幅度 0 → too_little_motion。
+    粗时钟（15.6 ms 量化）采样、一阶滞后；基线只取上一段后半就判得出稳态。"""
+    from dzbench.tuning.identify import steady_state
+    hold, dt, q = 0.8, 0.02, 0.015625
+    t, y, sp, yy = [], [], [], 0.4
+    for i in range(int(5 * hold / dt)):
+        tt = round(i * dt / q) * q                       # Windows 时钟粒度
+        s = [0.4, 0.3, 0.4, 0.5, 0.4][min(4, int(i * dt / hold))]
+        yy += (s - yy) * 0.25
+        t.append(tt); y.append(yy); sp.append(s)
+    k = max(i for i in range(1, len(sp)) if sp[i] != sp[i - 1])
+    old = steady_state(t, y, t_step=t[k], window_s=0.26, span_ref=0.1)
+    assert old["reason"] == "too_little_motion"          # 修之前的行为（不给 base_s）
+    new = steady_state(t, y, t_step=t[k], window_s=0.26, span_ref=0.1, base_s=hold / 2)
+    assert new["reason"] in ("steady", "still_drifting") and new["amplitude"] > 0.05

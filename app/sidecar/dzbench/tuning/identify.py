@@ -48,14 +48,17 @@ def _oscillating(y: list[float], thr: float) -> bool:
 
 
 def steady_state(t: list[float], y: list[float], t_step: float | None = None, window_s: float = 0.3,
-                 warmup_s: float = 0.2, span_ref: float | None = None) -> dict:
+                 warmup_s: float = 0.2, span_ref: float | None = None, base_s: float | None = None) -> dict:
     """阶跃后是否已稳。t_step = 阶跃时刻（秒）；不给时把前 3 个样本当基线。span_ref = 期望变化幅度；不给时用 y 极差。
     返回 {steady, reason, text, noise, drift, amplitude}。"""
     if len(t) < 8:
         return _ss(False, "too_few_samples")
     if t_step is None:
         t_step = t[min(2, len(t) - 1)]
-    pre = [v for a, v in zip(t, y) if a < t_step] or y[:3]
+    # base_s：基线只取阶跃前这么长（多段实验必须给：四段 SP→SP−Δ→SP→SP+Δ→SP 的全部历史中位数正好≈最终 SP，
+    # 幅度被算成 0 → 误判 too_little_motion；哪边取中位数取决于采样个数/时序，Windows 上更容易翻）
+    pre = [v for a, v in zip(t, y) if a < t_step and (base_s is None or a >= t_step - base_s)] or \
+        [v for a, v in zip(t, y) if a < t_step] or y[:3]
     y0 = statistics.median(pre)
     if t[-1] - t_step < warmup_s + window_s:
         return _ss(False, "warming_up")
