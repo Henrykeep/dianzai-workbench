@@ -26,6 +26,7 @@ import { initProject } from "./project";
 import { savedView, saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
 import { estopView, watchdogText, latchedOf } from "./estop";
+import { purgeEstopBlockers, resolveEstopAlerts, dropEstopBlockers, historyLine } from "./estopclear";
 import { fireEstop, handleEstopMsg, latchedCause, ESTOP_LABEL, EstopPhase, latchCleared, onCleared, RETUNE, clearedOnce, CLEARED_NOTICE, markClearClick, markClearedShown } from "./estopbtn";
 import { fetchProgress, render as renderProgress, runAction } from "./progress";
 import type { Step } from "./steps";
@@ -62,9 +63,10 @@ function renderAlerts() {
   const latched = S.latched;
   document.getElementById("cmd-r")?.classList.toggle("attn", latched);
   $("estop").classList.toggle("locked", latched);
-  if (latched) { setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
+  if (latched) { estopHist = ""; setEstopPhase("latched"); cleared.reset(); document.querySelector(".toast.cleared")?.remove(); }   // 未锁存时不在这里降级：latched 事件可能先于 status.tx_locked 到达，降级只走 cleared 事件 / tx_locked true→false
   el.hidden = !l.length && !latched;
-  if (el.hidden) { el.innerHTML = ""; return; }
+  el.classList.remove("al-hist");
+  if (el.hidden) { if (estopHist) { el.hidden = false; el.classList.add("al-hist"); el.textContent = estopHist; } else el.innerHTML = ""; return; }
   const isE = (e: any) => e.kind === "estop", isW = (e: any) => e.kind === "watchdog";
   const last = l[l.length - 1];
   const ev = l.filter(isE).pop() as any, wd = l.filter(isW).pop() as any;
@@ -131,7 +133,18 @@ const cleared = clearedOnce(() => onCleared((text, btn, go) => {
     d.querySelector<HTMLElement>("[data-r=x]")!.onclick = () => d.remove();
     $("toasts").prepend(d); markClearedShown();   // 解除卡渲染后打点
   }, () => runAction(RETUNE.action, s => goStepRef(s))));
-function showCleared() { cleared.fire(); }
+// #41：解除后同一节拍内清掉红条与所有「请先解除急停」提示，只留一行中性历史
+let estopHist = "";
+function resolveEstop() {
+  const prev = AL.list.filter(e => e.kind === "estop").pop() as any;
+  if (prev || S.latched) estopHist = historyLine(estopView(prev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs).head, Date.now());
+  S.latched = false; resolveEstopAlerts(AL);
+  document.getElementById("cmd-r")?.classList.remove("attn"); $("estop").classList.remove("locked");
+  renderAlerts(); purgeEstopBlockers(document); agent.resolveEstop?.();
+  if (estopHist) markClearedShown();
+  void refreshProgressRef();
+}
+function showCleared() { resolveEstop(); cleared.fire(); }
 function setEstopPhase(p: EstopPhase) {
   estopPhase = p;
   const b = document.getElementById("estop"); if (!b) return;
@@ -812,12 +825,12 @@ const goStep = initSteps(() => !!S.status.connected); goStepRef = goStep;
 const refreshProgress = async () => { const p: any = await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
   current: (document.querySelector<HTMLElement>(".app")!.dataset.step || "项目") as Step,
   connected: conn.get().board,
-  estop: AL.list.some(e => e.kind === "estop" || e.kind === "watchdog"),
+  estop: S.latched || AL.list.some(e => e.kind === "estop" || e.kind === "watchdog"),
   gainsZero: noInitialGains(S.schema?.params ?? [], S.applied),
   paramsDirty: pending().length > 0,
   selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}); renderProgress(p, goStep); if (p) agent.onBlockers(p.blockers); if (p && "project" in p) void proj.show(p.project ?? null); };
+}); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) agent.onBlockers(p.blockers); if (p && "project" in p) void proj.show(p.project ?? null); };
 refreshProgressRef = refreshProgress;
 window.addEventListener("dz-step", () => void refreshProgress());
 initPjAsk(call, goStep);

@@ -8,7 +8,11 @@ export const SOURCE_TEXT: Record<string, string> = {
   ui: "急停：在工作台上按了急停（按钮 / Esc / 空格）",
   selftest: "急停：上电自检未通过，板子拒绝运行",
 };
-export const UNREPORTED = "急停已触发，原因未上报";
+export const UNREPORTED = "急停已触发，原因未知（重连后未上报）";
+// #41：重连后 cause 可能是 null / "null" / 空串——一律显示「原因未知（重连后未上报）」，不把 null 漏到界面上
+export const CAUSE_UNKNOWN = "原因未知（重连后未上报）";
+const blank = (v: unknown) => v == null || (typeof v === "string" && (!v.trim() || /^(null|undefined|none)$/i.test(v.trim())));
+export const causeText = (v: unknown) => blank(v) ? CAUSE_UNKNOWN : String(v);
 const hhmmss = (ms: number) => new Date(ms).toLocaleTimeString("zh-CN", { hour12: false });
 export function estopView(ev: EstopEv | undefined, cause: EstopCause, lastHbMs?: number | null): { head: string; detail: string } {
   const src = ev?.source ?? "";
@@ -16,9 +20,10 @@ export function estopView(ev: EstopEv | undefined, cause: EstopCause, lastHbMs?:
   if (SOURCE_TEXT[src]) return { head: SOURCE_TEXT[src], detail: hb };
   if (src.startsWith("firmware:")) {
     const c = src.slice(9);
-    return { head: cause?.message_zh || `急停：固件报告停车（原因码 ${c || "空"}），本地服务未给出说明`, detail: hb };
+    if (!blank(cause?.message_zh)) return { head: cause!.message_zh!, detail: hb };
+    return { head: blank(c) ? `急停：固件报告停车，${CAUSE_UNKNOWN}` : `急停：固件报告停车（原因码 ${c}），本地服务未给出说明`, detail: hb };
   }
-  if (cause?.message_zh) return { head: cause.message_zh, detail: hb };
+  if (!blank(cause?.message_zh)) return { head: cause!.message_zh!, detail: hb };
   return { head: UNREPORTED, detail: hb };
 }
 // 心跳超时单独一行

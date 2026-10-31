@@ -359,10 +359,11 @@ export function initAgent(call: Call) {
     if (thinkEl?.isConnected) thinkEl.textContent = t.label;
     if (t.timeout) showCard(timeoutCard());
   }, 1000);
-  function showCard(k: Card) {
+  function showCard(k: Card, estopBlk = false) {
     const c = add(`<div class="down"><span class="dot"></span><div><b>${esc(k.title)}</b><p>原因：${esc(k.why)}</p><p class="fix">处理：${esc(k.fix)}</p>
       <details class="ag-detail"><summary>查看详情</summary><pre class="mono">${esc(k.detail)}</pre></details></div></div>
       <div class="act">${k.other ? `<button class="btn" data-r="fix" ${k.other.kind === "run" ? "" : "disabled"} title="${esc(k.other.note ?? "")}">${esc(k.other.label)}</button>${k.other.note ? `<span class="nb-note">${esc(k.other.note)}</span>` : ""}` : ""}${k.settings ? `<button class="btn" data-r="cfg">大模型设置</button>` : ""}${k.retry ? `<button class="btn pri" data-r="retry">重试</button>` : ""}</div>`, "card down-card ag-err");
+    if (estopBlk) c.dataset.estopBlocker = "1";
     c.querySelector<HTMLElement>("[data-r=cfg]")?.addEventListener("click", () => openCfg());
     if (k.other?.kind === "run") c.querySelector<HTMLElement>("[data-r=fix]")?.addEventListener("click", () => runAction(k.otherId!, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s }))));
     c.querySelector<HTMLElement>("[data-r=retry]")?.addEventListener("click", () => {
@@ -385,7 +386,7 @@ export function initAgent(call: Call) {
       t.tag.after(f);
     }
     if (st === "blocked" && ack) {   // 本地服务暂停了这条：停掉等待计时，不出 60 s 超时卡；解除后本地服务回 running 再计时
-      showCard(blockedCard(ack));
+      showCard(blockedCard(ack), ack.reason === "estop" || ack.fix_action === "estop_clear");
       if (t.w === live) { watch.stop(); if (thinkEl?.isConnected) thinkEl.textContent = "已暂停：等待解除急停"; }
     }
     if (st === "running" && t.w === live && !watch.on) watch.start(performance.now());
@@ -655,5 +656,11 @@ export function initAgent(call: Call) {
       if (m.type === "agent_tool" && tools) tools.insertAdjacentHTML("beforeend", `<span class="tool ${m.ok ? "" : "bad"}">${esc(m.name)}</span>`);
     },
     add, onBlockers,
+    // #41：急停解除——删掉 estop blocker 消息与 blocked 卡，「等待解除急停」改成中性文案
+    resolveEstop() {
+      for (const [k, el] of [...notes]) if (k === "estop") { el.remove(); notes.delete(k); seenBlk.delete(k); }
+      feed.querySelectorAll("[data-estop-blocker], .blk-note[data-code=estop]").forEach(e => e.remove());
+      if (thinkEl?.isConnected && /等待解除急停/.test(thinkEl.textContent || "")) thinkEl.textContent = "急停已解除，等待本地服务继续";
+    },
   };
 }
