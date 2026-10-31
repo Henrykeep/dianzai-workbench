@@ -61,18 +61,34 @@ NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse
 
 
 
+def _roles_json_paths() -> list:
+    import os, pathlib, sys
+    out = []
+    if getattr(sys, "_MEIPASS", None):                          # 安装包（PyInstaller）里随包的 docs/dev/roles.json
+        out.append(pathlib.Path(sys._MEIPASS) / "docs" / "dev" / "roles.json")
+    if os.environ.get("DZBENCH_REPO"):
+        out.append(pathlib.Path(os.environ["DZBENCH_REPO"]) / "docs" / "dev" / "roles.json")
+    out.append(pathlib.Path(__file__).resolve().parents[4] / "docs" / "dev" / "roles.json")
+    return out
+
+
 def link_roles() -> tuple:
-    """#136：role 取值只认 tools/gen_link.py 的 ROLES（同一份枚举，生成器校验什么，提示就写什么）。"""
-    import importlib.util
-    import pathlib
-    f = pathlib.Path(__file__).resolve().parents[4] / "tools" / "gen_link.py"
-    spec = importlib.util.spec_from_file_location("dz_gen_link_roles", f)
-    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-    return tuple(mod.ROLES)
+    """#136：role 取值只读 docs/dev/roles.json（由 gen_link --emit-roles 从 ROLES 生成；侧车不留副本）。读不到返回 ()。"""
+    import json
+    for f in _roles_json_paths():
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(d, list) and d and all(isinstance(x, str) for x in d):
+            return tuple(d)
+    return ()
 
 
 def role_hint_zh() -> str:
     rs = link_roles()
+    if not rs:
+        return "在 app.yaml 的 link.params.<参数名>.role 上写角色；角色取值表 docs/dev/roles.json 没找到，这里列不出来，请看 tools/gen_link.py 的说明"
     return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {' / '.join(rs)}（例如比例增益写 role: {rs[0]}）"
 
 class AgentService:
@@ -547,10 +563,19 @@ class AgentService:
         span = st.get("range") if st.get("range") is not None else st.get("sensor_range")
         o = self.measure_step_timing() if (dur_ms is None or (target is None and _default_target)) else {}
         # #94：主线和直接 iterate_start 同一个时序来源（stepident 实测；实机返回 {} 用默认）
+        src, why = "given", []
         if dur_ms is None:
-            dur_ms = int(o.get("step_dur_ms", 2000))
+            if o.get("step_dur_ms"):
+                dur_ms, src = int(o["step_dur_ms"]), "measured"
+            else:
+                dur_ms, src = 2000, "fallback"
+                why.append("阶跃时长没测出来，按默认 2000 ms")
         if target is None and _default_target:
-            target = float(o.get("step_target", round(float(st.get("range") or 1.0) / 4, 4)))
+            if o.get("step_target") is not None:
+                target = float(o["step_target"])
+            else:
+                target, src = round(float(span or 1.0) / 4, 4), "fallback"
+                why.append(f"阶跃目标没测出来，按量程 1/4 = {target:g}" if span else "阶跃目标没测出来、也没声明量程，按 1/4 = 0.25")
         if target is None:
             raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {float(span):g} 的 1/4" if span else "按题面给的阶跃幅度")
         ms = st.get("max_step")
@@ -561,7 +586,8 @@ class AgentService:
         if tol is None:                                                          # 新声明只写物理上限：容差 = 传感器量程的 ABS_TOL_FRAC
             tol = float(span) * self.ABS_TOL_FRAC if span else None
         return {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(tol) if tol is not None else None,
-                "params": [dict(sch.params[sch.param_index[n]]) for n in names]}
+                "params": [dict(sch.params[sch.param_index[n]]) for n in names],
+                "timing_source": src, "timing_reason_zh": "；".join(why) or ("阶跃时序按仿真实测" if src == "measured" else "")}
 
     ABS_TOL_FRAC = 0.01                                          # 没声明 abs_tol：稳态容差 = 传感器量程 × 1%
 
