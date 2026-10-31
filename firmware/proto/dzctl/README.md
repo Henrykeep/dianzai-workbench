@@ -65,3 +65,60 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 
 心跳 status（同 0.10/0.11）：bit14 脱机、bit15 脱机已启动、bit 8..9 参数来源、PARAMS_DIRTY、SELFTEST_FAIL；尾部 selftest_mask / t / params_hash。
 上电自检不过 → 急停锁存（原因 SELFTEST），'R' 解除。脱机模式：不要求心跳；link_app 应用不收上位机设定值。侧车：`Session.run_selftest()`（WS op `run_selftest`）。
+
+## 0.13.0 阶跃实验 step_result / 参数校验 param_reject / 心跳 bit17（#38）
+
+兼容性：只新增。0.12 上位机不发 0x7B 就看不到差别；参数写入新增 PARAM_ACK status 5（被拒，回读值 = 旧值），旧上位机会把它当未知状态。
+`dzctl_handle()` 仍按 0.12 夹到范围（库内兼容）；应用改用 `dzctl_handle_checked()`：**不夹**，越界一律拒。
+
+### 参数校验（编译进固件，来自 app.yaml link.params）
+
+| reason | 值 | 条件 |
+|---|---|---|
+| range | 1 | 不在 [min, max] |
+| type | 2 | NaN / ±Inf；整型参数给了小数 |
+| state | 3 | 急停锁存中，或阶跃实验进行中（参数锁定） |
+| step | 4 | \|新 − 旧\| > max_delta（app.yaml `max_delta`，缺省 = max − min 即不限制） |
+
+被拒时板回两帧：PARAM_ACK（status 5，f32 = 当前值）+ DATA id=0x7A param_reject：
+
+| 偏移 | 类型 | 字段 |
+|---|---|---|
+| 0 | u8 | 参数下标 |
+| 1 | u8 | reason（上表） |
+| 2 | f32 | 请求值 |
+| 6 | f32 | 当前值 |
+| 10 | char[≤16] | 参数名（ASCII，不补 0，长度 = len − 10） |
+
+### 阶跃实验（DATA id=0x7B）
+
+上位机 → 板 开始（12 B）：u8 ch、u8 0、u16 iter、f32 target、u32 dur_ms（200..30000）；空载荷 = 停止（中止，cause 0x80）。
+板 → 上位机 应答（4 B）：u8 status（0 已开始 1 参数错 2 急停中 3 忙 4 不支持 5 脱机）、u8 ch、u16 iter。
+开始即把 `sp[ch] = target`；实验中按遥测节拍取样（t − t0 ≤ dur），到时发 step_result（56 B，LE）：
+
+| 偏移 | 类型 | 字段 | 说明 |
+|---|---|---|---|
+| 0 | u8 | proto | = 1 |
+| 1 | u8 | metric_mode | 0 rel，1 abs |
+| 2 | u8 | aborted | 1 = 中止 |
+| 3 | u8 | abort_cause | 1..9 = 急停原因；0x80 = 上位机停止 / 实验中又发设定值 |
+| 4 | u16 | iter | 上位机给的轮号（0 = 起始参数基线） |
+| 6 | u16 | n | 样本数 |
+| 8 | u32 | params_hash | CRC32/IEEE（= zlib.crc32）over 参数表顺序的 f32 LE；`tools/dzstep.py params_hash` |
+| 12 | u32 | t0_ms | 开始时刻（板时钟） |
+| 16 | f32 | setpoint | |
+| 20 | f32 | initial | 第一个样本 y0 |
+| 24 | f32 | overshoot | rel：(max(y−y0)/A − 1)·100 %，≥0；abs：max\|e\|（物理单位） |
+| 28 | u32 | rise_ms | 10%→90%；abs 口径或没到 = 0xFFFFFFFF |
+| 32 | u32 | settle_ms | 最后一次出带后第一个进带样本 − t0；带 = rel 2%\|A\| / abs abs_tol；末样本在带外 = 0xFFFFFFFF |
+| 36 | f32 | ss_err | 末 20% 窗口 mean\|e\|；rel ÷\|A\|·100 %，abs 物理单位 |
+| 40 | f32 | u_sat_ratio | \|u\| ≥ 0.99·u_max 的样本占比；没有 u 通道 = −1 |
+| 44 | f32 | peak_abs_err | max\|e\| |
+| 48 | f32 | band | 所用调节带（物理单位） |
+| 52 | u8 | ch | |
+| 53 | u8 | 保留 | 0 |
+| 54 | u16 | 保留 | 0 |
+
+A = setpoint − initial（分母一律用阶跃幅度，不用 \|setpoint\|）。\|A\| < max(0.01·range, abs_tol) 时用 abs 口径（如已在 0 附近再给 sp=0）。
+range / abs_tol / y / u / u_max 来自 app.yaml `link.step`。心跳 status **bit17 DZCTL_HB_ITER_BUSY**：实验中 = 1；结果发出即清；急停锁存当拍强制 0（aborted 结果先于急停沿心跳发出）。
+注意：心跳尾部 params_hash 仍是 0.12 的 FNV（不变），step_result 里的是 CRC32。

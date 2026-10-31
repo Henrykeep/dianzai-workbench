@@ -196,8 +196,8 @@ bool dzctl_wd_expired(dzctl_wd_t *w, uint32_t now_ms)
 int dzctl_selftest(void)
 {
     typedef struct { float k; uint16_t n; bool on; } p_t;
-    static const dzctl_param_t d[] = { { "k", 0, DZCTL_F32, -1.0f, 1.0f }, { "n", 4, DZCTL_U16, 0.0f, 100.0f },
-                                       { "on", 6, DZCTL_BOOL, 0.0f, 1.0f } };
+    static const dzctl_param_t d[] = { { "k", 0, DZCTL_F32, -1.0f, 1.0f, 0.0f }, { "n", 4, DZCTL_U16, 0.0f, 100.0f, 0.0f },
+                                       { "on", 6, DZCTL_BOOL, 0.0f, 1.0f, 0.0f } };
     p_t p = { 0.5f, 10u, false };
     dzctl_table_t t = { &p, d, 3u, 0x1234u };
     dzframe_t in, ack; int fail = 0; float v;
