@@ -18,7 +18,7 @@ get() {  # get <目录> <仓库> <tag> [稀疏检出路径...]
 }
 ALL="${*:-}"
 # fetch_url <url> <输出文件> <sha256>：带重试 + sha256 校验，见 tools/fetch_lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/fetch_lib.sh"
+source ../tools/fetch_lib.sh   # 这里已 cd 到 third_party/
 # CMSIS Core（Apache-2.0）：CMSIS_6 固定 tag 的源码包，校验包的 sha256，只解出 CMSIS/Core/Include（+ RTOS2 API 头，FreeRTOS 的
 # CMSIS_RTOS_V2 封装要 cmsis_os2.h）和 LICENSE。旧做法（CMSIS_5 稀疏克隆）在新克隆里会缺 core_cm3.h / core_cm4.h。
 CMSIS_TAG=v6.1.0
