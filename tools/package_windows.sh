@@ -29,19 +29,24 @@ echo "== 2/5 侧车 dzbench.exe（wine + PyInstaller）"
   --distpath "$(zpath "$WORK/pyi")" --workpath "$(zpath "$WORK/pyiw")" --specpath "$(zpath "$WORK")" \
   --add-data "$(zpath "$ROOT/third_party/packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack");packs" \
   --paths "$(zpath "$ROOT/app/sidecar")" --paths "$(zpath "$ROOT/host/python")" --paths "$(zpath "$ROOT/third_party/vendored/stm32_mcp_discovery")" \
-  --paths "$(zpath "$ROOT/tools")" --hidden-import dzstep \
   --hidden-import serial.tools.list_ports --collect-submodules pypdf "$(zpath "$ROOT/app/sidecar/dzbench_entry.py")")
 cp "$WORK/pyi/dzbench.exe" "$STAGE/dzbench.exe"
 
 echo "== 4/5 Tauri 外壳（x86_64-pc-windows-gnu）"
 mkdir -p "$ROOT/app/src-tauri/binaries" && cp "$STAGE/dzbench.exe" "$ROOT/app/src-tauri/binaries/dzbench-x86_64-pc-windows-gnu.exe"
 (cd "$ROOT/app/src-tauri" && npx --yes @tauri-apps/cli@2 build --target x86_64-pc-windows-gnu --no-bundle >/dev/null)   # CLI 会开 custom-protocol 并先编前端；裸 cargo build 会去连 devUrl
-cp "$ROOT/app/src-tauri/target/x86_64-pc-windows-gnu/release/dzbench.exe" "$STAGE/XinTai.exe"
-cp "$ROOT/app/src-tauri/target/x86_64-pc-windows-gnu/release/WebView2Loader.dll" "$STAGE/"   # windows-gnu 动态链接它，缺了直接起不来
+# 外壳二进制名来自 tauri.conf.json 的 mainBinaryName（dianzai-workbench.exe，CI 日志 "Built application at …\\dianzai-workbench.exe" 可证）；
+# 同目录的 release/dzbench.exe 是 externalBin 复制过去的侧车，不是外壳——以前拷错成它，zip 里的“外壳”其实是侧车
+REL="$ROOT/app/src-tauri/target/x86_64-pc-windows-gnu/release"
+SHELL_BIN=$(python3 -c "import json;c=json.load(open('$ROOT/app/src-tauri/tauri.conf.json'));print(c.get('mainBinaryName') or c['productName'])").exe
+[ -f "$REL/$SHELL_BIN" ] || { echo "✗ 找不到 Tauri 外壳 $REL/$SHELL_BIN（tauri build 没产出？看上一步输出 / tauri.conf.json mainBinaryName）" >&2; ls -la "$REL" >&2 || true; exit 1; }
+cp "$REL/$SHELL_BIN" "$STAGE/XinTai.exe"
+cp "$REL/WebView2Loader.dll" "$STAGE/"   # windows-gnu 动态链接它，缺了直接起不来
 
 echo "== 5/5 说明 + zip"
 cp "$ROOT/app/packaging/使用说明.txt" "$STAGE/README-zh.txt"
 ZIP="$OUTDIR/XinTai-$VER-win64-portable.zip"
+for f in XinTai.exe dzbench.exe WebView2Loader.dll; do [ -s "$STAGE/$f" ] || { echo "✗ 便携包缺 $f，不出 zip" >&2; exit 1; }; done
 rm -f "$ZIP"; (cd "$WORK" && zip -qr9 "$ZIP" "XinTai")
 echo "✓ $ZIP ($(du -h "$ZIP" | cut -f1))"
 rm -rf "$WORK"

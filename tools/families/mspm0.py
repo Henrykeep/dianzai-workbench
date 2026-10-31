@@ -12,6 +12,8 @@ HDR = ROOT / "third_party/mspm0-sdk/source/ti/devices/msp/m0p/mspm0g350x.h"
 
 QEI_TIMERS = {"TIMG8"}                       # G350x 上唯一带 QEI 的定时器
 TIMER_BITS = {"TIMA0": 16, "TIMA1": 16, "TIMG0": 16, "TIMG6": 16, "TIMG7": 16, "TIMG8": 16, "TIMG12": 32}
+# SWD 调试口：占用即报错（#56），见 boardlib.swd_msg
+SWD_PINS = {"PA19": "SWDIO", "PA20": "SWCLK"}
 TRAP_PINS = {
     "PA0": "开漏输出（作 UART/输出需外部上拉；与 BSL 有关）",
     "PA1": "开漏输出（作 UART/输出需外部上拉；与 BSL 有关）",

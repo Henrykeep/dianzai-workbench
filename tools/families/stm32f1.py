@@ -67,6 +67,8 @@ SPI_REMAP = {"SPI1": [("PA5", "PA6", "PA7"), ("PB3", "PB4", "PB5")], "SPI2": [("
 SPIS = {s: (0, "APB2" if s == "SPI1" else "APB1", [g[0] for g in gs], [g[1] for g in gs], [g[2] for g in gs])
         for s, gs in SPI_REMAP.items()}
 
+# SWD 调试口：占用即报错（#56），见 boardlib.swd_msg
+SWD_PINS = {"PA13": "SWDIO", "PA14": "SWCLK"}
 RESERVED_PINS = {
     "PA13": "SWDIO（占用后无法用 SWD 下载/调试）",
     "PA14": "SWCLK（占用后无法用 SWD 下载/调试）",
