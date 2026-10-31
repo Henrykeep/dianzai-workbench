@@ -169,7 +169,7 @@ export function initAgent(call: Call) {
     if (commitCards.has(c.id)) return onCommitResult(m);   // 同一 request_id 再推一次 = 状态更新
     const d = add(commitCardHtml(c, esc), "card commit pending");
     commitCards.set(c.id, d);
-    mountCommitCard(d, c, (op, args) => call(op, args).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
+    mountCommitCard(d, c, (_op, args) => call("commit_confirm", args).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
     if (commitResult(m).state !== "pending") onCommitResult(m);
   }
   function onCommitResult(m: any) {

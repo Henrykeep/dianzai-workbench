@@ -54,7 +54,9 @@ assert.equal(writeScopeNote({}), ""); assert.equal(writeScopeNote({ scope: "comm
 // 字段名只在 fieldmap
 for (const f of ["src/commitcard.ts", "src/agent.ts", "src/projflow.ts", "src/main.ts"]) {
   const t = readFileSync(f, "utf8");
-  for (const k of ['"request_id"', '"approve"', '"reason_zh"', '"write_only"', '"commit_confirm"', '"commit_confirm_request"', '"commit_declined"', '"scope"']) assert.ok(!t.includes(k), `${f} 写死了 ${k}`);
+  for (const k of ['"request_id"', '"approve"', '"reason_zh"', '"write_only"', '"commit_confirm_request"', '"commit_declined"', '"scope"']) assert.ok(!t.includes(k), `${f} 写死了 ${k}`);
+  // op 名是入口不是字段：按 test_wiring 的约定 call("commit_confirm", …) 以字面量出现在调用处（agent.ts），其余字段名仍只在 fieldmap.ts
+  assert.match(readFileSync("src/agent.ts", "utf8"), /call\("commit_confirm", args\)/);
 }
 console.log("r9p6c commit ok");
 
