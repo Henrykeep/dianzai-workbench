@@ -211,7 +211,12 @@ jobs:
           cmd /c "`"$bat`" < NUL"
           $rc = $LASTEXITCODE
           Pop-Location
-          if ($rc -ne 0) { Write-Host "::error::xintai-selfcheck.bat 退出码 $rc（自检没通过）"; exit 1 }
+          # 安装目录里的侧车有 selfcheck-data 时必须 0；没有时只接受 3（未完成：有未检查项）
+          $hasSd = [bool](Get-ChildItem (Join-Path $inst "repo\app\sidecar\dzbench") -Recurse -Filter *.py | Select-String -SimpleMatch "selfcheck-data" -List)
+          $want = if ($hasSd) { 0 } else { 3 }
+          if ($rc -ne $want) { Write-Host "::error::xintai-selfcheck.bat 退出码 $rc，应为 $want（selfcheck-data 存在=$hasSd）"; exit 1 }
+          $j = & (Join-Path $inst "python\python.exe") (Join-Path $inst "repo\tools\selfcheck.py") --json | Out-String | ConvertFrom-Json
+          if ($j.rc -ne $want) { Write-Host "::error::selfcheck.py --json rc=$($j.rc)，应为 $want"; exit 1 }
           $sm = @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")
           if (-not (Get-ChildItem $sm -Recurse -Filter "芯台 自检.lnk" -ErrorAction SilentlyContinue)) { Write-Host "::error::开始菜单没有「芯台 自检」快捷方式"; exit 1 }
           Write-Host "安装后自检通过：$bat"

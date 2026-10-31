@@ -28,7 +28,12 @@ jobs:
             [ -e "$clean/$b" ] || [ -L "$clean/$b" ] || ln -s "$f" "$clean/$b"; done; done
           export DZ_NOPAUSE=1; unset PYTHONPATH PYTHONHOME
           if env PATH="$clean" sh -c 'command -v python3 || command -v python'; then echo "::error::PATH 没清干净"; exit 1; fi
-          env PATH="$PWD/.venv/bin:$clean" ./xintai-selfcheck.sh || { echo "::error::正例自检失败"; exit 1; }
+          # 树里有 `-m dzbench selfcheck-data` 时必须 0；没有时只接受 3（未完成），不接受 1
+          if grep -rqs "selfcheck-data" app/sidecar/dzbench --include='*.py'; then want=0; else want=3; fi
+          set +e; env PATH="$PWD/.venv/bin:$clean" ./xintai-selfcheck.sh; rc=$?; set -e
+          [ "$rc" -eq "$want" ] || { echo "::error::正例自检退出码 $rc，应为 $want（3 = 有未检查项，仅在没有 selfcheck-data 时允许）"; exit 1; }
+          env PATH="$PWD/.venv/bin:$clean" .venv/bin/python tools/selfcheck.py --json > sc.json || true
+          .venv/bin/python -c "import json,sys;d=json.load(open('sc.json'));assert d['rc']==int(sys.argv[1]),d;assert all(i['status'] in ('ok','missing','invalid','unchecked') for i in d['items'])" "$want"
           set +e
           env PATH="$clean" PYTHON="$RUNNER_TEMP/nodeps/bin/python" ./xintai-selfcheck.sh > neg.log 2>&1; rc=$?
           set -e; cat neg.log
