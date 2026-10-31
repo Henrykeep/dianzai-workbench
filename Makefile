@@ -113,7 +113,7 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview bench preflight
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview ui bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -190,6 +190,10 @@ gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
 # 浏览器预览桌面工作台：构建 app/ui、起侧车，打印带 ?ws= 的完整地址（mk/ui-preview.sh）
+ui:   ## 构建桌面工作台前端 dist（app/ui/dist）：node_modules 缺失或比 package-lock.json 旧才 npm ci（软链接 node_modules 拒绝，#33），再 npm run build
+	@if [ ! -d app/ui/node_modules ] || [ app/ui/package-lock.json -nt app/ui/node_modules/.package-lock.json ]; then tools/fetch_ui_deps.sh; else echo "app/ui/node_modules 已是最新，跳过 npm ci"; fi
+	cd app/ui && npm run build
+
 ui-preview:
 	PY=$(PY) sh mk/ui-preview.sh
 
@@ -308,6 +312,7 @@ check:
 	cd host/python && $(PY) -m dzlink.test_sender
 	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && for t in tests/*.test.ts; do node_modules/.bin/esbuild $$t --bundle --platform=node --log-level=error | node || exit 1; done; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
+	$(MAKE) ui   # 闸门也构建一次前端 dist（tsc + vite）：类型错误 / 构建失败即红；dist 在 .gitignore 里
 	$(PY) tools/tree_guard.py check $(TREE_SNAP)
 
 fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）
