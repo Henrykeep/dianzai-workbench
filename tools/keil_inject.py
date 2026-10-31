@@ -32,11 +32,12 @@ FILE_TYPE = {".c": 1, ".s": 2, ".h": 5}
 
 
 def rel(p: pathlib.Path, base: pathlib.Path) -> str:
-    """工程文件里写的路径：能相对就相对（Keil 习惯反斜杠）；Windows 上跨盘符（D: 工程、C: 仓库）没有相对路径，退回绝对路径（正斜杠，Keil 也认）。"""
+    """.uvprojx 里的路径：能相对就相对（反斜杠）；Windows 跨盘符（relpath 抛 ValueError）时退回绝对路径（Keil 接受 D:\\x\\y）。"""
     try:
-        return os.path.relpath(p.resolve(), base.resolve()).replace("/", "\\")
+        r = os.path.relpath(p.resolve(), base.resolve())
     except ValueError:
-        return p.resolve().as_posix()
+        r = str(p.resolve())
+    return r.replace("/", "\\")
 
 
 def group_xml(name: str, files: list[str], indent: str) -> str:
