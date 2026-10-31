@@ -44,8 +44,10 @@ function log(s: string) {
 }
 
 // 解除确认（tx_locked true → false）：只提示，不自动发任何运动 / 调参请求；「重新调参」由人点了才发起
-export const CLEARED_TEXT = "已解除，电机保持静止，需重新开始调参";
-export const RETUNE = { label: "重新调参", action: "tune_relay" } as const;
+import { CLEARED_MSG, CLEARED_ACT } from "./r8pre";
+// r8pre：与灰条同一句、同一个动作
+export const CLEARED_TEXT = CLEARED_MSG;
+export const RETUNE = CLEARED_ACT;
 export function latchCleared(prev: boolean, cur: boolean) { return prev && !cur; }
 export function onCleared(show: (text: string, btn: typeof RETUNE, onClick: () => void) => void, startTune: () => void) {
   show(CLEARED_TEXT, RETUNE, () => startTune());   // startTune 只在人点击时调用
