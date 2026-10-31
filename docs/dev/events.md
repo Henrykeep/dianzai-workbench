@@ -44,7 +44,7 @@
 1. `iterate.started` `{plan, start, start_hash, limits: {time_s, rounds}}`——**`limits.rounds` 就是本次的轮数上限 N**（实机 8 / 仿真 20），`limits.time_s` 是时间预算（180 s）。界面显示“第 i / N 轮”用它，不要写死。
 2. 每轮一条 `iterate.round`：`iterate.md` 第 2 节字段（`iter` 0 = 起始参数基线，之后从 1 计；无效轮 `valid=false` 不占号）+ `local_hash` `unit` `band` `changed`。
 3. 0~多条 `iterate.param_reject` `{name, value, reason}`（候选值被本地 / 板子拒，换方向，不算一轮）。
-4. 恰好一条 `iterate.stopped` `{reason, message_zh, rounds, best{iter, params, params_hash, metrics, pass, gaps}, next_zh}`；`reason` ∈ pass / budget_time / budget_rounds / estop / stopped / invalid / no_improve / unstable / blocked / error（`error` 时只有 `reason` `message_zh`）。
+4. 恰好一条 `iterate.stopped` `{reason, message_zh, rounds, best{iter, params, params_hash, metrics, pass, gaps}, next_zh, pass_basis}`；`reason` ∈ pass / budget_time / budget_rounds / estop / stopped / invalid / no_improve / unstable / blocked / error（`error` 时只有 `reason` `message_zh`）。
 5. 有 `best` 时紧接一张 `agent_action`（tool=`iterate_apply_best`，标题“采用最好参数”，`preview.changes` = 旧→新）：**仿真和实机都要人点**，确认后逐个写回并回读核对；Agent 一轮调参以这张卡收尾（#53）。
 
 ## 模型列表 `op: "agent_models"` 的返回
@@ -110,4 +110,40 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 ## “采用最好参数”卡的 `args.ss_err` / `preview.ss_err`
 
 `{measured, unit, band: {limit, unit, item, source}, inside, note_zh}`：实测稳态误差（绝对值）、题目误差带及出处（`source` 如「题目 B3：… ≤ 1cm」；
-题目没写时为默认口径 2%，`source` 会写明）、本次是否在带内。单位对不上（实测 px、题目 cm）时 `inside: null`，`note_zh` 说明需先标定（#51）。
+题目没写时为默认口径 2%，`source` 会写明）、本次是否在带内。
+- 仿真板：单位对不上时用仿真对象自己的标称几何换算（`dzbench.json` `step_tests.<应用>.sim_nominal` `{from, to, per, source}`，
+  如 2026H_ball：`SIM_PX_PER_M=600`，1 px = 1/6 cm），多一个 `converted: {value, unit, note_zh}`，`inside` 照常判 true/false，
+  `note_zh` 含「仿真标称换算，未实机标定」。仿真对象没有这层几何时 `inside: null`。
+- 实机：单位对不上时 `inside: null`，`note_zh` 说明需先标定（#51）。
+- `pass_basis`（字符串，卡上 `ss_err.pass_basis`，也在 `iterate.stopped` / `iterate.stopped（engine=host_step）` 顶层）：“达标停止”的依据。迭代本身一律按默认口径判达标，
+  取值：「按默认 2% 判定（题目没写误差带）」/「按默认 2% 判定，题目误差带待标定」（`inside: null`）/
+  「按默认 2% 判定达标；另对照题目 B3：钢球误差绝对值 ≤ 1cm：在带内|超出」。界面原样显示，别只写“已达标”。
+
+## “采用最好参数”卡的 `args.compare` / `preview.compare`
+
+`{round0: {iter, metrics: [...]}, best: {iter, metrics: [...]}, unchanged, note_zh}`：第 0 轮（初值）和最好一轮并排。
+`metrics` 每项是 `{key, value, unit}`（`value` 为数值，`unit` 单独给，如 `sse`→遥测单位 px、`overshoot_pct`→`%`、`iae`→`px·s`）；
+`key` ∈ ss_err_pct / sse / overshoot_pct / overshoot / settle_ms / settling / iae。`iterate.stopped` / `iterate.stopped（engine=host_step）` 顶层也带 `round0`。
+`unchanged: true`（最好一轮就是初值）时 `note_zh` 为「初值已达标，未改参」（初值没达标时为「初值就是最好一轮，未改参（仍未达标…）」），
+不写“第0轮最好”；否则为「第 N 轮比初值好：sse 3 → 1px，…」。
+
+## `status.agent`（Agent 状态唯一来源）
+
+`hello.status` 和周期 `status` 都带 `agent: {state, fix_action?, message_zh?}`，`state` ∈ `ready` / `unconfigured` / `busy`：
+- `unconfigured`：没配模型（无 Key 且不是本地 Ollama），带 `fix_action: "configure_model"`（界面打开“大模型设置”）。
+- `busy`：正在回答（`agent_ask` 进行中）或自动迭代在跑。
+- `ready`：其余。界面只看这个字段，不要自己拼。
+
+## 参数提议 `type: "proposal"` 的 `source`
+
+`source` ∈ `llm`（大模型调 `propose_param` 提的）/ `rule_engine`（分阶段 P→I→D、规则提示、继电起步、仿真搜索算的）。
+原来的中文来源说明移到 `source_zh`（如「规则引擎」「继电起步」「仿真搜索」）。
+
+## r9q 补充
+
+- **调参模式工具**：只剩 `iterate_start` / `iterate_cancel`（外加只读、扫频、评分）。仿真板没有板上阶跃（如 2026H_ball）时，`iterate_start` 自己改走上位机阶跃，事件仍是 `iterate.started` / `iterate.round` / `iterate.stopped`，`engine: "host_step"`。
+- **`sim_starting`**：`{type, state: "start"|"ready", message_zh?, elapsed_s?}`。首次连仿真板要先同步编译（冷编译约 11–15 s），期间先发 `start`，连上发 `ready`。同一仿真口的重复连接会排队并复用（`connect` 返回 `reused: true`），不会拆掉重编。
+- **`board_switch`**：例题建项目时，若已连着别的仿真板，自动换到例题自己的板（`project.yaml` 的 `sim_board`，缺省 `sim:<例题>`）；实机不动。`project_fork` 结果带 `sim_board`。
+- **项目编号**：只看 `projects/` 下真实存在的目录（大小写不敏感），干净 HOME 第一个是 `2026h-ball`，没有 `-2`。
+- **提议 `origin`**：原始调用方（`agent` / `规则引擎` / 其他），journal 据此记录；对外看 `source` 枚举。
+- 内置例题自带 `requirements.yaml`，读题已完成，不向用户要 PDF 路径。

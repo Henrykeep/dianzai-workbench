@@ -102,7 +102,7 @@ class Server:
             if pc:
                 out.append(pc)
                 out.extend(self.notifier.update(pc))  # 新增阻塞项：以 Agent 身份主动提醒（模板，不调大模型）
-            out.append(self.session.status() | {"clients": len(self.clients)})
+            out.append(self.session.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()})
         return out
 
     async def _ticker(self) -> None:
@@ -145,7 +145,7 @@ class Server:
         s, op = self.session, m.get("op")
         run = asyncio.get_running_loop().run_in_executor
         if op == "hello":
-            return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients)},
+            return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()},
                     "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}

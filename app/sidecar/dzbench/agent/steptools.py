@@ -244,6 +244,20 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
     return {"code": code, "steps": steps, "batch": batch, "stopped_at": None}
 
 
+# 电赛常用词的读音（pypinyin 默认按单字常用音会读错，如 调参 → diaocan）。只影响目录名这种给人看的短名。
+CONTEST_PHRASES = {"调参": [["tiáo"], ["cān"]], "调试": [["tiáo"], ["shì"]], "重心": [["zhòng"], ["xīn"]],
+                   "电调": [["diàn"], ["tiáo"]], "调速": [["tiáo"], ["sù"]], "调节": [["tiáo"], ["jié"]]}
+_PHRASES_LOADED = False
+
+
+def _load_phrases() -> None:
+    global _PHRASES_LOADED
+    if not _PHRASES_LOADED:
+        from pypinyin import load_phrases_dict
+        load_phrases_dict(CONTEST_PHRASES)
+        _PHRASES_LOADED = True
+
+
 def slug(name: str) -> str:
     """项目目录名：只用 ASCII 小写字母/数字/连字符（Windows 路径、Keil、make 都不怕）。
     中文转无声调拼音（pypinyin，MIT），全角先 NFKC 归一：2026H小球 → 2026h-xiaoqiu。转完为空才用 proj-<哈希>。"""
@@ -251,6 +265,7 @@ def slug(name: str) -> str:
     import re
     import unicodedata
     from pypinyin import lazy_pinyin
+    _load_phrases()
     s = unicodedata.normalize("NFKC", str(name))
     parts = ["".join(lazy_pinyin(seg)) if re.match(r"[\u3400-\u9fff]", seg) else seg
              for seg in re.findall(r"[\u3400-\u9fff]+|[^\u3400-\u9fff]+", s)]
@@ -260,20 +275,33 @@ def slug(name: str) -> str:
 
 
 def fresh_code(root, code: str) -> str:
-    """新建项目的目录名（#39/#55）：ASCII slug（如 2026h-ball-3）；与已有用户项目或内置示例（按 slug 比）重名就加 -2、-3…，
-    保证落在一个全新的目录。中文显示名另存 project.yaml 的 display_name（set_display_name）。"""
-    ex = pathlib.Path(root) / "examples"
-    taken = {slug(e.name) for e in ex.iterdir()} if ex.is_dir() else set()
-
-    def used(c):
-        return (paths.projects_dir() / c).exists() or (ex / c).exists() or c in taken
+    """新建项目的目录名（#39/#55）：ASCII slug（如 2026h-ball）；只和真实存在的用户项目（$DZBENCH_HOME/projects，按小写比，
+    Windows 不分大小写）重名才加 -2、-3…。内置例题在仓库 examples/、代号是 2026H_ball 这种原名，和用户项目不在一个目录、
+    也不会同名，所以不算占用（r9q：以前把例题自己的 slug 当成已占用，干净 HOME 第一次新建就成了 2026h-ball-2）。"""
+    pd = paths.projects_dir()
+    have = {d.name.lower() for d in pd.iterdir()} if pd.is_dir() else set()
     base = slug(code)
-    if not used(base):
+    if base not in have:
         return base
     i = 2
-    while used(f"{base}-{i}"):
+    while f"{base}-{i}" in have:
         i += 1
     return f"{base}-{i}"
+
+
+def example_sim_board(src, example: str) -> str:
+    """例题声明的仿真板：project.yaml 的 sim_board，没写就是同名应用 sim:<例题代号>（host-sim 按例题名编）。"""
+    v = _yaml(pathlib.Path(src) / "project.yaml").get("sim_board")
+    return str(v) if v else "sim:" + example
+
+
+def pin_sim_board(d, board: str) -> None:
+    """新项目的 project.yaml 里钉住 sim_board（已有就覆盖成这块）。"""
+    p = pathlib.Path(d) / "project.yaml"
+    lines = [x for x in (p.read_text(encoding="utf-8").splitlines() if p.exists() else []) if not x.startswith("sim_board:")]
+    k = next((i + 1 for i, x in enumerate(lines) if x.startswith("name:")), len(lines))
+    lines.insert(k, f"sim_board: {board}")
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def set_display_name(d, name: str) -> None:

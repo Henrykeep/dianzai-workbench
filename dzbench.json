@@ -66,6 +66,13 @@
       "gains": {
         "kp": "pos_k",
         "ki": "ball_ki"
+      },
+      "sim_nominal": {
+        "from": "px",
+        "to": "cm",
+        "px_per_m": 600,
+        "per": 0.16666666666666666,
+        "source": "examples/2026H_ball/io/sim_setup.c SIM_PX_PER_M=600（仿真相机 1 m ↔ 600 px）"
       }
     },
     "motor_pos": {

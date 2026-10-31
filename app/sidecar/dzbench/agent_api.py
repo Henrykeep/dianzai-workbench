@@ -54,7 +54,9 @@ class AgentTools:
         with self.lock:
             pid = next(self._ids)
             p = {"type": "proposal", "id": pid, "name": name, "value": v, "clamped": clamped,
-                 "current": self.s.params.get(name), "reason": reason, "source": source}
+                 "current": self.s.params.get(name), "reason": reason,
+                 "source": "llm" if source in ("agent", "llm") else "rule_engine",   # 只两种：大模型提的 / 规则引擎（分阶段、继电、仿真搜索）算的
+                 "source_zh": source, "origin": source}
             self.pending[pid] = p
         self.emit(p)
         return {"id": pid, "status": "pending_user_confirmation"}

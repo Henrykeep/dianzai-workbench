@@ -25,10 +25,13 @@ def test_memory_isolated_per_project_dir(tmp_path):
 
 
 def test_fresh_code_never_reuses(tmp_path):
-    ex = next(d.name for d in (ROOT / "examples").iterdir() if d.is_dir())
-    assert steptools.fresh_code(ROOT, ex) == steptools.slug(ex) + "-2"          # 按 slug 和例题比：不复用例题
-    assert steptools.fresh_code(ROOT, "2026H_ball") == "2026h-ball-2"
     from dzbench import paths
+    assert not paths.projects_dir().exists() or not any(paths.projects_dir().iterdir())
+    assert steptools.fresh_code(ROOT, "2026H_ball") == "2026h-ball"               # r9q (c)：干净 HOME 第一个就是 2026h-ball，例题不算占用
+    (paths.projects_dir() / "2026h-ball").mkdir(parents=True)
+    assert steptools.fresh_code(ROOT, "2026H_ball") == "2026h-ball-2"             # 只有真实项目才算重名
+    (paths.projects_dir() / "2026H-Ball-2").mkdir(parents=True)
+    assert steptools.fresh_code(ROOT, "2026H_ball") == "2026h-ball-3"             # 不分大小写（Windows）
     (paths.projects_dir() / "qabc123").mkdir(parents=True)
     assert steptools.fresh_code(ROOT, "Qabc123") == "qabc123-2"
     assert steptools.fresh_code(ROOT, "Qnew999") == "qnew999"
@@ -71,3 +74,12 @@ def test_slug_pinyin_fullwidth_and_collision():
     assert steptools.fresh_code(ROOT, "2026H小球") == "2026h-xiaoqiu-2"
     (paths.projects_dir() / "2026h-xiaoqiu-2").mkdir(parents=True)
     assert steptools.fresh_code(ROOT, "２０２６Ｈ小球") == "2026h-xiaoqiu-3"
+
+
+def test_slug_contest_phrases():
+    """电赛常用词按词读音（pypinyin load_phrases_dict 短词表）：调参不是 diaocan。"""
+    assert steptools.slug("调参") == "tiaocan"
+    assert steptools.slug("2026H调试") == "2026h-tiaoshi"
+    assert steptools.slug("重心") == "zhongxin"
+    assert steptools.slug("电调") == "diantiao"
+    assert steptools.slug("2026H小球") == "2026h-xiaoqiu"          # 不在短词表里的照旧

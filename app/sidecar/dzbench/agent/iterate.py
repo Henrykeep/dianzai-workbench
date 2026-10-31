@@ -163,6 +163,10 @@ class Iterator:
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
                                               "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
                "next_zh": self._next_hint(reason)}
+        r0 = next((r for r in self.rounds if r["valid"]), None)       # 卡上和最好一轮并排对比的初值轮
+        if r0:
+            out["round0"] = {"iter": r0["iter"], "pass": r0.get("pass"),
+                             "metrics": {k: r0.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")}}
         self.emit(out)
         return out
 
