@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
-      - run: pip install -r app/sidecar/requirements.txt
+      - run: pip install -r app/sidecar/requirements.txt -r tools/wheelhouse.txt
       - run: bash tools/fetch_third_party.sh f4 f1 freertos mspm0   # 从零新建测试要 HAL 模板
       - run: bash tools/fetch_sysconfig.sh            # test_scratch_mspm0_syscfg 要 SysConfig CLI（锁版本 + sha256）
       - name: Arm GNU Toolchain 13.3.rel1（test_toolchain 的 ELF 符号/实时观察要 arm-none-eabi-gcc）
@@ -66,7 +66,7 @@ jobs:
           PYTHONUTF8: "1"   # 打包后的 dzbench.exe 也会设；子进程工具脚本输出中文不炸 cp1252
         run: |
           bash tools/fetch_third_party.sh f4 f1 freertos mspm0
-          pip install -r app/sidecar/requirements.txt pyinstaller
+          pip install -r app/sidecar/requirements.txt -r tools/wheelhouse.txt pyinstaller
           arm-none-eabi-gcc --version | head -1
           python -m pytest -rs -v app/sidecar/tests
       - name: keil_inject 自测（make check 里那份，含跨盘符；先观察，不挡打包）

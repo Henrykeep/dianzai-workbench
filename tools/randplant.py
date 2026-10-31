@@ -27,12 +27,16 @@ import shutil
 import subprocess
 import sys
 
-import numpy as np
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import pydeps  # noqa: E402
 
-try:
-    import control
-except ImportError:  # pragma: no cover
-    sys.exit("缺 python-control：pip install -r app/sidecar/requirements.txt")
+if __name__ == "__main__" and sys.argv[1:2] == ["doctor"]:
+    sys.exit(pydeps.doctor_main())
+pydeps.require("control", "numpy")
+
+import numpy as np  # noqa: E402
+
+import control  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))

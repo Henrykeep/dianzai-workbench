@@ -72,7 +72,7 @@ static void link_app_send_fwd(const dzframe_t *f) { link_app_send(f); }
 static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*on_cmd)(uint8_t, uint8_t))
 {
     dzframe_parser_init(&L->rx);
-    dzctl_wd_init(&L->wd, 1000u);           /* 侧车每 250 ms 发一次心跳 */
+    dzctl_wd_init(&L->wd, LINK_WD_TIMEOUT_MS);           /* 侧车每 250 ms 发一次心跳 */
     L->last_tx = 0; L->last_hb = 0u - 500u; /* 复位后第一拍就发心跳（带 schema 哈希） */
     L->seq = 0; L->hb_was_estop = false; L->estop = false; L->latched = false; L->sp_ms = 0;
     for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
@@ -154,7 +154,7 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
     {
         bool was_sa = !dzrt_needs_host(&L->rt);
         dzrt_poll(&L->rt, now, L->latched, -1);
-        if (was_sa != !dzrt_needs_host(&L->rt)) dzctl_wd_init(&L->wd, 1000u);   /* 切模式：看门狗重新计 */
+        if (was_sa != !dzrt_needs_host(&L->rt)) dzctl_wd_init(&L->wd, LINK_WD_TIMEOUT_MS);   /* 切模式：看门狗重新计 */
     }
     if (dzrt_hb_due(now, L->latched, &L->hb_was_estop, &L->last_hb)) {   /* 急停上升沿 / 下降沿立即发 */
         dzctl_heartbeat(&t, L->seq++, &f);
