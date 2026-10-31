@@ -10,6 +10,8 @@
 import argparse, pathlib, re, shutil, subprocess, sys, os
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import boardlib  # noqa: E402
 TPL = REPO / "tools/templates/mspm0-keil"
 
 
@@ -17,7 +19,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--board", required=True); ap.add_argument("--app", required=True)
     x = ap.parse_args()
-    bd = REPO / "boards" / x.board
+    bd = boardlib.board_dir(x.board, REPO)
     sc = sorted((bd / "ccs").glob("*.syscfg"))
     if not sc or not (bd / "syscfg/ti_msp_dl_config.c").exists():
         sys.exit(f"✗ {bd} 不是 MSPM0 SysConfig 板（缺 ccs/*.syscfg 或 syscfg/ti_msp_dl_config.c）")

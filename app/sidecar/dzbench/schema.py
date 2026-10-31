@@ -32,12 +32,20 @@ class Schema:
             return None
         return dict(zip((f["name"] for f in self.fields), struct.unpack(self._fmt, payload)))
 
-    def clamp(self, name: str, v: float) -> tuple[float, bool]:
-        p = self.params[self.param_index[name]]
-        c = min(max(v, p["min"]), p["max"])
-        if p["type"] != "f32":
-            c = float(round(c))
-        return c, c != v
+    def check(self, name: str, raw, current: float | None = None) -> float:
+        """#40/#38：写参数前按 link_schema.json（app.yaml link.params）校验类型、[min, max]，给了当前值时再查
+        单步 |新 − 旧| ≤ max_delta（固件同样会回 param_reject reason=step）。不合法直接拒绝（invalid_param），从不钳位。"""
+        p = self.params[self.param_index[name]] if name in self.param_index else None
+        v = check_value(name, raw, p)
+        md = max_delta(p) if p else None
+        if md is not None and current is not None and abs(v - float(current)) > md + 1e-9 * max(1.0, md):
+            raise _invalid(name, f"单步改动 {abs(v - float(current)):g} 超过 max_delta {md:g}（当前 {float(current):g}）", p, "step")
+        return v
+
+    @property
+    def step(self) -> list[dict]:
+        """app.yaml link.step（#38 阶跃通道：sp / y / u / u_max / range / abs_tol），老 schema 为空。"""
+        return list(self.d.get("step") or [])
 
     def summary(self) -> dict:
         return {"hash": f"{self.hash:08X}", "path": self.path, "fields": self.fields, "params": self.params,
@@ -66,3 +74,49 @@ def find_by_hash(h: int) -> Schema | None:
             if s.hash == h:
                 return s
     return None
+
+
+def max_delta(p: dict) -> float | None:
+    """link_schema.json 的 max_delta；老 schema 没有 = max − min（不限制）。"""
+    if p.get("max_delta") is not None:
+        return float(p["max_delta"])
+    return float(p["max"]) - float(p["min"]) if "min" in p and "max" in p else None
+
+
+def _invalid(name: str, why: str, p: dict | None, code: str | None = None):
+    from .session import LinkError
+    rng = f"{p['min']:g} ~ {p['max']:g}" if p and "min" in p and "max" in p else ""
+    integral = bool(p) and p.get("type", "f32") != "f32"
+    eg = (f"{int(p['min'])}" if integral else f"{(p['min'] + p['max']) / 2:g}") if rng else "0.5"
+    msg = f"参数 {name} 的值不合法：{why}" + (f"（允许 {rng}{'，整数' if integral else ''}）" if rng else "")
+    return LinkError("invalid_param", msg, f"填一个{'整数' if integral else '十进制数'}，例如 {eg}" + (f"，范围 {rng}" if rng else ""),
+                     "params", {"message_zh": msg, "name": name, "reason": why, "example": eg,
+                                **({"reject": code} if code else {})})
+
+
+def check_value(name: str, raw, p: dict | None = None) -> float:
+    """把界面 / Agent 给的值转成数：只收十进制数（int/float 或数字字符串）。
+    拒绝：None、空串、'abc'、'0x10'、'1,5'、布尔、NaN、±Inf、越界、整数参数给小数。"""
+    import math
+    if isinstance(raw, bool) or raw is None:
+        raise _invalid(name, "不是数字", p)
+    if isinstance(raw, (int, float)):
+        v = float(raw)
+    elif isinstance(raw, str):
+        t = raw.strip()
+        if not t or any(c in t for c in ",，xX_"):
+            raise _invalid(name, "不是十进制数", p)
+        try:
+            v = float(t)
+        except ValueError:
+            raise _invalid(name, "不是十进制数", p) from None
+    else:
+        raise _invalid(name, "不是数字", p)
+    if math.isnan(v) or math.isinf(v):
+        raise _invalid(name, "NaN / 无穷大不能写入", p)
+    if p:
+        if p.get("type", "f32") != "f32" and v != round(v):
+            raise _invalid(name, "这个参数只能是整数", p)
+        if "min" in p and "max" in p and not p["min"] <= v <= p["max"]:
+            raise _invalid(name, "超出范围", p)
+    return v

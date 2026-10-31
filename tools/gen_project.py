@@ -28,6 +28,8 @@ RESERVED_OWNERS = {"io", "coord"}
 
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import boardlib  # noqa: E402
 
 
 def board_kinds(p: dict) -> dict:
@@ -35,7 +37,7 @@ def board_kinds(p: dict) -> dict:
     out = {}
     for role, name in (p.get("boards") or {"main": None}).items():
         kind = "mcu"
-        f = ROOT / "boards" / str(name) / "board.yaml"
+        f = boardlib.board_dir(str(name), ROOT) / "board.yaml"
         if name and f.exists():
             kind = (yaml.safe_load(f.read_text(encoding="utf-8")) or {}).get("kind", "mcu")
         out[role] = (kind, f if name and f.exists() else None)

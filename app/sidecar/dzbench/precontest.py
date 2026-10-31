@@ -84,7 +84,7 @@ def board_items(s, repo: str | None, strict: bool = False) -> list[dict]:
                        "；".join(diff) if diff else (f"没读到：{'、'.join(missing)}" if missing else f"{len(s.schema.params)} 个一致"),
                        "" if lvl == "ok" else "调好的值先“定稿”写回 yaml 并重烧，否则板子一复位就回到旧值（板子有掉电保存区时也可点“读黑匣子”旁的“存参数”，但仓库里的默认值就和板子不一致了，赛前仍建议定稿）" if diff else "点参数区“读取”"))
     out.append(_it("estop", "急停未锁存", "fail" if s.tx_locked else "ok", "已锁存" if s.tx_locked else "正常",
-                   "确认安全后按 R 解除" if s.tx_locked else ""))
+                   "确认安全后点“解除急停”" if s.tx_locked else ""))
     tl = s.timeline
     un = [e for e in tl.history() if e["kind"] in ("estop", "watchdog", "crc") and e["i"] > tl.acked]
     out.append(_it("alerts", "没有未确认的严重告警", "warn" if un else "ok",

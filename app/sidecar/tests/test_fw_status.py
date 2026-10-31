@@ -94,7 +94,7 @@ def test_agent_cannot_switch_run_mode(home):
     assert e["type"] == "agent_error" and e["fix_action"] == "precontest" and "封箱" in e["fix"]
     s = _sess()
     sent = []
-    s._send = lambda *a: sent.append(a) or True
+    s._send = lambda *a, **k: sent.append(a) or True
     with pytest.raises(LinkError) as ei:
         AgentTools(s, lambda e: None).call("set_run_mode", {"mode": "standalone", "confirmed": True})
     assert ei.value.code == "human_only" and not sent

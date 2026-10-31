@@ -4,6 +4,7 @@ import { Plot, num } from "./plot";
 import { measure, stepMetrics, StepM } from "./measure";
 import { acceptEval, worstOf, AcceptR, AcceptSpec } from "./accept";
 import { VERDICT_SHORT } from "./round";
+import { StaleReads, STALE_V } from "./r8pre";
 
 export type Loop = { name: string; y: string; gains?: string[]; note?: string };
 type Run = { n: number; wall: string; dur: number; params: Record<string, number>; diff: string; data: ReturnType<Plot["capture"]>; m: StepM | null; a: AcceptR | null; layer: string; verdict?: string };
@@ -13,6 +14,7 @@ const f = (v: number) => Number.isFinite(v) ? num(v) : "—";
 const MAX_RUNS = 20;
 
 // 被控量：选了串级的某一层就是那层的 y；否则第一条叠着设定值的可见通道（schema 的 ref_for 决定，界面不认字段名）
+const STALE = new StaleReads();
 let PLOT: Plot, ACC: AcceptSpec[] = [], LOOPS: Loop[] = [], LAYER = -1;
 function mainCh(plot: Plot) {
   if (LAYER >= 0) { const i = plot.names.indexOf(LOOPS[LAYER].y); return i >= 0 && plot.refOf[i] >= 0 ? i : -1; }
@@ -121,6 +123,7 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
       ["上升", ms(cur.tr), msu(cur.tr), cur.tr, g?.tr ?? NaN, false],
       ["调节", cur.settled ? ms(cur.ts) : "…", cur.settled ? msu(cur.ts) : cur0 ? "未稳" : "", cur.ts, g?.ts ?? NaN, !cur.settled],
       ["稳态误差", cur.ess.toFixed(1), "%", cur.ess, g?.ess ?? NaN, false]];
+    if (STALE.stale(plot.t0)) for (const r of it0) { r[1] = STALE_V; r[2] = ""; r[3] = NaN; r[5] = true; }   // r8pre：解除后旧数据不显示成「100.0% 未稳」
     const it = sp ? it0.filter(x => x[0] === "超调" || x[0] === "调节") : it0;
     host.innerHTML = `<span class="rn mono">${esc((layerName() ? layerName() + " · " : "") + plot.names[i])}</span>` + head + it.map(([k, v, u, x, y, wait]) => {
       const d = x - y, good = d < 0, show = Number.isFinite(d) && !wait;
@@ -172,5 +175,6 @@ export function initAnalysis(plot: Plot, params: () => Record<string, number>, o
       sel.innerHTML = `<option value="-1">全部</option>` + loops.map((l, k) => `<option value="${k}" title="${esc(l.note ?? "")}">${k + 1}. ${esc(l.name)}</option>`).join("");
       renderHist(); renderReads();
     },
+    invalidate() { STALE.clear(plot.t0); renderReads(); },
     reset() { runs.length = 0; t0Params = {}; renderHist(); renderMeas(); renderReads(); }, runs: () => runs.length, marked: () => plot.t0 != null };
 }

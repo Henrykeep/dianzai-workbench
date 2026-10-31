@@ -6,7 +6,8 @@
 
 ```
 make test                                   # 主机单测 + 仿真闭环
-make check                                  # 板卡校验、依赖规则、接口版本、ioc/syscfg/audit 自检
+make check                                  # 板卡校验、依赖规则、接口版本、ioc/syscfg/audit 自检；末尾 make ui 构建前端 dist
+make ui                                     # 桌面工作台前端：需要时 npm ci，再 npm run build → app/ui/dist（make check 也会跑）
 make BOARD=stm32f407-skystar-cubemx APP=motor_speed_demo   # 交叉编译（需 arm-none-eabi-gcc，HAL 见 tools/fetch_stm32f4.sh）
 make selftest BOARD=<板>                    # 移植层自检固件
 ```

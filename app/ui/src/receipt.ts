@@ -42,7 +42,7 @@ export function blockedCard(a: Ack, has?: (ui: string) => boolean): Card {
   return {
     title: a.reason === "estop" || fa === "estop_clear" ? "已急停，请先解除" : "消息暂不能执行",
     why: a.message || "本地服务暂停了这条消息",
-    fix: fa === "estop_clear" ? "确认现场安全后点「解除急停」。解除后电机待机，不会自动恢复运动" : "按按钮处理后，本地服务会接着执行",
+    fix: fa === "estop_clear" ? "确认现场安全后在红条或顶栏点「解除急停」。解除后电机待机，不会自动恢复运动" : "按按钮处理后，本地服务会接着执行",
     detail: `msg_id: ${a.msg_id} · state: ${a.state}${a.reason ? " · reason: " + a.reason : ""}`,
     retry: false, other: fa ? resolveFix(fa, has) : null, otherId: fa || undefined,
   };

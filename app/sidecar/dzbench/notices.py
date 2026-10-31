@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-HUMAN_ONLY = {"estop_clear", "set_run_mode"}
+HUMAN_ONLY = {"estop_clear", "set_run_mode", "enable_cloud"}
 
 # code → (发生了什么, 建议)
 TEMPLATES = {

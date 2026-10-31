@@ -1,3 +1,4 @@
+import { CLEAR_ONLY_AT, CLEAR_WHERE } from "./r8pre";
 // 项目进度适配层：结构与后端草案 progress.get 一致。接口没上线前，用前端现有数据推断同样的结构；
 // 上线后 fetchProgress() 优先用接口结果，界面代码不用改。步骤状态的判断只写在这里。
 import { STEPS, Step, STEP_HINT } from "./steps";
@@ -29,14 +30,14 @@ export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; 
   blackbox: { ui: "pre-bbtn", label: "读黑匣子" }, llm_cfg: { ui: "ag-cfg", label: "大模型设置" },
   project_flow: { step: "项目", ui: "pflow" }, project_ask: { step: "项目", ui: "pj-ask-go" }, flash: { step: "烧录", ui: "fw-flash" },
   build: { step: "烧录", ui: "fw-build", label: "编译" }, cal_polarity: { step: "标定", ui: "calwiz", label: "极性自检" },
-  tune_relay: { step: "调参", ui: "ag-relay", label: "自整定" }, params: { step: "调参", ui: "p-send", label: "下发参数" },
+  tune_relay: { step: "调参", ui: "ag-relay", label: "自整定" }, step_test: { step: "调参", ui: "ag-step", label: "阶跃实验" }, params: { step: "调参", ui: "p-send", label: "下发参数" },
   params_flash: { step: "调参", ui: "tb-save", label: "保存参数" }, run_selftest: { step: "调参", ui: "seal-selftest", label: "读取自检" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
   fetch_deps: { ui: "doctor", label: "安装依赖" },   // missing_deps：自检对话框里按提示安装
 };
 // fix_action → 按钮：可执行 / 未就绪（置灰「等待固件支持」）/ 未登记（置灰写明原因）。不出现点了没反应的按钮
 export type Fix = { kind: "run" | "wait" | "none"; label: string; note?: string };
 export function resolveFix(id: string | null | undefined, has: (ui: string) => boolean = ui => !!document.getElementById(ui)): Fix | null {
-  if (!id) return null;
+  if (!id || CLEAR_ONLY_AT.has(id)) return null;   // r8pre：解除急停只在红条与顶栏，其它地方只留文字
   const e = entry(id);   // 入口表 ready: false 优先：登记了但未就绪 → 置灰「等待固件支持」
   if (e && !e.ready) return { kind: "wait", label: ACTIONS[id]?.label ?? e.label, note: "等待固件支持" };
   const t = ACTIONS[id];
@@ -53,7 +54,7 @@ export interface Ctx { current: Step; connected: boolean; estop: boolean; gainsZ
 export function infer(c: Ctx): Progress {
   const blockers: Blocker[] = [];
   if (!c.connected) blockers.push({ code: "no_board", message: "未连接：尚未连接目标板（可选仿真）", fix_action: "connect" });
-  if (c.estop) blockers.push({ code: "estop", message: "已急停：急停已锁定", fix_action: "estop_clear" });
+  if (c.estop) blockers.push({ code: "estop", message: `已急停：急停已锁定 · ${CLEAR_WHERE}`, fix_action: "estop_clear" });
   if (c.selftestFail) blockers.push({ code: "selftest_fail", message: "自检未通过", fix_action: "doctor" });
   if (c.connected && c.gainsZero) blockers.push({ code: "gains_zero", message: "增益为 0：控制器无输出", fix_action: "tune_relay" });
   if (c.paramsDirty) blockers.push({ code: "params_not_saved", message: "参数未下发", fix_action: "params" });

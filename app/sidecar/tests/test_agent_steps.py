@@ -23,11 +23,13 @@ TASK = "一、任务\n设计一个小车。\n二、要求\n1．基本要求\n(1)
 
 @pytest.fixture
 def repo(tmp_path, monkeypatch):
-    """临时工程仓库：工具/板卡软链到本仓库，examples/ build/ 是空的（Agent 的写入只落在这里）。"""
+    """临时工程仓库：工具/板卡软链到本仓库，examples/ build/ 是空的。#29：Agent 的写入落在 $DZBENCH_HOME/projects（tmp_path/dzhome/projects）
+    和 DZ_BOARDS_DIR（未设 = tmp_path/dzhome/boards），仓库只读。"""
     import site
     monkeypatch.setenv("PYTHONUSERBASE", site.getuserbase())       # 换 HOME 后 pip --user 装的包（jsonschema）还要能找到
     monkeypatch.setenv("HOME", str(tmp_path / "home"))            # projflow 暂存区 ~/.dzbench/flow
     monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "dzhome"))
+    monkeypatch.delenv("DZ_BOARDS_DIR", raising=False)
     r = tmp_path / "repo"; r.mkdir()
     for e in REPO.iterdir():
         if e.name not in ("examples", "build", ".git"):
@@ -36,6 +38,25 @@ def repo(tmp_path, monkeypatch):
     subprocess.run(["git", "init", "-q", str(r)], check=True)
     (tmp_path / "t.txt").write_text(TASK, encoding="utf-8")
     return r
+
+
+def _proj(tmp_path):
+    return tmp_path / "dzhome" / "projects"
+
+
+def _tree(root):
+    """仓库树快照：不跟软链（软链本身算一项），记每个文件的大小和 mtime。"""
+    out = {}
+    for d, dirs, files in os.walk(root, followlinks=False):
+        for n in dirs + files:
+            q = pathlib.Path(d) / n
+            st = q.lstat()
+            out[str(q.relative_to(root))] = (st.st_mode, st.st_size if not q.is_dir() else 0, st.st_mtime_ns if not q.is_dir() else 0)
+    return out
+
+
+def _git_status():
+    return subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=REPO, capture_output=True, text=True).stdout
 
 
 def _svc(root, llm):
@@ -63,13 +84,13 @@ def test_scripted_model_drives_project_steps(repo, tmp_path):
     assert "2 个评分项" in out
     seen = json.loads(llm.seen[2][0][-1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])
     assert seen["ok"] and len(seen["result"]["items"]) == 2                 # 预览结果（真跑 tools/req.py）回到了模型
-    assert not (repo / "examples/T1/requirements.yaml").exists()              # 没点确认：仓库没动
+    assert not (_proj(tmp_path) / "T1/requirements.yaml").exists()           # 没点确认：没写
     c = _cards(ev)[-1]; assert c["tool"] == "flow_accept"
     r = svc.action_decide(c["id"], True); clicks += 1
-    assert (repo / "examples/T1/requirements.yaml").exists()
+    assert (_proj(tmp_path) / "T1/requirements.yaml").exists() and not (repo / "examples/T1").exists()
     assert r["next"]["next_step"] == "scheme" and r["next"]["action_id"]      # 方案的预览已跑好、卡已出
     r2 = svc.action_decide(r["next"]["action_id"], True); clicks += 1
-    assert (repo / "examples/T1/scheme.yaml").exists()
+    assert (_proj(tmp_path) / "T1/scheme.yaml").exists()
     assert r2["next"]["next_step"] == "import"                               # 板子没导入：停在要工程路径
     # 项目页手动：读题 运行+确认、方案 运行+确认 = 4 下；Agent：1 句话 + 2 张卡 = 3 下，且方案这步不用再找按钮
     assert clicks == 3
@@ -132,11 +153,12 @@ def test_project_chain_one_card(repo, tmp_path):
     chain = json.loads(llm.seen[1][0][-1]["content"].split("\n", 1)[1].rsplit("\n", 1)[0])["result"]
     print(json.dumps(chain, ensure_ascii=False, indent=1))
     assert chain["to_write"][:2] == ["req", "scheme"]
-    assert not (repo / "examples/T5").exists()                                    # 没确认：仓库没动
+    assert not (_proj(tmp_path) / "T5").exists()                                  # 没确认：没写
     c = _cards(ev)[-1]; assert c["tool"] == "project_apply"
     r = svc.action_decide(c["id"], True); clicks += 1
-    assert (repo / "examples/T5/requirements.yaml").exists() and (repo / "examples/T5/scheme.yaml").exists()
-    assert (repo / "examples/T5/alloc").is_dir(), r
+    pd = _proj(tmp_path) / "T5"
+    assert (pd / "requirements.yaml").exists() and (pd / "scheme.yaml").exists() and not (repo / "examples/T5").exists()
+    assert (pd / "alloc").is_dir(), r
     # 项目页手动：每步 运行+确认 ×(读题/方案/新建/生成) ≥ 8 下；逐步卡 Agent 3+ 下；chain：2 下
     assert clicks == 2
 
@@ -206,7 +228,9 @@ def test_sim_score_run_save_writeback(tmp_path, home):
         sv = svc.action_decide(c["id"], True); clicks += 1
         wb = svc.score_writeback("1", sv["result"]["dir"]); clicks += 1          # 回写也是一张卡（这里直接调执行体）
         print(wb)
-        assert "evidence" in (d / "requirements.yaml").read_text(encoding="utf-8")
+        pd = tmp_path / "projects" / "S1"                                       # 内置/仓库里的 examples/S1 只读：写回落到工程根目录
+        assert "evidence" in (pd / "requirements.yaml").read_text(encoding="utf-8")
+        assert "evidence" not in (d / "requirements.yaml").read_text(encoding="utf-8") and pathlib.Path(sv["result"]["dir"]).is_relative_to(pd)
         # 评分页手动：跑 ×3 + 保存 + 回写预览 + 确认 = 6 下；Agent：问 + 保存卡 + 回写卡 = 3 下
         assert clicks == 3
     finally:
@@ -229,9 +253,6 @@ def test_project_chain_includes_keil_inject(repo, tmp_path):
     """导入真工程：①–⑤ + Keil 注入仍是一张卡（自动找 MDK-ARM/*.uvprojx）；确认后 .uvprojx 有 dz/ 组且留 .bak。点 2 下。"""
     pj = tmp_path / "Car"; shutil.copytree(REPO / "tools/testdata/real/projects/Bldc - 副本 (6)", pj)
     uv = pj / "MDK-ARM" / "Bldc.uvprojx"
-    (repo / "boards").unlink(); (repo / "boards").mkdir()                        # 导入要写 boards/：别写进真仓库
-    for e in (REPO / "boards").iterdir():
-        (repo / "boards" / e.name).symlink_to(e)
     llm = FakeLLM([
         {"role": "assistant", "content": None, "tool_calls": [call("project_chain", code="T6", src=str(tmp_path / "t.txt"), project=str(pj), name="t6car")]},
         {"role": "assistant", "content": None, "tool_calls": [call("project_apply", code="T6")]},
@@ -263,12 +284,14 @@ def test_project_chain_includes_keil_inject(repo, tmp_path):
     assert uv.read_text(encoding="utf-8") == edited                               # 选“保留”：一个字节不动
     svc.project_chain("T6", project=str(pj), name="t6car", hand_edit="merge"); svc.project_apply("T6")
     assert "dz/hand" not in uv.read_text(encoding="utf-8") and "MyDrv" in uv.read_text(encoding="utf-8")
+    assert (tmp_path / "dzhome" / "boards" / "t6car" / "board.yaml").exists() and not (REPO / "boards" / "t6car").exists()   # 导入的板落在 DZ_BOARDS_DIR
 
 
 @pytest.mark.needs_sim
-def test_quick_start_one_sentence_e2e(repo):
+def test_quick_start_one_sentence_e2e(repo, tmp_path):
     """一句话起项目：输入“两轮车速度环，STM32F1” → 一张卡（方案 + 引脚表）→ 用户只点一次确认 →
     写入项目、连仿真板、一键起步调参、评分。"""
+    tree0, git0 = _tree(repo), _git_status()
     svc, ev = _svc(repo, FakeLLM([]))
     try:
         r = svc.quick_start("两轮车速度环，STM32F1")
@@ -281,12 +304,15 @@ def test_quick_start_one_sentence_e2e(repo):
         out = svc.action_decide(r["action_id"], True)["result"]                                 # 唯一一次点击
         print("QUICK", json.dumps({"tune": {k: out["tune"][k] for k in ("final", "best_round", "passed")}, "score": {k: out["score"].get(k) for k in ("result", "item")}}, ensure_ascii=False))
         code = r["spec"]["code"]
-        assert (repo / "examples" / code / "requirements.yaml").exists() and (repo / "examples" / code / "alloc").is_dir()
+        pd = _proj(tmp_path) / code
+        assert (pd / "requirements.yaml").exists() and (pd / "alloc").is_dir()
         assert out["sim"] == "sim:car_2wd" and out["tune"]["rounds"] and out["tune"]["best_round"], out
         assert out["score"].get("result") in ("pass", "partial", "fail"), out["score"]
         assert len(_cards(ev)) == 1                                                             # 全程只有这一张卡
     finally:
         svc.s.disconnect()
+    assert _tree(repo) == tree0                                                                 # #29：quick_start 后仓库树不变
+    assert _git_status() == git0                                                                # 真仓库（软链目标）也没多 / 改一个文件
     with pytest.raises(Exception):
         svc.quick_start("做一个温度报警器")
 

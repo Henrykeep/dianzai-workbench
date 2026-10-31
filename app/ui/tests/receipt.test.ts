@@ -29,7 +29,7 @@ R.sent("e"); R.ack({ msg_id: "e", state: "blocked", reason: "estop", message: "�
 if (R.state("e") !== "blocked") throw "blocked";
 const k = blockedCard({ msg_id: "e", state: "blocked", reason: "estop", message: "板子已急停（心跳丢失），这条消息暂停执行", fix_action: "estop_clear" }, () => true);
 if (k.title !== "已急停，请先解除" || k.why !== "板子已急停（心跳丢失），这条消息暂停执行") throw "blocked 卡";
-if (k.other?.kind !== "run" || k.other.label !== "解除急停" || k.otherId !== "estop_clear") throw "解除急停 " + JSON.stringify(k.other);
+if (k.other !== null || !k.fix.includes("红条或顶栏")) throw "r8pre：Agent 卡不给解除按钮，只写文字 " + JSON.stringify(k.other);
 if (ACTIONS.estop_clear.ui !== "cmd-r") throw "解除走人点的 R 键入口";
 // progress.changed：只对新 blocker 发消息（#28：急停打断自整定）
 const seen = new Set<string>();

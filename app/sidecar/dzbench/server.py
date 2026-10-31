@@ -151,6 +151,14 @@ class Server:
                     "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
         if op == "project.list":                       # 可打开的项目（只读，读题页空状态用）
             return {"projects": await run(None, project_mod.list_projects, self.svc.gw.root), "current": project_mod.current()}
+        if op == "project.migrate":                    # 旧版写在仓库 examples/ 的用户工程 → $DZBENCH_HOME/projects/：只复制不删；先 confirmed=false 出清单给界面确认卡，人确认后 confirmed=true
+            from . import paths as paths_mod
+            if m.get("confirmed") is not True:
+                return {"needs_confirm": True, "plan": await run(None, paths_mod.migrate_plan, self.svc.gw.root), "dest": str(paths_mod.projects_dir())}
+            codes = m.get("codes")
+            if codes is None:
+                codes = [x["code"] for x in await run(None, paths_mod.migrate_plan, self.svc.gw.root)]
+            return await run(None, paths_mod.migrate_copy, self.svc.gw.root, [str(c) for c in codes], True)
         if op == "project.open":                       # 打开已有项目 = 设为当前项目（持久化）+ 推 progress.changed
             try:
                 p = await run(None, project_mod.open_project, self.svc.gw.root, m.get("code"))
@@ -196,6 +204,8 @@ class Server:
         if op == "cmd":
             # 解除急停：只发 'R'，不重发运动/设定值，不恢复调参。cleared + 固定提醒要等固件心跳 bit10 清零（Server.emit 里推）
             return s.cmd(m["c"], m.get("n"))
+        if op == "set_cloud_enabled":              # 比赛模式启用云端：只认界面确认卡的 confirmed=true（与 set_run_mode 同一校验）；Agent 无此工具
+            return await run(None, agent_llm.set_cloud_enabled, bool(m.get("enabled")), m.get("confirmed") is True)
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
@@ -204,8 +214,10 @@ class Server:
             return await run(None, s.blackbox)
         if op == "send_data":
             return s.send_data(int(m["id"]), bytes.fromhex(m.get("hex", "")))
+        if op == "setpoint_set":                   # 只下发目标值，不跑阶跃（界面「恢复急停前目标」等）
+            return await run(None, s.setpoint_set, m.get("name", ""), m.get("value"))
         if op == "param_set":
-            return await run(None, s.set_param, m["name"], float(m["value"]))
+            return await run(None, s.set_param, m["name"], m.get("value"))   # 原样交给 set_param 校验（#40）
         if op == "param_read_all":
             return await run(None, s.read_all_params)
         if op == "snapshot_save":
@@ -269,13 +281,13 @@ class Server:
             try:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
-                raise LinkError(e.code, e.msg, e.fix) from None
+                raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
         if op == "quick_start":     # 一句话起项目：{"op":"quick_start","text":"两轮车速度环，STM32F1"} → 一张确认卡；确认走 agent_action_decide
             from .projflow import FlowError
             try:
                 return await run(None, self.svc.quick_start, m["text"])
             except (FlowError, GatewayError) as e:
-                raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix) from None
+                raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix, getattr(e, "fix_action", None)) from None
         if op == "project_chain" or op == "project_apply":   # 项目页“一键走完 ①–⑤（+Keil 注入）”：先整链预览，再一次写入（同 Agent 那张总卡）
             from .projflow import FlowError
             try:
@@ -283,7 +295,7 @@ class Server:
                     return await run(None, lambda: self.svc.project_chain(m["code"], **{k: m[k] for k in ("src", "project", "name", "mcu", "tpl", "uvprojx", "app", "hand_edit") if m.get(k)}))
                 return await run(None, self.svc.project_apply, m["code"])
             except (FlowError, GatewayError) as e:
-                raise LinkError(e.code, e.msg, e.fix) from None
+                raise LinkError(e.code, e.msg, e.fix, getattr(e, "fix_action", None)) from None
         if op == "score_items" or op == "score_save" or op == "score_writeback":       # 评分页：评分项来自 requirements.yaml；证据按 docs/verify 规范存（dzbench/scoring.py）
             from . import scoring
             try:
@@ -457,7 +469,11 @@ class Server:
         if op == "watch_stop":
             return self.svc.watch_stop()
         if op == "agent_models":
-            return agent_llm.list_models(m.get("form") or {})
+            r = await run(None, lambda: agent_llm.discover_models(m.get("form") or {}))
+            if r.get("reason") == "contest_mode":      # 比赛模式拦下外部请求：同时推 agent_error，界面统一提示
+                await self._broadcast({"type": "agent_error", "code": "contest_mode", "message_zh": r["message_zh"],
+                                       "fix_action": r["fix_action"], "human_only": True, "goto": r["goto"], "retryable": False})
+            return r
         if op == "agent_ollama":
             return agent_llm.ollama(m.get("action", "check"), m.get("model", ""))
         if op == "agent_config_test":

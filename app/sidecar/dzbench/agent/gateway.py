@@ -49,9 +49,11 @@ LAYERS: list[dict] = [
     {"layer": "frozen", "globs": ["firmware/*", "ports/*", "tools/*", "third_party/*", "schema/*", "iface.lock.json",
                                   "Makefile", ".github/*", "app/*", "tests/*", "build/*"],
      "read": ALLOW, "write": DENY, "why": "冻结接口/工具链/工作台自身：只读。要改请人工提交"},
-    {"layer": "config", "globs": ["apps/*/app.yaml", "examples/*/project.yaml", "examples/*/app.yaml", "boards/*/board.yaml"],
+    {"layer": "builtin", "globs": ["examples/*", "boards/*"], "read": ALLOW, "write": DENY,
+     "why": "内置例题 / 板卡只读：用户工程在 $DZBENCH_HOME/projects/<名称>/，用户板卡在 $DZ_BOARDS_DIR/<板>/（项目页流程写入）"},
+    {"layer": "config", "globs": ["apps/*/app.yaml"],
      "read": ALLOW, "write": ASK, "gates": [["make", "check"]]},
-    {"layer": "app", "globs": ["apps/*", "examples/*"], "read": ALLOW, "write": ASK,
+    {"layer": "app", "globs": ["apps/*"], "read": ALLOW, "write": ASK,
      "gates": [["make", "check"], ["make", "test"]]},
     {"layer": "docs", "globs": ["docs/*", "*.md"], "read": ALLOW, "write": ASK, "gates": []},
 ]
@@ -59,15 +61,20 @@ DEFAULT = {"layer": "other", "read": ALLOW, "write": DENY, "why": "不在任何�
 FORBIDDEN_TOOLS = ("estop", "e_stop", "急停")
 # 只能由人执行的板上操作：Agent 工具里不提供，调用一律拒绝，只给跳转到界面入口的 fix_action
 HUMAN_ONLY = {"set_run_mode": ("切换运行模式（联机/脱机）只能由人在封箱页的确认卡或板上长按完成，Agent 不能执行。",
-                               "请到封箱页点击「切换运行模式」，在确认卡上核对后由你本人确认。", "precontest")}
+                               "请到封箱页点击「切换运行模式」，在确认卡上核对后由你本人确认。", "precontest"),
+              # 比赛合规底线：启用云端 / 比赛模式开关只能由人在设置页确认卡上改；名字里带这些词的工具一律拒绝
+              "cloud_enabled": ("比赛模式下启用云端只能由人在设置页的确认卡上完成，Agent 不能执行。",
+                                "请到设置页「云端」点击启用，在确认卡上核对后由你本人确认。", "enable_cloud"),
+              "contest_mode": ("比赛模式开关只能由人修改，Agent 不能执行。",
+                               "请到设置页「云端」由你本人操作。", "enable_cloud")}
 
 
 def human_only_error(name: str) -> dict | None:
     """Agent 调用只能由人执行的操作时返回 agent_error 格式（原因 + 怎么解决 + fix_action），否则 None。"""
     for k, (msg, fix, act) in HUMAN_ONLY.items():
         if k in name:
-            return {"type": "agent_error", "code": "human_only", "message": msg, "fix": fix,
-                    "fix_action": act, "goto": "step:封箱"}
+            from ..human_only import mark
+            return mark({"type": "agent_error", "code": "human_only", "message": msg, "fix": fix}, act)
     return None
 
 
@@ -90,12 +97,12 @@ def git_hint(out: str) -> str:
 
 
 class GatewayError(Exception):
-    def __init__(self, code: str, message: str, fix: str = ""):
+    def __init__(self, code: str, message: str, fix: str = "", extra: dict | None = None):
         super().__init__(message)
-        self.code, self.message, self.fix = code, message, fix
+        self.code, self.message, self.fix, self.extra = code, message, fix, extra or {}
 
     def as_dict(self) -> dict:
-        return {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
+        return {"type": "error", "code": self.code, "message": self.message, "fix": self.fix} | self.extra
 
 
 @dataclass

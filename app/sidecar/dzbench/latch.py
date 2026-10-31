@@ -48,13 +48,15 @@ def keys(port: str | None, uid: int | None) -> list[str]:
     return out
 
 
-def set(port: str | None, uid: int | None, source: str, detail: str = "") -> None:  # noqa: A001
+def set(port: str | None, uid: int | None, source: str, detail: str = "", cause: dict | None = None) -> None:  # noqa: A001
     ks = keys(port, uid)
     if not ks:
         return
     with _lk:
         d = _load()
         rec = {"source": source, "detail": detail, "t": time.time()}
+        if cause:
+            rec["cause"] = cause
         for k in ks:
             d[k] = rec
         _save(d)

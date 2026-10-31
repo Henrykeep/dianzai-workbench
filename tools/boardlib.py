@@ -13,6 +13,21 @@ import yaml
 import jsonschema
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def user_boards_dir() -> pathlib.Path:
+    """用户板卡目录：$DZ_BOARDS_DIR，未设时 $DZBENCH_HOME/boards（仓库 boards/ 只放内置板卡）。"""
+    import os
+    v = os.environ.get("DZ_BOARDS_DIR")
+    if v:
+        return pathlib.Path(v).expanduser()
+    return pathlib.Path(os.environ.get("DZBENCH_HOME") or pathlib.Path.home() / ".dzbench") / "boards"
+
+
+def board_dir(name: str, root: pathlib.Path = ROOT) -> pathlib.Path:
+    """板卡目录：用户目录优先，其次仓库内置 boards/。"""
+    u = user_boards_dir() / str(name)
+    return u if u.is_dir() else pathlib.Path(root) / "boards" / str(name)
 SCHEMA_PATH = ROOT / "schema" / "board.schema.json"
 RES_TYPES = ["gpio", "pwm", "encoder", "uart", "timer", "adc", "i2c", "spi", "dac", "pwm3"]
 

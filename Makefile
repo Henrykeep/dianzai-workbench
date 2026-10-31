@@ -21,10 +21,13 @@ export PYTHONUTF8 := 1
 Q := $(if $(filter 1,$(V)),,@)
 .DEFAULT_GOAL := all
 ROOT      := $(CURDIR)
-# 板卡根目录：默认仓库 boards/；测试把临时导入的板放到临时目录（make BOARDS_DIR=/tmp/xxx BOARD=...），不写进仓库
-BOARDS_DIR ?= $(if $(DZ_BOARDS_DIR),$(DZ_BOARDS_DIR),boards)
-BOARD_YML := $(BOARDS_DIR)/$(BOARD)/board.yaml
-APP_DIR   ?= $(firstword $(wildcard apps/$(APP) examples/$(APP)))
+# 用户板卡 / 工程不进仓库（#29）：$(DZ_BOARDS_DIR)/<板>、$(DZBENCH_HOME)/projects/<工程> 优先，其次仓库内置 boards/、apps/、examples/（只读）
+DZBENCH_HOME  ?= $(HOME)/.dzbench
+DZ_BOARDS_DIR ?= $(DZBENCH_HOME)/boards
+BOARD_FOUND := $(firstword $(wildcard $(DZ_BOARDS_DIR)/$(BOARD)/board.yaml boards/$(BOARD)/board.yaml))
+BOARD_YML := $(if $(BOARD_FOUND),$(BOARD_FOUND),boards/$(BOARD)/board.yaml)
+APP_DIR   ?= $(firstword $(wildcard $(DZBENCH_HOME)/projects/$(APP) apps/$(APP) examples/$(APP)))
+BOARDS_DIR ?= $(DZ_BOARDS_DIR)
 # LINK=rtt：LINK 走调试探针 RTT（firmware/proto/dzrtt），不占串口；默认 uart。换输出目录免得混用目标文件
 LINK      ?= uart
 BDIR      := build/$(BOARD)$(if $(VARIANT),-$(VARIANT))$(if $(filter rtt,$(LINK)),-rtt)
@@ -64,7 +67,7 @@ endif
 PROJECT_YML := $(wildcard $(APP_DIR)/project.yaml)
 PROJ_GEN    := $(OUT)/projgen
 ifneq ($(PROJECT_YML),)
-$(PROJ_GEN)/project_gen.mk: $(PROJECT_YML) tools/gen_project.py tools/gen_coproc.py $(wildcard boards/*/board.yaml)
+$(PROJ_GEN)/project_gen.mk: $(PROJECT_YML) tools/gen_project.py tools/gen_coproc.py $(wildcard boards/*/board.yaml $(DZ_BOARDS_DIR)/*/board.yaml)
 	$(PY) tools/gen_project.py $(PROJECT_YML) -o $(PROJ_GEN) --role $(or $(ROLE),main)
 $(PROJ_GEN)/project_gen.h $(PROJ_GEN)/project_gen.c: $(PROJ_GEN)/project_gen.mk
 -include $(PROJ_GEN)/project_gen.mk
@@ -110,7 +113,7 @@ OBJS = $(patsubst %,$(OUT)/obj/%.o,$(SRCS))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
 HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview bench preflight
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview ui bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -187,6 +190,10 @@ gen: $(GEN)/board_gen.mk $(if $(LINK_YML),$(LINK_GEN)/link_gen.c)
 	@echo "✓ $(GEN)/board_gen.{h,c}"
 
 # 浏览器预览桌面工作台：构建 app/ui、起侧车，打印带 ?ws= 的完整地址（mk/ui-preview.sh）
+ui:   ## 构建桌面工作台前端 dist（app/ui/dist）：node_modules 缺失或比 package-lock.json 旧才 npm ci（软链接 node_modules 拒绝，#33），再 npm run build
+	@if [ ! -d app/ui/node_modules ] || [ app/ui/package-lock.json -nt app/ui/node_modules/.package-lock.json ]; then tools/fetch_ui_deps.sh; else echo "app/ui/node_modules 已是最新，跳过 npm ci"; fi
+	cd app/ui && npm run build
+
 ui-preview:
 	PY=$(PY) sh mk/ui-preview.sh
 
@@ -204,6 +211,7 @@ selftest:
 # 测试前后给仓库拍快照：测试在仓库树里留下文件（boards/zz-test-*、build/zz-test-*、未跟踪文件）就失败
 test check: TREE_SNAP := $(shell mktemp 2>/dev/null || echo /tmp/dz-tree-$$$$)
 test:
+	@tools/require_fetch.sh   # 缺 third_party/CMSIS_6 → 「缺少 third_party/CMSIS_6，请先运行 make fetch」并退出非零
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
@@ -236,6 +244,8 @@ preflight:
 	tools/preflight.sh
 
 check:
+	@tools/require_fetch.sh   # 先于一切：没 make fetch 就直接说，别等编译报错
+	tools/require_fetch.sh --selftest
 	$(PY) tools/check_redef.py --selftest
 	$(PY) tools/check_redef.py
 	$(PY) tools/tree_guard.py --selftest
@@ -303,6 +313,7 @@ check:
 	cd host/python && $(PY) -m dzlink.test_sender
 	cd host/python && $(PY) -m dzlink.test_dzsend_k230
 	@if [ -x app/ui/node_modules/.bin/esbuild ]; then cd app/ui && for t in tests/*.test.ts; do node_modules/.bin/esbuild $$t --bundle --platform=node --log-level=error | node || exit 1; done; else echo "跳过 UI 单测（app/ui 未 npm install）"; fi
+	$(MAKE) ui   # 闸门也构建一次前端 dist（tsc + vite）：类型错误 / 构建失败即红；dist 在 .gitignore 里
 	$(PY) tools/tree_guard.py check $(TREE_SNAP)
 
 fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）到 third_party/；新克隆 / worktree 先跑这个；另装 TI SysConfig CLI（MSPM0 从零新建要）；并在 app/ui 执行 npm ci（licenses 检查依赖）

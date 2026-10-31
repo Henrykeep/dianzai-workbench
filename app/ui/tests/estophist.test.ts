@@ -12,7 +12,7 @@ ok(evColor("estop", "--crit", false) === "--muted" && evColor("estop", "--crit",
 ok(bannerHint(true, { kind: "estop", fix_hint_zh: "确认安全后点解除急停" }) === "确认安全后点解除急停" && bannerHint(false, { kind: "estop", fix_hint_zh: "x" }) === "", "fix_hint 只在锁存");
 // 4 灰色记录
 const L = clearedLine(Date.UTC(2026, 0, 1, 1, 2, 3), "界面急停");
-ok(/^\d\d:\d\d:\d\d 急停已解除 · 设定值已清零，需重新下发目标（之前：界面急停）$/.test(L), "clearedLine " + L);
+ok(/^\d\d:\d\d:\d\d 急停已解除 · 设定值已清零，重新开始实验即可（之前：界面急停）$/.test(L), "clearedLine " + L);
 ok(!clearedLine(0, null).includes("之前") && clearedLine(0).includes(CLEARED_SP), "无 cause");
 // 3 曲线竖线
 const s = new EstopSpans(); s.latch(1); s.latch(1.5); s.clear(3);

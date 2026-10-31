@@ -17,6 +17,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA = ROOT / "tools" / "testdata" / "real" / "projects"
 BASE = json.loads((ROOT / "tools" / "testdata" / "real" / "import_baseline.json").read_text(encoding="utf-8"))
 fails = []
+# #29：导入的板卡写临时 DZ_BOARDS_DIR，不碰仓库 boards/（中断也不留残留）
 
 
 def ok(c, m):
@@ -119,5 +120,6 @@ for proj, exp in BASE.items():
 
 shutil.rmtree(BOARDS, ignore_errors=True)
 
+ok(not any((ROOT / "boards").glob("zz-test-*")), "仓库 boards/ 下没有导入残留")
 print("test_import_project: " + ("失败 " + str(len(fails)) if fails else "通过"))
 sys.exit(1 if fails else 0)

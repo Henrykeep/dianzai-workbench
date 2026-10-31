@@ -9,6 +9,8 @@
 import argparse, json, os, pathlib, re, shlex, subprocess, sys, uuid
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import boardlib  # noqa: E402
 CPU = {"cortex-m0plus": "Cortex-M0+", "cortex-m3": "Cortex-M3", "cortex-m4": "Cortex-M4", "cortex-m7": "Cortex-M7"}
 
 
@@ -50,7 +52,7 @@ def main():
     ap.add_argument("--board", required=True); ap.add_argument("--app", required=True)
     x = ap.parse_args()
     src, inc, defs, fl, ld, libs, cflags = parse(x.board, x.app)
-    pd = REPO / "boards" / x.board / "eide" / x.app
+    pd = boardlib.board_dir(x.board, REPO) / "eide" / x.app
     rel = lambda p: os.path.relpath(REPO / p, pd).replace(os.sep, "/")
     folders = {}
     for s in src:
