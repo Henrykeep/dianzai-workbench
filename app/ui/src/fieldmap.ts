@@ -147,3 +147,10 @@ export const PLANT_EST_ZH: Record<string, string> = { coarse: "粗估", identifi
 // 粗估判定值：调参页标签读工程的 plant.estimate；结果 / 指标卡读每项 model.estimate（同一 schema 枚举）
 export const PLANT_COARSE = "coarse";
 export const COARSE_ZH = "仅仿真粗估";
+// #101 后端将推「清掉结果卡」事件（名字未定稿，暂定）；本地兜底：开始迭代 / 重连 / 换板也清
+export const RESULT_CLEAR_EV = ["iterate.cleared", "result.clear"] as const;
+// 结果卡所属板卡（暂定）：重连后 iterate_status 回的结果只有板卡对得上才恢复
+export const RESULT_PORT_F = ["port", "board"] as const;
+// #104 list_ports 每个仿真项的应用名（暂定，按顺序取第一个非空）；没有就用目录名
+export const PORT_APP_F = ["app_name", "app", "name", "title"] as const;
+export const pickStr = (o: any, keys: readonly string[]): string => { for (const k of keys) { const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); } return ""; };

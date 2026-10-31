@@ -161,3 +161,26 @@ import { ACTIONS as ACT2, resolveFix as rf2 } from "../src/progress";
   assert.match(readFileSync("src/progress.ts", "utf8"), /s\.detail \? "：" \+ s\.detail/);
   console.log("r9p6c r9d ok");
 }
+// #104 下拉框仿真项：应用名来自 list_ports（暂定字段），否则目录名；绝不显示通用「仿真板」
+import { simPortLabel } from "../src/examples";
+import { IterModel as IM } from "../src/iterui";
+{
+  assert.equal(simPortLabel({ port: "sim:d_press", kind: "sim" }), "仿真 · d_press");
+  assert.equal(simPortLabel({ port: "sim:d_press", kind: "sim", app_name: "压力控制" }), "仿真 · 压力控制");
+  assert.equal(simPortLabel({ port: "sim:rp13+hw", kind: "sim", name: " " }), "仿真 · rp13（当实板）");
+  assert.equal(simPortLabel({ port: "COM3" }), "");
+  for (const id of ["a", "b_c", "x9"]) assert.ok(!simPortLabel({ port: "sim:" + id }).includes("仿真板"));
+  assert.match(readFileSync("src/main.ts", "utf8"), /simPortLabel\(p as any\)/);
+  // #101 清结果卡：后端清除事件 / 新一轮开始 都清；重连只恢复属于当前板的结果
+  const it = new IM();
+  it.onEvent({ type: "iterate.stopped", reason: "pass", verdict: "pass", verdict_zh: "达标" }, 0);
+  assert.equal(it.s.phase, "done");
+  it.onEvent({ type: "iterate.cleared" }, 1); assert.equal(it.s.phase, "idle");
+  it.onEvent({ type: "iterate.stopped", reason: "pass" }, 2); it.onEvent({ type: "result.clear" }, 3); assert.equal(it.s.phase, "idle");
+  it.onEvent({ type: "iterate.stopped", reason: "pass" }, 4); it.onEvent({ type: "iterate.started", limits: { rounds: 5, time_s: 60 } }, 5); assert.equal(it.s.phase, "running");
+  assert.ok(IM.sameBoard({ port: "sim:a" }, "sim:a")); assert.ok(!IM.sameBoard({ port: "sim:a" }, "sim:b")); assert.ok(!IM.sameBoard({}, "sim:a")); assert.ok(!IM.sameBoard({ board: "sim:a" }, null));
+  const mainSrc = readFileSync("src/main.ts", "utf8");
+  assert.match(mainSrc, /const syncIter = \(\) => \{ IT\.reset\(\)/); assert.match(mainSrc, /onBoardForIter\(\(st as any\)\.port/);
+  for (const k of ['"iterate.cleared"', '"app_name"']) assert.ok(!mainSrc.includes(k) && !readFileSync("src/iterui.ts", "utf8").includes(k), k + " 只在 fieldmap");
+  console.log("r9p6c #101/#104 ok");
+}

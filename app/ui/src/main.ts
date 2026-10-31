@@ -50,6 +50,7 @@ import { linkView, runState, modeLabel } from "./linkmsg";
 import { initProject } from "./project";
 import { saveParams, modeGate, otherMode, switchMode, estopMessage, selftestFailures, selftestErrView, sealSelftestView, RESELFTEST } from "./boardstate";
 import { initPjAsk } from "./pjask";
+import { simPortLabel } from "./examples";
 import { estopView, watchdogText, latchedOf } from "./estop";
 import { FlashNag, stripFlash } from "./flashnag";
 import { IterModel, cardView, iterTarget, APPLY_LABEL } from "./iterui";
@@ -250,7 +251,7 @@ function renderPorts(keep = true) {
   // 排序：可能是板子的 USB 串口 → 仿真板 → 其余（板载 ttyS0/COM1 放最后）
   const rank = (p: { kind: string; likely?: boolean }) => p.likely ? 0 : p.kind === "sim" ? 1 : 2;
   S.ports = [...S.ports].sort((a, b) => rank(a) - rank(b));
-  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}" title="${esc(p.port)}">${esc(p.port === S.status?.port && S.status?.connected ? portOption(p.port, declared()) : p.kind === "sim" ? boardName(p.port, declared()) : `${boardName(p.port)} · ${p.desc}`)}</option>`).join("")
+  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}" title="${esc(p.port)}">${esc(p.kind === "sim" || /^sim:/.test(p.port) ? simPortLabel(p as any) || boardName(p.port) : p.port === S.status?.port && S.status?.connected ? portOption(p.port, declared()) : `${boardName(p.port)} · ${p.desc}`)}</option>`).join("")
     || `<option value="">没有找到串口 — 插上 USB 转串口</option>`;
   // 零配置：USB 串口优先；没有就选仿真板（板载 ttyS0/COM1 几乎不会是你的板子，不默认选）
   const last = localStorage.getItem("dz-port") ?? "";   // 记住上次连接的端口
@@ -688,6 +689,7 @@ function renderProposal(m: Msg) {
 
 // ---------------------------------------------------------------- 状态
 function renderStatus(st: Msg) {
+  onBoardForIter((st as any).port ?? null);   // #101 换板清结果卡
   renderBoard(st);
   const was = S.status.connected;
   const wasLatched = S.latched;
@@ -812,9 +814,14 @@ $("it-go").onclick = async () => {
   const target = iterTarget(spLast);
   if (target == null) return toast({ code: "", message: "还不知道阶跃目标", fix: "先在「更多实验」里做一次阶跃实验，自动迭代按这个目标继续" });
   const r = await call("iterate_start", { target }).catch(() => null);
-  if (r) { IT.onStartReply(r, performance.now()); renderIter(); }
+  if (r) { IT.onStartReply(r, performance.now()); renderIter(); }   // onStartReply 置 running，上一轮结果卡随之清掉
 };
-const syncIter = () => link.rpc("iterate_status", {}).then(r => { IT.onStatus(r, performance.now(), +(localStorage.getItem("dz.iter.done") ?? NaN)); renderIter(); }, () => {});
+// #101 重连 / 换板：先清结果卡，再按 iterate_status 恢复——只恢复进行中，或结果标明属于当前板的
+const syncIter = () => { IT.reset(); renderIter(); return link.rpc("iterate_status", {}).then((r: any) => {
+  const res = r?.result ?? r?.last?.result, keep = r?.running || (res && IterModel.sameBoard(res, S.status?.port));
+  if (keep) IT.onStatus(r, performance.now(), +(localStorage.getItem("dz.iter.done") ?? NaN)); renderIter(); }, () => {}); };
+let iterPort: string | null | undefined;
+function onBoardForIter(port: string | null | undefined) { if (iterPort !== undefined && port !== iterPort && IT.s.phase !== "running") { IT.reset(); renderIter(); } iterPort = port; }
 setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
   { const pv = toPlant((m as any)?.[PLANT_F.obj]); if (pv) paintPlant(pv); }

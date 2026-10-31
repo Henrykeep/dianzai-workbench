@@ -9,3 +9,9 @@ export function exampleCandidates(ports: PortLike[] | undefined): string[] {
   return out;
 }
 export const simBoardZh = (declared?: string) => declared && declared.trim() ? declared.trim() : "仿真板";
+// #104 下拉框仿真项：「仿真 · <应用名>」，应用名取 list_ports 声明（PORT_APP_F），没有就用目录名；+hw 标「当实板」
+import { PORT_APP_F, pickStr } from "./fieldmap";
+export function simPortLabel(p: PortLike & Record<string, unknown>): string {
+  const m = /^sim:([^+]+)(\+hw)?$/.exec(p.port); if (!m) return "";
+  return `仿真 · ${pickStr(p, PORT_APP_F) || m[1]}${m[2] ? "（当实板）" : ""}`;
+}
