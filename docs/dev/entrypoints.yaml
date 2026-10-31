@@ -57,6 +57,7 @@ actions:
   - {id: snap_save,    label: 存快照,           at: step:调参,   ui: snap-save,  ops: [snapshot_save, snapshot_list]}
   - {id: restore,      label: 回到…,            at: step:调参,   ui: p-def,      ops: [params_restore, tune_best]}
   - {id: step_test,    label: 阶跃实验,         at: step:调参,   ui: ag-step,    ops: [tune_step_test]}
+  - {id: sp_restore,   label: 恢复急停前目标,   at: page:tune,   ui: sp-restore, ops: [setpoint_set]}
   - {id: tune_relay,   label: 自整定,           at: step:调参,   ui: ag-relay,   ops: [tune_relay]}
   - {id: sweep_test,   label: 扫频,             at: step:调参,   ui: ag-sweep,   ops: [tune_sweep_test]}
   - {id: search,       label: 仿真搜索,         at: step:调参,   ui: ag-search,  ops: [tune_search, propose]}
@@ -103,7 +104,6 @@ script_ops:
   send_data: 按 id + hex 发一帧 DATA：测试和外部脚本驱动板子（界面用“发送”的 send_raw / 常用指令）
   agent_tool: 外部 Agent（脚本 / MCP 桥）调参数工具；内置 Agent 走 agent_ask
   project_chain: 项目页“一键走完 ①–⑤ + Keil 注入”的后端（整链只写暂存区预览）；入口按钮由前端（frontend-polish）接，接上后从这里移走
-  setpoint_set: 只下发目标（DATA id=1），给调参页「恢复急停前目标」用；入口按钮由前端（frontend-polish）接，接上后从这里移走
   quick_start: 一句话起项目（输入框）→ 整链预览 + 一张确认卡；确认后连仿真板、一键起步调参、评分。输入框由前端接，接上后从这里移走
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
   iterate_start: 自动迭代调参（#38/#62）：参数 target / params / dur_ms / ch；仿真直接开跑，返回 status=started 和 budget（time_s、rounds = 轮数上限 N），实机出批量确认卡。按钮由前端（#62）接，接上后从这里移走

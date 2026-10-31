@@ -1,4 +1,4 @@
-# 电赛工作台 —— 顶层构建
+# 芯台 —— 顶层构建
 #
 #   make                      # = make BOARD=host-sim APP=motor_speed_demo，在电脑上编译
 #   make run                  # 编译并运行仿真（仅 host-sim）
@@ -91,7 +91,8 @@ FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard fi
 LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/proto/*/*.c firmware/drivers/*/*.c)
 # 纯 make 递归通配（不调 find：Windows 上 find.exe 是另一个程序，会报 "File not found - *.c"）
 rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
-APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f),,$f)))
+# 工程目录下的 build/（工作台给 Keil/IDE 导出的 build/gen/ 生成物，#52）不参与编译：生成物以 $(OUT)/projgen 为准，否则重复定义
+APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f)$(findstring $(APP_DIR)/build/,$f),,$f)))
 SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
 APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC) $(LINK_SRC)
 PORT_DIR = ports/$(BOARD_PORT)
@@ -118,7 +119,10 @@ obj_of = $(OUT)/obj/$(subst :,_,$(1)).o
 OBJS = $(foreach s,$(SRCS),$(call obj_of,$(s)))
 DRV_SRCS = $(foreach s,$(SRCS),$(if $(findstring :,$(s)),$(s)))
 # 第三方代码不套 -Werror（不是我们能改的），单独编译
-HAL_OBJS = $(patsubst %,$(OUT)/hal/%.o,$(HAL_SRC) $(STARTUP))
+# 第三方源可能是 Windows 绝对路径（C:/...，如 Keil 注入时的工程目录）：目标名里的 ':' 换成 '_'，否则 make 报 multiple target patterns
+hal_obj_of = $(OUT)/hal/$(subst :,_,$(1)).o
+HAL_OBJS = $(foreach s,$(HAL_SRC) $(STARTUP),$(call hal_obj_of,$(s)))
+HAL_DRV_SRCS = $(foreach s,$(HAL_SRC) $(STARTUP),$(if $(findstring :,$(s)),$(s)))
 
 .PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview ui bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
@@ -168,6 +172,13 @@ $(OUT)/hal/%.s.o: %.s
 	@mkdir -p $(dir $@)
 	@echo "  AS  $<"
 	$(Q)$(CC) $(MCU) -c $< -o $@
+define HAL_DRV_OBJ_RULE
+$(call hal_obj_of,$(1)): $(1) $$(if $$(filter %.c,$(1)),$$(GEN)/board_gen.h)
+	@mkdir -p $$(dir $$@)
+	@echo "  CC  $$< (第三方，关闭警告)"
+	$$(Q)$$(CC) $$(if $$(filter %.c,$$<),$$(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$$(CFLAGS)) $$(INC) -w,$$(MCU)) -c $$< -o $$@
+endef
+$(foreach s,$(HAL_DRV_SRCS),$(eval $(call HAL_DRV_OBJ_RULE,$(s))))
 
 $(TARGET): $(OBJS) $(HAL_OBJS) $(LDSCRIPT)
 	@echo "  LD  $@"
@@ -231,7 +242,10 @@ test:
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
+	$(PY) tools/test_win_paths_mk.py   # Windows C:/ 源路径不进 make 目标名（Makefile:173 multiple target patterns）
 	$(PY) tools/test_link_hold.py   # link_schema 设定值通道 hold（latched/timeout）与固件行为一致
+	$(PY) tools/test_swd_pins.py   # #56 SWD 调试脚占用即报错
+	$(PY) tools/test_projgen_build.py   # #52 工程 build/gen 导出物不与 projgen 重复链接
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	tools/test_estop_sp.sh   # 急停 / 'R' 后设定值归零、不自动恢复（60 相位 × 5 应用）
 	python3 tools/test_step_result.py   # #38 阶跃 step_result 对拍 / param_reject / 心跳 bit17（5 应用）
@@ -269,6 +283,8 @@ check:
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
 	$(PY) tools/check_entrypoints.py --selftest
 	$(PY) tools/check_entrypoints.py
+	$(PY) tools/check_ascii_paths.py --selftest
+	$(PY) tools/check_ascii_paths.py
 	$(PY) tools/check_ui_layout.py --selftest
 	$(PY) tools/check_ui_layout.py
 	$(PY) tools/check_copy.py --selftest

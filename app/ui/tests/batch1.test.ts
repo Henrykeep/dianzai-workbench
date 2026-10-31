@@ -1,0 +1,44 @@
+import { IterModel, cardView, budgetText, runText, iterTarget, DEFAULT_LIMITS } from "../src/iterui";
+import { FlashNag, stripFlash, dropFlashBlockers, isFlashNotice, FLASH_NOTE } from "../src/flashnag";
+import { pickTheme } from "../src/theme";
+import { clearBtnHidden } from "../src/r8pre";
+const eq = (a: unknown, b: unknown, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
+// #62
+eq(budgetText(DEFAULT_LIMITS(false)), "最多 8 轮 / 180 s", "hw budget");
+eq(budgetText(DEFAULT_LIMITS(true)), "最多 20 轮 / 180 s", "sim budget");
+const it = new IterModel(false);
+eq(it.button(), { label: "自动迭代", op: "start" }, "idle btn");
+it.setSim(true); eq(it.text(0), "最多 20 轮 / 180 s", "sim idle text");
+it.onStartReply({ status: "started", budget: { time_s: 180, rounds: 8 } }, 0);
+eq(it.button().op, "cancel", "running btn is stop");
+it.onEvent({ type: "iterate.round", iter: 2 }, 0);
+eq(it.text(65000), "第 3/8 轮 · 剩余 1:55", "progress text");
+eq(runText(1, { time_s: 180, rounds: 8 }, 200), "第 1/8 轮 · 剩余 0:00", "clamped");
+const p = new IterModel(false); p.onStartReply({ status: "pending_human_click", action_id: "a" }, 0);
+eq(p.button().op, "cancel", "pending stop"); eq(p.text(0).startsWith("等待确认卡"), true, "pending text");
+const ev = new IterModel(true); ev.onEvent({ type: "iterate.started", limits: { time_s: 60, rounds: 5 } }, 0); eq(ev.text(0), "第 1/5 轮 · 剩余 1:00", "started limits");
+it.onEvent({ type: "iterate.stopped", reason: "budget_rounds", rounds: 8, next_zh: "可写入后再试", best: { iter: 5, params: { kp: 1.23456, ki: 0.5 }, gaps: { overshoot: { value: 12, limit: 5, gap: 7, unit: "%" } } } }, 0);
+eq(it.s.phase, "done", "done"); eq(it.button(), { label: "自动迭代", op: "start" }, "done btn");
+const v = cardView((it.s as any).result);
+eq(v.title, "最好一组参数（第 5 轮）", "title"); eq(v.params, [["kp", "1.235"], ["ki", "0.5"]], "params");
+eq(v.gaps, ["超调：12%，目标 ≤ 5%，差 7%"], "gaps"); eq(v.reason, "停止原因：轮数用完", "reason"); eq(v.canWrite, true, "write");
+eq(cardView({ reason: "invalid", best: null }).canWrite, false, "no best");
+eq(cardView({ reason: "pass", best: { iter: 1, params: { kp: 1 }, pass: true, gaps: {} } }).gaps, ["各项指标均已达标"], "pass gaps");
+eq(cardView({ reason: "blocked", best: { iter: 0, params: { kp: 1 }, gaps: {} } }).gaps, ["这一轮没有完整指标"], "no metrics");
+it.reset(); eq(it.s.phase, "idle", "reset");
+eq(iterTarget({ v: 100 }), 100, "target"); eq(iterTarget({ v: 0 }), null, "zero"); eq(iterTarget(null), null, "none");
+// #63
+const f = new FlashNag();
+eq(f.label({ params_saved: false }, null), "", "fresh connect no nag");
+f.onUserChange(); eq(f.label({ params_saved: false }, null), FLASH_NOTE, "changed nag");
+f.onSaved(); eq(f.label({ params_saved: true }, "10:00:00"), "已保存 10:00:00", "saved");
+f.onUserChange(); f.onConnect(); eq(f.label({ params_saved: false }, null), "", "reconnect resets");
+eq(dropFlashBlockers([{ code: "params_not_saved", message: "x" }, { code: "estop", message: "y" }]).length, 1, "drop blocker");
+const pr = stripFlash({ blockers: [{ code: "params_not_saved" }], next: { action: "params_flash" }, steps: [{ blockers: [{ code: "params_not_saved" }] }] })!;
+eq([pr.blockers, pr.next, pr.steps![0].blockers], [[], null, []], "strip progress");
+eq(isFlashNotice({ blocker_code: "params_not_saved" }), true, "notice");
+eq(isFlashNotice({ blocker_code: "x", message_zh: "板上参数已修改但尚未写入 Flash" }), true, "notice text");
+// theme
+eq(pickTheme(null), "light", "default light"); eq(pickTheme("dark"), "dark", "persisted dark"); eq(pickTheme("bogus"), "light", "bad");
+eq([clearBtnHidden(true), clearBtnHidden(false)], [false, true], "cmd-r only while latched");
+console.log("✓ batch1 (iterate / flash nag / theme)");

@@ -93,9 +93,9 @@ export const PURPOSE: Record<StepId, string> = {
   project: "生成或导入工程并编译、烧录到目标板；产出可运行的固件。",
   sim: "在仿真板上跑通控制回路，确认信号与参数结构；产出可用的参数初值。",
   bringup: "逐个模块上板收发并完成标定；产出极性、零偏等标定值。",
-  tune: "先读取板上自检确认硬件状态，再通过自整定或阶跃实验调整参数，达标后保存参数到 Flash；产出满足指标的一组参数。",
+  tune: "先读取板上自检确认硬件状态，再通过自整定或阶跃实验调整参数，达标后点「保存参数」；产出满足指标的一组参数。",
   score: "按评分项逐项实测并保存证据；产出每项的测试记录与得分。",
-  seal: "赛前全绿检查并持久化参数；产出写入 Flash 与 yaml 的定稿参数。",
+  seal: "赛前全绿检查并持久化参数；产出掉电保存并写入 yaml 的定稿参数。",
 };
 export const ACTION_LABEL: Record<string, string> = {
   project_flow: "开始读需求", project_ask: "新建工程", flash: "烧录固件", connect: "连接目标板", params: "下发参数",

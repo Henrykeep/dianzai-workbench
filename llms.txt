@@ -1,4 +1,4 @@
-# dianzai-workbench（电赛工作台）
+# dianzai-workbench（芯台 / XinTai）
 
 > 全国大学生电子设计竞赛用的嵌入式工作台：STM32（CubeMX+HAL）与 TI MSPM0（SysConfig+DriverLib）多板卡，换板只改引脚；PC 仿真板；dzframe/1 串口协议；桌面工作台 dzbench（曲线、参数、急停、回放、内置 Agent）。
 

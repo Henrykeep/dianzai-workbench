@@ -2,7 +2,7 @@
 # 用来证明应用层与硬件无关，也用于单元测试和"先在电脑上把逻辑跑通再上板"。
 schema_version: 1
 name: host-sim
-vendor: 电赛工作台
+vendor: 芯台
 description: 主机仿真板卡（ports/host-sim），资源全部为软件模拟
 port: host-sim
 mcu:
