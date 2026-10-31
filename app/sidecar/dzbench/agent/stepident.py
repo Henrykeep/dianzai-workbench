@@ -67,3 +67,20 @@ def derive(ident: dict | None, rng: float | None, probe_amp: float | None = None
             "step_dur_ms": int(min(max(hold * 1000, DUR_MIN_MS), DUR_MAX_MS)),
             "basis": {"sigma": round(sigma, 6), "K": round(ident["K"], 6), "L_s": round(L, 4), "T_s": round(T, 4),
                       "vmax": round(ident.get("vmax") or 0.0, 4), "range": rng, "source": "measured"}}
+
+
+MIN_ABS = 1e-3         # 没声明量程、也没测到噪声时的最小探测幅度（反馈单位）
+
+
+def probe_amp(limit: float | None, sigma: float = 0.0) -> tuple[float, str | None]:
+    """探测幅度：声明了物理量程 → 量程 × PROBE_FRAC（不超量程）；没声明 → 能看清的最小幅度（MIN_SNR·σ，至少 MIN_ABS），并说明原因。"""
+    if limit and math.isfinite(limit) and limit > 0:
+        return float(limit) * PROBE_FRAC, None
+    a = max(MIN_SNR * float(sigma or 0.0), MIN_ABS)
+    return a, (f"工程没声明物理量程（app.yaml link.step.range / step_test 的 high、low），探测阶跃只用最小幅度 {a:.4g}，"
+               "响应可能被噪声淹没、辨识不准；请在 link.step 写上量程和执行器上限后重测")
+
+
+def saturated(us: list[float], u_max: float | None) -> bool:
+    """执行器是否顶到声明的上限（≥ 98%）。"""
+    return bool(u_max) and any(abs(float(u)) >= 0.98 * abs(float(u_max)) for u in us)

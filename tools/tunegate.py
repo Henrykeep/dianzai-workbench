@@ -4,7 +4,8 @@
   - feasible:false 对象：verdict 必须是 fail/unknown，原因类别对得上（saturation / delay / nonminimum_phase）；给 pass = 红。
 失败一律打印 seed，`tunegate.py --seed N` 单独复现。
 
-对象来源：tools/randplant.py（嵌入式开发-2，sim:randplant-<seed> 板）存在就用它；还没推上来 → 用 tools/randplant_standin.py（STAND-IN，Python 仿真板）。
+对象来源（默认）：tools/randplant.py（嵌入式开发-2，与 plant: 共用 tools/plantmodel.py），经 tools/tunegate_plant.py 转成整定输入 + Python 仿真板。
+TUNEGATE_SOURCE=standin 只给单元测试显式选用 tools/randplant_standin.py；替身上的结果一律打印「未合入」，退出码非 0，永不算通过。
 整定只读 app.yaml / link.yaml / spec.txt，plant.json 只给判卷用。
 """
 from __future__ import annotations
@@ -12,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import pathlib
 import sys
 import tempfile
@@ -26,19 +28,17 @@ NEAR_ABS = 0.02
 
 
 def source() -> str:
-    """randplant.py 已推（fw-generic），但 sim:randplant-<seed> 板的 Session 适配是 #78 第二步（后端）：
-    接上之前默认仍用 STAND-IN；TUNEGATE_SOURCE=randplant 显式切过去（未接适配时照旧报错提示）。"""
-    import os
-    want = os.environ.get("TUNEGATE_SOURCE", "standin")
-    return "randplant" if want == "randplant" and (ROOT / "tools" / "randplant.py").exists() else "standin"
+    """默认 randplant；只有 TUNEGATE_SOURCE=standin 才用替身（单元测试显式选用）。"""
+    return "standin" if os.environ.get("TUNEGATE_SOURCE", "randplant") == "standin" else "randplant"
 
 
 def one(seed: int, kind: str) -> dict:
     import yaml
     from dzbench.tuning import autotune as AT
     if source() == "randplant":
-        raise SystemExit("tools/randplant.py 已存在：sim:randplant-<seed> 板的 Session 适配还没接（#78 第二步），先接上再跑门禁")
-    import randplant_standin as RP
+        import tunegate_plant as RP
+    else:
+        import randplant_standin as RP
     with tempfile.TemporaryDirectory() as d:
         RP.make(seed, kind, d)
         app = yaml.safe_load(open(f"{d}/app.yaml", encoding="utf-8"))
@@ -87,7 +87,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", default=None)
     a = ap.parse_args(argv)
     seeds = [a.seed] if a.seed is not None else [(a.seed0 if a.seed0 is not None else int(time.time()) % 100000) * 1000 + i for i in range(a.n)]
-    print(f"tunegate：对象来源 = {source()}{'（STAND-IN，randplant 板适配未接）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
+    print(f"tunegate：对象来源 = {source()}{'（STAND-IN，未合入）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
     rs = []
     for s in seeds:
         try:
@@ -106,6 +106,9 @@ def main(argv=None) -> int:
           + (f"；失败 seed：{','.join(str(r['seed']) for r in bad)}（tools/tunegate.py --seed N 复现）" if bad else ""))
     if a.json:
         pathlib.Path(a.json).write_text(json.dumps(rs, ensure_ascii=False, indent=1, default=str), "utf-8")
+    if source() == "standin":
+        print("tunegate：未合入——对象来自 STAND-IN（TUNEGATE_SOURCE=standin），结果不算门禁通过")
+        return 2
     return 1 if bad else 0
 
 
