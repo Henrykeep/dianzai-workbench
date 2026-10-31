@@ -26,7 +26,7 @@ def test_step_invalid(m, why):
 def test_invalid_step_verdict_never_says_pass():
     for m in ({}, {"ok": True, "rise_s": None, "settling_s": 2.0, "overshoot_pct": 0.0}, {"ok": True, "rise_s": 0.5, "settling_s": 0.0}):
         v, zh = S.AgentService._verdict({"inside": True, "pass_basis": "按默认 2% 判定达标"}, {"reason": "pass"}, m)
-        assert v == "invalid" and "达标" not in zh
+        assert v == "unknown" and "达标" not in zh
     v, zh = S.AgentService._verdict({"inside": None, "pass_basis": "按默认 2% 判定达标"}, {"reason": "pass"}, {"ok": True, "rise_s": 0.5, "settling_s": 1.0})
     assert v == "unknown" and "达标" not in zh
 
@@ -59,6 +59,8 @@ def test_board_round_without_rise_is_invalid_not_pass():
     out = I.Iterator(NoRiseIO(), PLAN, True, emit=ev.append).run()
     rs = [e for e in ev if e["type"] == "iterate.round"]
     assert rs and all(not r["valid"] and r["why_invalid"] in ("no_rise", "settle_zero") for r in rs)
+    for r in rs:                                    # 验收：无效轮指标是 null 不是 0，判定 unknown
+        assert r["overshoot_pct"] is None and r["settle_ms"] is None and r["ss_err_pct"] is None and r["verdict"] == "unknown", r
     assert out["reason"] != "pass"
 
 
@@ -202,3 +204,12 @@ def test_ss_band_relative_pct_converts_via_board_cal(tmp_path):
     assert S.AgentService._ss_band(o, {"ss_err_pct": 20.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})["inside"] is False
     f.pop("cal")                                    # 板子没声明换算 → 不硬判
     assert S.AgentService._ss_band(o, {"ss_err_pct": 5.0, "metric_mode": "rel", "target": 60.0, "start_y": 0.0})["inside"] is None
+
+
+def test_pass_basis_is_one_sentence_without_parentheses():
+    P = S.AgentService._pass_basis
+    outs = [P(None, None), P({"limit": 2, "unit": "%"}, True), P({"item": "B3", "source": "题目 B3：误差（绝对值） ≤ 1cm"}, None),
+            P({"item": "B3", "source": "题目 B3：误差（绝对值） ≤ 1cm"}, True), P({"item": "B3", "source": "题目 B3：误差 ≤ 1cm"}, False)]
+    assert outs[0] == "题目未给误差带，按默认 2% 判定"
+    for t in outs:
+        assert not any(c in t for c in "()（）"), t

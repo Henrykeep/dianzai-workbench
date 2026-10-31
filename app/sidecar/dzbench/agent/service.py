@@ -68,6 +68,8 @@ def step_invalid(m: dict | None) -> str | None:
     return None
 
 
+NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse", "sse_pct", "ss_err_pct", "rise_s", "rise_ms")
+
 INVALID_ZH = {"empty_metrics": "指标为空", "step_failed": "阶跃没做成", "no_rise": "没测出上升时间", "settle_zero": "调节时间为 0（窗口没对上）"}
 
 
@@ -647,7 +649,7 @@ class AgentService:
         阶跃无效 → invalid；ss_err.inside 为 null（单位对不上、实机未标定）→ unknown。这两种文案里都不出现「达标」。"""
         why = step_invalid(metrics) if metrics is not None else None
         if why or res.get("reason") == "invalid":
-            return "invalid", "本轮阶跃无效（" + INVALID_ZH.get(why or "", "没有有效的一轮") + "），不能判定，先检查实验通道"
+            return "unknown", "本轮阶跃无效：" + INVALID_ZH.get(why or "", "没有有效的一轮") + "，不能判定，先检查实验通道"
         if ss.get("inside") is None:
             return "unknown", "暂无法判定是否满足题目误差带（题目误差带待标定）"
         if ss["inside"] and res.get("reason") == "pass":
@@ -799,10 +801,11 @@ class AgentService:
         """“达标停止”的依据（卡上和 stopped 事件都带）：迭代本身一律按默认口径（|稳态误差| ≤ 2%、超调 ≤ 10%）判达标；
         题目误差带能用时另外写明对照结果，不能用时说清楚待标定，免得用户把“已达标”当成题目要求已满足。"""
         if band is None or "item" not in band:
-            return "按默认 2% 判定（题目没写误差带）"
+            return "题目未给误差带，按默认 2% 判定"
         if inside is None:
             return "按默认 2% 判定，题目误差带待标定"
-        return f"按默认 2% 判定达标；另对照{band['source']}：" + ("在带内" if inside else "超出")
+        src = re.sub(r"\s*[（(][^（）()]*[）)]", "", str(band["source"]))      # pass_basis 一句话，不带括号
+        return f"按默认 2% 判定达标，另对照{src}：" + ("在带内" if inside else "超出")
 
     def _iter_emit(self, e: dict) -> None:
         if e.get("type") == "iterate.round" and e.get("valid"):
@@ -1260,8 +1263,11 @@ class AgentService:
                           overshoot_pct=round(m.overshoot_pct, 1), settling_s=m.settling_s)
         ssr = self._ss_band(m.as_dict())                 # #75：台账（tune_round）和卡片用同一个判定函数
         verdict["verdict"], verdict["verdict_zh"] = self._verdict(ssr, {"reason": "pass" if verdict.get("action") == "done" else None}, m.as_dict())
-        self.emit({"type": "tune_round", "verdict": verdict, "metrics": m.as_dict()})
-        return {"verdict": verdict, "metrics": m.as_dict()}
+        md = m.as_dict()
+        if why:                                           # #68 验收：无效轮的超调/调节时间/稳态误差是 null，不是 0（0 看着像完美）
+            md = md | {k: None for k in NULL_ON_INVALID if k in md}
+        self.emit({"type": "tune_round", "verdict": verdict, "metrics": md})
+        return {"verdict": verdict, "metrics": md}
 
     RELAY_MAX_S = 30.0
 

@@ -375,7 +375,7 @@ def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monk
         assert se["measured"] >= 0 and se["band"]["source"].startswith("题目 B") and se["band"]["unit"] == "cm"
         assert isinstance(se["inside"], bool) and "仿真标称换算，未实机标定" in se["note_zh"], se   # 仿真：px → cm 用仿真自己的几何
         assert se["converted"]["unit"] == "cm" and se["converted"]["value"] == pytest.approx(se["measured"] / 6, rel=1e-4), se
-        assert se["pass_basis"].startswith("按默认 2% 判定达标；另对照题目 B"), se
+        assert se["pass_basis"].startswith("按默认 2% 判定达标，另对照题目 B"), se
         cmp_ = bc["args"]["compare"]                                             # 初值轮 vs 最好一轮并排，每项单独 value + unit
         assert cmp_ and bc["preview"]["compare"] == cmp_ and cmp_["round0"]["metrics"] and cmp_["best"]["metrics"], cmp_
         assert all(isinstance(r["value"], float) and isinstance(r["unit"], str) for r in cmp_["round0"]["metrics"] + cmp_["best"]["metrics"])

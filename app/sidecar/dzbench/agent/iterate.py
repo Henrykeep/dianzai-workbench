@@ -159,6 +159,10 @@ class Iterator:
         elif r.get("settle_ms") == 0:
             why = "settle_zero"                           # #68：调节时间 0 = 窗口没对上（实际没做阶跃）
         rec["valid"], rec["why_invalid"] = why is None, why
+        if why is not None:                               # #68 验收：无效轮指标置 null（固件发的 0% / 0 ms 看着像完美）
+            for k in ("overshoot_pct", "settle_ms", "ss_err_pct", "rise_ms"):
+                rec[k] = None
+            rec["verdict"] = "unknown"
         if why is None:
             rec["pass"] = judge(r, self.abs_tol, self.good)
             rec["score"] = round(score(r, self.abs_tol, self.good), 4)
