@@ -1141,4 +1141,5 @@ function openDeclField(key: string) {
 
 // 原因表兜底提示：状态栏一处，启动时设一次（不弹 toast，不重复）
 import { reasonCodesNotice } from "./reasoncodes";
-{ const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.textContent = t ? t.split("，")[0] + "，已用内置列表" : ""; el.title = t; } }
+import { reasonStatusText } from "./fieldmap";
+{ const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.textContent = reasonStatusText(t); el.title = t; } }

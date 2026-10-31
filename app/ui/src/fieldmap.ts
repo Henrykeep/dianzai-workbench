@@ -235,3 +235,5 @@ export const ADOPT_F = { verified: "verified", why: "unverified_reason", ampRedu
 // 数据文件兜底不静默：缺失 / 格式错 分开说
 export const DATA_FIX_ZH = "修复：运行 python -m dzbench selfcheck-data";
 export const dataNoticeZh = (what: string, st: "ok" | "missing" | "bad") => st === "ok" ? "" : `${what}${st === "missing" ? "缺失" : "格式错误"}，已使用内置列表。${DATA_FIX_ZH}`;
+// 状态栏短句：「原因表缺失，已用内置列表 · 修复：python -m dzbench selfcheck-data」
+export const reasonStatusText = (t: string) => t ? `${t.split("，")[0]}，已用内置列表 · 修复：${DATA_FIX_ZH.replace(/^修复：运行 /, "")}` : "";
