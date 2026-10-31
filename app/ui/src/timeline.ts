@@ -2,7 +2,7 @@
 import { evText, evColor } from "./estophist";
 export type Ev = { i: number; kind: string; text: string; log_t: number | null; plot_t: number | null; cause_zh?: string | null; message_zh?: string | null; fix_hint_zh?: string | null };
 export const KIND: Record<string, [string, string]> = {   // kind → [短名, 颜色变量]
-  connect: ["连接", "--muted"], param: ["参数", "--acc-t"], estop: ["急停", "--crit"], watchdog: ["看门狗", "--crit"],
+  connect: ["连接", "--muted"], estop_clear: ["解除", "--muted"], param: ["参数", "--acc-t"], estop: ["急停", "--crit"], watchdog: ["看门狗", "--crit"],
   crc: ["CRC", "--warn"], step: ["阶跃", "--ok"], agent: ["Agent", "--acc-t"],
 };
 export const kindOf = (k: string): [string, string] => KIND[k] || [k, "--muted"];
@@ -34,5 +34,6 @@ export function initTimeline(el: HTMLElement, onJump: (e: Ev) => void, onChange:
     set(a: Ev[]) { evs = mergeEv([], a); render(); },
     clear() { evs = []; render(); },
     refresh() { render(); },
+    all: () => evs,
   };
 }

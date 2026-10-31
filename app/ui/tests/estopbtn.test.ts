@@ -27,9 +27,9 @@ onCleared((text, btn, go) => { shown = { text, btn, go }; }, () => { tuned++; })
 const MOTION = /^(cmd|params|set_param|tune|agent_tune|step|run|sweep|params_restore|agent_ask)/;
 if (sent.slice(before).some(x => MOTION.test(x.m.op) || x.m.op !== "estop")) throw "解除后自动发了请求 " + JSON.stringify(sent.slice(before));
 if (sent.length !== before || tuned) throw "解除后不得自动发任何请求";
-if (shown.text !== "已解除，电机保持静止，需重新开始调参" || CLEARED_TEXT !== shown.text || shown.btn.label !== "重新调参") throw "解除提示";
+if (shown.text !== "设定值已清零，重新开始实验即可" || CLEARED_TEXT !== shown.text || shown.btn.label !== "重新开始实验") throw "解除提示";
 shown.go(); if (tuned !== 1) throw "人点「重新调参」才发起";
-if (RETUNE.action !== "tune_relay") throw "重新调参入口";
+if (RETUNE.action !== "step_test") throw "重新开始实验 = 阶跃实验";
 console.log(`estopbtn ok click→send ${dt.toFixed(3)} ms`);
 // 事件处理：状态只看 state；不带 state 的旧 {sent:true} 不改状态
 {

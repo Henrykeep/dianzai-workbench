@@ -23,7 +23,8 @@ export function evColor(kind: string, base: string, latched: boolean): string {
 // 告警条（锁存中）的操作提示：只读 fix_hint_zh；没有就不显示
 export const bannerHint = (latched: boolean, e?: EstopEvLike | null) => latched && e?.fix_hint_zh ? e.fix_hint_zh.replace(/\s*R\s*$/, "").trim() : "";
 const hhmmss = (ms: number) => new Date(ms).toLocaleTimeString("zh-CN", { hour12: false });
-export const CLEARED_SP = "设定值已清零，需重新下发目标";
+import { CLEARED_MSG } from "./r8pre";
+export const CLEARED_SP = CLEARED_MSG;
 export function clearedLine(tMs: number, prevHead?: string | null): string {
   return `${hhmmss(tMs)} 急停已解除 · ${CLEARED_SP}` + (prevHead ? `（之前：${prevHead}）` : "");
 }
