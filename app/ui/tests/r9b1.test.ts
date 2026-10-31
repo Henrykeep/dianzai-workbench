@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import { linkTag, dataTag, iterLocked, rejectHint, guide, iterProgress } from "../src/batch1";
+import { errParts } from "../src/errors";
+assert.equal(linkTag({ board: "connected" }, null, 0).text, "已连接");
+assert.equal(linkTag({ board: "lost" }, 0, 5000, 3).text, "重连中 · 已 5 s · 3 s 后再试");
+assert.equal(linkTag({ board: "disconnected", reason: "port_not_found" }, null, 0).text, "断开 · 找不到板子");
+assert.equal(dataTag("sim:motor_pos"), "仿真"); assert.equal(dataTag("COM3"), "实机"); assert.equal(dataTag(null), "");
+assert.ok(iterLocked(["迭代中"], false)); assert.ok(iterLocked(null, true)); assert.ok(!iterLocked(["安全态"], false));
+assert.match(rejectHint({ reason: "range", requested: 9, current: 1 }), /超出量程.*请求 9.*板上仍为 1/);
+assert.match(rejectHint({ reason: "step" }), /单步改动过大/);
+assert.match(rejectHint({ reason: "state" }), /状态不允许/); assert.match(rejectHint({ reason: "type" }), /类型不对/);
+assert.deepEqual(guide(true, false, false).map(x => x.s), ["done", "cur", "todo"]);
+assert.equal(iterProgress(2, 8, 149.2), "第 2/8 轮，预算还剩 150 s");
+const p = errParts({ code: "hold_timeout", message: "保持超时", fix: "重新连接" });
+assert.equal(p.what, "保持超时"); assert.equal(p.fix, "重新连接"); assert.equal(p.raw, "hold_timeout");
+assert.deepEqual(guide(false, true, true).map(x => x.s), ["cur", "todo", "todo"]);
+console.log("batch1 ok");

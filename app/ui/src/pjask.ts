@@ -12,11 +12,11 @@ export function initPjAsk(call: (op: string, a?: any) => Promise<any>, go: (s: a
     $<HTMLInputElement>("ag-in").value = `新建项目：${t}。请按项目页五步（读需求 → 选型 → 导入工程 → 资源分配 → 生成）推进，每步写入前请我确认。`;
     $<HTMLFormElement>("ag-form").requestSubmit();
   };
-  $("pj-sample").onclick = () => {
-    $<HTMLInputElement>("pf-code").value = "2026H";
-    $<HTMLInputElement>("pf-dest").value = "examples/2026H_ball";
-    ["pf-code", "pf-dest"].forEach(id => $(id).dispatchEvent(new Event("input", { bubbles: true })));
-    st.textContent = "已载入示例项目 examples/2026H_ball · 从下方第 1 步「读需求」开始。";
+  // 「从示例开始」：例题只读，复制出一个新项目（op project_switch_example，回 project_forked 由 main 显示）
+  $("pj-sample").onclick = async () => {
+    st.textContent = "正在从示例 2026H_ball 新建项目…";
+    try { const r = await call("project_switch_example", { example: "2026H_ball" }); st.textContent = r?.message_zh ?? `已基于示例新建 ${r?.project ?? ""}`; }
+    catch { st.textContent = ""; }
     go("项目");
   };
 }

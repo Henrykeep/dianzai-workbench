@@ -1,6 +1,6 @@
 // 与侧车的 WebSocket：自动重连；rpc() 返回 Promise；推送消息交给 on()
 export type Msg = { type: string; [k: string]: any };
-export type Err = { code: string; message: string; fix?: string };
+export type Err = { code: string; message: string; fix?: string; why?: string; cause_zh?: string; fix_action?: string };
 
 export class Link {
   private ws?: WebSocket;

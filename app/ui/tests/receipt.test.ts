@@ -39,7 +39,7 @@ if (nb.length !== 1 || nb[0].code !== "estop") throw "新 blocker";
 if (newBlockers(seen, [{ code: "estop" }]).length) throw "旧 blocker 不重复";
 // agent_notice：先结论，再发生了什么 / 原因来自 / 建议；human_only 标「需人工确认」；同 code 未清除前去重
 const nv = noticeView({ blocker_code: "tune_interrupted", what: "自整定被急停打断", source: "heartbeat_lost", suggestion: "确认安全后解除急停", fix_action: "estop_clear", human_only: true });
-if (!nv.head.startsWith("结论") || nv.lines[0] !== "发生了什么：自整定被急停打断" || !nv.lines[1].includes("heartbeat_lost") || !nv.lines[2].startsWith("建议") || nv.tag !== "需人工确认") throw "notice 视图";
+if (!nv.head.startsWith("结论") || nv.lines[0] !== "发生了什么：自整定被急停打断" || !nv.lines[1].includes("心跳丢失") || !nv.lines[2].startsWith("建议") || nv.tag !== "需人工确认") throw "notice 视图";
 if (noticeView({ blocker_code: "x", what: "y" }).tag) throw "非人工不标";
 const G = new NoticeGate();
 if (!G.offer("tune_interrupted") || G.offer("tune_interrupted")) throw "去重";

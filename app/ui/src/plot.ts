@@ -125,11 +125,11 @@ export class Plot {
       const p = X(x); if (!inX(p)) return;
       c.strokeStyle = color; c.lineWidth = devicePixelRatio; c.setLineDash(dash.map(d => d * devicePixelRatio));
       c.beginPath(); c.moveTo(Math.round(p) + .5, top); c.lineTo(Math.round(p) + .5, top + height); c.stroke(); c.setLineDash([]);
-      if (first) { c.fillStyle = color; c.font = `500 ${11 * devicePixelRatio}px ${css("--f-mono")}`; c.fillText(tag, p + 4 * devicePixelRatio, top + 12 * devicePixelRatio); }
+      if (first) { c.fillStyle = color; c.font = `500 ${12 * devicePixelRatio}px ${css("--f-sans")}`; c.fillText(tag, p + 4 * devicePixelRatio, top + 12 * devicePixelRatio); }
     };
     const an = this.annot;
     if (an && an.i === l.i) {             // Mp：峰值处短横线 + 标签；ts：调节完成处竖虚线 + 标签（文字加底色防糊）
-      const lab = (x: number, y: number, t: string) => { c.font = `500 ${11 * devicePixelRatio}px ${css("--f-mono")}`;
+      const lab = (x: number, y: number, t: string) => { c.font = `500 ${12 * devicePixelRatio}px ${css("--f-sans")}`;
         const w = c.measureText(t).width + 8 * devicePixelRatio; c.fillStyle = css("--s2"); c.fillRect(x, y - 12 * devicePixelRatio, w, 16 * devicePixelRatio);
         c.fillStyle = css("--ink"); c.fillText(t, x + 4 * devicePixelRatio, y); };
       const px = X(an.tPeak), py = u.valToPos(an.yPeak, "y", true);
@@ -153,7 +153,7 @@ export class Plot {
     this.host.innerHTML = "";
     const isRef = new Set(this.refOf.filter(r => r >= 0));
     const idx = this.names.map((_, i) => i).filter(i => this.vis[i] && !isRef.has(i));
-    const font = `400 11px ${css("--f-mono")}`;
+    const font = `400 12px ${css("--f-sans")}`;
     const grid = { stroke: css("--grid"), width: 1 }, tick = { show: false };
     const grp = this.groups(idx);
     grp.forEach(([i, ...more]) => {
@@ -176,16 +176,16 @@ export class Plot {
       const u = new uPlot({
         width: 100, height: 100,
         legend: { show: false },
-        padding: [first ? 0 : 6, 28, 6, 0],     // 右侧留固定边距：首条的刻度字不会把它的绘图区挤得比其他 lane 窄（光标/锚点要对齐）
+        padding: [first ? 4 : 8, 28, 8, 16],     // 右侧留固定边距：首条的刻度字不会把它的绘图区挤得比其他 lane 窄（光标/锚点要对齐）
         cursor: { sync: { key: this.sync.key }, points: { size: 5 }, drag: { x: false, y: false } },
         scales: { x: { time: false }, y: { range: yRange } },
         axes: [
-          { show: first, side: 0, size: 24, stroke: css("--muted"), grid, ticks: tick, font,
+          { show: first, side: 0, size: 24, stroke: css("--dim"), grid, ticks: tick, font,
             splits: (_u, _a, lo, hi) => { const d = this.xDiv(), ref = this.xRef(), out: number[] = [];
               for (let x = ref + Math.ceil((lo - ref) / d) * d; x <= hi + 1e-9; x += d) out.push(x); return out; },
             values: (_u, v) => v.map(x => { const r = x - this.xRef(), n = Math.round(r / this.xDiv());
               return n % 2 ? "" : (this.t0 != null && r >= 0 ? "+" : "") + r.toFixed(this.xDiv() < .1 ? 2 : 1) + " s"; }) },
-          { stroke: css("--muted"), grid, ticks: tick, font, size: 44, gap: 4,
+          { stroke: css("--dim"), grid, ticks: tick, font, size: 44, gap: 4,
             splits: (uu, _a, lo, hi) => { const d = divs.get(uu) ?? (hi - lo) / 4, out: number[] = [];
               for (let y = lo; y <= hi + d * 1e-6; y += d) out.push(y); return out; },
             // 首尾刻度不标数字：贴边的数字会被裁掉，读数看标签列的 /div
@@ -215,7 +215,7 @@ export class Plot {
       l.cols.forEach(c => data.push(dy[c]));
       l.u.batch(() => { l.u.setData(data, false); l.u.setScale("x", { min: t0, max: tEnd }); });
       const d = divs.get(l.u);
-      if (d) l.rng.textContent = `${num(d)}${this.units[l.i] ? " " + this.units[l.i] : ""}/div`;
+      if (d) l.rng.textContent = this.units[l.i] ? `${num(d)} ${this.units[l.i]}/div` : "";   // 无单位通道不显示每格刻度（读轴上数字即可）
     }
   }
 }

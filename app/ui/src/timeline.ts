@@ -20,7 +20,7 @@ export function initTimeline(el: HTMLElement, onJump: (e: Ev) => void, onChange:
     el.hidden = !evs.length;
     const lat = isLatched(), lastE = evs.filter(x => x.kind === "estop" || x.kind === "watchdog").pop();
     el.innerHTML = evs.slice(-80).map(e => { const [n, c0] = kindOf(e.kind), c = evColor(e.kind, c0, lat && e === lastE), tx = evText(e);
-      return `<span class="tl-e" data-i="${e.i}" style="--c:var(${c})" title="${esc(tx)} · dzlog ${when(e)}（点击跳到这一刻）"><b>${n}</b>${esc(tx)}<i>${when(e)}</i></span>`; }).join("");
+      return `<span class="tl-e" data-i="${e.i}" style="--c:var(${c})" title="${esc(tx)} · dzlog ${when(e)}（点击跳到这一刻）"><b>${n}</b>${esc(tx.startsWith(n) ? tx.slice(n.length).trimStart() : tx)}<i>${when(e)}</i></span>`; }).join("");
     el.scrollLeft = el.scrollWidth;
     onChange(evs);
   };

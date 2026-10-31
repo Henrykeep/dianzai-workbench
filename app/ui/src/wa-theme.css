@@ -1,0 +1,18 @@
+/* Web Awesome 主题 = 芯台 tokens（主色 #0D74CE，红只给危险；圆角 0/4/8/999；字体 Inter） */
+:root,[data-theme]{
+  --wa-font-family-body:var(--f-sans); --wa-font-family-heading:var(--f-sans); --wa-font-family-code:var(--f-mono);
+  --wa-font-size-m:14px; --wa-font-size-s:14px; --wa-font-size-xs:12px;
+  --wa-border-radius-s:4px; --wa-border-radius-m:8px; --wa-border-radius-l:8px; --wa-border-radius-pill:999px;
+  --wa-color-surface-default:var(--surface-1); --wa-color-surface-raised:var(--surface-1); --wa-color-surface-lowered:var(--surface-2); --wa-color-surface-border:var(--border, var(--line));
+  --wa-color-text-normal:var(--text-primary); --wa-color-text-quiet:var(--text-secondary);
+  --wa-color-brand-fill-loud:var(--accent-solid); --wa-color-brand-on-loud:var(--text-on-accent); --wa-color-brand-fill-quiet:var(--accent-subtle);
+  --wa-color-brand-fill-normal:var(--accent-subtle); --wa-color-brand-border-quiet:var(--accent-subtle); --wa-color-brand-border-normal:var(--accent-solid); --wa-color-brand-border-loud:var(--accent-solid);
+  --wa-color-brand-on-quiet:var(--accent-text); --wa-color-brand-on-normal:var(--accent-text);
+  --wa-color-neutral-fill-quiet:var(--surface-2); --wa-color-neutral-fill-normal:var(--surface-2); --wa-color-neutral-on-quiet:var(--text-secondary); --wa-color-neutral-on-normal:var(--text-primary); --wa-color-neutral-border-quiet:var(--line);
+  --wa-color-danger-fill-loud:var(--danger-solid); --wa-color-danger-on-loud:var(--text-on-accent);
+  --wa-color-focus:var(--accent-solid); --wa-form-control-activated-color:var(--accent-solid);
+  --wa-space-xs:4px; --wa-space-s:8px; --wa-space-m:16px; --wa-space-l:24px;
+}
+wa-button{font-family:var(--f-sans)}
+wa-card{--spacing:16px}
+wa-tag{font-variant-numeric:tabular-nums}

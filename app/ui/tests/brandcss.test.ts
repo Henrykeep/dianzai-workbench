@@ -11,9 +11,10 @@ for (const f of css) {
   for (const m of s.matchAll(/(?:^|[;{\s])((?:margin|padding|gap|row-gap|column-gap)(?:-[a-z-]+)?)\s*:\s*([^;}]+)/g))
     for (const n of m[2].matchAll(/(-?[0-9.]+)px/g)) if (+n[1] % 4) bad.push(`${f} ${m[1]}:${m[2].trim()} 不是 4 的倍数`);
   for (const m of s.matchAll(/(?:^|[;{\s])(border(?:-[a-z-]+)?-radius)\s*:\s*([^;}]+)/g))
-    for (const t of m[2].trim().split(/\s+/)) if (!RADII.has(t) && !/^var\(--r(-[a-z]+)?\)$/.test(t)) bad.push(`${f} ${m[1]}:${t} 圆角不在 0/4/8/999px`);
-  for (const m of s.matchAll(/--(sp\d|r(?:-[a-z]+)?)\s*:\s*([^;]+)/g)) {
+    for (const t of m[2].trim().split(/\s+/)) if (!RADII.has(t) && !/^var\(--(r|radius)(-[a-z]+)?\)$/.test(t)) bad.push(`${f} ${m[1]}:${t} 圆角不在 0/4/8/999px`);
+  for (const m of s.matchAll(/--(sp-?\d|r(?:-[a-z]+)?|radius-[a-z]+)\s*:\s*([^;]+)/g)) {
     const v = m[2].trim();
+    if (/^var\(--(sp-\d|radius-[a-z]+)\)$/.test(v)) continue;   // 别名，指向下面也被检查的基础变量
     if (m[1].startsWith("sp") ? parseFloat(v) % 4 !== 0 : !RADII.has(v)) bad.push(`${f} --${m[1]}:${v}`);
   }
 }
