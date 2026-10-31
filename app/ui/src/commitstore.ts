@@ -1,4 +1,4 @@
-// #111 r9f：待确认的提交卡刷新后不丢——sessionStorage 兜底，按 request_id 去重；后端重推 / 出结果时对账
+// #111 r9f：待确认的提交卡刷新后不丢——sessionStorage 兜底，按 request_id 去重；后端重推 / 出结果时以后端为准
 import { COMMIT_F, COMMIT_STORE_KEY } from "./fieldmap";
 type St = Pick<Storage, "getItem" | "setItem">;
 const idOf = (m: any) => (m?.[COMMIT_F.id] != null ? String(m[COMMIT_F.id]) : "");

@@ -45,7 +45,7 @@ export type Verdict = { v: "pass" | "fail" | "unknown"; zh: string };
 export function toVerdict(src: any): Verdict {
   const pick = (k: string) => src?.args?.[k] ?? src?.preview?.[k] ?? src?.[k];
   const v = pick(VERDICT_F.v), zh = str(pick(VERDICT_F.zh));
-  if (v === "pass" || v === "fail" || v === "unknown") return { v, zh: zh || (v === "unknown" ? "未判定" : "") || "未判定" };
+  if (v === "pass" || v === "fail" || v === "unknown") return { v, zh: zh || VERDICT_ZH[v] };
   return { v: "unknown", zh: "未判定" };
 }
 // 换示例：op project_switch_example {example}；回 project_forked {example, project, path, message_zh}
@@ -137,7 +137,7 @@ export const COMMIT_OP = { name: "commit_confirm", id: "request_id", approve: "a
 export const COMMIT_DECL_F = { reason: "reason_zh", fix: "fix_action", code: "reason", ok: "ok", commit: "commit", declined: "commit_declined", failed: "commit_failed" } as const;
 // 写文件确认卡：scope = "write_only" 表示只授权写文件
 export const WRITE_F = { scope: "scope", writeOnly: "write_only" } as const;
-export const WRITE_ONLY_ZH = "只授权写入文件，不会提交（git 提交另有确认卡）";
+export const WRITE_ONLY_ZH = "只授权写入文件，不会存进工程版本（「保存到工程版本」另有确认卡）";
 // 工程声明的板子名：schema 里的 title / name（后端给了就用），否则当前项目名
 export const BOARD_F = { schema: ["title", "name"], project: "name", path: "path" } as const;
 export const writeScopeNote = (card: any): string => card?.[WRITE_F.scope] === WRITE_F.writeOnly ? WRITE_ONLY_ZH : "";
@@ -148,15 +148,16 @@ export const PLANT_EST_ZH: Record<string, string> = { coarse: "粗估", identifi
 export const PLANT_COARSE = "coarse";
 export const COARSE_ZH = "仅仿真粗估";
 // #101 后端将推「清掉结果卡」事件（名字未定稿，暂定）；本地兜底：开始迭代 / 重连 / 换板也清
-export const RESULT_CLEAR_EV = ["iterate.cleared", "result.clear"] as const;
+export const RESULT_CLEAR_EV = ["result_reset"] as const;   // 定稿：result_reset {run_id, reason: iterate_start|reconnect|board_change}
 // 结果卡所属板卡（暂定）：重连后 iterate_status 回的结果只有板卡对得上才恢复
 export const RESULT_PORT_F = ["port", "board"] as const;
 // #104 list_ports 每个仿真项的应用名（暂定，按顺序取第一个非空）；没有就用目录名
-export const PORT_APP_F = ["app_name", "app", "name", "title"] as const;
+export const PORT_APP_F = ["app_name"] as const;   // 定稿：list_ports 仿真项带 app_name / app_dir
+export const PORT_DIR_F = ["app_dir"] as const;
 export const pickStr = (o: any, keys: readonly string[]): string => { for (const k of keys) { const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); } return ""; };
 
 // #101 r9f：台账一轮（iterate.round 事件 / 阶跃实验收尾）——暂定字段名，后端定稿改这里
-export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms" } as const;
+export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", kind: "kind", manual: "manual_step", diverged: "diverged" } as const;
 
 // #110 r9f：拒绝 / 失败原因按序找：reason_zh → message_zh → detail（顶层、data、error 里都找）——暂定，后端定稿改这里
 export const COMMIT_REASON_KEYS = ["reason_zh", "message_zh", "detail"] as const;
@@ -166,13 +167,23 @@ export const USER_DECLINED_ZH = "你已取消写入";
 export const COMMIT_STORE_KEY = "dz.commitPending";   // #111 sessionStorage：刷新后恢复待确认的提交卡
 
 // r9f 急停横幅：事件 / status 里的字段——暂定名，后端定稿改这里；缺了显示 MISSING_ZH，不编
-export const ESTOP_F = { at: ["at_ms", "ts_ms", "since"], reason: ["reason_zh", "message_zh"], measured: ["measured_ms", "gap_ms"], threshold: ["wd_timeout_ms", "threshold_ms", "timeout_ms"]   /* 定稿：握手 wd_timeout_ms（fw-wd，默认 1500）；后两个暂留兜底 */, restored: "restored", source: "source", restoredSrc: "latch_restored" } as const;
+export const ESTOP_F = { at: ["latched_at"], reason: ["reason_zh"], code: "reason", measured: ["measured_ms"], threshold: ["threshold_ms"], restored: "restored", fix: "fix_action", source: "source", restoredSrc: "latch_restored" } as const;   // 定稿（threshold_ms 来自握手 wd_timeout_ms，可能为 null）
 export const MISSING_ZH = "后端未给";
+export const LATCH_AT_MISSING_ZH = "锁存时间后端未给";
 
 // r9g 急停横幅按原因显示字段（唯一一张表）：cause 取事件 source / kind / status.estop_cause.cause（去掉 firmware: 前缀）
 // fields = 这种原因天然带的数值；label = 固定文案（有就不读 reason_zh）。表里没有的原因：只显示原因文字
 export const ESTOP_CAUSES: Record<string, { label?: string; fields: readonly ("measured" | "threshold")[] }> = {
-  ui: { label: "手动急停", fields: [] }, button: { label: "手动急停", fields: [] }, key: { label: "手动急停", fields: [] },
+  ui: { label: "手动急停", fields: [] }, button: { label: "手动急停", fields: [] }, key: { label: "手动急停", fields: [] }, manual: { label: "手动急停", fields: [] },
   heartbeat_lost: { fields: ["measured", "threshold"] }, hb_lost: { fields: ["measured", "threshold"] },
-  hb_timeout: { fields: ["measured", "threshold"] }, "2": { fields: ["measured", "threshold"] }   /* 心跳超时 cause 码 2 */, watchdog: { fields: ["measured", "threshold"] },
+  hb_timeout: { fields: ["measured", "threshold"] }, watchdog: { fields: ["measured", "threshold"] }, "2": { fields: ["measured", "threshold"] },
 };
+
+// #121 结论码 → 中文（后端没给 verdict_zh 时本地兜底）
+export const VERDICT_ZH: Record<string, string> = { pass: "通过", fail: "未通过", unknown: "未判定" };
+// #122 提交动作统一叫法
+export const COMMIT_BTN_ZH = "保存到工程版本";
+export const COMMIT_SENT_F = "__sent";   // #117 sessionStorage 里标记：已点确认、等后端结果
+export const COMMIT_SENT_ZH = "已发出，等后端结果";
+// #116 最好一轮在台账里是无效 / 发散：不显示、不给「采用」
+export const NO_STABLE_ZH = "发散，未找到稳定参数";

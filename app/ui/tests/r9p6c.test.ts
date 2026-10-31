@@ -12,7 +12,7 @@ assert.equal(COMMIT_EV.request, req.type);
 const c = toCommitReq(req);
 assert.deepEqual([c.id, c.branch, c.files.length, c.message, c.messageZh], ["c-7", "feat/x", 2, "tune: kp 0.5→0.8", "把 kp 写回 app.yaml"]);
 const h = commitCardHtml(c, esc);
-for (const t of ["feat/x", "app.yaml", "src/&lt;a&gt;.c", "修改", "新增", "把 kp 写回 app.yaml", "确认提交", "取消", "2 个文件"]) assert.ok(h.includes(t), t);
+for (const t of ["feat/x", "app.yaml", "src/&lt;a&gt;.c", "修改", "新增", "把 kp 写回 app.yaml", "保存到工程版本", "取消", "2 个文件"]) assert.ok(h.includes(t), t);
 assert.ok(!/disabled/.test(h));
 assert.match(commitCardHtml(toCommitReq({ files: [{ path: "a" }] }), esc), /data-cc="ok" disabled/, "没有 request_id 不能确认");
 assert.deepEqual(commitOpArgs("c-7", true), { op: "commit_confirm", args: { request_id: "c-7", approve: true } });
@@ -49,7 +49,7 @@ assert.ok(!/data-cc-fix/.test(declinedHtml({ reason: "x", fix: "" }, esc, null))
 const prog = readFileSync("src/progress.ts", "utf8"); assert.match(prog, /ask_user_commit:\s*\{/, "fix_action ask_user_commit 有入口");
 // 写文件卡 scope
 assert.equal(writeScopeNote({ scope: "write_only" }), WRITE_ONLY_ZH);
-assert.equal(WRITE_ONLY_ZH, "只授权写入文件，不会提交（git 提交另有确认卡）");
+assert.equal(WRITE_ONLY_ZH, "只授权写入文件，不会存进工程版本（「保存到工程版本」另有确认卡）");
 assert.equal(writeScopeNote({}), ""); assert.equal(writeScopeNote({ scope: "commit" }), "");
 // 字段名只在 fieldmap
 for (const f of ["src/commitcard.ts", "src/agent.ts", "src/projflow.ts", "src/main.ts"]) {

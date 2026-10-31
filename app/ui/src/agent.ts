@@ -12,7 +12,7 @@ import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 import { modelLister, type El } from "./llmcfg";
 import { toCommitReq, commitCardHtml, mountCommitCard, showDeclined, commitResult, committedHtml } from "./commitcard";
 import { keepPending, dropPending, loadPending } from "./commitstore";
-import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, COMMIT_OP, COMMIT_USER_F, writeScopeNote } from "./fieldmap";
+import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, COMMIT_OP, COMMIT_USER_F, COMMIT_SENT_F, COMMIT_SENT_ZH, writeScopeNote } from "./fieldmap";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -119,7 +119,7 @@ export function initAgent(call: Call) {
     let d = cards.get(c.id);
     if (!d) { d = add(""); cards.set(c.id, d); }
     const diff = esc(c.diff).split("\n").map(l => `<span class="${l.startsWith("+") && !l.startsWith("+++") ? "add" : l.startsWith("-") && !l.startsWith("---") ? "del" : l.startsWith("@@") ? "hunk" : ""}">${l}</span>`).join("\n");
-    const st: Record<string, string> = { pending: "待确认", applying: "门禁运行中…", written: "已写入，待确认提交", committed: "已提交", failed: "未通过，已还原", rejected: "已拒绝", reverted: "已回滚" };
+    const st: Record<string, string> = { pending: "待确认", applying: "门禁运行中…", written: "已写入，待保存到工程版本", committed: "已提交", failed: "未通过，已还原", rejected: "已拒绝", reverted: "已回滚" };
     d.className = "card change " + c.status;
     if (c.status === "committed" && (c.files || []).some((f: string) => /\.ya?ml$/.test(f)))   // 流程条“定稿”只认真正提交了参数 yaml
       window.dispatchEvent(new CustomEvent("dz-final", { detail: c.commit }));
@@ -171,9 +171,10 @@ export function initAgent(call: Call) {
     if (commitCards.has(c.id)) { const el = commitCards.get(c.id)!; if (!restored) { el.classList.remove("restored"); el.querySelector(".cc-restored")?.remove(); } return onCommitResult(m); }   // 同一 request_id 再推一次 = 状态更新（#111 去重）
     if (commitResult(m).state === "pending") keepPending(ss, m);
     const d = add(commitCardHtml(c, esc), "card commit pending" + (restored ? " restored" : ""));
-    if (restored) d.querySelector(".cc-res")?.insertAdjacentHTML("beforebegin", `<span class="lbl cc-restored">刷新前待确认（本页缓存恢复，等后端重推对账）</span>`);
+    if (restored && (m as any)[COMMIT_SENT_F]) { d.querySelectorAll<HTMLButtonElement>("button[data-cc]").forEach(b => b.disabled = true); d.querySelector(".cc-res")!.textContent = COMMIT_SENT_ZH; }   // #117 刷新前已点确认：等后端结果，别再点
+    else if (restored) d.querySelector(".cc-res")?.insertAdjacentHTML("beforebegin", `<span class="lbl cc-restored">刷新前待确认（已从本页恢复，等后端确认）</span>`);
     commitCards.set(c.id, d);
-    mountCommitCard(d, c, (_op, args) => (args?.[COMMIT_OP.approve] === false && (d.dataset.userDecl = "1"), call("commit_confirm", args)).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id, ...(args?.[COMMIT_OP.approve] === false ? { [COMMIT_USER_F]: true, [COMMIT_DECL_F.code]: r?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.declined } : {}) }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
+    mountCommitCard(d, c, (_op, args) => (args?.[COMMIT_OP.approve] === false ? (d.dataset.userDecl = "1") : keepPending(ss, { ...m, [COMMIT_SENT_F]: true }), call("commit_confirm", args)).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id, ...(args?.[COMMIT_OP.approve] === false ? { [COMMIT_USER_F]: true, [COMMIT_DECL_F.code]: r?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.declined } : {}) }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
     if (commitResult(m).state !== "pending") onCommitResult(m);
   }
   function onCommitResult(m0: any) {

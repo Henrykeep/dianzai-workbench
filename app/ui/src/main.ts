@@ -122,8 +122,8 @@ function renderAlerts() {
   const v = estopView(ev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs);
   // 急停与心跳超时分开：急停一行（来源文案 + 详情里的最近心跳），心跳超时另起一段
   let head = "";
-  if (latched || ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc(latched ? (ev ? v.head : latchHead((S.status as any).estop_cause ?? latchedCause())) : "已解除（之前：" + v.head + "）")}</b></span>`;
-  if (latched) { const el2 = estopLine(ev, S.status, latchAt); head += `<span class="al-t al-at">${esc(el2.line)}</span>` + (el2.restored ? `<span class="al-t al-rest">从上次恢复</span>` : ""); }
+  if (!latched && ev) head = `<span class="al-t" title="${esc(v.detail)}；点击跳到这一刻"><b class="al-h">${esc("已解除（之前：" + v.head + "）")}</b></span>`;   // #120 锁存时只一行，原因不重复
+  if (latched) { const el2 = estopLine(ev, S.status); head += `<span class="al-t al-at" title="${esc(v.detail)}"><b class="al-h">${esc(el2.line)}</b></span>` + (el2.restored ? `<span class="al-t al-rest">从上次恢复</span>` : ""); }
   const fh = bannerHint(latched, ev); if (fh) head += `<span class="al-t al-fix">${esc(fh)}</span>`;
   const shownCleared = !latched && !!ev;   // 告警条显示「已解除」：渲染后打点
   if (wd) head += `<span class="al-t al-wd" title="点击跳到这一刻">${esc(watchdogText(wd))}</span>`;
