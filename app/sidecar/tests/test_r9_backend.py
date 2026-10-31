@@ -418,7 +418,8 @@ def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
     import randplant
     from dzbench.schema import Schema
     p = randplant.gen(3008)
-    (tmp_path / "app.yaml").write_text(randplant.app_yaml(p), "utf-8")
+    import re as _re
+    (tmp_path / "app.yaml").write_text(_re.sub(r", role: \w+", "", randplant.app_yaml(p)), "utf-8")   # 模拟没声明角色的工程
     spec, params, _ = gen_link.load(tmp_path / "app.yaml")
     d = gen_link.schema(spec, params)
     for q, src in zip(d["params"], params):

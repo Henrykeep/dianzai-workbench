@@ -48,7 +48,7 @@ def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatc
         assert rounds, [e.get("type") for e in ev][-10:]
         assert svc.iter_result and svc.iter_result.get("reason") != "error", svc.iter_result
         plan = svc.iterate_plan(target=tgt, dur_ms=1500)
-        assert set(p["roles"].values()) <= {q["name"] for q in plan["params"]}       # 参数名全从握手读
+        assert {n for r, n in p["roles"].items() if r not in ("LIM", "other")} == {q["name"] for q in plan["params"]}   # 参数名全从握手读，LIM 不调
         assert plan["abs_tol"] == pytest.approx(0.01 * st["sensor_range"])           # 没写 abs_tol：量程的 1%
         assert "fallback" not in plan
         # 不给 dur_ms：真会话上实测阶跃时序（不退默认）
