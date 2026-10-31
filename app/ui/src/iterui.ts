@@ -1,3 +1,5 @@
+import { coarseTagHtml } from "./plant";
+import { pickStr, RESULT_PORT_F, RESULT_CLEAR_EV } from "./fieldmap";
 import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
 // 纯状态机 + 文案；main.ts 只做 DOM 接线。预算一律以本地服务报的 limits 为准，没报前按板型兜底（实机 8 轮、仿真 20 轮、180 s）。
@@ -92,6 +94,7 @@ export class IterModel {
     else this.s = { ...this.s, limits: l } as IterState;
   }
   onEvent(m: any, now: number): boolean {
+    if ((RESULT_CLEAR_EV as readonly string[]).includes(m?.type)) { this.reset(); return true; }
     if (m?.type === "iterate.started") { const l = m.limits?.rounds ? { time_s: m.limits.time_s, rounds: m.limits.rounds } : this.s.limits; this.base = null; this.s = { phase: "running", limits: l, t0: now, iter: 0 }; return true; }
     if (m?.type === "iterate.round" && +m.iter === 0) this.base = roundMetrics(m);
     if (m?.type === "iterate.round") { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; (this.s as any).iter = Math.max((this.s as any).iter, +m.iter || 0); return true; }
@@ -128,6 +131,8 @@ export class IterModel {
     else if (r?.result?.type === "tune.stopped" && this.s.phase !== "done") this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", ...r.result, ...this.restored(r.result) } };
   }
   applyId(): number | null { return this.s.phase === "done" ? (this.s.result.best_card ?? this.cardId) : null; }
+  // #101 结果是否属于当前板：结果带板卡字段且对不上 → 不恢复；不带 → 重连后一律不恢复（宁缺勿错）
+  static sameBoard(res: any, port: string | null | undefined): boolean { const p = pickStr(res, RESULT_PORT_F); return !!p && !!port && p === port; }
   reset() { this.cache?.set("null"); this.cardId = null; this.extra = { ss_err: null, pass_basis: "" }; this.s = { phase: "idle", limits: this.s.limits }; }
   // 主按钮（同一位置只一个主按钮）：idle/done → 自动迭代；running/pending → 停止迭代
   button(): { label: string; op: "start" | "cancel" } { return this.s.phase === "running" || this.s.phase === "pending" ? { label: "停止迭代", op: "cancel" } : { label: "自动迭代", op: "start" }; }
@@ -154,7 +159,7 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   const btn = o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"'}>采用这组参数</wa-button>` : "";
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";
-  return `<wa-card class="itc rc"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}</h4>${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  return `<wa-card class="itc rc"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
 }
 
 // r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头

@@ -84,6 +84,7 @@ export const MC_F = {
   verdict: "verdict", verdictZh: "verdict_zh", basis: "pass_basis", source: "source", evidence: "evidence",
   tuning: "tuning", calib: "calibration", coeffs: "coeffs", signal: "signal_source",
   how: "method", manualSteps: "manual_steps", procedure: "procedure", entry: "manual_entry", eValue: "value", eBy: "by", eAt: "at", srcNote: "source_note",
+  model: "model",   // 每项 model:{estimate, basis}，后端从 app.yaml plant 抄来；子字段名同 PLANT_F
 } as const;
 // 指标卡导出：CSV / xlsx 由后端生成，前端只调这个 op（op 名未定稿，改名只改这里）
 export const MC_EXPORT_OP = "metrics_export";
@@ -96,6 +97,7 @@ export type McItem = {
   source: "sim" | "real" | "calibrated" | "manual" | ""; srcNote: string; evidence: string; tuning: any | null;
   how: "auto" | "manual" | ""; manualSteps: string[]; procedure: string[]; entry: { value: number | null; by: string; at: string } | null;
   calib: { coeffs: number[]; signal: string } | null;
+  model: { estimate: string; basis: string } | null;
 };
 export type MetricsCard = { kind: TaskKind; kindBasis: string; items: McItem[] };
 const strList = (v: unknown): string[] => Array.isArray(v) ? v.map(y => typeof y === "string" ? y : "").filter(Boolean) : typeof v === "string" && v ? [v] : [];
@@ -116,6 +118,7 @@ export function toMetricsCard(src: any): MetricsCard | null {
       manualSteps: strList(x[MC_F.manualSteps]), procedure: strList(x[MC_F.procedure]),
       entry: x[MC_F.entry] && typeof x[MC_F.entry] === "object" ? { value: num(x[MC_F.entry][MC_F.eValue]) ?? null, by: str(x[MC_F.entry][MC_F.eBy]), at: str(x[MC_F.entry][MC_F.eAt]) } : null,
       tuning: x[MC_F.tuning] && typeof x[MC_F.tuning] === "object" ? x[MC_F.tuning] : null,
+      model: x[MC_F.model] && typeof x[MC_F.model] === "object" && str(x[MC_F.model][PLANT_F.estimate]) ? { estimate: str(x[MC_F.model][PLANT_F.estimate]), basis: str(x[MC_F.model][PLANT_F.basis]) } : null,
       calib: c && typeof c === "object" ? { coeffs: Array.isArray(c[MC_F.coeffs]) ? c[MC_F.coeffs].filter((y: unknown) => num(y) != null) : [], signal: str(c[MC_F.signal]) } : null,
     };
   });
@@ -127,4 +130,27 @@ export const NO_REASON_ZH = "后端未给原因";
 export const errFixAction = (e: any): string => { for (const k of ERR_F.fix) { const v = e?.[k]; if (typeof v === "string" && v) return v; } return ""; };
 export const errWhy = (e: any): string => { for (const k of ERR_F.why) { const v = e?.[k]; if (typeof v === "string" && v && !/^[\x00-\x7f]*$/.test(v)) return v; } return ""; };
 // #88 提交确认卡（后端另出 git commit 确认，字段草案）
-export const COMMIT_F = { kind: "commit", files: "files", msg: "commit_message", path: "path", status: "status" } as const;
+export const COMMIT_F = { id: "request_id", state: "status", branch: "branch", files: "files", msg: "message", msgZh: "message_zh", path: "path", status: "status" } as const;
+// #88 定稿（后端 docs/dev/events.md）：事件 commit_confirm_request → 回 op commit_confirm；拒绝 / 超时 → commit_declined
+export const COMMIT_EV = { request: "commit_confirm_request", declined: "commit_declined" } as const;
+export const COMMIT_OP = { name: "commit_confirm", id: "request_id", approve: "approve" } as const;
+export const COMMIT_DECL_F = { reason: "reason_zh", fix: "fix_action", code: "reason", ok: "ok", commit: "commit", declined: "commit_declined", failed: "commit_failed" } as const;
+// 写文件确认卡：scope = "write_only" 表示只授权写文件
+export const WRITE_F = { scope: "scope", writeOnly: "write_only" } as const;
+export const WRITE_ONLY_ZH = "只授权写入文件，不会提交（git 提交另有确认卡）";
+// 工程声明的板子名：schema 里的 title / name（后端给了就用），否则当前项目名
+export const BOARD_F = { schema: ["title", "name"], project: "name", path: "path" } as const;
+export const writeScopeNote = (card: any): string => card?.[WRITE_F.scope] === WRITE_F.writeOnly ? WRITE_ONLY_ZH : "";
+// fw-plant a4161a3 schema/plant.schema.json：plant.estimate ∈ coarse|identified，plant.basis 一句话依据；单位原样显示
+export const PLANT_F = { obj: "plant", estimate: "estimate", basis: "basis", unit: "unit", uUnit: "u_unit" } as const;
+export const PLANT_EST_ZH: Record<string, string> = { coarse: "粗估", identified: "已辨识" };
+// 粗估判定值：调参页标签读工程的 plant.estimate；结果 / 指标卡读每项 model.estimate（同一 schema 枚举）
+export const PLANT_COARSE = "coarse";
+export const COARSE_ZH = "仅仿真粗估";
+// #101 后端将推「清掉结果卡」事件（名字未定稿，暂定）；本地兜底：开始迭代 / 重连 / 换板也清
+export const RESULT_CLEAR_EV = ["iterate.cleared", "result.clear"] as const;
+// 结果卡所属板卡（暂定）：重连后 iterate_status 回的结果只有板卡对得上才恢复
+export const RESULT_PORT_F = ["port", "board"] as const;
+// #104 list_ports 每个仿真项的应用名（暂定，按顺序取第一个非空）；没有就用目录名
+export const PORT_APP_F = ["app_name", "app", "name", "title"] as const;
+export const pickStr = (o: any, keys: readonly string[]): string => { for (const k of keys) { const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); } return ""; };

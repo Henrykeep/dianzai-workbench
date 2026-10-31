@@ -1,3 +1,5 @@
+import { coarseLabel } from "./plant";
+import { PLANT_COARSE } from "./fieldmap";
 // r9p6 通用指标卡：控制 / 测量 / 电源 / 其他题目共用。只按 items 渲染；task_kind 只影响排序和图表类型。
 // 规则：结论只来自后端 verdict（达标 / 不达标 / 待标定），前端不判；缺值一律「—」；单位原样显示，不换算。
 import { MC_EXPORT_OP, toMetricsCard, type McItem, type MetricsCard, type TaskKind } from "./fieldmap";
@@ -56,7 +58,7 @@ export function metricCardHtml(src: any): string {
     const ent = it.entry ? `<p class="mc-meth">人工录入 ${esc(fmt(it.entry.value))}${esc(u(it.measured?.unit ?? ""))} · ${esc(it.entry.by || "—")} · ${esc(it.entry.at || "—")}</p>` : "";
     const steps = (t: string, a: string[]) => a.length ? `<details class="mc-steps"><summary>${t}（${a.length} 步）</summary><ol>${a.map(x => `<li>${esc(x)}</li>`).join("")}</ol></details>` : "";
     return `<div class="mc-it ${it.verdict}">
-  <div class="mc-h"><b class="mc-n">${esc(it.name || D)}</b>${it.clause ? `<span class="mc-cl">${esc(it.clause)}</span>` : ""}<span class="mc-v ${it.verdict}">${zh}</span></div>
+  <div class="mc-h"><b class="mc-n">${esc(it.name || D)}</b>${it.clause ? `<span class="mc-cl">${esc(it.clause)}</span>` : ""}<span class="mc-v ${it.verdict}">${zh}</span>${it.model?.estimate === PLANT_COARSE ? coarseLabel(it.model.basis) : ""}</div>
   <p class="mc-spec">${esc(it.spec || "题目原文未提供")}</p>
   <div class="mc-row num"><span><i>目标</i>${esc(targetText(it))}</span><span><i>实测</i><b>${esc(measuredText(it))}</b></span><span class="mc-src ${it.source || "none"}">${esc(SOURCE_LABEL[it.source])}${it.srcNote ? ` · ${esc(it.srcNote)}` : ""}</span></div>
   ${meth ? `<p class="mc-meth">${esc(meth)}</p>` : ""}${ent}${steps("人工测量步骤", it.manualSteps)}${steps("评审测试步骤", it.procedure)}${basis ? `<p class="mc-basis">依据：${esc(basis)}</p>` : ""}
