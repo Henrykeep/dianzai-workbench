@@ -957,6 +957,12 @@ class Session:
                 del self.step_results[:-16]
             self.step_cv.notify_all()
         if len(payload) == 56:
+            # #54：固件发 step_result 的同一拍就清了 bit17；本地心跳状态要到下一帧心跳（~500 ms）才更新。
+            # 收到结果即按固件真相清掉本地 bit17，迭代引擎下一轮写参数不会被自己这一步的“忙”挡住；
+            # 别人（界面/另一个进程）新开的阶跃会在之后的心跳里重新置位，照样挡。
+            with self.hblock:
+                if self.hb_status is not None:
+                    self.hb_status &= ~HB_ITER_BUSY
             self.emit({"type": "step_result", **self.step_results[-1]})
 
     def step_start(self, ch: int, it: int, target: float, dur_ms: int, wait_s: float = 0.5) -> dict:

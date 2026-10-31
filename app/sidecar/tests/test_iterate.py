@@ -207,10 +207,23 @@ def test_car_2wd_step_result_e2e(home):
         assert r["params_hash"] == I.params_hash(io.order(), vals)   # 板上 CRC32 = 本地按参数表算的
         out = I.Iterator(io, {"ch": 0, "target": 3.0, "dur_ms": 1000, "abs_tol": 0.05,
                               "params": [dict(s.schema.params[s.schema.param_index["kp"]])]}, True, max_rounds=2).run()
-        assert out["reason"] in ("pass", "budget_rounds", "no_improve", "blocked") and out["best"]["iter"] >= 0
+        # #54：以前第 0 轮后自己这一步的 bit17 还没被心跳清掉 → reason=blocked、只跑 1 轮
+        assert out["reason"] in ("pass", "budget_rounds", "no_improve"), out
+        assert out["rounds"] >= 2 and out["best"]["iter"] >= 0, out
         s.step_start(0, 9, 3.0, 5000)
         s.step_stop()
         r = s.step_wait(9, 2.0)
         assert r["aborted"] and r["abort_cause"] == dzstep.ABORT_HOST_STOP
     finally:
         s.disconnect()
+
+
+def test_step_result_clears_own_busy_without_waiting_heartbeat():
+    """#54：固件在发 step_result 的同一拍清 bit17；侧车收到结果就不再算忙（不等下一帧心跳），外部新开的阶跃靠心跳重新置位。"""
+    s = _sess()
+    s.hb_status = I_BUSY = 1 << 17
+    assert s.iter_busy()
+    s._on_step(result_bytes(0, 0))
+    assert not s.iter_busy()
+    s.hb_status = I_BUSY                                     # 之后心跳又报忙 = 外部阶跃：照样挡
+    assert s.iter_busy()
