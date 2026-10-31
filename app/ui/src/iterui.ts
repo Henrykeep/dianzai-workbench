@@ -133,3 +133,17 @@ export class IterModel {
 }
 // 迭代目标：用最近一次的设定值（非 0）；没有就提示先做一次阶跃实验
 export const iterTarget = (sp: { v: number } | null | undefined): number | null => sp && Number.isFinite(sp.v) && sp.v !== 0 ? sp.v : null;
+// r9p4 结果卡：标题 = 结论（verdict_zh，不带依据）；一行对比 超调 / 调节时间 / 稳态误差（初值 → 最好）；
+// 参数一行横排；判定依据 / 单位不一致 / 停止原因收进「详情」；唯一主按钮「采用这组参数」
+export const CARD_KEYS = /超调|调节|稳态/;
+export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean }): string {
+  const v = cardView(r), head = verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");
+  const cells = v.compare.filter(x => CARD_KEYS.test(x[0]));
+  const cmp = cells.length
+    ? `<div class="rc-cmp">${cells.map(x => `<div class="rc-m"><span class="rc-k">${esc(x[0])}</span><span class="rc-v num">${esc(x[1])} → <b>${esc(x[2])}</b></span><span class="rc-d num ${x[4] ?? ""}">${esc(x[3])}</span></div>`).join("")}</div>`
+    : `<p class="rc-same">${esc(v.title)}</p>`;
+  const ps = `<div class="rc-ps">${v.params.map(([k, x]) => `<span class="mono"><i>${esc(k)}</i> ${esc(x)}</span>`).join("")}</div>`;
+  const det = `<details class="rc-det"><summary>详情</summary>${[v.verdict.text, ...v.gaps, v.reason, v.next].filter(Boolean).map(t => `<p>${esc(t)}</p>`).join("")}</details>`;
+  const btn = o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"'}>采用这组参数</wa-button>` : "";
+  return `<wa-card class="itc rc"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}</h4>${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+}

@@ -50,3 +50,18 @@ const cv = cardView({ type: "iterate.stopped", reason: "pass", best: { iter: 0, 
 assert.ok(!/达标/.test(cv.title + cv.reason), cv.title + cv.reason);
 assert.equal((cv.verdict.text.match(/按默认 2% 判定/g) ?? []).length <= 1, true, cv.verdict.text);
 console.log("r9p3 card ok");
+import { boardName, SIDECAR_DOWN } from "../src/batch1";
+assert.equal(boardName("sim:motor_pos"), "仿真 · 电机位置环"); assert.ok(!/[a-z_]{3,}/.test(boardName("sim:zzz_unknown")));
+assert.ok(!/python|dzbench/.test(SIDECAR_DOWN.what + SIDECAR_DOWN.why + SIDECAR_DOWN.fix)); assert.match(SIDECAR_DOWN.raw, /python -m dzbench/);
+console.log("r9p4 ok");
+// r9p4 左栏勾只认接口 + 当前项目
+import { tickable } from "../src/progress";
+assert.equal(tickable({ inferred: true, project: "x" }), false); assert.equal(tickable({ project: null }), false); assert.equal(tickable({ project: "p1" }), true);
+// r9p4 结果卡：标题=结论；对比只三项；依据/停止原因进详情；唯一主按钮
+import { resultCardHtml } from "../src/iterui";
+const rc = resultCardHtml({ type: "iterate.stopped", reason: "pass", message_zh: "连续 2 轮达标", best: { iter: 3, params: { kp: 1, kd: 0.1 }, pass: true, gaps: {} }, verdict: { v: "unknown", zh: "未判定" }, pass_basis: "按默认 2% 判定",
+  compare: { round0: [{ key: "overshoot_pct", value: 20, unit: "%" }, { key: "settling_s", value: 3, unit: "s" }, { key: "ss_err", value: 2, unit: "deg" }, { key: "rise_s", value: 1, unit: "s" }], best: [{ key: "overshoot_pct", value: 5, unit: "%" }, { key: "settling_s", value: 1, unit: "s" }, { key: "ss_err", value: 1, unit: "deg" }, { key: "rise_s", value: 1, unit: "s" }], unchanged: false } } as any, s => s, { canApply: true, applyReady: true });
+assert.match(rc, /<h4[^>]*>未判定<\/h4>/); assert.equal((rc.match(/class="rc-m"/g) ?? []).length, 3, rc);
+const [top, det] = rc.split('<details class="rc-det">'); assert.ok(!/停止原因|判定依据|按默认/.test(top), top); assert.match(det, /停止原因/);
+assert.equal((rc.match(/variant="brand"/g) ?? []).length, 1); assert.match(rc, /采用这组参数/);
+console.log("r9p4 card ok");

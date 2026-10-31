@@ -74,7 +74,7 @@ export function infer(c: Ctx): Progress {
   const nx = cur.state !== "done" ? cur : steps.find(s => s.state !== "done");
   const nj = nx && JOURNEY.find(j => j.id === nx.id)!;
   const next = nx && nj ? { title: nx.title, action: MAIN[nj.pages[0] as Step], hint: STEP_HINT[nj.pages[0] as Step] } : null;
-  return { steps, current: curId, next, blockers };
+  return { steps, current: curId, next, blockers, inferred: true } as Progress;
 }
 
 let noApiUntil = 0;
@@ -119,12 +119,14 @@ export function runAction(a: string, go: (s: Step) => void) {
   const t = ACTIONS[a]; if (!t || entry(a)?.ready === false || !t.ui) return; if (t.step) go(t.step); setTimeout(() => { const el = document.getElementById(t.ui); if (t.jump) el?.focus(); else el?.click(); }, 0);
 }
 // 画到左侧导航：每步状态 + 下一步一句话 + 每个 blocker 一个“去解决”（点的是已有入口）
+// r9p4：左栏的勾只认当前项目的进度接口（progress.get / progress.changed）；本地推断、没有项目 → 一个勾都不画
+export const tickable = (p: any) => !p?.inferred && !!p?.project && p.project !== null;
 export function render(p: Progress, go: (s: Step) => void) {
   document.querySelectorAll<HTMLElement>("#steps [data-step]").forEach(b => {
     const s = p.steps.find(x => x.id === b.dataset.pid); if (!s) return;
     if (b.classList.contains("sub")) return;   // 子项（标定）跟随父步，不单独标状态
     b.dataset.state = s.state;
-    b.classList.toggle("done", s.state === "done");
+    b.classList.toggle("done", s.state === "done" && tickable(p));
     b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
     b.title = `${s.title} · ${LABEL[s.state]}${s.reason ? "：" + s.reason : ""}\n${s.detail ?? ""}`;
   });
@@ -138,7 +140,10 @@ export function render(p: Progress, go: (s: Step) => void) {
     nav.dataset.blocked = "1"; nav.title += "\n" + bs.map(b => b.message).join("\n");
   }
   const ph = document.getElementById("pg-head");
-  if (ph) {
+  // 新建项目页不放页头条：和三步卡重复，且新项目上不该写「已完成」
+  const onReq = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step) === "req";
+  if (ph) ph.hidden = onReq;
+  if (ph && !onReq) {
     const view = viewStep(document.querySelector<HTMLElement>(".app")?.dataset.step);
     const extra = document.getElementById("pg-tune");   // 调参页「读取自检」「保存参数」常驻在页头，重画时保留
     const resident = view === "tune" && extra ? [...extra.querySelectorAll<HTMLElement>("button[id]")].map(e => e.id) : [];

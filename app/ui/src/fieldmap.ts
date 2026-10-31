@@ -55,7 +55,7 @@ export const FORKED_F = { type: "project_forked", example: "example", project: "
 export const COMPARE_F = { obj: "compare", r0: "round0", best: "best", metrics: "metrics", unchanged: "unchanged", note: "note_zh" } as const;
 export type MetricV = { key: string; value: number; unit: string };
 export type CompareRaw = { round0: MetricV[]; best: MetricV[]; unchanged: boolean; note: string };
-export const METRIC_ZH: Record<string, string> = { ss_err_pct: "稳态误差", sse: "稳态误差", overshoot_pct: "超调", overshoot: "超调", settle_ms: "调节时间", settling: "调节时间", iae: "误差积分 IAE", rise_ms: "上升时间" };
+export const METRIC_ZH: Record<string, string> = { ss_err_pct: "稳态误差", ss_err: "稳态误差", sse_pct: "稳态误差", settling_s: "调节时间", settle_s: "调节时间", rise_s: "上升时间", sse: "稳态误差", overshoot_pct: "超调", overshoot: "超调", settle_ms: "调节时间", settling: "调节时间", iae: "误差积分 IAE", rise_ms: "上升时间" };
 const mlist = (o: any): MetricV[] => (Array.isArray(o?.[COMPARE_F.metrics]) ? o[COMPARE_F.metrics] : []).filter((x: any) => typeof x?.value === "number").map((x: any) => ({ key: str(x.key), value: x.value, unit: str(x.unit) }));
 export function toCompare(src: any): CompareRaw | null {
   const c = src?.args?.[COMPARE_F.obj] ?? src?.preview?.[COMPARE_F.obj] ?? src?.[COMPARE_F.obj] ?? (src?.[COMPARE_F.r0] ? { round0: src[COMPARE_F.r0], best: src.best } : null);

@@ -815,8 +815,6 @@ ul.sc-mat{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;
 .pg-head .btn{flex:none}
 /* 页内已有的主按钮降为次要，保证一屏一个主按钮 */
 .work [data-page] .btn.pri,.work .tunebar .btn.pri{background:var(--s3);color:var(--ink);box-shadow:none}
-/* 项目页：提交按钮由顶部主按钮代理（同一入口 pj-ask-go），表单内只留输入框和「打开示例」；回车也可提交 */
-#pj-ask-go{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
 .lk-banner{order:-3;padding:var(--sp2) var(--sp4);font-size:var(--t-sm);border-bottom:1px solid var(--line);background:var(--bg2);color:var(--ink)}
 .lk-banner.warn{background:var(--warn-bg);color:var(--warn)}
 #port.attn{box-shadow:0 0 0 2px var(--warn)}
@@ -1049,3 +1047,25 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .rd .v small,.lab .lv small{font:400 var(--t-sm) var(--f-sans);margin-left:4px;color:var(--text-muted)}
 #plist .pv .in.num,#plist input[id^=pi-]{font:400 var(--t-lg)/24px var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
 .sugg .sg-concl{font-weight:600;margin-bottom:var(--sp2)}
+/* r9p4 大输入框不挤压提交按钮（1280–2560） */
+.pj-ask .pj-ask-row .in{flex:1 1 auto;min-width:0}
+.pj-ask .pj-ask-row .btn{flex:0 0 auto;white-space:nowrap;min-width:max-content}
+#banner .sd-x{margin-left:var(--sp2)}
+/* r9p4 结果卡 */
+.rc h4.it-verdict{margin:0 0 var(--sp3);font:600 var(--t-h)/28px var(--f-sans)}
+.rc .rc-cmp{display:flex;gap:var(--sp6);flex-wrap:wrap;margin-bottom:var(--sp3)}
+.rc .rc-m{display:flex;flex-direction:column;gap:var(--sp1)}
+.rc .rc-k{color:var(--text-muted);font-size:var(--t-sm)}
+.rc .rc-v{font:400 var(--t-lg)/24px var(--f-mono);font-variant-numeric:tabular-nums}
+.rc .rc-d{font:400 var(--t-sm)/16px var(--f-mono);color:var(--text-muted)}
+.rc .rc-ps{display:flex;flex-wrap:wrap;gap:var(--sp2) var(--sp4);margin-bottom:var(--sp2)}
+.rc .rc-ps i{font-style:normal;color:var(--text-muted)}
+.rc .rc-det{color:var(--text-muted);font-size:var(--t-sm)}
+.rc .rc-det p{margin:var(--sp1) 0}
+.rc .rc-same{margin:0 0 var(--sp3);color:var(--text-muted)}
+/* r9p4 板子下拉：中文全名不截断（sans 字体，宽度随内容） */
+.conn select#port{max-width:none;width:auto;min-width:max-content;font-family:var(--f-sans);field-sizing:content}
+.theme-sw .ts-l{font-size:var(--t-sm);margin-left:var(--sp1)}
+/* r9p4 页头条已删：提交按钮回到输入框右侧，固定不被挤压 */
+.theme-sw{white-space:nowrap}
+.life{flex-wrap:wrap;row-gap:var(--sp1)}

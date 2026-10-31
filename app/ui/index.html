@@ -66,7 +66,7 @@
               <button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置</button>
         
       </div></details>
-    <label class="theme-sw" title="深色主题开关（默认浅色）"><input type="checkbox" id="theme" role="switch" aria-label="深色主题"><i data-lucide="sun-moon"></i></label>
+    <label class="theme-sw" title="深色主题开关（默认浅色）" aria-label="深色主题开关"><input type="checkbox" id="theme" role="switch" aria-label="深色主题"><i data-lucide="sun-moon"></i><span class="ts-l">深色</span></label>
     <span class="vsep"></span>
     <button id="estop" class="estop" title="随时可按：空格（不在输入框时）或 Esc"><span class="sq"></span><span class="es-lbl">急停</span><kbd>空格</kbd></button>
     <button class="btn sm" id="cmd-r" hidden title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除</button>
@@ -77,7 +77,7 @@
         <div class="sp"></div>
         <details class="menu right" id="dock-more"><summary class="ib" title="保护参数、快照、重新读取">更多 <i data-lucide="chevron-down"></i></summary><div class="pop"><button class="mi" data-d2="params">参数</button><button class="mi" data-d2="protect">保护参数</button><button class="mi" data-d2="snaps">快照</button><hr><button class="mi" id="p-read" title="读取：从板子重新读取全部参数">从板子重新读取</button></div></details>
       </div>
-      <div class="life mono" id="life" title="参数从改到定稿的五站：草稿只在界面里 → 下发到板上 RAM（断电丢）→ 存快照（工作台本地）→ 存 flash（下次上电用）→ 写回 app.yaml（进仓库）"><span data-l="edit">草稿<i></i></span><span data-l="ram">RAM<i></i></span><span data-l="snap">快照<i></i></span><span data-l="flash">flash<i></i></span><span data-l="yaml">yaml<i></i></span></div>
+      <div class="life mono" id="life" title="参数从改到定稿的五站：草稿只在界面里 → 下发到板上 RAM（断电丢）→ 存快照（工作台本地）→ 存 flash（下次上电用）→ 写回 app.yaml（进仓库）"><span data-l="edit">草稿<i></i></span><span data-l="ram">内存（未保存）<i></i></span><span data-l="snap">快照<i></i></span><span data-l="flash">已存入 Flash<i></i></span><span data-l="yaml">已写入工程<i></i></span></div>
       <div class="dk" data-d="params"><input id="p-q" class="in pq" placeholder="筛选参数：pos_ ki*（/ 聚焦）" title="空格/逗号分隔，* 通配；按名字或说明匹配。参数多于 8 个时出现" hidden /><div id="plist" class="plist"></div></div>
       <div class="dk" data-d="protect" hidden><div id="ptab" class="ptab"></div></div>
       <div class="commit"><div class="pdiff mono" id="pend"></div><div class="btns"><button class="btn" id="p-revert" disabled>撤销</button><button class="btn" id="p-send" disabled>下发 <kbd>⌃↵</kbd></button></div></div>
@@ -153,7 +153,7 @@
     <nav class="flow" id="flow" title="这一轮调参的进度：改参 → 阶跃 → 判读 → 定稿"><span data-s="conn">连接</span><span data-s="tune">调参</span><span data-s="step">阶跃</span><span data-s="read">判读</span><span data-s="save">定稿</span></nav><span class="lbl mono" id="verdict"></span></div>
       <details class="menu up right" id="goback"><summary class="btn" title="所有“回到过去”的操作都在这里，每项写清楚回到哪里">回到… <i data-lucide="undo-2"></i></summary>
         <div class="pop">
-          <span class="mh">参数（板上 RAM）</span>
+          <span class="mh">参数（板上内存）</span>
           
               <button class="mi" id="ag-best" title="把参数一键恢复到本次调参护栏记录的最好一轮（先弹确认框）；本地服务重启后可在快照页恢复“自动-最好一轮”"><i data-lucide="undo-2"></i>最好一轮（本次调参护栏记录）</button>
           <button class="mi" id="gb-snap" title="打开快照列表，点一个快照恢复（可平滑过渡）"><i data-lucide="history"></i>某个快照…</button>

@@ -5,6 +5,8 @@ import "./style.css";
 import "./wa";
 import { SWITCH_EX_OP, FORKED_F } from "./fieldmap";
 import { setVerdict, getVerdict } from "./verdictbus";
+import { resultCardHtml } from "./iterui";
+import { boardName, SIDECAR_DOWN } from "./batch1";
 import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
@@ -233,7 +235,7 @@ function renderPorts(keep = true) {
   // 排序：可能是板子的 USB 串口 → 仿真板 → 其余（板载 ttyS0/COM1 放最后）
   const rank = (p: { kind: string; likely?: boolean }) => p.likely ? 0 : p.kind === "sim" ? 1 : 2;
   S.ports = [...S.ports].sort((a, b) => rank(a) - rank(b));
-  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}">${esc(p.kind === "sim" ? p.desc : `${p.port} · ${p.desc}`)}</option>`).join("")
+  sel.innerHTML = S.ports.map(p => `<option value="${esc(p.port)}" title="${esc(p.port)}">${esc(p.kind === "sim" ? boardName(p.port) : `${boardName(p.port)} · ${p.desc}`)}</option>`).join("")
     || `<option value="">没有找到串口 — 插上 USB 转串口</option>`;
   // 零配置：USB 串口优先；没有就选仿真板（板载 ttyS0/COM1 几乎不会是你的板子，不默认选）
   const last = localStorage.getItem("dz-port") ?? "";   // 记住上次连接的端口
@@ -682,7 +684,7 @@ function renderStatus(st: Msg) {
   const now = performance.now();
   if (now - S.lastRxT > 900) { S.rate = st.rx_bytes >= S.lastRx ? (st.rx_bytes - S.lastRx) / ((now - S.lastRxT) / 1000) : 0; S.lastRx = st.rx_bytes; S.lastRxT = now; }
   $("led").className = "led " + (st.alive ? "ok" : st.connected ? "warn" : "");
-  $("ro-link").innerHTML = st.connected ? `${esc(st.port.replace(/^replay:.*[\\/]/, "回放 "))}<i>${st.baud || ""}</i>` : "";   // 连接状态只在 #ro-lk（link.state）
+  $("ro-link").textContent = st.connected ? boardName(st.port) : ""; $("ro-link").title = st.connected ? `${st.port}${st.baud ? " · " + st.baud : ""}` : "";   // 连接状态只在 #ro-lk（link.state）
   { const d = dataTag(st.connected ? st.port : null), e = $("ro-src"); e.hidden = !d; e.textContent = d; e.className = "dtag " + (d === "仿真" ? "sim" : "hw"); }
   renderGuide(!!st.connected);
   if (S.latched) lockWrites(true);
@@ -775,9 +777,7 @@ function renderIter() {
   const v = cardView(IT.s.result), id = IT.applyId();
   setVerdict(v.verdict);
   c.hidden = false;
-  c.innerHTML = `<wa-card class="itc"><h4>${esc(v.title)}</h4><div class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(v.verdict.text)}</div>${v.compare.length ? `<table class="it-cmp"><thead><tr><th></th><th>第 0 轮</th><th>最好</th><th>变化</th></tr></thead><tbody>${v.compare.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num ${r[4]}">${esc(r[3])}</td></tr>`).join("")}</tbody></table>` : ""}<div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
-    `<div class="it-col">${v.gaps.map(g => `<span>${esc(g)}</span>`).join("")}</div><div class="it-col"><span>${esc(v.reason)}</span>${v.next ? `<span class="hint">${esc(v.next)}</span>` : ""}</div>` +
-    `<span class="it-act">${v.canWrite ? `<wa-button variant="brand" size="small" id="it-write" ${id == null ? "disabled title=\"等本地服务出确认卡…\"" : ""}>${APPLY_LABEL}</wa-button>` : ""}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null });
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
   const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
@@ -908,7 +908,10 @@ conn.on(c => {
   $("st-ws").textContent = c.sidecar ? "本地服务 已连接" : "本地服务未连接";
   sidecarUp = c.sidecar; document.documentElement.classList.toggle("sidecar-down", !c.sidecar); renderLinkTag();
   $("banner").hidden = c.sidecar;
-  $("banner").innerHTML = "本地服务无响应 · 原因：dzbench 进程未运行或已退出 · 处理：程序将自动重启并重连；开发模式请运行 <code>python -m dzbench</code>。目标板 1 s 未收到心跳将自动急停。";
+  if (!c.sidecar && !$("banner").querySelector(".sd-x")) {
+    $("banner").innerHTML = partsHtml({ ...SIDECAR_DOWN, why: SIDECAR_DOWN.why + "；板子 1 s 收不到心跳会自动急停" }, esc, `<button class="btn sm sd-x" type="button">重新连接</button>`);
+    $("banner").querySelector<HTMLElement>(".sd-x")!.onclick = () => location.reload();
+  }
 });
 // link.state reason 横幅（中性/告警）+ 端口下拉高亮；急停锁存告警在 #alerts，独立于连接状态，重连后照常显示
 function simStarting(m: any) {
