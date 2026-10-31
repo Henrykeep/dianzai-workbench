@@ -108,7 +108,8 @@ script_ops:
   project_apply: 同上，把 project_chain 的预览一次写入（界面那一下点击就是确认）
   iterate_start: 自动迭代调参（#38/#62）：参数 target / params / dur_ms / ch；仿真直接开跑，返回 status=started 和 budget（time_s、rounds = 轮数上限 N），实机出批量确认卡。按钮由前端（#62）接，接上后从这里移走
   iterate_cancel: 立即停止自动迭代（#62 “停止迭代”按钮的后端）；接上后从这里移走
-  iterate_status: 迭代是否在跑，以及最近一次 iterate.stopped 结果（界面重连后补状态）；接上后从这里移走
+  project_switch_example: 换例题（参数 example）：从内置例题复制出全新项目（例题只读、只审计不出确认卡），推 project_forked；按钮由前端（page:req）接，接上后从这里移走
+  iterate_status: 迭代是否在跑，以及最近一次 iterate.stopped 结果（界面重连后补状态；last = 按 项目+板卡 落盘的最近结果，含最好参数卡 / ss_err / pass_basis / verdict，刷新页面可还原）；接上后从这里移走
   project.migrate: 旧版写在仓库 examples/ 的用户工程复制到 $DZBENCH_HOME/projects/（#29，只复制、不删源）；不带 confirmed 只返回清单（needs_confirm），界面确认卡确认后 confirmed=true 才复制。确认卡由前端接（page:req），接上后移到 actions
 
 # 内置 Agent 工具 → 归属步（Agent 是所在页的助手，不单独占菜单）

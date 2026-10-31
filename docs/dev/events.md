@@ -147,3 +147,11 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - **项目编号**：只看 `projects/` 下真实存在的目录（大小写不敏感），干净 HOME 第一个是 `2026h-ball`，没有 `-2`。
 - **提议 `origin`**：原始调用方（`agent` / `规则引擎` / 其他），journal 据此记录；对外看 `source` 枚举。
 - 内置例题自带 `requirements.yaml`，读题已完成，不向用户要 PDF 路径。
+
+## 迭代结果持久化、卡片 verdict、换例题（前端用）
+
+- **`iterate_status`** 返回 `{running, result, last}`。`last = {board, t, result}`：最近一次 `iterate.stopped`（含 `best_card`、`card`、`ss_err`、`pass_basis`、`verdict`）按 **项目 + 板卡** 存在 `<项目>/.dz/iterate_last/<板卡>.json`，刷新页面或重启侧车后仍能还原；内存里没有结果时 `result` 回落到 `last.result`。
+- **`verdict`**（`iterate.stopped`、`iterate_apply_best` 卡、`card` 都带）：`pass | fail | unknown`，附 `verdict_zh`。
+  - `ss_err.inside` 为 `null`（单位对不上 / 实机未标定）→ 一律 `unknown`，界面显示 `verdict_zh`，**不得**写「各项指标均已达标」。
+  - `inside=true` 且停止原因 `pass` → `pass`；其余 → `fail`。
+- **WS op `project_switch_example {example}`**：从内置例题复制出全新项目（新 slug，例题目录只读、不复用旧项目），只写审计（`project_switch_example`）不出确认卡；推 `project_forked {example, project, path, message_zh, via: "project_switch_example"}`，返回同样字段加 `fork`。例题不存在 → `bad_example`。

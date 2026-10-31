@@ -4,7 +4,7 @@ export type Limits = { time_s: number; rounds: number };
 export const DEFAULT_LIMITS = (sim: boolean): Limits => ({ time_s: 180, rounds: sim ? 20 : 8 });
 export type Gap = { value: number; limit: number; gap: number; unit: string };
 export type Best = { iter: number; params: Record<string, number>; params_hash?: string; metrics?: Record<string, unknown>; pass?: unknown; gaps?: Record<string, Gap> };
-export type Stopped = { reason: string; message_zh?: string; rounds?: number; best?: Best | null; next_zh?: string };
+export type Stopped = { reason: string; message_zh?: string; verdict?: "pass" | "fail" | "unknown"; verdict_zh?: string; rounds?: number; best?: Best | null; next_zh?: string };
 export type IterState =
   | { phase: "idle"; limits: Limits }
   | { phase: "pending"; limits: Limits }               // 实机：等批量确认卡
@@ -30,7 +30,7 @@ export function cardView(r: Stopped): { title: string; reason: string; params: [
     title: b ? `最好一组参数（第 ${b.iter} 轮）` : "没有可用的一轮",
     reason: `停止原因：${REASON_ZH[r.reason] ?? r.reason}${r.message_zh ? `（${r.message_zh}）` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
-    gaps: b ? gapLines(b.gaps, b.pass) : [],
+    gaps: b ? (r.verdict === "unknown" ? [r.verdict_zh ?? "暂无法判定是否满足题目误差带"] : gapLines(b.gaps, r.verdict === "fail" ? false : b.pass)) : [],   // inside=null → 不说「各项指标均已达标」
     canWrite: !!b && Object.keys(b.params).length > 0,
     next: r.next_zh ?? "",
   };

@@ -5,6 +5,7 @@ import itertools
 import os
 import re
 import pathlib
+import json
 import math
 import struct
 import time
@@ -367,6 +368,20 @@ class AgentService:
         while (self.s.schema_hash is None or not self.s.params) and time.monotonic() - t0 < 10:
             time.sleep(0.05)
 
+    def project_switch_example(self, example: str) -> dict:
+        """界面“换一个例题”：从该内置例题复制出一个全新项目（例题目录只读、不复用旧项目），只记审计不出确认卡，推 project_forked。"""
+        ex = str(example or "")
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", ex) or not (pathlib.Path(self.gw.root) / "examples" / ex / "requirements.yaml").exists():
+            raise GatewayError("bad_example", f"没有内置例题 {ex}")
+        code = steptools.fresh_code(self.gw.root, ex)
+        risk.audit("project_switch_example", {"example": ex, "code": code}, risk.LOG, "ui")
+        out = self.project_fork(ex, code, name=ex)
+        said = f"已基于 {ex} 新建 {out['project']}，可更换"
+        self.forked = said
+        ev = {"type": "project_forked", "example": ex, "project": out["project"], "path": out["path"], "message_zh": said, "via": "project_switch_example"}
+        self.emit(ev)
+        return ev | {"fork": out}
+
     def project_fork(self, example: str, code: str, name: str | None = None) -> dict:
         """“以例题为模板新建”卡被确认：examples/<example> 整个复制到 $DZBENCH_HOME/projects/<code>（新目录），设为当前项目，
         连该例题的仿真板，跑自动迭代（结束出“采用最好参数”卡）。记忆按 新项目 + 板子 记（不再落 _none）。"""
@@ -584,6 +599,7 @@ class AgentService:
         res["pass_basis"] = self._ss_band(b.get("metrics") or {})["pass_basis"]
         res["best_card"] = self._best_card(res)
         self.iter_result = res
+        self._persist_last(res)
         self.emit(res)
         return r | {"best_card": res["best_card"], "instruction": "已出“采用最好参数”确认卡；最终回复总结最好一轮并让用户点卡确认，不要以提问结束。"}
 
@@ -592,10 +608,56 @@ class AgentService:
         best = res.get("best")
         if not best:
             return None
+        ss = self._ss_band(best.get("metrics") or {})
+        v, vzh = self._verdict(ss, res)
+        res["verdict"], res["verdict_zh"], res["ss_err"] = v, vzh, ss
         r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"],
-                                             "ss_err": self._ss_band(best.get("metrics") or {}),
+                                             "ss_err": ss, "verdict": v, "verdict_zh": vzh,
                                              "compare": self._compare(res.get("round0"), best)}, lambda: None)
+        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "ss_err": ss,
+                       "verdict": v, "verdict_zh": vzh, "pass_basis": ss.get("pass_basis"), "compare": self._compare(res.get("round0"), best)}
         return r.get("action_id")
+
+    @staticmethod
+    def _verdict(ss: dict, res: dict) -> tuple[str, str]:
+        """卡片级结论 pass | fail | unknown。ss_err.inside 为 null（单位对不上、实机未标定）一律 unknown，
+        界面据此不说「各项指标均已达标」。"""
+        if ss.get("inside") is None:
+            return "unknown", "暂无法判定是否满足题目误差带（" + (ss.get("pass_basis") or "误差带待标定") + "）"
+        if ss["inside"] and res.get("reason") == "pass":
+            return "pass", "各项指标均已达标（含题目误差带）"
+        return "fail", "未达标：" + ("稳态误差超出题目误差带" if not ss["inside"] else "其他指标未达标")
+
+    def _last_path(self) -> pathlib.Path | None:
+        proj = self._project_path()
+        if not proj:
+            return None
+        board = re.sub(r"[^A-Za-z0-9_.-]+", "_", self.s.port or "none")
+        return pathlib.Path(proj) / ".dz" / "iterate_last" / f"{board}.json"
+
+    def _persist_last(self, res: dict) -> None:
+        """最近一次迭代结果（含最好参数卡、ss_err、pass_basis、verdict）按 项目+板卡 落盘，刷新页面后 iterate_status 能还原。"""
+        p = self._last_path()
+        if not p:
+            return
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(json.dumps({"board": self.s.port, "t": time.time(), "result": res}, ensure_ascii=False, default=str), "utf-8")
+        except OSError:
+            pass
+
+    def iterate_last(self) -> dict | None:
+        p = self._last_path()
+        try:
+            return json.loads(p.read_text("utf-8")) if p and p.exists() else None
+        except (OSError, ValueError):
+            return None
+
+    def iterate_status(self) -> dict:
+        th = getattr(self, "iter_thread", None)
+        last = self.iterate_last()
+        return {"running": bool(th and th.is_alive()), "result": getattr(self, "iter_result", None) or (last or {}).get("result"),
+                "last": last}
 
     def _ss_band(self, m: dict) -> dict:
         """最好参数卡上的稳态误差：实测值 + 题目误差带（出处）+ 本次在不在带内。单位对不上（如测得 px、题目 cm）
@@ -700,6 +762,7 @@ class AgentService:
         except Exception as e:  # noqa: BLE001
             res["best_card"], res["best_card_error"] = None, str(e)
         self.iter_result = res
+        self._persist_last(res)
 
     def iterate_cancel(self) -> dict:
         it = getattr(self, "iterator", None)

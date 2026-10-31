@@ -288,14 +288,19 @@ class Server:
                     return await run(None, lambda: self.svc.iterate_start(**{k: m[k] for k in ("target", "params", "dur_ms", "ch") if m.get(k) is not None}))
                 if op == "iterate_cancel":
                     return await run(None, self.svc.iterate_cancel)
-                th = getattr(self.svc, "iter_thread", None)
-                return {"running": bool(th and th.is_alive()), "result": getattr(self.svc, "iter_result", None)}
+                return await run(None, self.svc.iterate_status)
             except GatewayError as e:
                 raise LinkError(e.code, getattr(e, "message", "") or str(e), e.fix, getattr(e, "fix_action", None)) from None
         if op == "quick_start":     # 一句话起项目：{"op":"quick_start","text":"两轮车速度环，STM32F1"} → 一张确认卡；确认走 agent_action_decide
             from .projflow import FlowError
             try:
                 return await run(None, self.svc.quick_start, m["text"])
+            except (FlowError, GatewayError) as e:
+                raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix, getattr(e, "fix_action", None)) from None
+        if op == "project_switch_example":             # 换例题：从内置例题新建项目（例题只读，只审计不出卡），推 project_forked
+            from .projflow import FlowError
+            try:
+                return await run(None, self.svc.project_switch_example, m["example"])
             except (FlowError, GatewayError) as e:
                 raise LinkError(e.code, getattr(e, "msg", None) or getattr(e, "message", ""), e.fix, getattr(e, "fix_action", None)) from None
         if op == "project_chain" or op == "project_apply":   # 项目页“一键走完 ①–⑤（+Keil 注入）”：先整链预览，再一次写入（同 Agent 那张总卡）
