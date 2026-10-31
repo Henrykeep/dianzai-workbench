@@ -93,7 +93,7 @@ jobs:
         shell: bash
         working-directory: app/src-tauri
         run: |
-          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../packaging/使用说明.txt":"使用说明.txt"}}}' > ci-resources.json
+          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
           npx --yes @tauri-apps/cli@2 build --config ci-resources.json
           ls -la target/release/bundle/nsis/
       - uses: actions/upload-artifact@v4

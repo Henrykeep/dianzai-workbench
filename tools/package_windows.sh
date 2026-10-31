@@ -2,8 +2,8 @@
 # 在 Linux 上交叉打 Windows 便携包（GitHub Actions 不可用时的替代；正式发布仍走 .github/workflows/app-windows.yml）
 # 依赖：mingw-w64、wine（装好 Windows Python 3.12 到 C:\py312，并 pip 装 requirements + pyinstaller）、
 #       rustup target x86_64-pc-windows-gnu、node/npm、zip、curl
-# 产物：dist/芯台-<版本>-win64-portable.zip
-#   芯台.exe          Tauri 外壳（windows-gnu）
+# 产物：dist/XinTai-<版本>-win64-portable.zip
+#   XinTai.exe        Tauri 外壳（windows-gnu）
 #   dzbench.exe            侧车（PyInstaller，wine 里打）
 #   repo/                  tools/stage_win_repo.sh 出的工程仓库子集 + Windows 仿真板
 #   （tools/*.py 由 dzbench.exe 在本进程里跑，不再带嵌入版 Python）
@@ -16,7 +16,7 @@ WPY=${WPY:-'C:\py312\python.exe'}
 PYVER=3.12.10
 VER=$(python3 -c "import json;print(json.load(open('$ROOT/app/src-tauri/tauri.conf.json'))['version'])")
 WORK=$(mktemp -d /tmp/dzwin.XXXX)
-STAGE="$WORK/芯台"
+STAGE="$WORK/XinTai"
 export WINEDEBUG=-all
 mkdir -p "$STAGE" "$OUTDIR"
 zpath() { echo "Z:$(echo "$1" | tr / '\\')"; }
@@ -35,12 +35,12 @@ cp "$WORK/pyi/dzbench.exe" "$STAGE/dzbench.exe"
 echo "== 4/5 Tauri 外壳（x86_64-pc-windows-gnu）"
 mkdir -p "$ROOT/app/src-tauri/binaries" && cp "$STAGE/dzbench.exe" "$ROOT/app/src-tauri/binaries/dzbench-x86_64-pc-windows-gnu.exe"
 (cd "$ROOT/app/src-tauri" && npx --yes @tauri-apps/cli@2 build --target x86_64-pc-windows-gnu --no-bundle >/dev/null)   # CLI 会开 custom-protocol 并先编前端；裸 cargo build 会去连 devUrl
-cp "$ROOT/app/src-tauri/target/x86_64-pc-windows-gnu/release/dzbench.exe" "$STAGE/芯台.exe"
+cp "$ROOT/app/src-tauri/target/x86_64-pc-windows-gnu/release/dzbench.exe" "$STAGE/XinTai.exe"
 cp "$ROOT/app/src-tauri/target/x86_64-pc-windows-gnu/release/WebView2Loader.dll" "$STAGE/"   # windows-gnu 动态链接它，缺了直接起不来
 
 echo "== 5/5 说明 + zip"
-cp "$ROOT/app/packaging/使用说明.txt" "$STAGE/使用说明.txt"
-ZIP="$OUTDIR/芯台-$VER-win64-portable.zip"
-rm -f "$ZIP"; (cd "$WORK" && zip -qr9 "$ZIP" "芯台")
+cp "$ROOT/app/packaging/使用说明.txt" "$STAGE/README-zh.txt"
+ZIP="$OUTDIR/XinTai-$VER-win64-portable.zip"
+rm -f "$ZIP"; (cd "$WORK" && zip -qr9 "$ZIP" "XinTai")
 echo "✓ $ZIP ($(du -h "$ZIP" | cut -f1))"
 rm -rf "$WORK"

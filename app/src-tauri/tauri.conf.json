@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "芯台",
+  "productName": "XinTai",
   "mainBinaryName": "dianzai-workbench",
   "version": "0.11.0",
   "identifier": "com.dianzai.bench",
@@ -36,6 +36,11 @@
     ],
     "externalBin": [
       "binaries/dzbench"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/hooks.nsh"
+      }
+    }
   }
 }

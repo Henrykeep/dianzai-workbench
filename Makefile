@@ -254,6 +254,8 @@ check:
 	for p in examples/*/project.yaml; do $(PY) tools/gen_project.py $$p --check || exit 1; done
 	$(PY) tools/check_entrypoints.py --selftest
 	$(PY) tools/check_entrypoints.py
+	$(PY) tools/check_ascii_paths.py --selftest
+	$(PY) tools/check_ascii_paths.py
 	$(PY) tools/check_ui_layout.py --selftest
 	$(PY) tools/check_ui_layout.py
 	$(PY) tools/check_copy.py --selftest
