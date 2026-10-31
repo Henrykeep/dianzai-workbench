@@ -1,6 +1,7 @@
 // 项目页引导流程（产品逻辑重组 · 项目页）：① 读题 → ② 方案选型 → ③ 导入你的工程 → ④ 资源分配 → ⑤ 生成工程 / IDE 文件。
 // 每步“运行”只在侧车暂存区跑现成的命令行工具（req.py / scheme.py / import_project.py / alloc.py / gen_project.py / keil_inject.py），
 // 输出原样显示；点“确认写入”才写到题目目录 / boards/ / build/（侧车 dzbench/projflow.py）。没确认之前什么都不写。
+import { writeScopeNote } from "./fieldmap";
 type Call = <T = any>(op: string, a?: Record<string, unknown>) => Promise<T>;
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 export type ReqItem = { id: string; part?: string; score?: number | null; text: string; metrics?: any[]; [k: string]: unknown };
@@ -43,11 +44,12 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   const res = (k: string) => root.querySelector<HTMLElement>(`[data-f="${k}"] .pf-res`)!;
   const filesView = (fs: Record<string, string>, show: string[]) => Object.keys(fs).length ? `<p class="hint">将写入的文件：${Object.keys(fs).map(esc).join("、")}</p>` +
     show.filter(f => fs[f] != null).map(f => `<details${f === show[0] ? " open" : ""}><summary class="mono">${esc(f)}</summary><pre class="mono pf-pre">${esc(fs[f])}</pre></details>`).join("") : "";
-  const confirmBtn = (k: string, label: string, fn: () => Promise<void>) => {
+  const confirmBtn = (k: string, label: string, fn: () => Promise<void>, preview?: any) => {
     const b = document.createElement("button"); b.className = "btn pri"; b.type = "button"; b.textContent = label;
     b.onclick = async () => { b.disabled = true; try { await fn(); } catch { b.disabled = false; } };
-    const n = document.createElement("p"); n.className = "hint"; n.textContent = "只授权写入文件，不会提交（git 提交另有确认卡）";
-    res(k).append(b, n);
+    res(k).append(b);
+    const note = writeScopeNote(preview);   // #88 scope=write_only 才写这句（字段名在 fieldmap.WRITE_F）
+    if (note) { const n = document.createElement("p"); n.className = "hint wo-note"; n.textContent = note; res(k).append(n); }
   };
   const inp = (id: string) => document.getElementById(id) as HTMLInputElement;
   // 确认一步后自动跑下一步的预览（预览只写暂存区，不算替人做决定）；下一步缺输入就只把光标放过去。
@@ -74,7 +76,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
     confirmBtn("req", "确认写入 requirements.yaml", async () => {
       const rows = [...res("req").querySelectorAll<HTMLTableRowElement>("tr[data-i]")].map(tr => { const x = tr.querySelectorAll<HTMLInputElement>("input,textarea"); return { id: x[0].value, part: x[1].value, score: x[2].value, text: x[3].value, del: x[4].checked }; });
       written("req", await call("flow_accept", { step: "req", ...base(), items: editItems(items, rows) }));
-    });
+    }, r);
   };
   drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
   drop.ondragleave = () => drop.classList.remove("over");
@@ -98,7 +100,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
         if (!n) { mcu = sel?.value; mcu_reason = why; return; } if (sel) picks[n] = sel.value; if (why) reasons[n] = why; });
       let y = R.querySelector<HTMLTextAreaElement>("textarea")!.value; if (mcu_reason) y = y.replace(/^mcu_reason:.*$/m, `mcu_reason: ${JSON.stringify(mcu_reason)}`);
       written("scheme", await call("flow_accept", { step: "scheme", ...base(), scheme_yaml: y, picks, reasons, mcu }));
-    });
+    }, r);
   });
 
   // ③ 导入你的 CubeMX / Keil 工程
@@ -121,7 +123,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
       const w = await call<any>("flow_accept", { step: "import", ...base(), name: r.name, alias_edits: ed, overwrite: (document.getElementById("pf-ow") as HTMLInputElement | null)?.checked });
       if (!v("pf-app")) inp("pf-app").value = "port_selftest";   // import_project 自己建议的下一步：先跑板卡自检
       written("import", w);
-    });
+    }, r);
   };
   // ③ 分叉：没有现成工程 → 从零新建（alloc 自动分配 → 生成 .ioc → 装了 CubeMX 就无头 GENERATE，没装才要人点一次 → 自动接着导入）
   let poll = 0;
@@ -171,7 +173,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
   btn("alloc", async () => {
     const r = await call<any>("flow_preview", { step: "alloc", ...base(), board: v("pf-board") || undefined }); out("alloc", r);
     res("alloc").innerHTML = filesView(r.files, ["alloc.md", "board.yaml", "cubemx.md"]);
-    if (!r.rc) confirmBtn("alloc", "确认写入 alloc/", async () => written("alloc", await call("flow_accept", { step: "alloc", ...base() })));
+    if (!r.rc) confirmBtn("alloc", "确认写入 alloc/", async () => written("alloc", await call("flow_accept", { step: "alloc", ...base() })), r);
   });
 
   // ⑤ 生成工程 / IDE 文件
@@ -203,7 +205,7 @@ export function initProjFlow(call: Call, toast: (t: string, k?: "ok" | "warn") =
           + w.ide.map((i: any) => `<p class="hint">${i.rc ? "✗" : "✓"} ${esc((i.out.trim().split("\n").pop() || i.cmd).replace(/^[✓✗]\s*/, ""))}</p>`).join("");
         G.append(p); if (!w.build.rc) done("gen", "编译通过");
       }
-    });
+    }, r);
   });
 
   function btn(k: string, fn: () => Promise<void>) {

@@ -1125,3 +1125,25 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 /* #76 参数数字在所有宽度都 ≥16px（以前只在 ≥1600 才放大，1366 掉回 14） */
 .prow .in.num,.prow .pv .in.num,#plist .pv .in.num,#plist input[id^=pi-],.lane .val,.lane .v{font-size:var(--t-lg)}
 .cc-files{margin:var(--sp2) 0;padding-left:var(--sp4)} .cc-st{color:var(--text-muted)} .cc-msg{white-space:pre-wrap;margin:0 0 var(--sp2)}
+/* r9p6c：参数名第二行中文说明；参数区一个状态标签；底栏短句；提交确认卡 */
+.prow .pr .kk{display:flex;flex-direction:column;min-width:0;flex:1 1 auto}
+.prow .pr .kk .k{white-space:normal;overflow-wrap:anywhere;overflow:visible;text-overflow:clip;max-width:none}
+.prow .pr .kk .pdesc{font-size:var(--t-xs);color:var(--muted);line-height:1.3;white-space:normal}
+#life.life{display:block;padding:0 var(--sp5) var(--sp2);white-space:normal;overflow:visible}
+#life-tag{list-style:none;display:inline-flex;align-items:center;gap:4px;cursor:pointer;font:500 var(--t-xs)/20px var(--f-sans,inherit);padding:0 8px;border-radius:999px;border:1px solid var(--line)}
+#life-tag::after{content:"▾";opacity:.6}
+#life-tag[aria-expanded="true"]::after{content:"▴"}
+.life-tag.warn{color:var(--warn-t);border-color:currentColor}
+.life-tag.info{color:var(--acc-t)}
+.life-tag.ok{color:var(--muted)}
+#life.life .life-rows{display:grid;grid-template-columns:1fr;gap:4px;margin-top:4px;font:400 var(--t-xs)/18px var(--f-mono)}
+#life.life .life-rows span{display:flex;justify-content:space-between;cursor:pointer;border:0!important}
+#life.life .life-rows span+span::before{content:none}
+#life.life .life-rows span i{display:inline;font-style:normal;opacity:.8}
+#st-hint{white-space:nowrap}
+#p-q::placeholder{font-size:var(--t-xs)}
+.card.commit .cc-br{font-weight:600}
+.card.commit .cc-zh{margin:4px 0}
+.card.commit.declined{border-color:var(--warn-t)}
+.card.commit .act .cc-res{display:inline-flex;gap:8px;align-items:center}
+#life-rows[hidden]{display:none!important}

@@ -33,6 +33,7 @@ export const ACTIONS: Record<string, { step?: Step; ui: string; label?: string; 
   tune_relay: { step: "调参", ui: "ag-relay", label: "自整定" }, step_test: { step: "调参", ui: "ag-step", label: "阶跃实验" }, params: { step: "调参", ui: "p-send", label: "下发参数" },
   params_flash: { step: "调参", ui: "tb-save", label: "保存参数" }, run_selftest: { step: "调参", ui: "seal-selftest", label: "读取自检" }, score: { step: "评分", ui: "score" }, precontest: { step: "封箱", ui: "pre" },
   fetch_deps: { ui: "doctor", label: "安装依赖" },   // missing_deps：自检对话框里按提示安装
+  ask_user_commit: { ui: "ag-in", label: "回复 Agent 要不要提交", jump: true },   // #88 commit_declined：回到对话框让用户说清楚
 };
 // fix_action → 按钮：可执行 / 未就绪（置灰「等待固件支持」）/ 未登记（置灰写明原因）。不出现点了没反应的按钮
 export type Fix = { kind: "run" | "wait" | "none"; label: string; note?: string };

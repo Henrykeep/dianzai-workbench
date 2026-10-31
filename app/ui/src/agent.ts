@@ -10,6 +10,8 @@ import { Receipts, RECEIPT_LABEL, newMsgId, blockedCard, newBlockers, noticeView
 import { TurnGate, Watch, timeoutCard, errorCard, Card } from "./agentwatch";
 import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 import { modelLister, type El } from "./llmcfg";
+import { toCommitReq, commitCardHtml, mountCommitCard, toDeclined, showDeclined } from "./commitcard";
+import { COMMIT_EV, COMMIT_DECL_F, writeScopeNote } from "./fieldmap";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -122,9 +124,9 @@ export function initAgent(call: Call) {
       window.dispatchEvent(new CustomEvent("dz-final", { detail: c.commit }));
     d.innerHTML = `<div class="hd"><span class="dotk file"></span><span class="t">${esc(c.title)}</span><span class="lbl">${esc(({ app: "应用代码", fw: "固件", firmware: "固件", docs: "文档", config: "配置" } as Record<string, string>)[c.layer] ?? "")}${c.source === "agent" ? " · Agent 提议" : ""}</span></div>
       <p>${esc(c.reason)}</p>${defaults(c.diff)}<pre class="diff">${diff}</pre>
-      <div class="lbl">确认后：写入 → ${c.gates.length ? c.gates.map(esc).join(" → ") : "（无门禁）"} → git 提交</div>
+      <div class="lbl">确认后：写入 → ${c.gates.length ? c.gates.map(esc).join(" → ") : "（无门禁）"}${writeScopeNote(c) ? "" : " → git 提交"}</div>${writeScopeNote(c) ? `<p class="hint wo-note">${esc(writeScopeNote(c))}</p>` : ""}
       ${c.log && c.status !== "pending" ? `<details ${c.status === "failed" ? "open" : ""}><summary>门禁输出</summary><pre class="log">${esc(c.log)}</pre></details>` : ""}
-      <div class="act">${c.status === "pending" ? `<button class="btn pri" data-a="1">确认并提交</button><button class="btn" data-a="0">拒绝</button>`
+      <div class="act">${c.status === "pending" ? `<button class="btn pri" data-a="1">${writeScopeNote(c) ? "确认写入" : "确认并提交"}</button><button class="btn" data-a="0">拒绝</button>`
         : c.status === "committed" ? `<span class="lbl ok-t">${st[c.status]} ${esc(c.commit)}</span><button class="btn sm" data-rb="1">回滚</button>`
         : `<span class="lbl">${st[c.status] ?? esc(c.status)}</span>`}</div>`;
     d.querySelectorAll<HTMLButtonElement>("button[data-a]").forEach(b => b.onclick = () => {
@@ -158,6 +160,19 @@ export function initAgent(call: Call) {
       <div class="st"><span class="no">${n > 1 ? i + 1 : ""}</span>${esc(st.title)}</div>
       ${(st.facts || []).length ? `<div class="facts">${st.facts.map((f: string) => `<span>${esc(f)}</span>`).join("")}</div>` : ""}
       ${ch.length ? `<ul class="chgs">${ch.slice(0, 6).map(changeRow).join("")}${more}</ul>` : ""}${det}</div></li>`;
+  }
+  // #88 提交确认卡：写文件卡只授权写文件，git 提交单独确认
+  const commitCards = new Map<string, HTMLElement>();
+  const goFix = (a: string) => runAction(a, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
+  function renderCommit(m: Msg) {
+    const c = toCommitReq(m), d = add(commitCardHtml(c, esc), "card commit pending");
+    commitCards.set(c.id, d);
+    mountCommitCard(d, c, (op, args) => call(op, args).then((r: any) => { if (r?.type === COMMIT_EV.declined || r?.[COMMIT_DECL_F.reason] != null) onCommitDeclined({ ...r, request_id: c.id }); return r; }));
+  }
+  function onCommitDeclined(m: any) {
+    const d = toDeclined(m), el = commitCards.get(d.id) ?? [...commitCards.values()].pop();
+    if (el) showDeclined(el, d, esc, a => resolveFix(a), goFix);
+    else showDeclined(add(`<b>git 提交没有执行</b><div class="act"><span class="cc-res"></span></div>`, "card commit declined"), d, esc, a => resolveFix(a), goFix);
   }
   function renderAction(a: Msg) {
     const c = (a.preview ?? {}) as any, pa = c.prearm;
@@ -685,6 +700,8 @@ export function initAgent(call: Call) {
       if (m.type === "agent_tune_pending") renderTune(m);
       if (m.type === "agent_journal") renderJournal(m.items);
       if (m.type === "change") renderChange(m);
+      if (m.type === COMMIT_EV.request) renderCommit(m);
+      if (m.type === COMMIT_EV.declined) onCommitDeclined(m);
       if (m.type === "agent_action" && m.tool === "iterate_apply_best") iterPointer();
       if (m.type === "agent_action" && m.tool !== "iterate_apply_best") renderAction(m);   // “采用最好参数”只在调参页结果卡出一次（main.ts #it-card）
       if (m.type === "tune_round") renderRound(m);
