@@ -37,7 +37,7 @@ def test_every_server_op_has_a_caller():
 
 
 def test_every_agent_tool_wired():
-    from dzbench.agent import risk
+    from dzbench.agent import cards, risk
     from dzbench.agent.loop import TOOLS
     from dzbench.agent.service import AgentService
     from dzbench.agent_api import AgentTools
@@ -51,7 +51,7 @@ def test_every_agent_tool_wired():
         t = risk.tier(n, False)
         assert t in (risk.AUTO, risk.LOG, risk.HUMAN), n
         if t == risk.HUMAN:
-            assert n in cn, f"human 级工具 {n} 在确认卡上没有中文名（agent.ts TOOL_CN）"
+            assert n in cn or n in cards.TITLED, f"human 级工具 {n} 在确认卡上没有中文名（agent.ts TOOL_CN 或卡片 title）"
 
 
 @pytest.fixture

@@ -4,7 +4,9 @@ import struct
 from dzbench import downsample, logfile, snapshots
 from dzbench._dzlink import DATA, HEARTBEAT, PARAM_ACK, encode
 from dzbench.schema import Schema
-from dzbench.session import Session
+import pytest
+
+from dzbench.session import LinkError, Session
 from dzbench.transport import LoopbackTransport
 
 SCHEMA = {"version": 1, "hash": 0x12345678,
@@ -19,9 +21,11 @@ def test_schema_decode_clamp():
     assert s.size == 10
     assert s.decode(struct.pack("<Ifh", 1000, 1.5, -3)) == {"t_ms": 1000, "x": 1.5, "s": -3}
     assert s.decode(b"\0" * 9) is None
-    assert s.clamp("kp", 5) == (2, True)
-    assert s.clamp("n", 3.6) == (4.0, True)
-    assert s.clamp("kp", 1.0) == (1.0, False)
+    for name, v in (("kp", 5), ("n", 3.6)):        # #40：越界 / 整数参数给小数 → 拒绝，不钳位
+        with pytest.raises(LinkError) as e:
+            s.check(name, v)
+        assert e.value.code == "invalid_param"
+    assert s.check("kp", 1.0) == 1.0
 
 
 def test_downsample_keeps_peaks():

@@ -19,6 +19,9 @@ PIN = re.compile(r"^P[A-K]\d{1,2}$")
 STEP_CN = {"req": "读题", "scheme": "方案", "import": "导入工程", "scratch": "从零新建", "alloc": "资源分配", "gen": "生成工程", "keil": "Keil 工程"}
 
 
+# 卡片自带中文标题的 human 级工具（界面 c.title 优先于 agent.ts TOOL_CN）
+TITLED = {"iterate_start": "自动迭代调参"}
+
 def _read(p: pathlib.Path) -> str | None:
     try:
         return p.read_text(encoding="utf-8")
@@ -120,9 +123,9 @@ def build(svc, tool: str, args: dict) -> dict | None:
     where = "仿真" if svc.sim else "实机"
     if tool == "iterate_start":
         try:
-            return svc.iterate_card(args)
+            return {"title": TITLED[tool]} | svc.iterate_card(args)
         except Exception as e:  # noqa: BLE001
-            return {"title": "自动迭代调参", "error": str(e)}
+            return {"title": TITLED[tool], "error": str(e)}
     if tool == "project_apply":
         c = svc.chains.get(args.get("code")) or {}
         home = steptools._flow(root).home
