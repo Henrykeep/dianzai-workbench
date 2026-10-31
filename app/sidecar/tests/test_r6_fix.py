@@ -224,9 +224,10 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
         orig_hb = s._on_heartbeat
 
         def spy_hb(payload):
+            t_arr = time.monotonic()                    # 到达时刻：在处理（含推 latched 事件）之前取
             orig_hb(payload)
             if s.estop_cause and "cause" not in hb_t:
-                hb_t["cause"] = time.monotonic()        # 带 estop_cause 的那帧心跳到达并处理完（收线程，持锁期间）
+                hb_t["cause"] = t_arr                   # 带 estop_cause 的那帧心跳的到达时刻（收线程，持锁期间）
         s._on_heartbeat = spy_hb
         m = ui.mark()
         t0 = time.monotonic()
@@ -236,6 +237,10 @@ def test_estop_not_blocked_by_long_held_session_lock(home):
         assert s.tx_locked
         la = ui.wait(lambda e: e.get("type") == "estop" and e.get("state") == "latched", 2, m)
         t_l = time.monotonic()
+        # 收线程是在推完 latched 之后才回到 spy 里记 hb_t：主线程可能先收到事件 → 等它记完（只等记录，不影响计时）
+        t1 = time.monotonic()
+        while "cause" not in hb_t and time.monotonic() - t1 < 2:
+            time.sleep(0.001)
         # 本地服务这一段（带原因的心跳到达 → WS latched）必须与持锁无关；总时长另含固件心跳周期（固件侧在修，≤500 ms 一拍）
         side = t_l - hb_t["cause"]
         assert side <= 0.05, f"持锁时 心跳到达→latched {side * 1000:.0f} ms"
