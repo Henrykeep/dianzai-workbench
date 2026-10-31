@@ -405,7 +405,8 @@ def test_autotune_run_uses_same_code_as_tunegate(monkeypatch):
     from dzbench.tuning import autotune as AT
     case = TP.make(3008)
     board = TP.SimBoard(case["plant"], case["app"], 0)
-    sch = Schema({"hash": 1, "telemetry": {"id": 2, "fields": [{"name": "y", "type": "f32"}]}, "params": [{"name": d["name"], "role": d["role"], "type": "f32", "min": d["min"], "max": d["max"],
+    inv = {"kp": "P", "ki": "I", "kd": "D", "ff": "FF", "ulim": "LIM"}
+    sch = Schema({"hash": 1, "telemetry": {"id": 2, "fields": [{"name": "y", "type": "f32"}]}, "params": [{"name": d["name"], "role": inv[d["role"]], "type": "f32", "min": d["min"], "max": d["max"],
                               "max_delta": d["max_delta"], "default": d["init"]} for d in case["app"]["params"]],
                   "step": [{"sp": 0, "y": "y", "u": "u", "u_max": case["link"]["u_max"], "sample_s": case["link"]["sample_s"],
                             "sensor_range": case["link"]["sensor_range"], "max_step": case["link"]["max_step"]}]})
@@ -435,3 +436,35 @@ def test_autotune_run_uses_same_code_as_tunegate(monkeypatch):
     r = o.autotune_run(case["spec"])
     assert calls and r.get("verdict") in ("pass", "fail")
     assert board.rejected == 0
+
+
+# ---------------------------------------------------------------- 角色没声明：不按名字猜着跑，回 needs_human；确认写回 app.yaml 后才跑
+def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
+    import sys as _sys
+    import yaml
+    root = pathlib.Path(__file__).resolve().parents[3]
+    _sys.path.insert(0, str(root / "tools"))
+    import gen_link
+    import randplant
+    from dzbench.schema import Schema
+    p = randplant.gen(3008)
+    (tmp_path / "app.yaml").write_text(randplant.app_yaml(p), "utf-8")
+    spec, params, _ = gen_link.load(tmp_path / "app.yaml")
+    d = gen_link.schema(spec, params)
+    for q, src in zip(d["params"], params):
+        q["role"] = src.get("role")                     # 握手带 role（没写 = null）；gen_link 合入前在这里补
+    sess = types.SimpleNamespace(schema=Schema(d), port="sim:x", params={q["name"]: q["default"] for q in d["params"]})
+    o = S.AgentService.__new__(S.AgentService)
+    o.s = sess
+    r = o.autotune_run(p["spec_text"])
+    assert r["verdict"] == "needs_human" and r["reason"] == "roles_unconfirmed" and r["fix_action"] == "confirm_roles"
+    assert set(r["missing"]) == set(p["roles"].values()) and "link.params" in r["message_zh"]
+    assert set(r["suggested"]) == set(r["missing"]) and set(r["suggested"].values()) <= {"P", "I", "D", "FF", "LIM", "other"}
+    with pytest.raises(S.GatewayError):
+        o.confirm_roles({next(iter(r["missing"])): "kp"}, str(tmp_path))      # 只收 P/I/D/FF/LIM/other
+    truth = {nm: role for role, nm in p["roles"].items()}
+    out = o.confirm_roles(truth, str(tmp_path))
+    assert out["ok"]
+    y = yaml.safe_load((tmp_path / "app.yaml").read_text("utf-8"))
+    assert {q["name"]: q.get("role") for q in y["link"]["params"]} == truth
+    assert not gen_link.check(*gen_link.load(tmp_path / "app.yaml")[:2])

@@ -207,3 +207,6 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - `iterate_start` / `iterate_plan`：没传 params 时，用握手参数表里所有声明了 [min,max] 的浮点参数；没写 abs_tol 时，取 sensor_range × 1%。
 - `step_too_large`（message_zh + fix，fix_action=`lower_step`，带 `max_step`）：iterate 的阶跃目标、或一次设定值跳变超过 link.step.max_step 时返回。
 - 探测幅度 = 量程 × PROBE_FRAC，受 max_step 限制；没声明量程时用最小可测幅度（不再固定 0.05）。
+- 参数角色（字段规格，gen_link / randplant 由嵌入式开发-2 加）：app.yaml `link.params.<名>.role` ∈ P/I/D/FF/LIM/other，握手参数表带 `role`（没写为 null）。后端只认这个声明，名字猜测只当建议；LIM / other 不参与整定，也不进 iterate 的默认参数集。
+- `autotune` 角色没声明时返回 `{"verdict":"needs_human","reason":"roles_unconfirmed","missing":[名],"suggested":{名:角色},"message_zh","fix","fix_action":"confirm_roles"}`，不跑。
+- `{"op":"confirm_roles","roles":{名:角色},"app_dir"?}`：把确认过的角色写回 app.yaml `link.params`（只改对应行）。返回 `{ok, app_yaml, roles, message_zh, fix_action:"rebuild"}`；重新生成握手表后生效。Agent 工具同名（human 级，卡片标题“确认参数角色”）。

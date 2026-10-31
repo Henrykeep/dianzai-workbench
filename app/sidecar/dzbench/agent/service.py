@@ -129,7 +129,7 @@ class AgentService:
             "score_items": lambda path=None: steptools.score_items(self, path),
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
-            "tune_autopilot": self._tune_autopilot_agent,
+            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run, "confirm_roles": self.confirm_roles,
             "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
@@ -528,7 +528,7 @@ class AgentService:
         steps = sch.step
         if not steps or not 0 <= int(ch) < len(steps):
             raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "固件升到 dzctl 0.13.0 并在 app.yaml 加 link.step")
-        names = list(params or [k for k in self._gains() if k in sch.param_index] or self._tunable(sch))
+        names = list(params or self._tunable(sch))      # 不按名字猜：握手声明了 role 的去掉 LIM/other，没声明 = 全部可调参数
         bad = [n for n in names if n not in sch.param_index]
         if bad or not names:
             raise GatewayError("bad_param", f"没有这些参数：{bad or '（空）'}", "用 list_params 看参数名")
@@ -554,7 +554,8 @@ class AgentService:
         out = []
         for p in sch.params:
             lo, hi = p.get("min"), p.get("max")
-            if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and hi > lo and str(p.get("type", "f32")) in ("f32", "f64", "float", "double"):
+            if isinstance(lo, (int, float)) and isinstance(hi, (int, float)) and hi > lo and str(p.get("type", "f32")) in ("f32", "f64", "float", "double") \
+                    and p.get("role") not in ("LIM", "other"):
                 out.append(p["name"])
         return out
 
@@ -937,17 +938,22 @@ class AgentService:
         return {"ok": True, "result": self.iter_result}
 
     def autotune_run(self, spec_text: str = "", ch: int = 0, seed: int = 0) -> dict:
-        """通用整定（与 tools/tunegate.py 同一份 tuning.autotune）：参数名 / 范围 / max_delta / 量程 / max_step 全从握手读。"""
+        """通用整定（与 tools/tunegate.py 同一份 tuning.autotune）：参数角色 / 范围 / max_delta / 量程 / max_step 全从握手读。
+        角色没声明 → 不按名字猜着跑：回 needs_human（roles_unconfirmed + 建议），人确认（confirm_roles 写回 app.yaml）后才跑。"""
         from ..tuning import autotune as at
-        from ..tuning.session_board import SessionBoard, roles
+        from ..tuning.session_board import SessionBoard, declared, suggest
         sch = self.s.schema
         if not sch or not sch.step:
             raise GatewayError("no_step_channel", "这个应用没配阶跃通道（app.yaml link.step）", "在 app.yaml 加 link.step（sensor_range / max_step）")
         if not self.sim:
             raise GatewayError("hw_needs_human", "实机自动整定会连续写参数，要走批量确认", "用“自动迭代”（iterate_start）出确认卡")
-        rl = roles(sch, guess_gain)
-        if "kp" not in rl:
-            raise GatewayError("no_roles", "认不出哪个参数是比例增益", "在 app.yaml 参数上写 role: kp / ki / kd")
+        rl, missing = declared(sch)
+        if missing or "kp" not in rl:
+            miss = missing or [p["name"] for p in sch.params]
+            return {"verdict": "needs_human", "reason": "roles_unconfirmed", "missing": miss, "suggested": suggest(sch, guess_gain),
+                    "message_zh": "这些参数没声明作用（app.yaml link.params.<名>.role ∈ P/I/D/FF/LIM/other）："
+                                  + "、".join(miss) + "；按名字猜的只是建议，确认后才整定",
+                    "fix": "核对建议的角色后点“确认角色”（写回 app.yaml，重新生成握手表）", "fix_action": "confirm_roles"}
         by = {p["name"]: p for p in sch.params}
         decl = [{"role": r, "name": n, "min": float(by[n]["min"]), "max": float(by[n]["max"]), "max_delta": by[n].get("max_delta")}
                 for r, n in rl.items()]
@@ -957,6 +963,51 @@ class AgentService:
         dt = float(st.get("sample_s") or (sch.d.get("telemetry") or {}).get("period_ms", 10) / 1000)
         link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
         return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
+
+    def confirm_roles(self, roles: dict, app_dir: str | None = None) -> dict:
+        """人确认过的参数角色写进 app.yaml link.params.<名>.role（只改这几行，不重排文件）。"""
+        from ..tuning.session_board import ROLES
+        bad = {n: r for n, r in (roles or {}).items() if r not in ROLES}
+        if not roles or bad:
+            raise GatewayError("bad_role", f"角色只能是 {'/'.join(ROLES)}：{bad or '（空）'}", "每个参数选一个角色", {"fix_action": "confirm_roles"})
+        y = self._app_yaml(app_dir)
+        lines = y.read_text(encoding="utf-8").splitlines(keepends=True)
+        done = set()
+        for i, ln in enumerate(lines):
+            m = re.match(r"^(\s*)-\s*\{\s*name:\s*([\w.]+)\s*,(.*)\}\s*$", ln)
+            if m and m.group(2) in roles:
+                body = re.sub(r",\s*role:\s*[\w]+", "", m.group(3)).rstrip()
+                lines[i] = f"{m.group(1)}- {{ name: {m.group(2)},{body}, role: {roles[m.group(2)]} }}\n"
+                done.add(m.group(2))
+                continue
+            m = re.match(r"^(\s*)-\s*name:\s*([\w.]+)\s*$", ln)
+            if m and m.group(2) in roles:
+                ind = m.group(1) + "  "
+                j = i + 1
+                while j < len(lines) and lines[j].startswith(ind) and not lines[j].lstrip().startswith("-"):
+                    if lines[j].lstrip().startswith("role:"):
+                        lines[j] = ""
+                    j += 1
+                lines.insert(i + 1, f"{ind}role: {roles[m.group(2)]}\n")
+                done.add(m.group(2))
+        left = sorted(set(roles) - done)
+        if left:
+            raise GatewayError("bad_param", f"app.yaml link.params 里没找到：{'、'.join(left)}", "用 list_params 看参数名", {"fix_action": "confirm_roles"})
+        y.write_text("".join(lines), encoding="utf-8")
+        return {"ok": True, "app_yaml": str(y), "roles": roles,
+                "message_zh": "角色已写回 app.yaml；重新生成握手表（重编 / 重连仿真板）后生效", "fix_action": "rebuild"}
+
+    def _app_yaml(self, app_dir: str | None):
+        from .. import paths
+        from ..ports import sim_root
+        if app_dir:
+            d = pathlib.Path(app_dir)
+        else:
+            name = (self.s.port or "").removeprefix("sim:").split("+")[0]
+            d = next((x / name for x in (paths.projects_dir(), sim_root() / "apps", sim_root() / "examples") if name and (x / name / "app.yaml").exists()), None)
+        if not d or not (d / "app.yaml").exists():
+            raise GatewayError("no_app", "找不到这个应用的 app.yaml", "传 app_dir（工程目录）", {"fix_action": "confirm_roles"})
+        return d / "app.yaml"
 
     def tune_autopilot(self, rounds: int = 6) -> dict:
         """仅仿真：提议→采纳→阶跃→护栏判，直到护栏说 done/stop 或轮数用完；最后回到最好的一轮。实机每次写都要人点，不走这里。"""
