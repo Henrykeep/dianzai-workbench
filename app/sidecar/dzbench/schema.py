@@ -14,6 +14,9 @@ FMT = {"f32": "f", "u32": "I", "i32": "i", "u16": "H", "i16": "h", "u8": "B"}
 class Schema:
     def __init__(self, d: dict, path: str = ""):
         self.d, self.path = d, path
+        # 板端上位机看门狗阈值（嵌入式开发-2 在握手里上报；没报 = None，不编造）
+        wd = d.get("wd_timeout_ms", (d.get("link") or {}).get("wd_timeout_ms") if isinstance(d.get("link"), dict) else None)
+        self.wd_timeout_ms = int(wd) if isinstance(wd, (int, float)) and wd > 0 else None
         self.hash = int(d["hash"])
         tel = d["telemetry"]
         self.telem_id = tel["id"]

@@ -89,6 +89,10 @@ def blockers(f: dict) -> list[dict]:
         b = _blocker("estop", "急停已锁存" + (f"：{f['estop_reason']}" if f.get("estop_reason") else "。"),
                      f.get("estop_cause"))
         b["source"] = f.get("estop_source") or "sidecar"
+        ec = f.get("estop_cause") or {}
+        if ec.get("restored"):                                # 侧车重启后恢复的锁存：「HH:MM 原因，已锁存」
+            b["message"] = b["message_zh"] = ec["message_zh"]
+            b["restored"] = True
         out.append(b)
     if f.get("selftest_fail"):
         out.append(_blocker("selftest_fail", f"板上自检未通过：{f['selftest_fail']}。", f.get("selftest_items")))

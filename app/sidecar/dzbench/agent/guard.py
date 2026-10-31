@@ -72,6 +72,8 @@ class Round:
     score: float
     label: str = "recent"            # best / last_rejected / recent
     changed: tuple | None = None     # (参数, +1/-1)
+    valid: bool = True               # #75/#92：与卡片、迭代同一个判定（iterate.step_invalid）
+    why_invalid: str | None = None
 
 
 @dataclass
@@ -107,7 +109,7 @@ class TuneGuard:
         return rel_score(m, StepMetrics(**self.baseline), self.weights)
 
     def best(self) -> Round | None:
-        st = [r for r in self.rounds if r.label != "unstable"]
+        st = [r for r in self.rounds if r.label != "unstable" and r.valid]
         return min(st, key=lambda r: r.score) if st else None
 
     # ---------------------------------------------------------------- 每轮实测后
@@ -116,7 +118,10 @@ class TuneGuard:
         prev = self.rounds[-1] if self.rounds else None
         if self.weights is not None and self.baseline is None and m.ok:
             self.baseline = m.as_dict()
+        from .iterate import step_invalid
         r = Round(len(self.rounds) + 1, dict(gains), m.as_dict(), self.score(m))
+        r.why_invalid = step_invalid(r.metrics)
+        r.valid = r.why_invalid is None
         if prev:
             diff = [(k, 1 if gains[k] > prev.gains.get(k, 0) else -1) for k in gains if gains[k] != prev.gains.get(k)]
             r.changed = diff[0] if len(diff) == 1 else None

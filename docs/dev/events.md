@@ -156,6 +156,27 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
   - `inside=true` 且停止原因 `pass` → `pass`；其余 → `fail`。
 - **WS op `project_switch_example {example}`**：从内置例题复制出全新项目（新 slug，例题目录只读、不复用旧项目），只写审计（`project_switch_example`）不出确认卡；推 `project_forked {example, project, path, message_zh, via: "project_switch_example"}`，返回同样字段加 `fork`。例题不存在 → `bad_example`。
 
+## 提交确认 `commit_confirm_request`（#88）
+
+写文件确认卡（`change`）带 `scope: "write_only"`：**只授权写文件**。`change_decide accept=true` 后写入 → 跑门禁 → `change.status = "written"`（不再直接 `committed`），并紧接推送：
+
+`{type:"commit_confirm_request", request_id, repo_root, branch, files:[{path, status}], message, message_zh, status}`
+
+- `files[].status`：`A` 新建 / `M` 修改。`message` 是将用的 git 提交信息（原文），`message_zh` 是给人看的一句话。
+- `status`：`pending` → `committed` / `rejected` / `failed`（结果会再推一次同一事件，外加更新后的 `change` 卡）。
+- 界面回复 WS op：`{"op":"commit_confirm","request_id":<id>,"approve":true|false}`。
+  - 批准：提交，返回 `{ok:true, ...change 卡（status=committed, commit=短哈希）}`。
+  - 拒绝或超时：不提交，返回 `{ok:false, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit", ...请求字段}`；文件仍留在工作区。提交本身失败时 `reason:"commit_failed"`。
+- Agent 发起的任何 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit"}`，不执行。
+- `pending` 列表里同时包含待批的 `commit_confirm_request`。
+## r9c：有效性、换算出处、迭代时长（#75 #92 #93 #94）
+
+- **唯一有效性判定** `iterate.step_invalid`：台账 `tune_round`、结果卡、规则提议、自动迭代 `iterate.round` 都用它。原因码 `why_invalid` 新增 `zero_step`（阶跃幅度 < 回位容差）。规则引擎最近一轮无效时只回 `OBSERVE`，不出改参提议。
+- `iterate.round` 新增 `step_amp`、`step_tol`（物理单位）。
+- `iterate.stopped`（`reason: "invalid"`）新增 `why_invalid` 和 `reason_zh`（如「连续无效：阶跃幅度为 0（目标就是当前位置）」），卡片按它写原因，不再只写「没有可用的一轮」。
+- 新事件 `iterate.dur_extended {dur_ms, why}`：窗口太短（`settle_zero` / `no_rise`）时阶跃时长翻倍重做同一轮（上限 30000 ms），不计入「连续 3 轮无效」。
+- 目标等于当前位置时，迭代先把设定值退到 目标 − 量程×25% 再跳；无效轮重跑回同一起点。
+- `pass_basis` / `verdict_zh` 一律写明换算出处：「按仿真标称换算、未实机标定」「按实机标定换算」「同单位直接比较、无需换算」；实机未标定为 `inside: null` + 「待标定：实机未标定」。
 ## metrics_card（指标卡，草案 r10 #82）
 
 一道题一张卡，取代单独的调参卡。前端只认 `items` 统一列表渲染；字段名只在 `app/ui/src/fieldmap.ts` 对接。
@@ -188,11 +209,14 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 
 导出：后端出 CSV / xlsx，列与 `items` 字段一一对应（计划中，未实现）。
 门禁（#78 `tools/tunegate.py`）用 plant.json 真值对比 `measured` / `verdict` 判假达标。
-## 提交确认 `commit_confirm_request`（#88）
 
-写文件确认卡（`change`）带 `scope: "write_only"`：**只授权写文件**。`change_decide accept=true` 后写入 → 跑门禁 → `change.status = "written"`（不再直接 `committed`），并紧接推送：
+## r9e（#100 / #101 / #102）
 
-`{type:"commit_confirm_request", request_id, repo_root, branch, files:[{path, status}], message, message_zh, status}`
+- ~~`result.cleared`~~（已被 r9g `result_reset` 取代，见文末）`{reason: iterate_start|reconnect|board_change, message_zh}`：迭代开始、重连、换板时推送；前端收到后清空结果 / 判定卡。`iterate_status` 在清空后、新结果出来前返回 `result: null, last: null, cleared: true`。
+- `list_ports` 每次重扫仿真对象；sim 端口新增 `app`、`app_name`（app.yaml `name:`）、`label`（`仿真 · 应用名`）。只声明 `plant:` 的项目也列为仿真板。
+- Agent 工具 `change_status`（只读）：每张改代码卡 `{id, title, files, write_status, commit_status, commit, status_zh}`；Agent 每轮上下文附「改代码卡真实状态」（#99）。
+- `iterate.stopped`：没有任何稳定轮（有效且超调 ≤ 40%）时 `best: null`，`message_zh: "发散，未找到稳定参数"`。
+- `ss_err` 新增 `value_source: sim_nominal|hw_measured`，`pass_basis` 末尾写明「测量值为仿真标称值 / 实机实测值」。
 
 - `files[].status`：`A` 新建 / `M` 修改。`message` 是将用的 git 提交信息（原文），`message_zh` 是给人看的一句话。
 - `status`：`pending` → `committed` / `rejected` / `failed`（结果会再推一次同一事件，外加更新后的 `change` 卡）。
@@ -207,3 +231,45 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - `iterate_start` / `iterate_plan`：没传 params 时，用握手参数表里所有声明了 [min,max] 的浮点参数；没写 abs_tol 时，取 sensor_range × 1%。
 - `step_too_large`（message_zh + fix，fix_action=`lower_step`，带 `max_step`）：iterate 的阶跃目标、或一次设定值跳变超过 link.step.max_step 时返回。
 - 探测幅度 = 量程 × PROBE_FRAC，受 max_step 限制；没声明量程时用最小可测幅度（不再固定 0.05）。
+
+## 上位机心跳 / 心跳超时急停
+
+- 侧车心跳：专用线程，每 250 ms 一帧（`Session.HOST_HB_PERIOD_S`），按单调时钟定拍，不拿 session.lock（只用写锁）。
+- 板端阈值归固件（嵌入式开发-2）：当前 `apps/include/link_app.h` `dzctl_wd_init(&L->wd, 1000u)`；改为可声明、默认 1500 ms 并在握手上报 `wd_timeout_ms`。侧车读 schema `wd_timeout_ms`（或 `link.wd_timeout_ms`），没报 = `null`，文案里整段不写阈值（#138），不编造。串口卡死检查在单独线程 `_stall_loop`。
+- ~~（已被文末 r9g 取代：gap_ms→measured_ms）~~ 心跳超时急停的 `estop_cause` / `estop state:"latched"`：`cause:"hb_timeout"`、`message_zh:"心跳超时 <实测间隔> ms"`、`gap_ms`、`threshold_ms`（可为 null）、`detail_zh`、`fix_action:"estop_clear"`（一键解除）。
+- ~~（已被文末 r9g 取代）~~ `$DZBENCH_HOME/estop_latch.json` 每条记录：`source`、`detail`、`t`（epoch s）、`latched_at`（ISO 本机时间带时区，如 `2026-10-31T21:58:03+0800`）、`reason`（原因码，如 `hb_timeout`）、`gap_ms`、`threshold_ms`、`cause`。锁存持久化是设计行为，只有人点解除才清。
+- 侧车重启 / 重连恢复锁存：`estop_cause` 与 `tx_locked` 事件、`estop` 阻塞项都带 `restored:true`、`fix_action:"estop_clear"`，`message_zh` 形如 `21:58 心跳超时 1001 ms，已锁存`。
+
+### #102 被控量到量程（dzctl 0.15.0 心跳 bit18 `DZCTL_HB_SENSOR_SAT`）
+- status 的 `hb_flags` 多一项「被控量到量程」（实时、不锁存；旧固件恒无）。
+- 自动迭代每轮记录 `sensor_sat: bool`（该轮阶跃期间任一心跳带 bit18）；到量程的轮不算稳定。
+- `iterate.stopped` 加 `sensor_sat: bool`（最后一轮到量程）；没有稳定轮或最后一轮到量程 → `best: null`，`message_zh: "发散，未找到稳定参数"`。
+- 急停阈值 `threshold_ms` 取握手 `wd_timeout_ms`（固件 fw-wd，默认 1500）；握手未上报为 null。
+
+## r9g 最终字段（以本节为准，覆盖上文 r9e / 心跳一节的临时名）
+
+### #101 结果清空 `type: "result_reset"`
+`{run_id, reason: "iterate_start" | "reconnect" | "board_change"}`。`run_id` 是清空后的新一轮运行 id（reconnect / board_change 时为当前 run_id）。前端收到后清空结果 / 判定卡。
+
+### #104 `list_ports` 仿真条目
+sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_dir`（项目目录绝对路径）。`label` 仍为 `仿真 · <app_name>`。
+
+### #115 台账 / 运行
+- 每条台账记录带 `run_id`；每次 `iterate_start` 开一个新 `run_id`。
+- 最好参数、“初值即最好”只在当前 `run_id` 内计算。
+- 手动阶跃实验记录 `kind: "manual_step"`，不算迭代轮，不参与最好参数；迭代轮 `kind: "round"`。
+
+### #116（= #102）/ #121 最好参数与判定
+- `best` 永不指向无效 / 发散 / 到量程（心跳 bit18 `DZCTL_HB_SENSOR_SAT`，dzctl 0.15.0）的轮；没有稳定轮或最后一轮到量程 → `best: null`，`message_zh: "发散，未找到稳定参数"`。每轮和 `iterate.stopped` 带 `sensor_sat: bool`。
+- verdict `pass` 时总带 `verdict_zh: "通过"`。
+
+### 急停 status / 事件（`estop`、`status.estop_cause`）
+`{reason, reason_zh, latched_at, measured_ms, threshold_ms, restored, fix_action}`
+- `reason`：原因码（如 `hb_timeout`、`manual`）；`reason_zh`：中文说明（心跳超时为 `心跳超时 <measured_ms> ms`）。
+- `latched_at`：ISO 本机时间带时区，如 `2026-10-31T21:58:03+08:00`。
+- `measured_ms`：实测间隔（取代旧的 `cause.value` / `gap_ms`，#118）。
+- `threshold_ms`：取握手 `wd_timeout_ms`（固件 fw-wd，默认 1500，阈值归固件）；握手没有该字段则为 `null`。
+- 手动急停：`measured_ms` / `threshold_ms` **不出现**（不是 null）。
+- `restored: bool`：重启后从 `estop_latch.json` 读回为 true。
+- `fix_action: "estop_clear"`。
+`estop_latch.json` 记录同名字段：`reason`、`reason_zh`、`latched_at`、`measured_ms`、`threshold_ms`。

@@ -230,7 +230,7 @@ def test_host_heartbeat_watchdog_latches_estop(home):
         time.sleep(0.3)
         assert sp() == 0.0, "看门狗触发后应锁存急停，命令被拒"
         es = s.status()["estop_cause"]
-        assert es["cause"] == "hb_timeout" and wd_ms <= es["value"] < wd_ms + 600 and es["message_zh"].startswith("心跳超时"), (wd_ms, es)
+        assert es["cause"] == "hb_timeout" and wd_ms <= es["measured_ms"] < wd_ms + 600 and "value" not in es and es["message_zh"].startswith("心跳超时"), (wd_ms, es)
         s.host_hb = True
         s.cmd("R")
         time.sleep(0.1)

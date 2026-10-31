@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
+import datetime as _dt
 import time
 
 from . import snapshots
@@ -54,12 +55,41 @@ def set(port: str | None, uid: int | None, source: str, detail: str = "", cause:
         return
     with _lk:
         d = _load()
-        rec = {"source": source, "detail": detail, "t": time.time()}
+        rec = {"source": source, "detail": detail, "t": time.time(),
+               "latched_at": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),   # 本机时间（ISO，带时区）
+               "reason": (cause or {}).get("reason") or (cause or {}).get("cause") or "manual",   # 人 / Agent 按的急停 = manual
+               "reason_zh": (cause or {}).get("reason_zh") or detail or source}
+        for k in ("measured_ms", "threshold_ms"):          # 手动急停没有这两个字段：省略，不写 null
+            if cause and k in cause:
+                rec[k] = cause[k]
         if cause:
             rec["cause"] = cause
+        old = next((d[k] for k in ks if isinstance(d.get(k), dict)), None)
+        if old:                                            # 已锁存：保留最初时刻（侧车重启后再报急停不改写），只补缺的字段；只有 clear() 重置
+            rec = {**rec, **{k: v for k, v in old.items() if v is not None}}
         for k in ks:
             d[k] = rec
         _save(d)
+
+
+def restored_view(rec: dict) -> dict:
+    """侧车重启 / 重连后恢复的锁存：message_zh = 「HH:MM 原因，已锁存」，restored + fix_action。"""
+    hm = ""
+    try:
+        hm = time.strftime("%H:%M", time.localtime(float(rec.get("t"))))
+    except (TypeError, ValueError):
+        pass
+    c = dict(rec.get("cause") or {})
+    why = c.get("message_zh") or rec.get("detail") or rec.get("reason") or "急停"
+    c.pop("gap_ms", None), c.pop("value", None)
+    reason = c.get("reason") or c.get("cause") or rec.get("reason") or "latched"
+    c.update({"cause": c.get("cause") or reason, "reason": reason, "reason_zh": c.get("reason_zh") or rec.get("reason_zh") or why,
+              "restored": True, "fix_action": "estop_clear", "latched_at": rec.get("latched_at"),
+              "message_zh": f"{hm} {why}，已锁存".strip()})
+    for k in ("measured_ms", "threshold_ms"):
+        if k in rec:
+            c[k] = rec[k]
+    return c
 
 
 def get(port: str | None, uid: int | None) -> dict | None:
