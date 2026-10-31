@@ -160,7 +160,7 @@ link:
   # 量程 = 上位机目标钳位 ±400 px；abs_tol 6 px = 1 cm（仿真 600 px/m，与 accept band 同口径）。目标钳到 ±400 px（同 DATA id=1）；时长不在 [0.2, 30] s 回 bad_arg（dzstep_parse）。
   # 空闲/DONE 时开始阶跃会自动（重新）开始当前小题，钢珠环才在跑（io_link.c ensure_running）。
   step:
-    - { sp: 0, y: cam_x_px, u: angle_deg, u_max: angle_max_deg, range: 800, abs_tol: 6 }
+    - { sp: 0, y: cam_x_px, u: angle_deg, u_max: angle_max_deg, range: 800, abs_tol: 6, phys: { unit: cm, per_unit: 6 } }
 
   # 验收（评委口径，来源见 docs/参考来源.md）：误差 ≤1 cm、保持 300 ms、O→+5→−5 一次计时 ≤5 s、连续 3 次按最差。
   # 速度门限题目只说“静止”，没给数，留空（填了才判）；只有位置环有设定值上报，不声明 loops（内环没有 sp/y 遥测）

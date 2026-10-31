@@ -9,6 +9,7 @@
     step:      [ { sp: 0, y: pos_deg, u: u, u_max: max_u, range: 720, abs_tol: 0.5 } ]   # 可选：#38 阶跃实验通道
                sp = 设定值槽位（DATA id=1 第几个 f32）；y / u = 遥测字段（u 可省）；u_max = 数或参数名；
                range = 该量量程，abs_tol = 绝对容差（物理单位，|阶跃幅度| < max(1% 量程, abs_tol) 时改用绝对口径）
+               phys（可选）= { unit: cm, per_unit: 6 }：per_unit 个原生单位 = 1 个 unit（上位机把 step_result 换成题目单位）
   project.yaml 不写 link.params：直接用顶层 params（params_t，需带 min/max），生效的是当前参数档。
 
 输出（-o 目录）：
@@ -100,6 +101,10 @@ def check(spec: dict, params: list) -> list[str]:
             errs.append(f"step[{k}] 缺 y")
         if not (float(st.get("range", 0)) > 0 and float(st.get("abs_tol", 0)) > 0):
             errs.append(f"step[{k}]: range、abs_tol 须 > 0（物理单位）")
+        ph = st.get("phys")
+        if ph is not None and not (isinstance(ph, dict) and set(ph) == {"unit", "per_unit"} and isinstance(ph["unit"], str)
+                                   and ph["unit"] and isinstance(ph["per_unit"], (int, float)) and ph["per_unit"] > 0):
+            errs.append(f"step[{k}].phys 须是 {{unit: 非空字符串, per_unit: > 0}}")
         um = st.get("u_max", 0)
         if isinstance(um, str) and um not in pnames:
             errs.append(f"step[{k}].u_max={um} 不是参数名")
@@ -134,7 +139,9 @@ def schema(spec: dict, params: list) -> dict:
                      "max_delta": max_delta(p), "unit": p.get("unit", "")} for p in params]}
     if spec.get("step"):                     # #38：烧进固件的阶跃通道配置，进哈希
         s["step"] = [{"sp": int(st["sp"]), "y": st["y"], "u": st.get("u"), "u_max": st.get("u_max", 0),
-                      "range": float(st["range"]), "abs_tol": float(st["abs_tol"])} for st in spec["step"]]
+                      "range": float(st["range"]), "abs_tol": float(st["abs_tol"]),
+                      **({"phys": {"unit": str(st["phys"]["unit"]), "per_unit": float(st["phys"]["per_unit"])}} if st.get("phys") else {})}
+                     for st in spec["step"]]
     s["hash"] = fnv1a(json.dumps(s, sort_keys=True, separators=(",", ":")).encode())
     for p, src in zip(s["params"], params):
         p["default"] = src.get("default", 0)
