@@ -482,6 +482,8 @@ def test_amp_reduced_is_partial_never_pass(tmp_path):
     res = AT.autotune(G.board(str(tmp_path), app, 3001, "randplant"), app, link, spec, 3001)
     assert res["amp_reduced"] is True and res["amp_spec"] == big and abs(res["amp_tested"]) <= float(link["max_step"]) + 1e-9
     assert res["verdict"] in ("partial", "fail") and res["verdict"] != "pass"
+    rb = res["retest_blocked_by"]                                   # 题面 3×max_step：按题面重测会被 #109 拒
+    assert rb["reason"] == "step_too_large" and rb["limit"] == float(link["max_step"]) and rb["limit_name"].endswith(".max_step")
     assert res["amp_unit"] == (link.get("unit") or None) and all(it["amp_unit"] == res["amp_unit"] for it in res["items"])   # #140
     assert res["items"] and all(it["amp_reduced"] and it["warning_zh"] == "按降幅测试，未验题面幅度" for it in res["items"])
     for it in res["items"]:
@@ -502,3 +504,37 @@ def test_confirm_roles_idempotent(tmp_path):
     with pytest.raises(S.GatewayError) as e:
         o.confirm_roles({"a": "kp"}, str(tmp_path))
     assert "P/I/D/FF/LIM/other" in e.value.message and "没有写 app.yaml" in e.value.message
+
+
+def test_adopt_partial_card_not_verified():
+    """#141：采纳 partial / 降幅卡 → verified:false（服务端按保存的卡判）。"""
+    o = S.AgentService.__new__(S.AgentService)
+    o.actions = {7: {"tool": "iterate_apply_best", "args": {"params": {}, "verdict": "partial",
+                                                           "items": [{"key": "ss_err_pct", "verdict": "partial", "amp_reduced": True}]}, "t": 0}}
+    o.loop = types.SimpleNamespace(handlers={})
+    o.s = types.SimpleNamespace(params={})
+    out = o.action_decide(7, True)
+    assert out["verified"] is False and out["unverified_reason"] == "amp_reduced" and not o.verified_adoptions()
+    o.actions = {8: {"tool": "iterate_apply_best", "args": {"params": {}, "verdict": "pass"}, "t": 0}}
+    assert o.action_decide(8, True)["verified"] is True and len(o.verified_adoptions()) == 1
+
+
+def test_retest_blocked_by_agrees_with_iterate_start():
+    """#129：retest_blocked_by 与 iterate_start 的 #109 判定是同一个函数，结论不会不一致。"""
+    from dzbench.tuning.steplimit import step_block
+    for amp, ms in ((3.0, 2.0), (1.5, 2.0), (2.0, 2.0), (-3.0, 2.0)):
+        b = step_block(amp, ms, 0, "rps")
+        st = {"sp": 0, "y": "y", "u": "u", "max_step": ms, "sensor_range": 10.0}
+        prm = {"name": "g", "type": "f32", "min": 0.0, "max": 1.0, "role": "P"}
+        o = types.SimpleNamespace(s=types.SimpleNamespace(schema=types.SimpleNamespace(step=[st], params=[prm], param_index={"g": 0}, d={})),
+                                  _gains=lambda: {}, _tunable=lambda sch: ["g"], ABS_TOL_FRAC=0.01)
+        try:
+            S.AgentService.iterate_plan(o, params=["g"], target=amp, dur_ms=1000)
+            rejected = False
+        except S.GatewayError as e:
+            assert e.code == "step_too_large", (e.code, e.message)
+            rejected = True
+        assert rejected == (b is not None), (amp, ms, b)
+        if b:
+            assert set(b) == {"reason", "limit", "limit_unit", "limit_name", "message_zh", "fix_action"}
+            assert b["limit_name"] == "link.step[0].max_step" and b["fix_action"] == "edit_declaration" and b["limit_unit"] == "rps"

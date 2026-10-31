@@ -53,6 +53,21 @@ NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse
 
 
 
+
+def link_roles() -> tuple:
+    """#136：role 取值只认 tools/gen_link.py 的 ROLES（同一份枚举，生成器校验什么，提示就写什么）。"""
+    import importlib.util
+    import pathlib
+    f = pathlib.Path(__file__).resolve().parents[4] / "tools" / "gen_link.py"
+    spec = importlib.util.spec_from_file_location("dz_gen_link_roles", f)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return tuple(mod.ROLES)
+
+
+def role_hint_zh() -> str:
+    rs = link_roles()
+    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {' / '.join(rs)}（例如比例增益写 role: {rs[0]}）"
+
 class AgentService:
     def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):
         # 工程仓库：DZBENCH_REPO > 配置 repo > 本仓库（开发模式）。安装版必须在 ⚙ 里指定（未在 Windows 实测）
@@ -553,7 +568,8 @@ class AgentService:
         if target is None:
             raise GatewayError("need_target", "要给阶跃目标值 target（物理单位）", f"例如量程 {float(span):g} 的 1/4" if span else "按题面给的阶跃幅度")
         ms = st.get("max_step")
-        if ms is not None and abs(float(target)) > float(ms):                   # #109：超过执行器能承受的单次最大阶跃
+        from ..tuning.steplimit import step_block
+        if step_block(target, ms, ch):                                           # #109：超过执行器能承受的单次最大阶跃（与 #129 retest_blocked_by 同一判定）
             raise GatewayError("step_too_large", f"阶跃 {float(target):g} 超过工程声明的单次最大阶跃 max_step = {float(ms):g}",
                                f"把阶跃目标改到 ±{float(ms):g} 以内，或核实后改 link.step.max_step", {"fix_action": "lower_step", "max_step": float(ms)})
         tol = st.get("abs_tol")
@@ -624,7 +640,7 @@ class AgentService:
         return res
 
     def iterate_apply_best(self, params: dict, iter: int | None = None, params_hash: str | None = None,  # noqa: A002
-                           ss_err: dict | None = None, compare: dict | None = None, verdict: str | None = None, verdict_zh: str | None = None) -> dict:   # ss_err / compare 只给卡上显示
+                           ss_err: dict | None = None, compare: dict | None = None, verdict: str | None = None, verdict_zh: str | None = None, **_card) -> dict:   # ss_err / compare / items / amp_* 只给卡上显示
         """“采用最好参数”卡被人确认：把最好一轮的参数写回板子（逐个 set_param，校验/限幅/急停锁都在 Session）。"""
         applied = {}
         cur = self.s.params
@@ -1015,9 +1031,9 @@ class AgentService:
         if missing or "kp" not in rl:
             miss = missing or [p["name"] for p in sch.params]
             return {"verdict": "needs_human", "reason": "roles_unconfirmed", "missing": miss, "suggested": suggest(sch),
-                    "message_zh": "这些参数没声明作用（app.yaml link.params.<名>.role ∈ P/I/D/FF/LIM/other）："
+                    "message_zh": f"这些参数没声明作用（app.yaml link.params.<名>.role ∈ {'/'.join(link_roles())}）："
                                   + "、".join(miss) + "；不按参数名猜，建议只按结构给（u_max 指向的 = LIM），确认后才整定",
-                    "fix": "核对建议的角色后点“确认角色”（写回 app.yaml，重新生成握手表）", "fix_action": "confirm_roles"}
+                    "fix": "核对建议的角色后点“确认角色”（写回 app.yaml，重新生成握手表）；" + role_hint_zh(), "fix_action": "confirm_roles"}
         by = {p["name"]: p for p in sch.params}
         decl = [{"role": r, "name": n, "min": float(by[n]["min"]), "max": float(by[n]["max"]), "max_delta": by[n].get("max_delta")}
                 for r, n in rl.items()]
@@ -1026,12 +1042,13 @@ class AgentService:
         u_max = float(self.s.params.get(um, 1.0)) if isinstance(um, str) else float(um or (sch.d.get("limits") or {}).get("u_max") or 1.0)
         dt = float(st.get("sample_s") or (sch.d.get("telemetry") or {}).get("period_ms", 10) / 1000)
         link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
+        link["ch"] = int(ch)
         link["unit"] = next((f.get("unit") or None for f in sch.fields if f["name"] == st.get("y")), None)   # #140：被阶跃信号声明的单位，没写 = null
         return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
 
     def confirm_roles(self, roles: dict, app_dir: str | None = None) -> dict:
         """人确认过的参数角色写进 app.yaml link.params.<名>.role（只改这几行，不重排文件）。"""
-        from ..tuning.session_board import ROLES
+        ROLES = link_roles()                                   # #136 同一份枚举（gen_link 校验什么就收什么）
         bad = {n: r for n, r in (roles or {}).items() if r not in ROLES}
         if not roles or bad:
             raise GatewayError("bad_role", f"确认参数角色失败：角色只能是 {'/'.join(ROLES)}，收到 {bad or '空的角色表'}；没有写 app.yaml",
@@ -1132,6 +1149,26 @@ class AgentService:
         card = self.gate("flow_accept", {"step": nxt, "code": code}, lambda: None)
         return {"next_step": nxt, "preview": pv, "action_id": card.get("action_id")}
 
+    ADOPT_TOOLS = ("iterate_apply_best", "autotune")
+
+    @staticmethod
+    def adoption_verified(card: dict) -> dict:
+        """#141：采纳的参数算不算“已验证”——只看服务端保存的卡（不认客户端传的标记）。partial / 降幅测的 → 未验证。"""
+        items = card.get("items") or []
+        reduced = bool(card.get("amp_reduced")) or any(isinstance(i, dict) and i.get("amp_reduced") for i in items)
+        if reduced or card.get("verdict") == "partial" or any(isinstance(i, dict) and i.get("verdict") == "partial" for i in items):
+            return {"verified": False, "unverified_reason": "amp_reduced"}
+        return {"verified": True, "unverified_reason": None}
+
+    def _adoption_record(self, a: dict) -> dict:
+        v = self.adoption_verified(a.get("args") or {})
+        rec = {"tool": a["tool"], "t": time.time(), "params": (a.get("args") or {}).get("params")} | v
+        self.__dict__.setdefault("adoptions", []).append(rec)       # 未验证的不进已验证档 / 封箱清单（verified_adoptions 只给 verified）
+        return v
+
+    def verified_adoptions(self) -> list[dict]:
+        return [r for r in self.__dict__.get("adoptions", []) if r["verified"]]
+
     def action_decide(self, aid: int, accept: bool) -> dict:
         a = self.actions.pop(aid, None)
         if not a:
@@ -1152,6 +1189,8 @@ class AgentService:
             out = {"id": aid, "status": "done", "result": (self.loop.handlers.get(a["tool"]) or self.CARD_ONLY[a["tool"]].__get__(self))(**args)}
             if a["tool"] == "flow_accept":
                 out["next"] = self._flow_next(args["code"])
+            if a["tool"] in self.ADOPT_TOOLS:
+                out |= self._adoption_record(a)
             return out
         except (FlashError, GuardError, LinkError) as e:
             raise LinkError(getattr(e, "code", "action"), e.message, getattr(e, "fix", "")) from e

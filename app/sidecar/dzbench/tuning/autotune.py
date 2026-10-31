@@ -209,6 +209,8 @@ def simc_pid(model: "LinModel", decl: list[dict], dt: float) -> dict | None:
     return _clip({k: v for k, v in p.items() if k in have}, decl)
 
 
+from .steplimit import step_block  # noqa: E402
+
 AMP_WARN_ZH = "按降幅测试，未验题面幅度"
 
 
@@ -334,6 +336,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     extra = {}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
         extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None,
+                 "retest_blocked_by": step_block(amp_spec, max_step, int(link.get("ch") or 0), link.get("unit") or None),
                  "warning_zh": AMP_WARN_ZH}
         if verdict == "pass":
             verdict, verdict_zh, why = "partial", "未验题面幅度", why + f"（按降幅 {amp:g} 测，题面 {amp_spec:g} 超 max_step / 量程）"

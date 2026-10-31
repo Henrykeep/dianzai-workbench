@@ -241,7 +241,7 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 ## 上位机心跳 / 心跳超时急停
 
 - 侧车心跳：专用线程，每 250 ms 一帧（`Session.HOST_HB_PERIOD_S`），按单调时钟定拍，不拿 session.lock（只用写锁）。
-- 板端阈值归固件（嵌入式开发-2）：当前 `apps/include/link_app.h` `dzctl_wd_init(&L->wd, 1000u)`；改为可声明、默认 1500 ms 并在握手上报 `wd_timeout_ms`。侧车读 schema `wd_timeout_ms`（或 `link.wd_timeout_ms`），没报 = `null`，文案写「阈值未知」，不编造。串口卡死检查在单独线程 `_stall_loop`。
+- 板端阈值归固件（嵌入式开发-2）：当前 `apps/include/link_app.h` `dzctl_wd_init(&L->wd, 1000u)`；改为可声明、默认 1500 ms 并在握手上报 `wd_timeout_ms`。侧车读 schema `wd_timeout_ms`（或 `link.wd_timeout_ms`），没报 = `null`，文案里整段不写阈值（#138），不编造。串口卡死检查在单独线程 `_stall_loop`。
 - ~~（已被文末 r9g 取代：gap_ms→measured_ms）~~ 心跳超时急停的 `estop_cause` / `estop state:"latched"`：`cause:"hb_timeout"`、`message_zh:"心跳超时 <实测间隔> ms"`、`gap_ms`、`threshold_ms`（可为 null）、`detail_zh`、`fix_action:"estop_clear"`（一键解除）。
 - ~~（已被文末 r9g 取代）~~ `$DZBENCH_HOME/estop_latch.json` 每条记录：`source`、`detail`、`t`（epoch s）、`latched_at`（ISO 本机时间带时区，如 `2026-10-31T21:58:03+0800`）、`reason`（原因码，如 `hb_timeout`）、`gap_ms`、`threshold_ms`、`cause`。锁存持久化是设计行为，只有人点解除才清。
 - 侧车重启 / 重连恢复锁存：`estop_cause` 与 `tx_locked` 事件、`estop` 阻塞项都带 `restored:true`、`fix_action:"estop_clear"`，`message_zh` 形如 `21:58 心跳超时 1001 ms，已锁存`。
@@ -284,6 +284,7 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 ## #129 降幅测试（题面幅度超过 max_step / 量程）
 - `autotune` 结果和 metrics_card `items[]` 每项加 `amp_reduced: true`、`amp_spec`（题面阶跃幅度）、`amp_tested`（实际测的幅度）、`warning_zh: "按降幅测试，未验题面幅度"`；没降幅时这些字段都不出现。
 - 同时带 `amp_unit`：被阶跃信号（link.step 的 y）在握手里声明的单位；没声明 = `null`（不写死）。
+- 同时带 `retest_blocked_by`：按题面幅度 `amp_spec` 重测会不会被 iterate_start 拒（#109，同一个函数 `dzbench.tuning.steplimit.step_block`）。会被拒 → `{reason:"step_too_large", limit:<声明的 max_step>, limit_unit:<单位或 null>, limit_name:"link.step[<ch>].max_step", message_zh:"题面幅度 X 超过声明的单步上限 M，需先在声明里放宽 max_step 或确认执行器能承受", fix_action:"edit_declaration"}`；能重测 → `null`。
 - 降幅时本来达标的项 `verdict: "partial"`、`verdict_zh: "未验题面幅度"`，整卡 verdict 也是 `partial`，永不给 `pass`。未达标项仍是 `fail`。
 - `tools/tunegate.py`：降幅却给了 pass 算假达标（硬红）。
 
@@ -300,3 +301,6 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 ## 原因码总表 `docs/dev/reason_codes.json`（#139）
 - `{code: {zh, kind}}`，kind ∈ `round`（单轮无效，`iterate.round.invalid_reason`）/ `abort`（开始被拒）/ `stop`（`iterate.stopped.reason`）/ `diverge`（发散）。
 - 由 `tools/gen_reason_codes.py` 从后端 `dzbench.agent.reason_codes` 生成；`make check` 跑 `--check`（过期即红），`tests/test_reason_codes.py` 校验后端每个原因码都在表里且 zh 非空。前端只读这个文件，不手抄。
+
+## 采纳未验证的参数（#141）
+- `agent_action_decide` 采纳 `iterate_apply_best` / `autotune` 卡时，响应多 `verified: bool`、`unverified_reason`。卡（服务端保存的那份，不认客户端标记）verdict 为 `partial` 或任一 item `amp_reduced` → `verified:false, unverified_reason:"amp_reduced"`，不进已验证档 / 封箱清单；否则 `verified:true, unverified_reason:null`。
