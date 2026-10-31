@@ -224,7 +224,8 @@ AUTO_MARK = "/* dz-io-auto "
 
 
 def board_res(name: str | None) -> dict[str, set]:
-    f = ROOT / "boards" / str(name) / "board.yaml"
+    from boardlib import board_dir
+    f = board_dir(str(name), ROOT) / "board.yaml"
     if not name or not f.exists():
         return {}
     res = (load(f).get("resources") or {})

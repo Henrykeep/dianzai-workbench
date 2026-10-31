@@ -29,6 +29,7 @@ import yaml
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import ioc_import as ii  # noqa: E402
+from boardlib import user_boards_dir  # noqa: E402
 
 SKIP_DIRS = {"Core", "Drivers", "Middlewares", "MDK-ARM", "EWARM", "STM32CubeIDE", ".git", "build", "Debug", "Release"}
 KEEP_TAGS = {"WHILE", "Header", "Error_Handler_Debug", "6", "Header_StartDefaultTask", "Callback 0"}
@@ -250,7 +251,7 @@ def main() -> int:
     name = a.name or slug(src.name)
     if name == "my-board":
         name = slug(iocs[0].stem)
-    dest = a.root / "boards" / name
+    dest = user_boards_dir() / name           # #29：用户板卡写 $DZ_BOARDS_DIR（默认 $DZBENCH_HOME/boards），不进仓库 boards/
     keep_alias = None
     if dest.exists():
         if not a.force:
@@ -288,10 +289,10 @@ def main() -> int:
         (dest / "aliases.yaml").write_text(
             "# 引脚别名表（tools/import_project.py 按引脚功能自动生成）：引脚 → 工作台逻辑标签。\n"
             "# 你的 .ioc 不用改；哪一行猜错了（比如左右电机反了），改这里，然后\n"
-            f"#   python3 tools/ioc_import.py boards/{name}/cubemx/{iocs[0].name} --out boards/{name}/board.yaml --base boards/{name}/board.yaml\n"
+            f"#   python3 tools/ioc_import.py {dest}/cubemx/{iocs[0].name} --out {dest}/board.yaml --base {dest}/board.yaml\n"
             "pins:\n" + "".join(f"  {w}\n" for w in why), encoding="utf-8")
     if alias:
-        todo.append({"kind": "confirm", "what": f"看一眼 boards/{name}/aliases.yaml 的 {len(alias)} 条自动别名（电机 A/B、LINK 串口是按顺序猜的）"})
+        todo.append({"kind": "confirm", "what": f"看一眼 {dest}/aliases.yaml 的 {len(alias)} 条自动别名（电机 A/B、LINK 串口是按顺序猜的）"})
 
     # 2) 节拍定时器 + board.yaml
     meta0 = ii.extract(ii.apply_alias(ioc, alias), {}, ii.Rep())[1]
@@ -392,7 +393,7 @@ def main() -> int:
                 if "缺资源" in ln:
                     todo.append({"kind": "edit", "what": ln.strip() + "（在 aliases.yaml 里给对应引脚起这个名字）"})
 
-    print(f"✓ 已导入 boards/{name}/（原工程 {src} 未改动）")
+    print(f"✓ 已导入 {dest}/（原工程 {src} 未改动）")
     for n in notes:
         print(f"  · {n}")
     for w in why:
