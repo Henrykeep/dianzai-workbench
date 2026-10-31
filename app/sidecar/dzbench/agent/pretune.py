@@ -12,7 +12,7 @@ import re
 from dataclasses import asdict, dataclass, field
 
 PLANTS = {"speed": "速度环（电机转速）", "position": "位置环（舵机/云台/电机角度）", "balance": "平衡（倒立摆/平衡车）",
-          "ball": "钢球/板球", "track": "循迹/视觉跟踪（方向环）", "temp": "温度", "other": "其他"}
+          "unstable": "不稳定/积分对象（开环会跑飞）", "track": "循迹/视觉跟踪（方向环）", "temp": "温度", "other": "其他"}
 ACTUATORS = {"dc_pwm": "直流电机 + H 桥 PWM", "servo": "舵机", "stepper": "步进电机", "bldc": "无刷 / FOC 驱动",
              "heater": "加热片 / 继电器", "other": "其他"}
 GOALS = {"balanced": "均衡", "conservative": "稳为主（怕超调/振荡）", "actuator": "护执行器（少来回换向）"}
@@ -28,8 +28,8 @@ QUESTIONS = [
     {"key": "notes", "q": "还有什么不能接受的情况或已知特性？（自由填写，规则会从里面认超调上限、不能反转等）", "type": "text"},
 ]
 
-# 对象 → 默认目标（用户没选时）：钢球/平衡怕超调，舵机护执行器
-DEFAULT_GOAL = {"ball": "conservative", "balance": "conservative", "position": "actuator"}
+# 对象 → 默认目标（用户没选时）：不稳定对象/平衡怕超调，舵机护执行器
+DEFAULT_GOAL = {"unstable": "conservative", "balance": "conservative", "position": "actuator"}
 
 
 @dataclass

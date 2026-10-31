@@ -169,3 +169,36 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
   - 拒绝或超时：不提交，返回 `{ok:false, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit", ...请求字段}`；文件仍留在工作区。提交本身失败时 `reason:"commit_failed"`。
 - Agent 发起的任何 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason:"commit_declined", reason_zh, fix_action:"ask_user_commit"}`，不执行。
 - `pending` 列表里同时包含待批的 `commit_confirm_request`。
+
+## metrics_card（指标卡，草案 r10 #82）
+
+一道题一张卡，取代单独的调参卡。前端只认 `items` 统一列表渲染；字段名只在 `app/ui/src/fieldmap.ts` 对接。
+
+| 字段 | 说明 |
+|---|---|
+| `task_kind` | `control` / `measure` / `power` / `other`，Agent 读题面判断 |
+| `task_kind_reason` | 判断依据（一句话） |
+| `items[]` | 每条指标一项，见下 |
+
+`items[]` 每项：
+
+| 字段 | 说明 |
+|---|---|
+| `name`, `clause` | 指标名、条款号（如「要求(3)」） |
+| `spec_text` | 题面原文，一字不改 |
+| `target` | `{op, value, unit}`；抽不出 = `null`，并在 `pass_basis` 写「按默认判定」 |
+| `measured` | `{value, unit, method, n}`：实测值、单位、测量方法、样本数 |
+| `uncertainty` | 不确定度；`measure` 类必填 |
+| `verdict` / `verdict_zh` | `pass` / `fail` / `unknown` + 中文 |
+| `pass_basis` | 一句话判定依据；卡在哪（饱和、时延过大、非最小相位、待标定）也写这里 |
+| `source` | `sim` / `real` / `calibrated` / `manual`。**只由固件握手帧上报的运行环境与标定状态决定**，上层传入一律忽略；握手没报 → `sim` 并标「来源未知」；人填值 → `manual` |
+| `evidence` | 录波 / 原始数据文件路径 |
+| `method` | `auto` / `manual`（外部仪器测的） |
+| `manual_steps` | manual 时：用什么仪器、怎么接线、读哪个数 |
+| `procedure` | 给评委看的测试步骤：条件、次数、读数方法 |
+| `manual_entry` | `{value, by, at}`：人填的值、填写人、时间（UTC+8） |
+| `tuning`（可选） | 控制类：`{round0, best, ss_err, …}`，原调参卡字段并入 |
+| `calibration`（可选） | 测量类：校准系数、校准信号源 |
+
+导出：后端出 CSV / xlsx，列与 `items` 字段一一对应（计划中，未实现）。
+门禁（#78 `tools/tunegate.py`）用 plant.json 真值对比 `measured` / `verdict` 判假达标。
