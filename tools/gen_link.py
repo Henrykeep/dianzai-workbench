@@ -41,6 +41,16 @@ TYPE_MAX = {"uint32": (0, 4294967295), "int32": (-2147483648, 2147483647), "uint
 # 参数角色（可选）：P 比例 / I 积分 / D 微分 / FF 前馈 / LIM 限幅 / other 其他。只给上位机（整定认增益用），不进哈希；
 # 没写 → link_schema.json 里 role: null，上位机不按参数名猜。
 ROLES = ("P", "I", "D", "FF", "LIM", "other")
+ROLE_ZH = {"P": "比例", "I": "积分", "D": "微分", "FF": "前馈", "LIM": "限幅", "other": "其他"}
+ROLES_JSON_VERSION = 1
+
+
+def roles_json() -> str:
+    """docs/dev/roles.json：侧车/安装包读这份，唯一来源是上面的 ROLES（make check 比对）。"""
+    assert set(ROLE_ZH) == set(ROLES)
+    doc = {"schema_version": ROLES_JSON_VERSION, "source": "tools/gen_link.py ROLES",
+           "roles": [{"code": r, "zh": ROLE_ZH[r]} for r in ROLES]}
+    return json.dumps(doc, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
 
 
 def fnv1a(data: bytes) -> int:
@@ -316,7 +326,12 @@ def main() -> int:
     ap.add_argument("yaml", nargs="?", type=pathlib.Path)
     ap.add_argument("-o", "--out", type=pathlib.Path)
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--emit-roles", type=pathlib.Path, metavar="PATH", help="导出参数角色枚举（docs/dev/roles.json）")
     a = ap.parse_args()
+    if a.emit_roles:
+        a.emit_roles.parent.mkdir(parents=True, exist_ok=True)
+        a.emit_roles.write_text(roles_json(), encoding="utf-8")
+        return 0
     if a.selftest:
         return selftest()
     spec, params, struct = load(a.yaml)
