@@ -1186,3 +1186,9 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .sconf-banner{order:-4;padding:var(--sp2) var(--sp4);font-size:var(--t-sm);border-bottom:1px solid var(--danger);background:var(--danger-subtle);color:var(--danger)}
 .sconf-banner[hidden]{display:none}
 .uid-chip{margin-left:var(--sp2)}
+.sc-unchecked td:nth-child(2){color:var(--warn);font-weight:600}
+.sc-sum-ok{color:var(--ok)}
+.sc-sum-warn{color:var(--warn)}
+.sc-sum-bad{color:var(--danger)}
+.sconf-files code{margin:0 var(--sp1)}
+.sconf-confirm{display:inline-flex;gap:var(--sp2);align-items:center}

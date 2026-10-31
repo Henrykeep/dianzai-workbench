@@ -20,8 +20,8 @@ function paintPlant(v: PlantView) {
 }
 import { boardName, SIDECAR_DOWN } from "./batch1";
 import { connButton, declaredBoard, boardLabel, portOption, chUnit, shortHint, paramDesc, lifeSummary } from "./r9p6c";
-import { SCHEMA_CONFLICT_F } from "./fieldmap";
-import { resultSameBoard, conflictOf, boardIdOf, uidChipHtml, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, type Conflict, type BoardId } from "./boardid";
+import { SCHEMA_CONFLICT_F, SCHEMA_CLEAR_F } from "./fieldmap";
+import { isClearFix, resultSameBoard, conflictOf, boardIdOf, uidChipHtml, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, type Conflict, type BoardId } from "./boardid";
 import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
@@ -108,11 +108,23 @@ void WRITE_IDS;
 let boardId: BoardId | null = null; const sconf: Record<string, Conflict | null> = { hello: null, event: null, blockers: null };
 const curConflict = () => sconf.hello ?? sconf.event ?? sconf.blockers;
 function renderBoardId() { const el = document.getElementById("ro-uid"); if (el) { el.innerHTML = uidChipHtml(boardId, esc); el.hidden = !boardId; } }
+let sconfSt: "idle" | "confirm" | "busy" | "fail" = "idle";
 function renderConflict() {
-  const c = curConflict(), el = document.getElementById("sconf-banner"); lockSchemaIn(document, false); if (c) lockSchemaIn(document, true);
-  if (!el) return; el.hidden = !c; el.innerHTML = c ? conflictBannerHtml(c, c.fix ? resolveFix(c.fix) : null, esc) : "";
+  const c = curConflict(), el = document.getElementById("sconf-banner"); lockSchemaIn(document, false); if (c) lockSchemaIn(document, true); else sconfSt = "idle";
+  if (!el) return; el.hidden = !c; el.innerHTML = c ? conflictBannerHtml(c, c.fix && !isClearFix(c) ? resolveFix(c.fix) : null, esc, sconfSt) : "";
   el.querySelector<HTMLElement>("[data-sc-conflict-fix]")?.addEventListener("click", ev => runAction((ev.currentTarget as HTMLElement).dataset.scConflictFix!, s => goStepRef(s)));
+  el.querySelector<HTMLElement>("[data-sconf-clear]")?.addEventListener("click", () => { sconfSt = "confirm"; renderConflict(); });   // 先确认再清
+  el.querySelector<HTMLElement>("[data-sconf-cancel]")?.addEventListener("click", () => { sconfSt = "idle"; renderConflict(); });
+  el.querySelector<HTMLElement>("[data-sconf-ok]")?.addEventListener("click", () => { sconfSt = "busy"; renderConflict(); void clearAndRehandshake(); });
 }
+// 清除旧缓存 → 重新 hello：身份 / 冲突 / 参数表都按新握手刷新
+async function clearAndRehandshake() {
+  try { await call(SCHEMA_CLEAR_F.op); const h: any = await link.rpc("hello"); sconf.event = null; sconf.blockers = null; applyHelloIdentity(h); if (h?.schema) { applySchema(h.schema); S.applied = h.params; syncParams(); } if (h?.status) renderStatus(h.status); sconfSt = "idle"; }
+  catch { sconfSt = "fail"; }
+  renderConflict();
+}
+// 板子身份只认握手（hello），心跳 / status 不改它
+function applyHelloIdentity(h: any) { boardId = boardIdOf(h); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
 setInterval(() => { if (curConflict()) lockSchemaIn(document, true); }, 300);   // 参数行 / 提交卡会重建：持续补禁用
 const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
 function renderAlerts() {
@@ -915,7 +927,7 @@ link.onState = async open => {
   if (!open && S.status.connected) renderStatus({ ...S.status });   // 状态栏同步成未连接
   if (!open) return;
   const h = await link.rpc("hello"); void syncIter();   // 重连 / 刷新：补自动迭代状态
-  boardId = boardIdOf(h); renderBoardId(); { const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
+  applyHelloIdentity(h);
   if ((h as any)?.link) { onLinkState((h as any).link); showLink((h as any).link); }
   if (h && "project" in (h as any)) { hasProject = !!(h as any).project; curProject = (h as any).project ?? null; void proj.show((h as any).project ?? null); }
   S.ports = h.ports; renderPorts(false);

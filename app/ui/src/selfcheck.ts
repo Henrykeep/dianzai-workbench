@@ -1,6 +1,6 @@
 // 「运行自检」：本地服务连着 → op selfcheck_data；连不上 → Tauri 跑安装目录里固定的自检脚本（同样输出 {ok, items}）；都不行 → 按平台给菜单入口提示
 // 面向用户的文字里不出现命令行和文件名
-import { SELFCHECK_F, SELFCHECK_FIX_ZH, SELFCHECK_FILE_ZH, SELFCHECK_ST_ZH } from "./fieldmap";
+import { SELFCHECK_F, SELFCHECK_FIX_ZH, SELFCHECK_FILE_ZH, SELFCHECK_ST_ZH, SELFCHECK_UNCHECKED } from "./fieldmap";
 export type SelfItem = { file: string; status: string; message_zh: string; fix_action: string };
 export type SelfResult = { src: "service" | "local" | "none"; ok: boolean | null; items: SelfItem[]; error?: string };
 const esc = (s: string) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as any)[c]);
@@ -25,11 +25,21 @@ export async function runSelfcheck(o: { connected: boolean; call: (op: string) =
   }
   return { src: "none", ok: null, items: [], error: [svcErr, lastResortZh()].filter(Boolean).join("。") };
 }
+// 汇总：未检查单独计数，有未检查就绝不说「全部正常」
+export const isUnchecked = (st: string) => SELFCHECK_UNCHECKED.includes(st);
+export function selfSummary(r: SelfResult): { ok: number; bad: number; unchecked: number; text: string; tone: "ok" | "warn" | "bad" } {
+  const unchecked = r.items.filter(x => isUnchecked(x.status)).length, ok = r.items.filter(x => x.status === "ok").length, bad = r.items.length - ok - unchecked;
+  const parts = [`${ok} 项正常`, bad ? `${bad} 项有问题` : "", unchecked ? `${unchecked} 项未检查（未检查不算通过）` : ""].filter(Boolean).join("，");
+  if (!r.items.length) return { ok, bad, unchecked, text: "", tone: "warn" };
+  if (bad || r.ok === false) return { ok, bad, unchecked, text: parts, tone: "bad" };
+  if (unchecked) return { ok, bad, unchecked, text: parts, tone: "warn" };
+  return { ok, bad, unchecked, text: "全部正常", tone: "ok" };
+}
 export function selfcheckHtml(r: SelfResult | null): string {
   if (!r) return `<p class="hint">正在自检…</p>`;
-  const rows = r.items.map(x => `<tr class="sc-${esc(x.status)}"><td>${esc(fileZh(x.file))}</td><td>${esc(SELFCHECK_ST_ZH[x.status] ?? "未知")}</td><td>${esc(x.message_zh || "—")}</td><td>${x.fix_action && SELFCHECK_FIX_ZH[x.fix_action] ? `<button class="btn sm" data-sc-fix="${esc(x.fix_action)}">${esc(SELFCHECK_FIX_ZH[x.fix_action][0])}</button>` : ""}</td></tr>`).join("");
+  const rows = r.items.map(x => `<tr class="sc-${isUnchecked(x.status) ? "unchecked" : esc(x.status)}"><td>${esc(fileZh(x.file))}</td><td>${esc(SELFCHECK_ST_ZH[x.status] ?? "未知")}</td><td>${esc(x.message_zh || "—")}</td><td>${x.fix_action && SELFCHECK_FIX_ZH[x.fix_action] ? `<button class="btn sm" data-sc-fix="${esc(x.fix_action)}">${esc(SELFCHECK_FIX_ZH[x.fix_action][0])}</button>` : ""}</td></tr>`).join("");
   const head = r.src === "service" ? "本地服务自检" : r.src === "local" ? "本机自检（本地服务未连接）" : "没能运行自检";
-  return `<div class="card sc-card" id="sc-card"><b>${head}</b>${r.ok === true ? `<p class="hint">全部正常</p>` : ""}${r.error ? `<p class="warn-t">${esc(r.error)}</p>` : ""}` +
+  return `<div class="card sc-card" id="sc-card"><b>${head}</b>${(() => { const m = selfSummary(r); return m.text ? `<p class="sc-sum sc-sum-${m.tone}">${esc(m.text)}</p>` : ""; })()}${r.error ? `<p class="warn-t">${esc(r.error)}</p>` : ""}` +
     (rows ? `<table class="sc-t"><thead><tr><th>项目</th><th>状态</th><th>说明</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : "") +
     `<p class="sc-guide" id="sc-guide" hidden></p><button class="btn sm" id="sc-x">关闭</button></div>`;
 }

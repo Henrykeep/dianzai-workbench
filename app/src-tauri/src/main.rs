@@ -11,9 +11,9 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 // 侧车连不上时的数据表自检：只允许这两个入口（与 app/ui/src/fieldmap.ts SELFCHECK_F 一致）
-// Windows：<安装目录>/python/python.exe <安装目录>/app/sidecar/selfcheck_data.py；Linux/macOS：直接运行 <安装目录>/xintai-selfcheck.sh
+// Windows：<安装目录>/python/python.exe <安装目录>/repo/app/sidecar/selfcheck_data.py（代码在 repo\\ 下，同 fw-pyembed 布局）；Linux/macOS：直接运行仓库根的 xintai-selfcheck.sh
 const SELFCHECK_PY_WIN: &str = "python/python.exe";
-const SELFCHECK_SCRIPT_WIN: &str = "app/sidecar/selfcheck_data.py";
+const SELFCHECK_SCRIPT_WIN: &str = "repo/app/sidecar/selfcheck_data.py";
 const SELFCHECK_SH: &str = "xintai-selfcheck.sh";
 const EXIT_PORT_IN_USE: i32 = 3; // 与 dzbench/__main__.py 一致
 const MAX_RESTARTS: usize = 5;

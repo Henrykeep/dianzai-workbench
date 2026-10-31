@@ -236,8 +236,10 @@ export const ADOPT_F = { verified: "verified", why: "unverified_reason", ampRedu
 export const DATA_FIX_ZH = "点『运行自检』查看原因";
 export const DATA_FIX_DEV = "（开发：python -m dzbench selfcheck-data）";   // 命令只在开发模式显示
 // 自检：op selfcheck_data → {ok, items:[{file, status: ok|missing|invalid, message_zh, fix_action}]}；本地服务连不上时 Tauri 命令 run_selfcheck（只跑安装目录里固定的脚本，见 src-tauri/src/main.rs SELFCHECK_*）
-export const SELFCHECK_F = { op: "selfcheck_data", tauriCmd: "run_selfcheck", ok: "ok", items: "items", file: "file", status: "status", msg: "message_zh", fix: "fix_action", scriptWin: "app/sidecar/selfcheck_data.py", pyWin: "python/python.exe", sh: "xintai-selfcheck.sh" } as const;
-export const SELFCHECK_ST_ZH: Record<string, string> = { ok: "正常", missing: "缺失", invalid: "格式错误" };
+export const SELFCHECK_F = { op: "selfcheck_data", tauriCmd: "run_selfcheck", ok: "ok", items: "items", file: "file", status: "status", msg: "message_zh", fix: "fix_action", scriptWin: "repo/app/sidecar/selfcheck_data.py", pyWin: "python/python.exe", sh: "xintai-selfcheck.sh" } as const;
+export const SELFCHECK_ST_ZH: Record<string, string> = { ok: "正常", missing: "缺失", invalid: "格式错误", skipped: "未检查", unchecked: "未检查" };
+// 这些状态 = 没检查到：琥珀色「未检查」，不算通过，单独计数
+export const SELFCHECK_UNCHECKED: readonly string[] = ["skipped", "unchecked"];
 export const SELFCHECK_FILE_ZH: Record<string, string> = { "roles.json": "角色表", "reason_codes.json": "原因表" };
 export const SELFCHECK_FIX_ZH: Record<string, [string, string]> = { reinstall: ["重新安装", "用最新的芯台安装包重新安装一次（会保留工程和设置），装完重开芯台再点『运行自检』。"], update: ["更新", "更新到最新版芯台后重开，再点『运行自检』。"] };
 export const dataNoticeZh = (what: string, st: "ok" | "missing" | "bad") => st === "ok" ? "" : `${what}${st === "missing" ? "缺失" : "格式错误"}，已使用内置列表。${DATA_FIX_ZH}`;
@@ -256,5 +258,7 @@ export const UNCHANGED_ZH = "初值已满足题面，本次没有改动参数";
 export const BOARD_UID_F = { uid: "board_uid", supported: "uid_supported" } as const;
 export const BOARD_UID_ZH = { unsupported: "此芯片暂不支持板子识别，换板检测不可用", unread: "未读到板子身份" } as const;
 // 工程/板子结构冲突（暂定名）：握手或事件 schema_conflict {message_zh, fix_action}，或 blockers 里 code=schema_conflict；为 null / 缺省 = 已解决
-export const SCHEMA_CONFLICT_F = { key: "schema_conflict", code: "code", codeAlt: "blocker_code", msg: "message_zh", fix: "fix_action", resolved: "resolved" } as const;
-export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理" } as const;
+export const SCHEMA_CONFLICT_F = { key: "schema_conflict", code: "code", codeAlt: "blocker_code", msg: "message_zh", fix: "fix_action", resolved: "resolved", files: "files" } as const;
+// 冲突的修复：fix_action=clear_schema_cache（暂定）→ 确认卡 → op schema_cache_clear（暂定）→ 重新 hello
+export const SCHEMA_CLEAR_F = { action: "clear_schema_cache", op: "schema_cache_clear" } as const;
+export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理", files: "冲突的两个文件", clear: "清除旧缓存并重新握手", confirm: "将清除本机缓存的旧结构，然后重新与本地服务握手；工程文件和板上参数不受影响。", ok: "确认清除", cancel: "取消", busy: "正在清除并重新握手…", fail: "清除失败" } as const;
