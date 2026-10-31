@@ -202,7 +202,7 @@ dz_err_t app_init(void)
     dzrt_start(&s_rt, !bad_boot, g_link_params.sa_autostart != 0u);
     subsys_sched_set_mode(&s_sched, SUBSYS_MODE_RUN);
     dzframe_parser_init(&s_rx);
-    dzctl_wd_init(&s_wd, 1000u);   /* 侧车每 250 ms 发一次心跳 */
+    dzctl_wd_init(&s_wd, LINK_WD_TIMEOUT_MS);   /* 侧车每 250 ms 发一次心跳 */
     if ((e = car_aux_init()) != DZ_OK) return e;
     if ((e = pal_timer_start(RES_TIMER_CTRL, CTRL_PERIOD_US, ctrl_isr, 0)) != DZ_OK) return e;
     e = pal_wdg_start(WDG_MS);           /* 最后开：初始化慢不会被咬。ENOTSUP（如 MSPM0 未实现）照常运行 */
@@ -311,7 +311,7 @@ void app_loop(void)
     {
         bool was_sa = !dzrt_needs_host(&s_rt);
         dzrt_poll(&s_rt, now, s_estop, -1);
-        if (was_sa != !dzrt_needs_host(&s_rt)) dzctl_wd_init(&s_wd, 1000u);
+        if (was_sa != !dzrt_needs_host(&s_rt)) dzctl_wd_init(&s_wd, LINK_WD_TIMEOUT_MS);
     }
     if (!dzrt_needs_host(&s_rt)) {   /* 脱机：目标来自板上参数；急停时不动 */
         s_state.cmd_v_mps = dzrt_sa_running(&s_rt) ? g_link_params.sa_v_mps : 0.0f;

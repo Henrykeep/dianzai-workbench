@@ -128,6 +128,9 @@ def check(spec: dict, params: list) -> list[str]:
             errs.append("actuator 只能写 {u_min, u_max, sat} 数值（执行器物理限值，进握手帧）")
         elif act.get("u_min") is not None and act.get("u_max") is not None and not act["u_min"] < act["u_max"]:
             errs.append("actuator.u_min 须 < u_max")
+    wd = spec.get("watchdog_ms", WD_DEFAULT_MS)
+    if isinstance(wd, bool) or not isinstance(wd, int) or not 300 <= wd <= 60000:
+        errs.append("watchdog_ms 是整数毫秒，300–60000（默认 1500：上位机每 250 ms 发心跳，留 6 个周期余量）")
     if spec.get("relay", True) not in (True, False, "on", "off"):
         errs.append("relay 只能是 on / off（默认 on：模板带 0x7C 继电输出接管）")
     if len(spec.get("step") or []) > 4:
@@ -187,11 +190,16 @@ def schema(spec: dict, params: list) -> dict:
     num = lambda v: None if v is None else float(v)
     rng = st0.get("range") if st0.get("range") is not None else st0.get("sensor_range")
     s["limits"] = {"u_min": num(act.get("u_min")), "u_max": num(act.get("u_max")), "sat": num(act.get("sat")), "range": num(rng)}
+    # 链路看门狗：多久收不到上位机帧就急停锁存；握手里报给上位机（横幅/提示读它，不写死）
+    s["wd_timeout_ms"] = int(spec.get("watchdog_ms", WD_DEFAULT_MS))
     s["relay"] = spec.get("relay", True) not in (False, "off")
     for k in ("accept", "loops", "protect_fixed"):
         if spec.get(k):
             s[k] = spec[k]
     return s
+
+
+WD_DEFAULT_MS = 1500
 
 
 def max_delta(p: dict) -> float:
@@ -219,6 +227,7 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
         h.append('#include "project_gen.h"')
     h += ["", f"#define LINK_SCHEMA_HASH 0x{sch['hash']:08X}u", f"#define LINK_TELEM_ID {sch['telemetry']['id']}u",
           f"#define LINK_TELEM_PERIOD_MS {sch['telemetry']['period_ms']}u", f"#define LINK_N_PARAMS {len(params)}u",
+          f"#define LINK_WD_TIMEOUT_MS {sch['wd_timeout_ms']}u   /* link.yaml watchdog_ms：上位机掉线判定 */",
           f"#define LINK_RELAY_EN {1 if sch['relay'] else 0}   /* link.yaml relay: off → 0x7C 不接管输出 */", "",
           "typedef struct {"]
     h += [f"    {C_TYPES[f['type']][0]} {f['name']};  /**< {f.get('unit', '')} */" for f in fields] or ["    uint8_t unused_;"]

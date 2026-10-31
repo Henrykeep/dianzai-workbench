@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with: { python-version: "3.12" }
-      - run: pip install pyyaml jsonschema -r app/sidecar/requirements.txt
+      - run: pip install pyyaml jsonschema -r app/sidecar/requirements.txt -r tools/wheelhouse.txt
       - name: 缓存 Arm GNU Toolchain 13.3.rel1
         uses: actions/cache@v4
         with: { path: /opt/arm/arm-gnu-toolchain-13.3.rel1-x86_64-arm-none-eabi, key: arm-gnu-toolchain-13.3.rel1-x86_64 }
@@ -33,4 +33,9 @@ jobs:
         working-directory: app/ui
       - run: make check
       - run: make test
+      - name: 随机对象整定门禁（make tunegate：假达标硬、通过率软）
+        run: |
+          t0=$(date +%s)
+          make tunegate
+          echo "tunegate 用时 $(( $(date +%s) - t0 )) s" | tee -a "$GITHUB_STEP_SUMMARY"
       - run: make compat
