@@ -33,4 +33,9 @@ jobs:
         working-directory: app/ui
       - run: make check
       - run: make test
+      - name: 随机对象整定门禁（make tunegate：假达标硬、通过率软）
+        run: |
+          t0=$(date +%s)
+          make tunegate
+          echo "tunegate 用时 $(( $(date +%s) - t0 )) s" | tee -a "$GITHUB_STEP_SUMMARY"
       - run: make compat

@@ -58,6 +58,10 @@ def one(seed: int, kind: str) -> dict:
         return mm, AT.cost(mm)
     mi, ci = truth(res["initial"]["roles"] if "roles" in res["initial"] else {dd["role"]: dd["init"] for dd in app["params"]})
     mb, cb = truth(res["best"]["roles"])
+    # 假达标按整定器自己那次实验（同幅度、同窗口、无噪声的真对象）判：卡上说 pass，真值同一实验必须也满足
+    ea, en = float(res.get("amp") or ref["amp"]), int(res.get("n") or ref["n"])
+    te, re_, ye, _ = RP.simulate(plant, m, res["best"]["roles"], ea, en)
+    me = AT.metrics(te, re_, ye, ea)
     sp = AT.parse_spec(spec)
     errs = []
     if plant["feasible"]:
@@ -65,8 +69,8 @@ def one(seed: int, kind: str) -> dict:
             errs.append(f"没比初值好（真值代价 {cb:.4g} ≥ 初值 {ci:.4g}）")
         if not cb <= ref["cost"] * NEAR_REF + NEAR_ABS:
             errs.append(f"离 reference 太远（{cb:.4g} > {ref['cost']:.4g}×{NEAR_REF}+{NEAR_ABS}）")
-        if res["verdict"] == "pass" and AT.meets(mb, sp):
-            errs.append("假达标：卡上 pass，真值不满足 " + "、".join(AT.meets(mb, sp)))
+        if res["verdict"] == "pass" and AT.meets(me, sp):
+            errs.append("假达标：卡上 pass，真值不满足 " + "、".join(AT.meets(me, sp)))
     else:
         if res["verdict"] == "pass":
             errs.append(f"假达标：feasible:false（{plant['infeasible_reason']}）却给了 pass")
@@ -75,7 +79,7 @@ def one(seed: int, kind: str) -> dict:
     return {"seed": seed, "kind": plant["kind"], "feasible": plant["feasible"], "cause": plant["infeasible_reason"],
             "verdict": res["verdict"], "category": res["category"], "pass_basis": res["pass_basis"],
             "cost": {"initial": ci, "best": cb, "reference": ref["cost"]}, "ok": not errs, "errors": errs,
-            "rejected_writes": board.rejected, "secs": round(time.monotonic() - t0, 2)}
+            "false_pass": any(e.startswith("假达标") for e in errs), "rejected_writes": board.rejected, "secs": round(time.monotonic() - t0, 2)}
 
 
 def main(argv=None) -> int:
@@ -83,10 +87,18 @@ def main(argv=None) -> int:
     ap.add_argument("--n", type=int, default=24)
     ap.add_argument("--seed0", type=int, default=None, help="默认按时间取（每次 CI 都是新对象）；打印出来便于复现")
     ap.add_argument("--seed", type=int, default=None, help="只跑这一个")
+    ap.add_argument("--seeds", default=None, help="逗号分隔的固定种子，再加 --n 个按时间取的新种子")
+    ap.add_argument("--date-seed", action="store_true", help="再加一个按 UTC 日期取的种子（YYYYMMDD，当天可复现：--seed YYYYMMDD）")
     ap.add_argument("--kind", default="any")
     ap.add_argument("--json", default=None)
     a = ap.parse_args(argv)
-    seeds = [a.seed] if a.seed is not None else [(a.seed0 if a.seed0 is not None else int(time.time()) % 100000) * 1000 + i for i in range(a.n)]
+    fixed = [int(x) for x in a.seeds.split(",")] if a.seeds else []
+    seeds = [a.seed] if a.seed is not None else fixed +  [(a.seed0 if a.seed0 is not None else int(time.time()) % 100000) * 1000 + i for i in range(a.n)]
+    if a.date_seed and a.seed is None:
+        ds = int(time.strftime("%Y%m%d", time.gmtime()))
+        seeds.append(ds)
+        print(f"tunegate：日期种子 {ds}（复现：tools/tunegate.py --seed {ds}）")
+    t_start = time.monotonic()
     print(f"tunegate：对象来源 = {source()}{'（STAND-IN，未合入）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
     rs = []
     for s in seeds:
@@ -101,6 +113,7 @@ def main(argv=None) -> int:
         print(f"{mark} seed={s} {r.get('kind', '?')} feasible={r.get('feasible')} verdict={r.get('verdict')}/{r.get('category')} "
               f"cost {json.dumps({k: round(v, 4) if math.isfinite(v) else None for k, v in (r.get('cost') or {}).items()})} {'; '.join(r['errors'])}")
     bad = [r for r in rs if not r["ok"]]
+    fake = [r for r in rs if r.get("false_pass")]
     feas = [r for r in rs if r.get("feasible")]
     print(f"tunegate：{len(rs) - len(bad)}/{len(rs)} 通过（feasible {len(feas)}，infeasible {len(rs) - len(feas)}）"
           + (f"；失败 seed：{','.join(str(r['seed']) for r in bad)}（tools/tunegate.py --seed N 复现）" if bad else ""))
@@ -109,7 +122,12 @@ def main(argv=None) -> int:
     if source() == "standin":
         print("tunegate：未合入——对象来自 STAND-IN（TUNEGATE_SOURCE=standin），结果不算门禁通过")
         return 2
-    return 1 if bad else 0
+    print(f"tunegate：用时 {time.monotonic() - t_start:.1f} s")
+    if bad:
+        print(f"::warning::tunegate 通过率 {len(rs) - len(bad)}/{len(rs)}；未通过 seed {','.join(str(r['seed']) for r in bad)}")
+    print(f"tunegate：假达标 {len(fake)} 个（硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in fake)}" if fake else "")
+          + f"；通过率 {len(rs) - len(bad)}/{len(rs)}（软指标，未通过只警告）")
+    return 1 if fake else 0
 
 
 if __name__ == "__main__":

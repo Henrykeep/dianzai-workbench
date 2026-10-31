@@ -347,8 +347,9 @@ class SessionIO:
         if not cfg or not cfg.get("y"):
             return None, None, None
         tol = cfg.get("abs_tol")
-        if tol is None and cfg.get("range") is not None:
-            tol = 0.02 * float(cfg["range"])
+        span = cfg.get("range") if cfg.get("range") is not None else cfg.get("sensor_range")   # range 可省，退到传感器量程
+        if tol is None and span is not None:
+            tol = 0.02 * float(span)
         return cfg["y"], int(cfg.get("sp", ch)), (float(tol) if tol is not None else None)
 
     def _y_now(self, y: str) -> float | None:
