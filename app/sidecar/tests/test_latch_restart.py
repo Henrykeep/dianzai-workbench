@@ -25,3 +25,27 @@ def test_restart_keeps_original_latch_time(home):
     latch.clear("COM7", None)
     latch.set("COM7", None, "manual", "手动急停")
     assert latch.get("COM7", None)["t"] > t0 + 3600
+
+
+def test_hb_timeout_text_uses_handshake_threshold():
+    """#138：阈值文案只用握手 wd_timeout_ms，不写死 1000；没报就不出现阈值字样。"""
+    from dzbench.session import estop_cause_dict
+    d = estop_cause_dict(2, 5000, 2412.0, threshold_ms=2300)
+    assert d["threshold_ms"] == 2300 and "阈值 2300 ms" in d["detail_zh"] and "1000" not in d["detail_zh"] and "1500" not in d["detail_zh"], d
+    n = estop_cause_dict(2, 5000, 1612.0, threshold_ms=None)
+    assert "阈值" not in n["detail_zh"] and n["threshold_ms"] is None, n
+
+
+def test_role_hint_matches_gen_link_enum():
+    """#136：no_roles 提示里的角色取值来自 gen_link.ROLES，提示里的例子要能过 gen_link.check。"""
+    import importlib.util, pathlib, re
+    from dzbench.agent.service import role_hint_zh, link_roles
+    f = pathlib.Path(__file__).resolve().parents[3] / "tools" / "gen_link.py"
+    spec = importlib.util.spec_from_file_location("gl_t", f); gl = importlib.util.module_from_spec(spec); spec.loader.exec_module(gl)
+    assert link_roles() == tuple(gl.ROLES)
+    h = role_hint_zh()
+    assert "kp" not in h and all(r in h for r in gl.ROLES), h
+    ex = re.search(r"role: (\w+)", h).group(1)
+    p = {"name": "g", "type": "float", "default": 0.1, "min": 0, "max": 1, "role": ex}
+    assert not [e for e in gl.check({}, [p]) if "role" in e], gl.check({}, [p])
+    assert [e for e in gl.check({}, [dict(p, role="kp")]) if "role" in e]

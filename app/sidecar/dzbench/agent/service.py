@@ -60,6 +60,21 @@ NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse
 
 
 
+
+def link_roles() -> tuple:
+    """#136：role 取值只认 tools/gen_link.py 的 ROLES（同一份枚举，生成器校验什么，提示就写什么）。"""
+    import importlib.util
+    import pathlib
+    f = pathlib.Path(__file__).resolve().parents[4] / "tools" / "gen_link.py"
+    spec = importlib.util.spec_from_file_location("dz_gen_link_roles", f)
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return tuple(mod.ROLES)
+
+
+def role_hint_zh() -> str:
+    rs = link_roles()
+    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {' / '.join(rs)}（例如比例增益写 role: {rs[0]}）"
+
 class AgentService:
     def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):
         # 工程仓库：DZBENCH_REPO > 配置 repo > 本仓库（开发模式）。安装版必须在 ⚙ 里指定（未在 Windows 实测）
@@ -990,7 +1005,7 @@ class AgentService:
             raise GatewayError("hw_needs_human", "实机自动整定会连续写参数，要走批量确认", "用“自动迭代”（iterate_start）出确认卡")
         rl = roles(sch, guess_gain)
         if "kp" not in rl:
-            raise GatewayError("no_roles", "认不出哪个参数是比例增益", "在 app.yaml 参数上写 role: kp / ki / kd")
+            raise GatewayError("no_roles", "认不出哪个参数是比例增益", role_hint_zh())
         by = {p["name"]: p for p in sch.params}
         decl = [{"role": r, "name": n, "min": float(by[n]["min"]), "max": float(by[n]["max"]), "max_delta": by[n].get("max_delta")}
                 for r, n in rl.items()]

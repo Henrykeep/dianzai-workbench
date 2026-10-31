@@ -71,7 +71,7 @@ def test_heartbeat_cadence_about_250ms_while_lock_held():
 
 def test_threshold_unknown_is_not_invented():
     d = estop_cause_dict(2, 5000, 1001.0)
-    assert d["threshold_ms"] is None and "阈值未知" in d["detail_zh"]
+    assert d["threshold_ms"] is None and "阈值" not in d["detail_zh"]   # #138：没报就整段不写
     assert estop_cause_dict(2, 5000, 1600.0, threshold_ms=1500)["threshold_ms"] == 1500
 
 

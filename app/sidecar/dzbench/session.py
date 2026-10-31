@@ -1532,7 +1532,7 @@ def run_mode_dict(w: int | None) -> dict | None:
 # dzctl 0.8.0 dzctl_estop_cause_t → (cause 键, 中文说明模板)。{v} = 触发值，{t} = 板上时刻 s。
 ESTOP_CAUSES = {
     1: ("manual", "手动急停：上位机发出急停指令（急停按钮 / Esc / 空格）"),
-    2: ("hb_timeout", "心跳超时 {v:.0f} ms"),          # 详情放 detail_zh；阈值归固件 apps/include/link_app.h dzctl_wd_init(1000)
+    2: ("hb_timeout", "心跳超时 {v:.0f} ms"),          # 详情放 detail_zh；阈值归固件，握手 wd_timeout_ms
     3: ("stall", "电机堵转：输出 {v:.2f} 时转速持续接近 0，已刹车保护"),
     4: ("undervolt", "电池欠压：电压 {v:.2f} V 低于临界值，已停机（电压回升也不会自动恢复）"),
     5: ("overcurrent", "过流：电流 {v:.2f} A 超过上限，已切断输出"),
@@ -1556,9 +1556,9 @@ def estop_cause_dict(cause: int, t_ms: int, value: float, threshold_ms: int | No
             "restored": False, "fix_action": "estop_clear",
             "t": round(t_ms / 1000.0, 3), "board_t_ms": int(t_ms)}
     if key == "hb_timeout":                       # #118：实测间隔只用 measured_ms（不再给 value / gap_ms）；阈值归固件握手 wd_timeout_ms
-        thr = f"阈值 {threshold_ms} ms" if threshold_ms else "阈值未知（固件握手未上报）"
+        thr = f"（阈值 {threshold_ms} ms）" if threshold_ms else ""   # #138：阈值只取握手 wd_timeout_ms；没报就整段不写
         base |= {"measured_ms": round(value), "threshold_ms": threshold_ms,
-                 "detail_zh": f"上位机 {value:.0f} ms 未发送心跳（{thr}），板端看门狗已切断输出"}
+                 "detail_zh": f"上位机 {value:.0f} ms 未发送心跳{thr}，板端看门狗已切断输出"}
     return base
 
 

@@ -235,7 +235,7 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 ## 上位机心跳 / 心跳超时急停
 
 - 侧车心跳：专用线程，每 250 ms 一帧（`Session.HOST_HB_PERIOD_S`），按单调时钟定拍，不拿 session.lock（只用写锁）。
-- 板端阈值归固件（嵌入式开发-2）：当前 `apps/include/link_app.h` `dzctl_wd_init(&L->wd, 1000u)`；改为可声明、默认 1500 ms 并在握手上报 `wd_timeout_ms`。侧车读 schema `wd_timeout_ms`（或 `link.wd_timeout_ms`），没报 = `null`，文案写「阈值未知」，不编造。串口卡死检查在单独线程 `_stall_loop`。
+- 板端阈值归固件（嵌入式开发-2）：当前 `apps/include/link_app.h` `dzctl_wd_init(&L->wd, 1000u)`；改为可声明、默认 1500 ms 并在握手上报 `wd_timeout_ms`。侧车读 schema `wd_timeout_ms`（或 `link.wd_timeout_ms`），没报 = `null`，文案里整段不写阈值（#138），不编造。串口卡死检查在单独线程 `_stall_loop`。
 - ~~（已被文末 r9g 取代：gap_ms→measured_ms）~~ 心跳超时急停的 `estop_cause` / `estop state:"latched"`：`cause:"hb_timeout"`、`message_zh:"心跳超时 <实测间隔> ms"`、`gap_ms`、`threshold_ms`（可为 null）、`detail_zh`、`fix_action:"estop_clear"`（一键解除）。
 - ~~（已被文末 r9g 取代）~~ `$DZBENCH_HOME/estop_latch.json` 每条记录：`source`、`detail`、`t`（epoch s）、`latched_at`（ISO 本机时间带时区，如 `2026-10-31T21:58:03+0800`）、`reason`（原因码，如 `hb_timeout`）、`gap_ms`、`threshold_ms`、`cause`。锁存持久化是设计行为，只有人点解除才清。
 - 侧车重启 / 重连恢复锁存：`estop_cause` 与 `tx_locked` 事件、`estop` 阻塞项都带 `restored:true`、`fix_action:"estop_clear"`，`message_zh` 形如 `21:58 心跳超时 1001 ms，已锁存`。
