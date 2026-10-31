@@ -1172,3 +1172,5 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .role-card{margin:0 0 12px;padding:12px;border:1px solid var(--warn);border-radius:8px}.role-card p{margin:8px 0}
 .role-lim{margin-left:8px;font-size:14px;opacity:.75}
 .it-verdict.warn{color:var(--warn)}   /* 降幅测试：警告色，不当通过 */
+.mc-it.partial{border-color:var(--warn)} .mc-v.partial{color:var(--warn)} .mc-warn.partial{color:var(--warn)}   /* #129 降幅测试：琥珀色，不当达标 */
+.mc-amp{margin:4px 0 0;font-size:16px}

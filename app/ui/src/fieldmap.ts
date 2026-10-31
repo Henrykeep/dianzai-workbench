@@ -43,13 +43,13 @@ export function sourceLabel(m: any): string {
 export const VERDICT_F = { v: "verdict", zh: "verdict_zh" } as const;
 export type Verdict = { v: "pass" | "fail" | "unknown"; zh: string; warn?: string };
 // 降幅测试（阶跃按缩小幅度做，没验题面幅度）：绝不显示「通过」，原文当警告。字段名暂定
-export const DOWNSCALE_F = { flag: ["step_reduced", "downscaled"], zh: ["downscale_zh", "step_reduced_zh"] } as const;
-export const DOWNSCALE_ZH = "按降幅测试，未验题面幅度";
+export const DOWNSCALE_F = { flag: ["amp_reduced"], zh: ["warning_zh"], partial: "partial" } as const;   // #129 定稿
+export const DOWNSCALE_ZH = "未验题面幅度";
 export function toVerdict(src: any): Verdict {
   const pick = (k: string) => src?.args?.[k] ?? src?.preview?.[k] ?? src?.[k];
   const v = pick(VERDICT_F.v), zh = str(pick(VERDICT_F.zh));
-  const dzh = DOWNSCALE_F.zh.map(k => str(pick(k))).find(Boolean) ?? "", down = DOWNSCALE_F.flag.some(k => pick(k) === true) || !!dzh || zh.includes(DOWNSCALE_ZH);
-  if (down) { const w = dzh || (zh.includes(DOWNSCALE_ZH) ? zh : DOWNSCALE_ZH); return { v: v === "fail" ? "fail" : "unknown", zh: w, warn: w }; }
+  const dzh = DOWNSCALE_F.zh.map(k => str(pick(k))).find(Boolean) ?? "", down = v === DOWNSCALE_F.partial || DOWNSCALE_F.flag.some(k => pick(k) === true) || !!dzh || zh.includes(DOWNSCALE_ZH);
+  if (down) { const w = dzh || (zh.includes(DOWNSCALE_ZH) ? zh : DOWNSCALE_ZH); return { v: v === "fail" ? "fail" : "unknown", zh: zh && zh !== w ? zh : DOWNSCALE_ZH, warn: w }; }
   if (v === "pass" || v === "fail" || v === "unknown") return { v, zh: zh || VERDICT_ZH[v] };
   return { v: "unknown", zh: "未判定" };
 }
@@ -89,6 +89,7 @@ export const MC_F = {
   verdict: "verdict", verdictZh: "verdict_zh", basis: "pass_basis", source: "source", evidence: "evidence",
   tuning: "tuning", calib: "calibration", coeffs: "coeffs", signal: "signal_source",
   how: "method", manualSteps: "manual_steps", procedure: "procedure", entry: "manual_entry", eValue: "value", eBy: "by", eAt: "at", srcNote: "source_note",
+  ampReduced: "amp_reduced", ampSpec: "amp_spec", ampTested: "amp_tested", warning: "warning_zh", partial: "partial",   // #129 降幅测试
   model: "model",   // 每项 model:{estimate, basis}，后端从 app.yaml plant 抄来；子字段名同 PLANT_F
 } as const;
 // 指标卡导出：CSV / xlsx 由后端生成，前端只调这个 op（op 名未定稿，改名只改这里）
@@ -98,14 +99,22 @@ export type McItem = {
   name: string; clause: string; spec: string;
   target: { cmp: string; thr: number | null; unit: string } | null;
   measured: { value: number | null; unit: string; method: string; n: number | null } | null;
-  unc: number | null; verdict: "pass" | "fail" | "unknown"; verdictZh: string; basis: string;
+  unc: number | null; verdict: "pass" | "fail" | "partial" | "unknown"; verdictZh: string; basis: string;
   source: "sim" | "real" | "calibrated" | "manual" | ""; srcNote: string; evidence: string; tuning: any | null;
   how: "auto" | "manual" | ""; manualSteps: string[]; procedure: string[]; entry: { value: number | null; by: string; at: string } | null;
   calib: { coeffs: number[]; signal: string } | null;
   model: { estimate: string; basis: string } | null;
+  amp: { reduced: boolean; spec: string; tested: string } | null; warningZh: string;
 };
 export type MetricsCard = { kind: TaskKind; kindBasis: string; items: McItem[] };
 const strList = (v: unknown): string[] => Array.isArray(v) ? v.map(y => typeof y === "string" ? y : "").filter(Boolean) : typeof v === "string" && v ? [v] : [];
+// 幅度：数 / {value, unit} / 字符串；数没带单位时借 target / measured 的单位
+function ampText(a: unknown, x: any): string {
+  const un = str(a && typeof a === "object" ? (a as any)[MC_F.unit] : "") || str(x?.[MC_F.target]?.[MC_F.unit]) || str(x?.[MC_F.measured]?.[MC_F.unit]);
+  const v = a && typeof a === "object" ? (a as any)[MC_F.value] : a;
+  if (typeof v === "number" && Number.isFinite(v)) return `${+v.toPrecision(5)}${un ? " " + un : ""}`;
+  return typeof v === "string" && v.trim() ? v.trim() : MISSING_ZH;
+}
 export function toMetricsCard(src: any): MetricsCard | null {
   const o = src?.[MC_F.obj] ?? src?.args?.[MC_F.obj] ?? src?.preview?.[MC_F.obj];
   if (!o || !Array.isArray(o[MC_F.items])) return null;
@@ -117,7 +126,8 @@ export function toMetricsCard(src: any): MetricsCard | null {
       target: t && typeof t === "object" ? { cmp: str(t[MC_F.cmp]), thr: num(t[MC_F.thr]) ?? null, unit: str(t[MC_F.unit]) } : null,
       measured: m && typeof m === "object" ? { value: num(m[MC_F.value]) ?? null, unit: str(m[MC_F.unit]), method: str(m[MC_F.method]), n: num(m[MC_F.n]) ?? null } : null,
       unc: num(x[MC_F.unc]) ?? null,
-      verdict: v === "pass" || v === "fail" ? v : "unknown", verdictZh: str(x[MC_F.verdictZh]), basis: str(x[MC_F.basis]),
+      verdict: x[MC_F.ampReduced] === true && v !== "fail" ? "partial" : v === "pass" || v === "fail" || v === MC_F.partial ? v : "unknown",   // 降幅测试绝不算达标
+      amp: x[MC_F.ampReduced] != null || x[MC_F.ampSpec] != null || x[MC_F.ampTested] != null ? { reduced: x[MC_F.ampReduced] === true, spec: ampText(x[MC_F.ampSpec], x), tested: ampText(x[MC_F.ampTested], x) } : null, warningZh: str(x[MC_F.warning]), verdictZh: str(x[MC_F.verdictZh]), basis: str(x[MC_F.basis]),
       source: src0 === "sim" || src0 === "real" || src0 === "calibrated" || src0 === "manual" ? src0 : "", srcNote: str(x[MC_F.srcNote]), evidence: str(x[MC_F.evidence]),
       how: x[MC_F.how] === "auto" || x[MC_F.how] === "manual" ? x[MC_F.how] : "",
       manualSteps: strList(x[MC_F.manualSteps]), procedure: strList(x[MC_F.procedure]),
@@ -185,7 +195,7 @@ export const ESTOP_CAUSES: Record<string, { label?: string; fields: readonly ("m
 };
 
 // #121 结论码 → 中文（后端没给 verdict_zh 时本地兜底）
-export const VERDICT_ZH: Record<string, string> = { pass: "通过", fail: "未通过", unknown: "未判定" };
+export const VERDICT_ZH: Record<string, string> = { pass: "通过", fail: "未通过", unknown: "未判定", partial: "未验题面幅度" };
 // #122 提交动作统一叫法
 export const COMMIT_BTN_ZH = "保存到工程版本";
 export const COMMIT_SENT_F = "__sent";   // #117 sessionStorage 里标记：已点确认、等后端结果
