@@ -6,17 +6,17 @@ import time
 
 import pytest
 
+from conftest import fake_exe
 from dzbench import deploy, snapshots
 
 FAKE = pathlib.Path(__file__).parent / "fakessh"
-pytestmark = pytest.mark.skipif(os.name == "nt", reason="假 ssh 是 POSIX 脚本")
 
 
 @pytest.fixture
 def remote(home, tmp_path, monkeypatch):
     r = tmp_path / "remote"; r.mkdir()
-    monkeypatch.setenv("DZBENCH_SSH", str(FAKE / "ssh"))
-    monkeypatch.setenv("DZBENCH_SCP", str(FAKE / "scp"))
+    monkeypatch.setenv("DZBENCH_SSH", str(fake_exe(FAKE / "ssh")))
+    monkeypatch.setenv("DZBENCH_SCP", str(fake_exe(FAKE / "scp")))
     monkeypatch.setenv("FAKE_SSH_HOME", str(r))
     monkeypatch.setenv("FAKE_SSH_LOG", str(tmp_path / "ssh.log"))
     return r
