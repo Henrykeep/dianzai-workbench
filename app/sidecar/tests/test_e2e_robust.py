@@ -70,6 +70,21 @@ def side():
     st.stop()
 
 
+def wd_timeout_ms(schema_evt) -> int:
+    """板子用的 link_schema.json 里的看门狗超时（fw-wd 起有 wd_timeout_ms）；旧固件没有该字段时按 1000 ms。"""
+    import json
+    sch = schema_evt.get("schema") or {}
+    v = sch.get("wd_timeout_ms")
+    if not v and sch.get("path"):
+        try:
+            with open(sch["path"], encoding="utf-8") as f:
+                d = json.load(f)
+            v = d.get("wd_timeout_ms") or (d.get("link") or {}).get("wd_timeout_ms")
+        except (OSError, ValueError):
+            v = None
+    return int(v) if v else 1000
+
+
 def drive(ui, board):
     ui.ok("send_data", id=1, hex=GO)
     assert until(lambda: (board_sp(board) or 0) > 0.5), "命令应生效"
@@ -79,7 +94,8 @@ def test_unplug_replug(board, side):
     st, mk = side
     ui = mk()
     ui.ok("connect", port=str(board.path), baud="auto")
-    ui.wait(lambda e: e["type"] == "schema")
+    sch = ui.wait(lambda e: e["type"] == "schema")
+    wd_ms = wd_timeout_ms(sch)
     time.sleep(0.6)
     drive(ui, board)
     m = ui.mark()
@@ -87,10 +103,10 @@ def test_unplug_replug(board, side):
     e = ui.wait(lambda e: e.get("code") == "link_lost", start=m)
     assert han(e["message"]) and "重连" in e["fix"]
     assert (lambda r: r.get("ok", r.get("sent")) is False)(ui.ok("estop"))                       # 线拔了：老实说没发出去
-    time.sleep(1.3)
+    time.sleep(wd_ms / 1000 + 0.3)
     direct_go(board)
     time.sleep(0.3)
-    assert board_sp(board) == 0.0, "拔线 1 s 后板子自己急停并锁存"
+    assert board_sp(board) == 0.0, f"拔线 {wd_ms} ms（看门狗超时）后板子自己急停并锁存"
     assert han(ui.ok("hello")["status"].get("hint", "")), "重连中要有中文提示"
     board.replug()
     e = ui.wait(lambda e: e["type"] == "reconnected", start=m, timeout=15)
