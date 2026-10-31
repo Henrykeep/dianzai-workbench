@@ -389,7 +389,7 @@ def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monk
         assert bc["preview"]["ss_err"] == se
         mem = svc.memory()
         assert mem.project == project_slug(str(pd)) and mem.project != "_none" and mem.key, (mem.project, mem.key)
-        rows = [r for r in mem.load() if r.get("kind") in ("iterate", "verdict")]
+        rows = [r for r in mem.load() if r.get("kind") in ("round", "manual_step")]
         assert rows and all(r.get("params_hash") for r in rows), rows           # 第 0 轮起每轮都有 hash
         r2 = svc.quick_start(H_SENT)                                             # 再开局：又一个新目录
         assert r2["spec"]["code"] not in (code, "2026H_ball")

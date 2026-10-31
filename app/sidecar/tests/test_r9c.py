@@ -25,10 +25,10 @@ def test_pass_basis_always_names_conversion_source():
     assert "在带内" not in hw and "待标定" in hw
 
 
-def test_pass_verdict_names_conversion_source():
+def test_pass_verdict_zh_is_tongguo_source_in_basis():   # #121：verdict_zh 一律「通过」；换算出处在 pass_basis（#93）
     ss = {"inside": True, "conv_source": "phys", "unit": "px", "band": {"unit": "cm"}}
     v, vzh = S.AgentService._verdict(ss, {"reason": "pass"}, {"ok": True, "rise_s": 0.1, "settling_s": 0.3, "overshoot_pct": 1.0})
-    assert v == "pass" and "仿真标称" in vzh
+    assert v == "pass" and vzh == "通过"
 
 
 def test_real_hw_uncalibrated_is_inside_null():

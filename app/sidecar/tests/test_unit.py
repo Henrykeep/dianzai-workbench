@@ -143,8 +143,8 @@ def test_estop_cause_fields():
     from dzbench.session import estop_cause_dict
     assert estop_cause_dict(0, 0, 0.0) is None
     d = estop_cause_dict(2, 12345, 1180.0)
-    assert d["cause"] == "hb_timeout" and d["cause_id"] == 2 and d["t"] == 12.345 and d["value"] == 1180.0
-    assert d["message_zh"] == "心跳超时 1180 ms" and d["fix_action"] == "estop_clear" and d["gap_ms"] == 1180 and "1180 ms 未发送心跳" in d["detail_zh"]
+    assert d["cause"] == "hb_timeout" and d["cause_id"] == 2 and d["t"] == 12.345 and d["measured_ms"] == 1180 and "value" not in d and d["reason"] == "hb_timeout" and d["reason_zh"] == "心跳超时 1180 ms"
+    assert d["message_zh"] == "心跳超时 1180 ms" and d["fix_action"] == "estop_clear" and "gap_ms" not in d and "1180 ms 未发送心跳" in d["detail_zh"]
     assert "6.10 V" in estop_cause_dict(4, 0, 6.1)["message_zh"]
     assert "看门狗" in estop_cause_dict(8, 0, 4.0)["message_zh"]
     assert estop_cause_dict(42, 0, 0.0)["cause"] == "unknown_42"
