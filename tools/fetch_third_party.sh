@@ -10,10 +10,10 @@ get() {  # get <目录> <仓库> <tag> [稀疏检出路径...]
   local dir=$1 repo=$2 tag=$3; shift 3
   if [ -d "$dir" ]; then echo "已存在 $dir，跳过"; return; fi
   if [ $# -gt 0 ]; then
-    git clone --depth 1 --branch "$tag" --filter=blob:none --sparse "https://github.com/$repo.git" "$dir"
+    git clone -c core.autocrlf=false -c core.eol=lf --depth 1 --branch "$tag" --filter=blob:none --sparse "https://github.com/$repo.git" "$dir"
     git -C "$dir" sparse-checkout set "$@"
   else
-    git clone --depth 1 --branch "$tag" "https://github.com/$repo.git" "$dir"
+    git clone -c core.autocrlf=false -c core.eol=lf --depth 1 --branch "$tag" "https://github.com/$repo.git" "$dir"
   fi
 }
 ALL="${*:-}"
@@ -21,7 +21,7 @@ ALL="${*:-}"
 # CMSIS_RTOS_V2 封装要 cmsis_os2.h）和 LICENSE。旧做法（CMSIS_5 稀疏克隆）在新克隆里会缺 core_cm3.h / core_cm4.h。
 CMSIS_TAG=v6.1.0
 CMSIS_SHA=d8a044e4b50b7112476d6855a12c729ae2b70b3f77a2a038c23890e9a3515973
-CMSIS_TREE_SHA=a7a3045f1d8a2bc50182c8dbe3dd4bc1cfca30d694cae5c522c667382c845b0c   # 解出的 Include 文件逐个 sha256 再汇总
+CMSIS_TREE_SHA=d95d37cc4d996a014a1e62c807222226141c4354b87b70d89813b8a67786e774   # tools/tree_sha256.py（排序 POSIX 路径 + 内容，CRLF→LF，忽略权限位；跨平台一致）
 cmsis_verify() {  # 下载后立即校验：缺任何一个头 / 内容不一致 → 失败
   local d=CMSIS_6 h miss=0
   for h in core_cm0plus.h core_cm3.h core_cm4.h core_cm7.h cmsis_compiler.h cmsis_gcc.h cmsis_version.h \
@@ -30,7 +30,8 @@ cmsis_verify() {  # 下载后立即校验：缺任何一个头 / 内容不一致
   done
   [ -s "$d/CMSIS/RTOS2/Include/cmsis_os2.h" ] && [ -s "$d/LICENSE" ] || { echo "✗ [fetch/cmsis] 缺 cmsis_os2.h 或 LICENSE"; miss=1; }
   [ $miss = 0 ] || return 1
-  local got; got=$(cd "$d" && find CMSIS/Core/Include CMSIS/RTOS2/Include -type f | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+  local py; py=$(command -v python3 || command -v python)
+  local got; got=$("$py" ../tools/tree_sha256.py "$d" CMSIS/Core/Include CMSIS/RTOS2/Include)
   [ "$got" = "$CMSIS_TREE_SHA" ] || { echo "✗ [fetch/cmsis] $d 内容与 $CMSIS_TAG 不一致（$got）· 处理：rm -rf third_party/CMSIS_6 后重跑 make fetch"; return 1; }
   echo "✓ CMSIS_6 $CMSIS_TAG Core/Include 完整（sha256 已校验）"
 }
