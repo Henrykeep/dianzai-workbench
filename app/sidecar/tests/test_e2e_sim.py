@@ -29,9 +29,12 @@ def test_car_2wd_params(home):
         assert wait(lambda: s.schema and len(s.params) == len(s.schema.params))
         assert s.params["kp"] == pytest.approx(0.08)
         assert wait(lambda: len(s.window(1)) > 10)
-        r = s.set_param("kp", 9)
-        assert r["applied"] == 2.0 and r["status"] == "clamped"
-        assert s.read_param("kp") == 2.0
+        with pytest.raises(LinkError) as e:              # #40：越界直接拒绝，不再悄悄钳位
+            s.set_param("kp", 9)
+        assert e.value.code == "invalid_param" and e.value.fix_action == "params" and "0 ~ 2" in e.value.extra["message_zh"]
+        assert s.read_param("kp") == pytest.approx(0.08)
+        r = s.set_param("kp", 2.0)
+        assert r["applied"] == 2.0 and r["status"] == "ok"
         s.snapshot_save("hot")
         s.set_param("kp", 0.3)
         s.snapshot_restore("hot")
@@ -261,8 +264,11 @@ def test_2026h_imu_module_path(home):
         assert s.set_param("imu_grav_comp", 0)["status"] == "ok"
         time.sleep(0.3)
         assert -0.7 < s.window(0.1)[-1][1]["imu_ax_mps2"] < -0.3   # 不去重力：≈ −g·sin3°
-        r = s.set_param("imu_axis", 9)
-        assert r["applied"] == 5 and r["status"] == "clamped"
+        with pytest.raises(LinkError) as e:              # #40：本地先拒；固件那层限幅仍在（绕过本地校验直发也只会被钳到 5）
+            s.set_param("imu_axis", 9)
+        assert e.value.code == "invalid_param"
+        import struct
+        assert s._param_rpc("imu_axis", struct.pack("<f", 9.0)) == (5, "clamped")
     finally:
         s.disconnect()
 

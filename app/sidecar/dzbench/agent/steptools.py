@@ -132,6 +132,9 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
     if src and not pathlib.Path(src).is_absolute() and (root / src).exists():
         src = str(root / src)            # 模型只知道仓库相对路径
     real = paths.project_dir(root, code)
+    if real.is_dir() and real.parent.resolve() == (root / "examples").resolve():
+        raise FlowError("example_readonly", f"“{code}”是内置示例（只读），不能当新项目用",
+                        "新建项目请换一个新代号（会建在新目录里，不继承示例的参数初值）；只想看示例用“打开示例”")
     sb = f.home / code / "sandbox"
     if sb.exists():
         shutil.rmtree(sb)
@@ -239,6 +242,18 @@ def project_chain(root, code: str, src: str | None = None, project: str | None =
     except FlowError as e:
         return stop(steps[-1]["step"] if steps else "?", e.msg, e.fix)
     return {"code": code, "steps": steps, "batch": batch, "stopped_at": None}
+
+
+def fresh_code(root, code: str) -> str:
+    """新建项目的代号：已有同名目录（用户项目或内置示例）就加 -2、-3…，保证落在一个全新的目录。"""
+    def used(c):
+        return (paths.projects_dir() / c).exists() or (pathlib.Path(root) / "examples" / c).exists()
+    if not used(code):
+        return code
+    i = 2
+    while used(f"{code}-{i}"):
+        i += 1
+    return f"{code}-{i}"
 
 
 def project_apply(root, code: str, batch: list) -> dict:

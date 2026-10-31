@@ -131,7 +131,7 @@ def test_estop_without_board_does_not_latch_or_alert():
     assert from_broadcast(r) is None
     kind, text, source = from_broadcast({"type": "estop", "sent": True, "src": "急停按钮"})
     assert source == "ui"
-    assert kind == "estop" and "急停按钮" in text and "解除急停 R" in text
+    assert kind == "estop" and "急停按钮" in text and "解除急停" in text
 
 
 def test_estop_cause_fields():

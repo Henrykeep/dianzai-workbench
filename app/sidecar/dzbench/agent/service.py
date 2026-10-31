@@ -170,7 +170,13 @@ class AgentService:
         return knowledge.match(text, knowledge.load(self.gw.root), self._kn_seen)
 
     def memory(self) -> BoardMemory:
-        return BoardMemory(board_key(self.s.schema_hash, self.s.board_uid))
+        return BoardMemory(board_key(self.s.schema_hash, self.s.board_uid), self._project_path())
+
+    @staticmethod
+    def _project_path() -> str | None:
+        from .. import project
+        cur = project.current()
+        return cur["path"] if cur else None
 
     def _gw_emit(self, e: dict) -> None:
         if e.get("type") == "change" and e.get("status") == "committed" and e.get("source") == "agent" and e.get("commit"):
@@ -305,6 +311,7 @@ class AgentService:
         """一句话起项目：解析 → ①–⑤ 整链预览（只写暂存区）→ 一张确认卡（方案 + 引脚表）。
         用户点确认 → 写入项目 → 连仿真板 → 一键起步调参 → 评分。返回 action_id 给界面。"""
         sp = steptools.quick_spec(text)
+        sp["code"] = steptools.fresh_code(self.gw.root, sp["code"])     # 新建一律落新目录，不复用旧项目/示例（#39）
         d = steptools._flow(self.gw.root).home / sp["code"]; d.mkdir(parents=True, exist_ok=True)
         (d / "problem.txt").write_text(sp["problem"], encoding="utf-8")
         ch = self.project_chain(sp["code"], src=str(d / "problem.txt"), mcu=sp["mcu"])
@@ -468,7 +475,9 @@ class AgentService:
 
     # -------------------------------------------------------------- 调参护栏
     def _guard(self) -> TuneGuard:
-        if self.guard is None or self.guard.sim != self.sim:
+        proj = self._project_path()
+        if self.guard is None or self.guard.sim != self.sim or getattr(self, "_guard_proj", None) != proj:
+            self._guard_proj = proj            # 换项目 = 新的调参历史（不带上个项目的 best / 初值，#39）
             b = {p["name"]: (p["min"], p["max"]) for p in (self.s.schema.params if self.s.schema else [])}
             t = self.cfg["tune"]
             self.guard = TuneGuard(b, self.sim, limits={"vbat_min": t["vbat_min"], "temp_max": t["temp_max"]},
@@ -641,7 +650,7 @@ class AgentService:
         if not st.get("start"):
             return
         if self.s.tx_locked or self.s.estop_cause or (self.s.hb_status or 0) & (1 << 10):   # 板子已报急停（心跳还没让本地锁上）也拒绝
-            raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停 R”")
+            raise LinkError("estop", "急停已锁存：不做实验", "人工检查后按“解除急停”")
         w = self.s.window(0.3)
         sf, done = st.get("state_field", "state"), st.get("done_state")
         if done is not None and w and w[-1][1].get(sf) == done:

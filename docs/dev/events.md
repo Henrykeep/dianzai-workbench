@@ -7,11 +7,12 @@
 
 | state | 必有键 | 可选键 | 说明 |
 |---|---|---|---|
-| `requested` | `type` `seq` `state` `source` `t` `ok` `message_zh` | — | 上位机已发出急停帧；`ok=false` = 没写出去（断电/拔电池） |
-| `latched` | `type` `seq` `state` `source` `t` | `cause` `message_zh` `latency_ms` | 板子心跳确认锁存；`latency_ms` 是 requested→latched 的诊断值，仅在本次由上位机发起时给出 |
-| `cleared` | `type` `seq` `state` `source` `t` | `message_zh` `latency_ms` | 人工 R 解除，**且固件心跳 bit10 已清零**（发 R 后第一帧 bit10=0 的心跳；老固件心跳无状态字时取下一帧心跳）。侧车不提前宣告：R 发出到确认前仍锁存（`tx_locked`），`latency_ms` = R 发出到确认的时长；固定提醒 agent_notice `estop_cleared` 紧随其后、只推一次 |
+| `requested` | `type` `seq` `state` `source` `t` `ok` `message_zh` `cause_zh` | `fix_hint_zh` | 上位机已发出急停帧；`ok=false` = 没写出去（断电/拔电池） |
+| `latched` | `type` `seq` `state` `source` `t` | `cause` `message_zh` `cause_zh` `fix_hint_zh` `latency_ms` | 板子心跳确认锁存；`latency_ms` 是 requested→latched 的诊断值，仅在本次由上位机发起时给出 |
+| `cleared` | `type` `seq` `state` `source` `t` | `message_zh` `cause_zh` `latency_ms` | 人工 R 解除，**且固件心跳 bit10 已清零**（发 R 后第一帧 bit10=0 的心跳；老固件心跳无状态字时取下一帧心跳）。侧车不提前宣告：R 发出到确认前仍锁存（`tx_locked`），`latency_ms` = R 发出到确认的时长；固定提醒 agent_notice `estop_cleared` 紧随其后、只推一次 |
 
 - `t`：毫秒 Unix 时间；`seq`：单调递增。
+- 文案拆分：`cause_zh` 只讲原因（界面时间线只显示它）；`fix_hint_zh` = 怎么解除（固定为“确认安全后点“解除急停””），**只在急停仍有效时出现**（`requested` 且 `ok=true`、`latched`），`cleared` 和未送达的 `requested` 没有；`message_zh` = `cause_zh`（有提示时再接“；”+ `fix_hint_zh`），给旧界面兼容。`link.state`/`status` 里的 `estop_cause` 同样带 `cause_zh`，锁存期间另带 `fix_hint_zh`；原因随锁存持久化，重连/侧车重启后仍在，直到人工解除才清空。
 - 没连板子 / 回放时的急停回包不是状态事件（无 `state`）：键集合固定为 `type` `ok` `reason` `message_zh`（代码 `Session.ESTOP_REPLY_KEYS`），`ok=false`，`reason` 为 `no_board`（没连板子，只弹提示、不进告警条）或 `replay`（回放中）。不再有 `sent` / `message` / `nolink` / `src`。
 - 前端对旧格式（`sent` / `message`）与新格式都兼容。
 

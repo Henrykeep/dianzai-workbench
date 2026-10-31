@@ -215,7 +215,7 @@ class Server:
         if op == "send_data":
             return s.send_data(int(m["id"]), bytes.fromhex(m.get("hex", "")))
         if op == "param_set":
-            return await run(None, s.set_param, m["name"], float(m["value"]))
+            return await run(None, s.set_param, m["name"], m.get("value"))   # 原样交给 set_param 校验（#40）
         if op == "param_read_all":
             return await run(None, s.read_all_params)
         if op == "snapshot_save":

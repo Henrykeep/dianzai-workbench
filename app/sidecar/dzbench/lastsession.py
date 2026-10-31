@@ -71,5 +71,5 @@ def take_unclean() -> dict | None:
     if not d:
         return None
     d["message"] = (f"本地服务刚才意外退出，已经重新启动，正在自动连回 {d['port']}。板子应已因 1 秒没心跳自己急停；"
-                    "确认车/机构安全后按“解除急停 R”")
+                    "确认车/机构安全后按“解除急停”")
     return d
