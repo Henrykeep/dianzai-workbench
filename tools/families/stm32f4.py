@@ -76,6 +76,8 @@ ADC_CH_PINS = {0: "PA0", 1: "PA1", 2: "PA2", 3: "PA3", 4: "PA4", 5: "PA5", 6: "P
 ADCS = ["ADC1", "ADC2"]
 
 # 调试/启动相关、复用前要三思的引脚
+# SWD 调试口：占用即报错（#56），见 boardlib.swd_msg
+SWD_PINS = {"PA13": "SWDIO", "PA14": "SWCLK"}
 RESERVED_PINS = {
     "PA13": "SWDIO（占用后无法用 SWD 下载/调试）",
     "PA14": "SWCLK（占用后无法用 SWD 下载/调试）",

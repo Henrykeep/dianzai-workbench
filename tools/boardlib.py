@@ -325,6 +325,12 @@ def generic_check(board: dict, rep: Report) -> None:
             rep.err(f"[串口冲突] {i} 被定义了 {insts.count(i)} 次")
 
 
+def swd_msg(where: str, pin: str, fn: str) -> str:
+    """SWD 调试脚被占用的报错文案（#56：原来只告警、生成照样成功，下载后芯片就连不上了）。"""
+    return (f"[SWD 调试脚] {where}: {pin} 是 SWD 调试脚（{fn}），用作普通 IO/外设会导致无法下载程序和在线调试"
+            f"（ST-Link/DAPLink/XDS 连不上）。请改用其他空闲引脚（可重跑 tools/alloc.py 自动分配），{pin} 保留给调试器")
+
+
 def stm32f4_check(board: dict, rep: Report) -> None:
     from families import stm32f4 as F
     stm32_check(F, board, rep, f4=True)
@@ -369,7 +375,9 @@ def stm32_check(F, board: dict, rep: Report, f4: bool) -> None:
         if not F.PIN_RE.match(pin):
             rep.err(f"[引脚格式] {where}: {pin} " + (f"在 {pkg} 封装上不存在" if pkg else "不是 STM32 引脚名（应形如 PA8）"))
             return False
-        if pin in F.RESERVED_PINS:
+        if pin in getattr(F, "SWD_PINS", {}):
+            rep.err(swd_msg(where, pin, F.SWD_PINS[pin]))
+        elif pin in F.RESERVED_PINS:
             rep.warn(f"[保留引脚] {where}: {pin} 是 {F.RESERVED_PINS[pin]}")
         if pin in getattr(F, "TRAP_PINS", {}):
             rep.warn(f"[坑脚] {where}: {pin} {F.TRAP_PINS[pin]}")
@@ -496,7 +504,9 @@ def mspm0_check(board: dict, rep: Report) -> None:
         if p in used:
             rep.err(f"[引脚冲突] {p} 同时被 {used[p]} 和 {where} 使用")
         used[p] = where
-        if p in M.TRAP_PINS:
+        if p in M.SWD_PINS:
+            rep.err(swd_msg(where, p, M.SWD_PINS[p]))
+        elif p in M.TRAP_PINS:
             rep.warn(f"[坑脚] {where}: {p} {M.TRAP_PINS[p]}")
         if need and not any(f.startswith(need) for f in io[p]):
             rep.err(f"[复用] {where}: {p} 没有 {need}* 功能（SDK IOMUX 表）")
