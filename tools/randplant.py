@@ -319,7 +319,7 @@ link:
 def sim_c(p: dict) -> str:
     """对象 C 代码：与 plant: 声明共用 tools/plantmodel.py（滞后已用 Padé 折进状态空间；传感器量程限幅）。"""
     return plantmodel.sim_c(p["ss"], dt=p["dt_s"], sat=(-float(p["sat"]), float(p["sat"])), deadzone=float(p["deadzone"]),
-                            noise_std=float(p["noise_std"]), seed=int(p["seed"]), y_clip=0.5 * float(p["sensor_range"]),
+                            noise_std=float(p["noise_std"]), seed=int(p["seed"]), y_range=(-0.5 * float(p["sensor_range"]), 0.5 * float(p["sensor_range"])),
                             tag=f"tools/randplant.py --seed {p['seed']}")
 
 
@@ -332,6 +332,7 @@ def app_main(p: dict) -> str:
 #include "board_gen.h"
 #include "app.h"
 #include "link_app.h"
+#include "pid.h"
 #include "dz_compiler.h"
 
 #define CTRL_PERIOD_US {us}u
@@ -347,11 +348,21 @@ static bool s_first = true;
 
 static float clampf(float v, float m) {{ return v > m ? m : (v < -m ? -m : v); }}
 
+/* 0x7C 继电输出接管：借 pid 库的继电器（同一套 bias±amp/滞环/超时/急停结束语义）。s_relay 只当“回路 0”的
+ * 继电槽，不做 PID：平时每拍把它的输出对齐到本控制器的 u（继电开始时 bias = 当前工作点），继电期间输出由它给。 */
+static pid_ctrl_t s_relay;
+static bool s_was_relay;
+
 static void ctrl_isr(void *ctx)
 {{
     (void)ctx;
     float u = 0.0f, lim = {g('LIM', '1.0f')}, sp = L.sp[0];
-    if (L.estop) {{ s_i = 0.0f; s_df = 0.0f; s_first = true; }}
+    if (L.estop) {{ s_i = 0.0f; s_df = 0.0f; s_first = true; s_was_relay = false; }}
+    else if (pid_relay_active() == 0 || s_was_relay) {{
+        u = clampf(pid_update(&s_relay, sp, s_y), lim);
+        s_was_relay = pid_relay_active() == 0;
+        if (!s_was_relay) {{ s_i = clampf(u, lim); s_first = true; }}   /* 继电结束：积分项接住 bias，无扰切回 */
+    }}
     else {{
         float e = sp - s_y;
         s_i = clampf(s_i + {g('I', '0.0f')} * e * DT, lim);
@@ -359,12 +370,17 @@ static void ctrl_isr(void *ctx)
         s_first = false; s_pe = e;
         u = clampf({g('P', '0.0f')} * e + s_i + {g('D', '0.0f')} * s_df + {g('FF', '0.0f')} * sp, lim);
     }}
+    if (pid_relay_active() != 0) pid_reset_to(&s_relay, u);
     s_u = u;
     s_y = sim_plant_step(u);
 }}
 
 dz_err_t app_init(void)
 {{
+    pid_cfg_t rc = pid_cfg_default(DT);
+    rc.dt_s = DT; rc.out_min = -{float(p['sat']):.6g}f; rc.out_max = {float(p['sat']):.6g}f; rc.i_min = rc.out_min; rc.i_max = rc.out_max;
+    dz_err_t e = pid_init(&s_relay, &rc);   /* 继电槽 = 回路 0 */
+    if (e != DZ_OK) return e;
     link_app_init(&L, 0, 0);
     return pal_timer_start(RES_TIMER_CTRL, CTRL_PERIOD_US, ctrl_isr, 0);
 }}

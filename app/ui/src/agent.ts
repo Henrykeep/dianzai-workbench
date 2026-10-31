@@ -11,7 +11,8 @@ import { TurnGate, Watch, timeoutCard, errorCard, Card } from "./agentwatch";
 import { parseUsage, usageLog, elapsedOf, fmtElapsed, Usage } from "./usage";
 import { modelLister, type El } from "./llmcfg";
 import { toCommitReq, commitCardHtml, mountCommitCard, showDeclined, commitResult, committedHtml } from "./commitcard";
-import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, writeScopeNote } from "./fieldmap";
+import { keepPending, dropPending, loadPending } from "./commitstore";
+import { COMMIT_EV, COMMIT_DECL_F, COMMIT_F, COMMIT_OP, COMMIT_USER_F, writeScopeNote } from "./fieldmap";
 
 type Call = <T = any>(op: string, args?: Record<string, unknown>) => Promise<T>;
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -164,18 +165,24 @@ export function initAgent(call: Call) {
   // #88 提交确认卡：写文件卡只授权写文件，git 提交单独确认
   const commitCards = new Map<string, HTMLElement>();
   const goFix = (a: string) => runAction(a, s => window.dispatchEvent(new CustomEvent("dz-goto", { detail: s })));
-  function renderCommit(m: Msg) {
+  const ss = (() => { try { return window.sessionStorage; } catch { return null; } })();
+  function renderCommit(m: Msg, restored = false) {
     const c = toCommitReq(m);
-    if (commitCards.has(c.id)) return onCommitResult(m);   // 同一 request_id 再推一次 = 状态更新
-    const d = add(commitCardHtml(c, esc), "card commit pending");
+    if (commitCards.has(c.id)) { const el = commitCards.get(c.id)!; if (!restored) { el.classList.remove("restored"); el.querySelector(".cc-restored")?.remove(); } return onCommitResult(m); }   // 同一 request_id 再推一次 = 状态更新（#111 去重）
+    if (commitResult(m).state === "pending") keepPending(ss, m);
+    const d = add(commitCardHtml(c, esc), "card commit pending" + (restored ? " restored" : ""));
+    if (restored) d.querySelector(".cc-res")?.insertAdjacentHTML("beforebegin", `<span class="lbl cc-restored">刷新前待确认（本页缓存恢复，等后端重推对账）</span>`);
     commitCards.set(c.id, d);
-    mountCommitCard(d, c, (_op, args) => call("commit_confirm", args).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
+    mountCommitCard(d, c, (_op, args) => (args?.[COMMIT_OP.approve] === false && (d.dataset.userDecl = "1"), call("commit_confirm", args)).then((r: any) => { onCommitResult({ ...r, [COMMIT_F.id]: c.id, ...(args?.[COMMIT_OP.approve] === false ? { [COMMIT_USER_F]: true, [COMMIT_DECL_F.code]: r?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.declined } : {}) }); return r; }, (e: any) => { onCommitResult({ ...e, [COMMIT_F.id]: c.id, [COMMIT_DECL_F.code]: e?.[COMMIT_DECL_F.code] ?? COMMIT_DECL_F.failed }); throw e; }));
     if (commitResult(m).state !== "pending") onCommitResult(m);
   }
-  function onCommitResult(m: any) {
-    const r = commitResult(m), id = m?.[COMMIT_F.id] != null ? String(m[COMMIT_F.id]) : "";
-    if (r.state === "pending") return;
+  function onCommitResult(m0: any) {
+    const id = m0?.[COMMIT_F.id] != null ? String(m0[COMMIT_F.id]) : "";
     let el = commitCards.get(id);
+    const m = el?.dataset.userDecl ? { ...m0, [COMMIT_USER_F]: true } : m0;   // #110 用户自己点了取消：原因缺省时写「你已取消写入」
+    const r = commitResult(m);
+    if (r.state === "pending") return;
+    dropPending(ss, id);
     if (!el) { el = add(`<b>git 提交</b><div class="act"><span class="cc-res"></span></div>`, "card commit"); commitCards.set(id, el); }
     el.querySelectorAll<HTMLButtonElement>("button[data-cc]").forEach(b => b.disabled = true);
     el.classList.remove("pending");
@@ -697,6 +704,7 @@ export function initAgent(call: Call) {
       document.getElementById("cfg-ol")?.scrollIntoView({ block: "nearest" });
     };
   }
+  setTimeout(() => { for (const m of loadPending(ss)) if (!commitCards.has(String(m[COMMIT_F.id]))) renderCommit(m, true); }, 0);   // #111 刷新后先按缓存恢复
   return {
     onMsg(m: Msg) {
       if (m.type === "status") onAgentState(m);
