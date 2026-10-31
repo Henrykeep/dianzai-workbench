@@ -380,7 +380,7 @@ def main(argv=None) -> int:
     c = sp.add_parser("checklist"); c.add_argument("req"); c.add_argument("-o", required=True)
     e = sp.add_parser("evidence", help="合规/计分证据表 → <o>/evidence.md"); e.add_argument("req"); e.add_argument("-o", required=True)
     n = sp.add_parser("newlog", help="按 docs/verify 规范建一个日志目录并打印 evidence 片段")
-    n.add_argument("--root", required=True, help="例 docs/verify/2026H"); n.add_argument("--task", required=True); n.add_argument("--layer", required=True, choices=list(LAYER_NAME))
+    n.add_argument("--root", required=True, help="例 docs/verify/<题号>"); n.add_argument("--task", required=True); n.add_argument("--layer", required=True, choices=list(LAYER_NAME))
     ns = ap.parse_args(argv)
     if ns.cmd == "init":
         src = pathlib.Path(ns.src)

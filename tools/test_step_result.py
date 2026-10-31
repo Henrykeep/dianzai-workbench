@@ -124,11 +124,18 @@ def ref_for(schema, tel, r, dur, ch_cfg, params_now):
     return dzstep.step_metrics(samples, r["setpoint"], dur, r["t0_ms"], ch_cfg["range"], ch_cfg["abs_tol"], umax)
 
 
+def app_yaml(app: str) -> pathlib.Path:
+    """与 Makefile 的 APP_DIR 查找顺序一致：$DZBENCH_HOME/projects/<app>、apps/<app>、examples/<app>（生成的随机对象走第一个）。"""
+    import os
+    cands = ([pathlib.Path(os.environ["DZBENCH_HOME"]) / "projects" / app] if os.environ.get("DZBENCH_HOME") else []) + [ROOT / "apps" / app, ROOT / "examples" / app]
+    return next((d / "app.yaml" for d in cands if (d / "app.yaml").exists()), ROOT / "apps" / app / "app.yaml")
+
+
 def test_app(app: str) -> tuple[int, int, str]:
     cfg = APPS[app]
     exe, schema = build(app)
     c = Checker(app)
-    yml = ROOT / "apps" / app / "app.yaml"
+    yml = app_yaml(app)
     ch = schema["step"][0]
     pnames = [p["name"] for p in schema["params"]]
     defaults = {p["name"]: p["default"] for p in schema["params"]}

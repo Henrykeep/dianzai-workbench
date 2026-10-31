@@ -85,4 +85,50 @@ static inline void link_step_on_telem(uint32_t t_ms, float y, float u, uint8_t *
     if (dzstep_sample(&s_link_step, t_ms, y, u)) link_step_finish(false, 0u, seq, send);
 }
 
+/* ---- 通用收帧分发（任何声明了 link.step 的应用零手写：阶跃 0x7B + PARAM_SET 校验/拒绝 + 锁定） ----
+ * 返回 true = 本帧已处理。on_target(sp_idx, v, ctx)：阶跃开始 → 调用方写设定值槽位并（若需要）自动开始控制。
+ * strict_params：true = PARAM_SET 一律走校验/拒绝（param_reject 永远跟在 PARAM_ACK status 5 之后）；
+ *                false = 只在锁定（急停/阶跃中）时校验拒绝，其余交回调用方（旧的钳位约定）。
+ * on_params：参数写入成功（无拒绝）后回调，可为 NULL。 */
+typedef struct {
+    bool latched, offline, strict_params;
+    uint32_t now;
+    const dzctl_table_t *tbl;
+    uint8_t *seq;
+    void (*send)(const dzframe_t *);
+    void (*on_target)(uint8_t sp_idx, float v, void *ctx);
+    void (*on_params)(void);
+    void *ctx;
+} link_step_io_t;
+
+/** 设定值的声明量程限幅：±range/2（link.step[ch].range；没有声明 → 不限）。 */
+static inline float link_step_clamp_sp(uint8_t sp_idx, float v)
+{
+    for (unsigned k = 0; k < (unsigned)LINK_STEP_N; k++) {
+        if (g_link_step[k].sp_idx != sp_idx) continue;
+        float h = 0.5f * g_link_step[k].range;
+        return v > h ? h : (v < -h ? -h : v);
+    }
+    return v;
+}
+
+static inline bool link_step_dispatch(const dzframe_t *f, const link_step_io_t *io)
+{
+    uint8_t sch; float stg; int sr;
+    dzframe_t ack, rej; bool has_rej;
+    sr = link_step_rx(f, io->latched, io->offline, io->now, io->tbl, io->seq, io->send, &sch, &stg);
+    if (sr != 0) {
+        if (sr == 2 && io->on_target) io->on_target(g_link_step[sch].sp_idx, stg, io->ctx);
+        return true;
+    }
+    if (f->kind != DZF_PARAM_SET) return false;
+    bool lock = io->latched || link_step_busy();
+    if (!io->strict_params && !lock) return false;
+    if (!dzctl_handle_checked(io->tbl, f, lock, &ack, &rej, &has_rej)) return false;
+    if (!has_rej && io->on_params) io->on_params();
+    io->send(&ack);
+    if (has_rej) io->send(&rej);
+    return true;
+}
+
 #endif

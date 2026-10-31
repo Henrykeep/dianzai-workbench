@@ -335,8 +335,8 @@ def evidence_section(req_file, item, source, rows, n_runs, has_reqs, out) -> lis
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("files", nargs="+", help=".dzlog 或 .csv，每个文件一次测试")
-    ap.add_argument("--y", required=True, help="被控量列名（例 ball_x）")
-    ap.add_argument("--sp", required=True, help="设定值列名（例 ball_sp）")
+    ap.add_argument("--y", required=True, help="被控量列名（例 y）")
+    ap.add_argument("--sp", required=True, help="设定值列名（例 sp）")
     ap.add_argument("--u", help="控制量列名（判饱和用，可选）")
     ap.add_argument("--u-limit", type=float, help="控制量限幅（配合 --u）")
     ap.add_argument("--source", required=True, choices=["board", "sim"], help="board=实物 sim=仿真（必填）")
