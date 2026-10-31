@@ -26,7 +26,7 @@ const h = resultCardHtml(r, s => s, { canApply: true, applyReady: true }); asser
 // 指标卡逐项
 const mk = (x: any) => ({ metrics_card: { task_kind: "control", items: [{ name: "m1", verdict: "pass", target: { cmp: "<=", threshold: 5, unit: "%" }, measured: { value: 3, unit: "%" }, ...x }] } });
 const c1 = toMetricsCard(mk({ verdict: "partial", verdict_zh: "未验题面幅度", amp_reduced: true, amp_spec: 100, amp_tested: { value: 50, unit: "mm" }, warning_zh: "只测了一半幅度" }))!;
-assert.equal(c1.items[0].verdict, "partial"); assert.deepEqual(c1.items[0].amp, { reduced: true, spec: "100 %", tested: "50 mm" });
+assert.equal(c1.items[0].verdict, "partial"); assert.deepEqual(c1.items[0].amp, { reduced: true, spec: "100", tested: "50 mm" });   // #140 不从指标单位猜幅度单位
 assert.equal(toMetricsCard(mk({ amp_reduced: true }))!.items[0].verdict, "partial");   // 后端 pass + amp_reduced 也不算达标
 assert.equal(toMetricsCard(mk({}))!.items[0].amp, null);
 const mh = metricCardHtml(mk({ verdict: "partial", amp_reduced: true, amp_spec: { value: 2, unit: "V" }, amp_tested: { value: 1, unit: "V" }, warning_zh: "只测了一半幅度" }));
