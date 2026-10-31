@@ -91,7 +91,8 @@ FW_INC := firmware/common firmware/pal $(wildcard firmware/algo/*) $(wildcard fi
 LIB_SRC := $(wildcard firmware/algo/*/*.c firmware/framework/*/*.c firmware/proto/*/*.c firmware/drivers/*/*.c)
 # 纯 make 递归通配（不调 find：Windows 上 find.exe 是另一个程序，会报 "File not found - *.c"）
 rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
-APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f),,$f)))
+# 工程目录下的 build/（工作台给 Keil/IDE 导出的 build/gen/ 生成物，#52）不参与编译：生成物以 $(OUT)/projgen 为准，否则重复定义
+APP_ALL := $(sort $(foreach f,$(call rwildcard,$(APP_DIR),*.c),$(if $(findstring /tests/,$f)$(findstring $(APP_DIR)/build/,$f),,$f)))
 SIM_SETUP := $(filter %/sim_setup.c,$(APP_ALL))
 APP_SRC  = $(filter-out $(SIM_SETUP),$(APP_ALL)) $(PROJ_SRC) $(LINK_SRC)
 PORT_DIR = ports/$(BOARD_PORT)
@@ -286,6 +287,8 @@ check:
 	CUBE_HAL= $(PY) tools/test_keil_inject.py   # 故意不给 HAL：CI 上没有 third_party，本地也按同样条件测
 	$(PY) tools/test_module_ide.py
 	$(PY) tools/test_mspm0_board.py
+	$(PY) tools/test_swd_pins.py
+	$(PY) tools/test_projgen_build.py
 	$(PY) tools/test_gen_syscfg.py
 	$(PY) tools/test_dac_caps.py
 	$(PY) tools/test_pwm3_caps.py
