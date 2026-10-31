@@ -77,7 +77,7 @@ export function ledgerBest(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()
 export function ledgerPick(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()): { best: Best | null; unstable: boolean } {
   const run = (r as any)[LEDGER_ROUND_F.runId] != null ? String((r as any)[LEDGER_ROUND_F.runId]) : LEDGER.run();
   if (r.best) {
-    const hit = inRun(rs, run).find(x => x.n === r.best!.iter);
+    const hit = run ? inRun(rs, run).find(x => x.n === r.best!.iter) : undefined;   // 只认同一 run_id 的台账轮，别拿别次迭代的同号轮否决
     if (hit && !hit.valid) return { best: null, unstable: true };
     return { best: r.best, unstable: false };
   }

@@ -95,6 +95,7 @@ assert.equal(cardView({ reason: "invalid", best: null, run_id: "none" } as any, 
 const bad = [{ n: 3, params: { kp: 99 }, metrics: { overshoot_pct: 0.1 }, valid: false, runId: "r" }];
 const vb = cardView({ reason: "diverged", best: { iter: 3, params: { kp: 99 } }, run_id: "r" } as any, bad);
 assert.equal(vb.title, NO_STABLE_ZH); assert.equal(vb.canWrite, false); assert.deepEqual(vb.params, []);
+assert.equal(cardView({ reason: "pass", best: { iter: 3, params: { kp: 2 } } } as any, bad).title.includes("第 3 轮"), true);   // 没有 run_id 时不拿台账否决
 assert.equal(fromRoundEvent({ iter: 2, valid: true, diverged: true, overshoot_pct: 1 })!.valid, false);
 // #121 verdict=pass 没有 verdict_zh → 通过
 assert.equal(toVerdict({ verdict: "pass" }).zh, "通过"); assert.equal(toVerdict({ verdict: "fail" }).zh, "未通过");
