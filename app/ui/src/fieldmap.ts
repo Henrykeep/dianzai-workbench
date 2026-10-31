@@ -41,10 +41,15 @@ export function sourceLabel(m: any): string {
 }
 // 卡结论（后端定稿前可选）：verdict ∈ pass|fail|unknown + verdict_zh。结论只显示 verdict_zh；缺 verdict → 中性「未判定」，绝不当作达标
 export const VERDICT_F = { v: "verdict", zh: "verdict_zh" } as const;
-export type Verdict = { v: "pass" | "fail" | "unknown"; zh: string };
+export type Verdict = { v: "pass" | "fail" | "unknown"; zh: string; warn?: string };
+// 降幅测试（阶跃按缩小幅度做，没验题面幅度）：绝不显示「通过」，原文当警告。字段名暂定
+export const DOWNSCALE_F = { flag: ["step_reduced", "downscaled"], zh: ["downscale_zh", "step_reduced_zh"] } as const;
+export const DOWNSCALE_ZH = "按降幅测试，未验题面幅度";
 export function toVerdict(src: any): Verdict {
   const pick = (k: string) => src?.args?.[k] ?? src?.preview?.[k] ?? src?.[k];
   const v = pick(VERDICT_F.v), zh = str(pick(VERDICT_F.zh));
+  const dzh = DOWNSCALE_F.zh.map(k => str(pick(k))).find(Boolean) ?? "", down = DOWNSCALE_F.flag.some(k => pick(k) === true) || !!dzh || zh.includes(DOWNSCALE_ZH);
+  if (down) { const w = dzh || (zh.includes(DOWNSCALE_ZH) ? zh : DOWNSCALE_ZH); return { v: v === "fail" ? "fail" : "unknown", zh: w, warn: w }; }
   if (v === "pass" || v === "fail" || v === "unknown") return { v, zh: zh || VERDICT_ZH[v] };
   return { v: "unknown", zh: "未判定" };
 }

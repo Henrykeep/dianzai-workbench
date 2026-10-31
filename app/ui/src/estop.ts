@@ -62,7 +62,7 @@ export function estopLine(ev: any, status: any): { line: string; restored: boole
   const f = spec?.fields ?? [];
   const parts: string[] = [];
   if (f.includes("measured")) parts.push(n(pick(os, ESTOP_F.measured), "ms"));
-  if (f.includes("threshold")) parts.push(`（阈值 ${n(pick(os, ESTOP_F.threshold), "ms")}）`);
+  if (f.includes("threshold")) { const th = pick(os, ESTOP_F.threshold); parts.push(typeof th === "number" && Number.isFinite(th) ? `（阈值 ${Math.round(th)} ms）` : `（阈值${MISSING_ZH}）`); }   // threshold_ms null → 阈值后端未给
   const fx = pick(os, [ESTOP_F.fix]);
   return { restored, cause, fix: typeof fx === "string" ? fx : "", line: `${t != null ? hhmm(t) : LATCH_AT_MISSING_ZH} ${reason}${parts.length ? " " + parts.join("") : ""}，已锁存` };
 }

@@ -61,6 +61,7 @@ export function compareRows(base: Record<string, number> | null | undefined, bes
   });
 }
 export function verdictLine(v: Verdict | undefined, e: SsErr | null, basis: string): { v: string; text: string } {
+  if (v?.warn) return { v: "warn", text: v.warn };   // 降幅测试：原文警告，不当通过
   const x: Verdict = !v || e?.inside === null ? { v: "unknown", zh: v?.v === "unknown" && v.zh ? v.zh : "未判定" } : v;
   return { v: x.v, text: `${x.zh || VERDICT_ZH[x.v]}${basis && !x.zh.includes(basis) ? `（${basis}）` : ""}` };
 }
@@ -167,7 +168,7 @@ export const iterTarget = (sp: { v: number } | null | undefined): number | null 
 // 参数一行横排；判定依据 / 单位不一致 / 停止原因收进「详情」；唯一主按钮「采用这组参数」
 export const CARD_KEYS = /超调|调节|稳态/;
 export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean }): string {
-  const v = cardView(r), head = verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");
+  const v = cardView(r), head = r.verdict?.warn ? r.verdict.warn : verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");   // 降幅警告原文照抄
   const key = v.compare.filter(x => CARD_KEYS.test(x[0])), cells = key.length ? key : v.compare.slice(0, 4);   // r9p6 别的题没有超调/调节/稳态时，照样列出它自己的指标
   const cmp = cells.length
     ? `<div class="rc-cmp">${cells.map(x => `<div class="rc-m"><span class="rc-k">${esc(x[0])}</span><span class="rc-v num">${esc(x[1])} → <b>${esc(x[2])}</b></span><span class="rc-d num ${x[4] ?? ""}">${esc(x[3])}</span></div>`).join("")}</div>`
