@@ -1,12 +1,14 @@
 import { retryText, clearsRetry, LOCAL_LABEL } from "../src/llmretry";
+import { toRetry, isRetry, RETRY_F } from "../src/fieldmap";
 import { bandLine, cardView } from "../src/iterui";
 const eq = (a: unknown, b: unknown, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
-eq(retryText({ type: "llm_retry", attempt: 2, total: 5, wait_s: 7.6, fix_action: "llm_local" }), "模型服务繁忙，第 2/5 次重试，约 8 s", "retry text");
-eq(retryText({ type: "llm_retry", attempt: 1, total: 3 }), "模型服务繁忙，第 1/3 次重试", "no wait");
+eq(retryText(toRetry({ type: "llm_retry", attempt: 2, total: 5, wait_s: 7.6, fix_action: "llm_local" })), "模型服务繁忙，第 2/5 次重试，约 8 s", "retry text");
+eq(retryText(toRetry({ type: "llm_retry", attempt: 1, total: 3 })), "模型服务繁忙，第 1/3 次重试", "no wait");
 eq(LOCAL_LABEL, "切到本地模型", "label");
 eq([clearsRetry("agent_delta"), clearsRetry("agent_error"), clearsRetry("agent_tool")], [true, true, false], "clear on success");
 eq(bandLine({ ss_band: { value: 0.8, band: 1, in_band: true, unit: " cm", source: "题目验收 accept" } }), "稳态误差 0.8 cm / 任务误差带 ±1 cm · 在带内（来源：题目验收 accept）", "explicit band");
 eq(bandLine({ metrics: { ss_err_pct: 3, band: 2 }, pass: { ss_err: false } }), "稳态误差 3% / 任务误差带 ±2% · 超出误差带（来源：板上阶跃 step_result）", "metrics band");
 eq(bandLine({ metrics: { ss_err_pct: 3 } }), "", "no band → nothing");
 eq(cardView({ reason: "pass", best: { iter: 1, params: { kp: 1 }, pass: { all: true } as any, metrics: { ss_err_pct: 0.5, band: 2 } } }).gaps[0].startsWith("稳态误差 0.5%"), true, "card shows band");
+eq([isRetry({ type: RETRY_F.type }), toRetry({ fix_action: "x" }).fix], [true, "x"], "adapter");
 console.log("✓ r9 llm_retry / 误差带");

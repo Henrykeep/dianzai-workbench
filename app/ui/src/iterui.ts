@@ -1,3 +1,4 @@
+import { toBand } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
 // 纯状态机 + 文案；main.ts 只做 DOM 接线。预算一律以本地服务报的 limits 为准，没报前按板型兜底（实机 8 轮、仿真 20 轮、180 s）。
 export type Limits = { time_s: number; rounds: number };
@@ -28,14 +29,10 @@ export function gapLines(g: Record<string, Gap> | undefined, pass?: unknown): st
   return ks.map(k => { const x = g![k], u = x.unit === "abs" ? "" : x.unit; return `${GAP_ZH[k] ?? k}：${n(x.value)}${u}，目标 ≤ ${n(x.limit)}${u}，差 ${n(x.gap)}${u}`; });
 }
 // 稳态误差 vs 任务误差带：本地服务给了带宽才显示（实测值 / 误差带 / 是否在带内 / 来源），不只给“达标”
-export type Band = { value: number; band: number; in_band: boolean; unit?: string; source?: string };
 export function bandLine(b: any): string {
-  const x: Band | null = b?.ss_band?.band != null ? b.ss_band
-    : b?.metrics?.band != null && b?.metrics?.ss_err_pct != null
-      ? { value: b.metrics.ss_err_pct, band: b.metrics.band, in_band: (b.pass?.ss_err ?? Math.abs(b.metrics.ss_err_pct) <= b.metrics.band) === true, unit: b.metrics.metric_mode === "abs" ? "" : "%", source: "板上阶跃 step_result" }
-      : null;
+  const x = toBand(b);
   if (!x) return "";
-  const u = x.unit ?? "";
+  const u = x.unit;
   return `稳态误差 ${n(x.value)}${u} / 任务误差带 ±${n(x.band)}${u} · ${x.in_band ? "在带内" : "超出误差带"}${x.source ? `（来源：${x.source}）` : ""}`;
 }
 export function cardView(r: Stopped): { title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string } {
