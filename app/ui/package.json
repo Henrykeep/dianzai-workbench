@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@awesome.me/webawesome": "3.14.0",
     "lucide": "^1.63.0",
     "uplot": "^1.6.30"
   },

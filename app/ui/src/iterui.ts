@@ -1,11 +1,11 @@
-import { toSsErr, passBasis, type SsErr } from "./fieldmap";
+import { toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr } from "./fieldmap";
 // #62 调参页「自动迭代」（本地服务 #38：agent_tool iterate_start / iterate_cancel；事件 iterate.started / round / stopped）
 // 纯状态机 + 文案；main.ts 只做 DOM 接线。预算一律以本地服务报的 limits 为准，没报前按板型兜底（实机 8 轮、仿真 20 轮、180 s）。
 export type Limits = { time_s: number; rounds: number };
 export const DEFAULT_LIMITS = (sim: boolean): Limits => ({ time_s: 180, rounds: sim ? 20 : 8 });
 export type Gap = { value: number; limit: number; gap: number; unit: string };
 export type Best = { iter: number; params: Record<string, number>; params_hash?: string; metrics?: Record<string, unknown>; pass?: unknown; gaps?: Record<string, Gap> };
-export type Stopped = { reason: string; message_zh?: string; rounds?: number; best?: Best | null; next_zh?: string; best_card?: number | null; ss_err?: SsErr | null; pass_basis?: string };
+export type Stopped = { reason: string; message_zh?: string; rounds?: number; best?: Best | null; next_zh?: string; best_card?: number | null; ss_err?: SsErr | null; pass_basis?: string; base?: Record<string, number> | null };
 // 本地服务在 iterate.stopped 后推一张 agent_action（tool=iterate_apply_best，“采用最好参数”）：界面只出一张卡——调参页这张，按钮确认的就是那张 action
 export const APPLY_TOOL = "iterate_apply_best";
 export const APPLY_LABEL = "采用最好参数";
@@ -38,14 +38,23 @@ export function bandLines(e: SsErr | null | undefined): string[] {
   if (e.note) out.push(e.note);
   return out;
 }
-export function cardView(r: Stopped): { title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string } {
-  const b = r.best ?? null, basis = r.pass_basis ?? "", e = r.ss_err ?? null;
+// 第 0 轮 vs 最好一轮：[指标, 第0轮, 最好, 变化, 好/坏]；越小越好
+export function compareRows(base: Record<string, number> | null | undefined, best: Record<string, unknown> | undefined): string[][] {
+  if (!base || !best) return [];
+  return METRIC_F.filter(([k]) => typeof base[k] === "number" && typeof best[k] === "number").map(([k, zh, u]) => {
+    const a = Math.abs(base[k]), b = Math.abs(best[k] as number), d = b - a, pct = a ? Math.round(d / a * 100) : 0;
+    return [zh, `${n(a)} ${u}`, `${n(b)} ${u}`, d === 0 ? "—" : `${d < 0 ? "↓" : "↑"} ${n(Math.abs(d))} ${u}${a ? `（${pct > 0 ? "+" : ""}${pct}%）` : ""}`, d < 0 ? "good" : d > 0 ? "bad" : ""];
+  });
+}
+export function cardView(r: Stopped): { title: string; reason: string; params: [string, string][]; gaps: string[]; canWrite: boolean; next: string; compare: string[][] } {
+  const b = r.best ?? null, basis = r.pass_basis ?? "", e = r.ss_err ?? null, zero = !!b && b.iter === 0;
   return {
-    title: b ? `最好一组参数（第 ${b.iter} 轮）` : "没有可用的一轮",
+    compare: b && !zero ? compareRows(r.base, b.metrics) : [],
+    title: !b ? "没有可用的一轮" : zero ? (r.reason === "pass" ? "初值已达标，未改参" : "初值已是最好一组，未改参") : `最好一组参数（第 ${b.iter} 轮）`,
     reason: `停止原因：${REASON_ZH[r.reason] ?? r.reason}${r.message_zh ? `（${r.message_zh}）` : ""}${r.reason === "pass" && basis ? `；${basis}` : ""}`,
     params: b ? Object.entries(b.params).map(([k, v]) => [k, n(v)]) : [],
     gaps: b ? [...bandLines(e), ...gapLines(b.gaps, e?.inside === null ? undefined : b.pass, basis).filter(l => !(e?.inside === null && l === "这一轮没有完整指标"))] : [],
-    canWrite: !!b && Object.keys(b.params ?? {}).length > 0,
+    canWrite: !!b && !zero && Object.keys(b.params ?? {}).length > 0,
     next: /flash/i.test(r.next_zh ?? "") ? "" : (r.next_zh ?? ""),   // #63：“写入 Flash”只在「保存参数」旁
   };
 }
@@ -61,9 +70,10 @@ export class IterModel {
     else this.s = { ...this.s, limits: l } as IterState;
   }
   onEvent(m: any, now: number): boolean {
-    if (m?.type === "iterate.started") { const l = m.limits?.rounds ? { time_s: m.limits.time_s, rounds: m.limits.rounds } : this.s.limits; this.s = { phase: "running", limits: l, t0: now, iter: 0 }; return true; }
+    if (m?.type === "iterate.started") { const l = m.limits?.rounds ? { time_s: m.limits.time_s, rounds: m.limits.rounds } : this.s.limits; this.base = null; this.s = { phase: "running", limits: l, t0: now, iter: 0 }; return true; }
+    if (m?.type === "iterate.round" && +m.iter === 0) this.base = roundMetrics(m);
     if (m?.type === "iterate.round") { if (this.s.phase !== "running") this.s = { phase: "running", limits: this.s.limits, t0: now, iter: 0 }; (this.s as any).iter = Math.max((this.s as any).iter, +m.iter || 0); return true; }
-    if (m?.type === "iterate.stopped") { const id = this.s.phase === "done" ? this.s.result.best_card : undefined; const x = this.extra; this.s = { phase: "done", limits: this.s.limits, result: { ...m, best_card: m.best_card ?? id ?? null, ss_err: x.ss_err ?? null, pass_basis: passBasis(m) || x.pass_basis || "" } }; return true; }
+    if (m?.type === "iterate.stopped") { const id = this.s.phase === "done" ? this.s.result.best_card : undefined; const x = this.extra; this.s = { phase: "done", limits: this.s.limits, result: { ...m, base: roundMetrics(m[ROUND0_F.obj]) ?? this.base, best_card: m.best_card ?? id ?? null, ss_err: x.ss_err ?? null, pass_basis: passBasis(m) || x.pass_basis || "" } }; return true; }
     if (m?.type === "agent_action" && m.tool === APPLY_TOOL) { this.cardId = m.id; this.extra = { ss_err: toSsErr(m), pass_basis: passBasis(m) };
       // 走的是 tune 自动调参（tune_round，无 iterate.stopped）时，卡本身就是结果：用卡参数合成结果，调参页照样出这一张
       if (this.s.phase !== "done") { const a = m.args ?? {}; this.s = { phase: "done", limits: this.s.limits, result: { reason: "autopilot", best: { iter: +a.iter || 0, params: a.params ?? {}, params_hash: a.params_hash }, best_card: m.id, ss_err: this.extra.ss_err, pass_basis: this.extra.pass_basis } }; return true; }
@@ -71,6 +81,7 @@ export class IterModel {
     return false;
   }
   cardId: number | null = null;
+  base: Record<string, number> | null = null;
   extra: { ss_err: SsErr | null; pass_basis: string } = { ss_err: null, pass_basis: "" };
   // 重连 / 刷新：iterate_status {running, result}
   onStatus(r: any, now: number, dismissed?: number | null) {

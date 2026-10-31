@@ -967,3 +967,28 @@ body{font-family:var(--f-sans);font-feature-settings:"cv11","ss01";-webkit-font-
 .lab{width:144px;padding:var(--sp-2) var(--sp-2) 0 var(--sp-5);gap:var(--sp-1)}
 .lab::before{left:var(--sp-2);top:calc(var(--sp-2) + 8px)}
 .lane:first-child .lab{padding-top:var(--sp-5)}
+
+/* ---- r9p：Web Awesome 组件 + 参数面板 / 结果卡 ---- */
+body{font-size:14px}
+.prow{padding:8px 0 12px}
+.prow .pr{display:flex;align-items:baseline;gap:8px}
+.prow .k{font:var(--fw-medium) 16px/24px var(--f-sans);color:var(--text-primary)}
+.prow .bv{font:12px/16px var(--f-mono);color:var(--text-muted)}
+.prow .pv{margin-left:auto;display:inline-flex;align-items:baseline;gap:4px}
+.prow .in.num{width:96px;text-align:right;font:16px/24px var(--f-mono);font-variant-numeric:tabular-nums}
+.prow .u{font-size:12px;color:var(--text-muted)}
+.prow .ruler{display:none}
+.prow wa-slider{display:block;margin-top:4px;--track-size:4px;--thumb-width:16px;--thumb-height:16px}
+.prow .rng{position:relative;display:flex;justify-content:space-between;padding-top:8px;font:12px/16px var(--f-mono);color:var(--text-muted);font-variant-numeric:tabular-nums}
+.prow .rng::before{content:"";position:absolute;left:0;right:0;top:0;height:4px;background:repeating-linear-gradient(90deg,var(--border-strong) 0 1px,transparent 1px 25%);background-size:calc(100% - 1px) 4px;background-repeat:no-repeat;border-right:1px solid var(--border-strong)}
+.prow.dirty .in.num{color:var(--accent-text)}
+.it-card{border:0;background:none;padding:0;margin:0 var(--sp5) var(--sp3)}
+.it-card wa-card{width:100%}
+.it-card .itc::part(body){display:flex;flex-wrap:wrap;gap:8px 24px;align-items:flex-start}
+.it-cmp{border-collapse:collapse;font-size:14px}
+.it-cmp th{font-weight:var(--fw-medium);color:var(--text-muted);text-align:right;padding:0 8px 4px}
+.it-cmp td{padding:4px 8px}
+.it-cmp td.num{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.it-cmp td.good{color:var(--ok)} .it-cmp td.bad{color:var(--text-secondary)}
+.tunebar wa-button.go{--wa-form-control-height:36px}
+.ag-setup wa-button{margin-top:8px}

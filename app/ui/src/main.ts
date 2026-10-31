@@ -2,6 +2,7 @@ import { applyBrand } from "./brand";
 import { lastRound } from "./round";
 import "./tokens.css";
 import "./style.css";
+import "./wa";
 applyBrand();
 import "./entry-data";
 import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } from "lucide";
@@ -370,11 +371,16 @@ function renderParams() {
   // 设计 v9：每行只显示名字、数值、刻度尺；说明 / 单位 / 量程收进悬停提示（title）
   const tip = (p: Param) => [p.desc, `量程 ${fmt(p.min, p)} … ${fmt(p.max, p)}${p.unit ? " " + p.unit : ""}`, `默认 ${fmt(p.default, p)}`].filter(Boolean).join("\n");
   $("plist").innerHTML = ps.length ? `<div class="p-unread" id="p-unread" hidden><span>灰色为固件默认值，尚未从板子读取</span><button class="btn sm ghost" type="button" id="p-unread-go">从板子读取参数</button></div>` + ps.map(p => `<div class="prow" id="row-${p.name}" title="${esc(tip(p))}">
-    <div class="pr"><span class="k mono">${esc(p.name)}</span><span class="bv mono" id="pb-${p.name}"></span>
-      <input class="in" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off" aria-label="${esc(p.name)}${p.unit ? "（" + esc(p.unit) + "）" : ""}"></div>
-    <div class="ruler"><i class="def" style="--x:${pos(p, p.default)}"></i><i class="brd" id="pk-${p.name}"></i><i class="span" id="ps-${p.name}"></i><i class="new" id="pn-${p.name}"></i></div></div>`).join("")
+    <div class="pr"><span class="k">${esc(p.name)}</span><span class="bv" id="pb-${p.name}"></span>
+      <span class="pv"><input class="in num" id="pi-${p.name}" data-n="${p.name}" inputmode="decimal" autocomplete="off" aria-label="${esc(p.name)}${p.unit ? "（" + esc(p.unit) + "）" : ""}">${p.unit ? `<span class="u">${esc(p.unit)}</span>` : ""}</span></div>
+    <wa-slider class="psl" id="sl-${p.name}" data-n="${p.name}" min="${p.min}" max="${p.max}" step="${p.max > p.min ? (p.max - p.min) / 200 : 1}" value="${p.default}" size="small" aria-label="${esc(p.name)}"></wa-slider>
+    <div class="rng" aria-hidden="true"><span>${fmt(p.min, p)}</span><span>${fmt(p.max, p)}</span></div></div>`).join("")
     : emptyState("sliders", "连上后列出可调参数");
   document.getElementById("p-unread-go")?.addEventListener("click", () => $("p-read").click());
+  $("plist").querySelectorAll<HTMLElement>("wa-slider").forEach(sl => sl.addEventListener("input", () => {   // 拖滑条 = 改草稿（同输入框）
+    const p = ps.find(x => x.name === sl.dataset.n)!, inp = document.getElementById(`pi-${p.name}`) as HTMLInputElement;
+    inp.value = fmt(+(sl as any).value, p); S.edit[p.name] = inp.value; markParams();
+  }));
   $("plist").querySelectorAll<HTMLInputElement>("input").forEach(inp => {
     inp.oninput = () => { S.edit[inp.dataset.n!] = inp.value; markParams(); };
     inp.onkeydown = e => {
@@ -452,8 +458,8 @@ function markParams() {
     if (pi) pi.placeholder = v == null ? fmt(p.default, p) : "";
     document.getElementById(`row-${p.name}`)?.classList.toggle("unread", v == null);
     const set = (id: string, k: string, x: string) => document.getElementById(id)?.style.setProperty(k, x);
-    if (v != null) set(`pk-${p.name}`, "--x", pos(p, v));
-    if (on && v != null) { const n = clampLocal(p, +S.edit[p.name]); set(`pn-${p.name}`, "--x", pos(p, n)); set(`ps-${p.name}`, "--a", pos(p, Math.min(v, n))); set(`ps-${p.name}`, "--b", pos(p, Math.max(v, n))); }
+    void set; const sl = document.getElementById(`sl-${p.name}`) as any, cur = on ? clampLocal(p, +S.edit[p.name]) : v ?? p.default;
+    if (sl && document.activeElement !== sl && Number.isFinite(cur) && sl.value !== cur) sl.value = cur;
   });
   const pu = document.getElementById("p-unread"); if (pu) pu.hidden = !(S.schema?.params ?? []).some(p => S.applied[p.name] == null);
   const pl = pending();
@@ -708,12 +714,12 @@ function renderIter() {
   if (IT.s.phase !== "done") { c.hidden = true; c.innerHTML = ""; return; }
   const v = cardView(IT.s.result), id = IT.applyId();
   c.hidden = false;
-  c.innerHTML = `<h4>${esc(v.title)}</h4><div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
+  c.innerHTML = `<wa-card class="itc"><h4>${esc(v.title)}</h4>${v.compare.length ? `<table class="it-cmp"><thead><tr><th></th><th>第 0 轮</th><th>最好</th><th>变化</th></tr></thead><tbody>${v.compare.map(r => `<tr><td>${esc(r[0])}</td><td class="num">${esc(r[1])}</td><td class="num">${esc(r[2])}</td><td class="num ${r[4]}">${esc(r[3])}</td></tr>`).join("")}</tbody></table>` : ""}<div class="it-col">${v.params.map(([k, x]) => `<span class="mono">${esc(k)} = ${esc(x)}</span>`).join("")}</div>` +
     `<div class="it-col">${v.gaps.map(g => `<span>${esc(g)}</span>`).join("")}</div><div class="it-col"><span>${esc(v.reason)}</span>${v.next ? `<span class="hint">${esc(v.next)}</span>` : ""}</div>` +
-    `<span class="it-act">${v.canWrite ? `<button class="btn sm" id="it-write" ${id == null ? "disabled title=\"等本地服务出确认卡…\"" : ""}>${APPLY_LABEL}</button>` : ""}<button class="btn sm" id="it-x">收起</button></span>`;
+    `<span class="it-act">${v.canWrite ? `<wa-button variant="brand" size="small" id="it-write" ${id == null ? "disabled title=\"等本地服务出确认卡…\"" : ""}>${APPLY_LABEL}</wa-button>` : ""}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
-  const w = c.querySelector<HTMLButtonElement>("#it-write");
+  const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
   if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
     w.disabled = true;
     const r = await call("agent_action_decide", { id, accept: true }).catch(() => null);

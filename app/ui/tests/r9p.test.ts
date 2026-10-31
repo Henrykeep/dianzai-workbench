@@ -1,0 +1,11 @@
+import { cardView, compareRows } from "../src/iterui";
+import { agentState, sourceLabel } from "../src/fieldmap";
+const eq = (a: unknown, b: unknown, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw new Error(`${m}: ${JSON.stringify(a)} != ${JSON.stringify(b)}`); };
+eq(cardView({ reason: "pass", best: { iter: 0, params: { kp: 1 }, pass: { all: true } } }).title, "初值已达标，未改参", "round 0");
+eq(cardView({ reason: "pass", best: { iter: 0, params: { kp: 1 } } }).canWrite, false, "nothing to apply at round 0");
+const v = cardView({ reason: "pass", base: { ss_err_pct: 4, overshoot_pct: 20 }, best: { iter: 3, params: { kp: 1 }, metrics: { ss_err_pct: 1, overshoot_pct: 25 } } });
+eq(v.compare, [["稳态误差", "4 %", "1 %", "↓ 3 %（-75%）", "good"], ["超调", "20 %", "25 %", "↑ 5 %（+25%）", "bad"]], "round0 vs best");
+eq(compareRows(null, {}), [], "no base");
+eq([agentState({ agent: { state: "unconfigured" } }), agentState({}), agentState({ agent: { state: "x" } })], ["unconfigured", null, null], "agent state");
+eq([sourceLabel({ source: "rule" }), sourceLabel({ preview: { source: "llm" } }), sourceLabel({})], ["来自规则引擎", "来自模型", ""], "source label");
+console.log("✓ r9p 结果卡对比 / Agent 状态 / 来源");

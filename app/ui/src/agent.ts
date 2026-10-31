@@ -1,7 +1,7 @@
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
 import { retryText, clearsRetry, LOCAL_LABEL } from "./llmretry";
-import { isRetry, toRetry } from "./fieldmap";
+import { isRetry, toRetry, agentState, sourceLabel, AGENT_F } from "./fieldmap";
 import { dropFlashBlockers, isFlashNotice } from "./flashnag";
 import { Msg } from "./ws";
 import { runAction, resolveFix } from "./progress";
@@ -52,7 +52,7 @@ export function initAgent(call: Call) {
     const m = r.metrics;
     const sel = (cur: string, opts: string[]) => opts.map(o => `<option ${o === cur ? "selected" : ""}>${esc(o)}</option>`).join("");
     const ys = r.pairs.map((p: string[]) => p[0]), sps = r.pairs.map((p: string[]) => p[1]);
-    const d = add(`<div class="hd"><span class="dotk tune"></span><span class="t">阶跃分析</span><span class="lbl">规则 · 离线</span></div>
+    const d = add(`<div class="hd"><span class="dotk tune"></span><span class="t">阶跃分析</span><wa-tag size="small" appearance="filled" variant="neutral">来自规则引擎</wa-tag></div>
       <div class="row sm">反馈 <select class="in" data-k="y">${sel(r.y, ys.includes(r.y) ? ys : [r.y, ...ys])}</select>
         设定 <select class="in" data-k="sp">${sel(r.sp, sps.includes(r.sp) ? sps : [r.sp, ...sps])}</select></div>
       ${m.ok ? `<table class="met">
@@ -163,7 +163,7 @@ export function initAgent(call: Call) {
     const where = a.sim ? "仿真" : a.as_hw ? "仿真当实板" : "实机";
     const steps = (c.steps || []) as any[];
     const body = `<header class="ahd"><span class="pulse"></span><div><div class="at">${esc(c.title ?? TOOL_CN[a.tool] ?? a.tool)}</div>
-        ${c.summary ? `<div class="as">${esc(c.summary)}</div>` : ""}</div><span class="where ${a.sim ? "sim" : "hw"}">${where}</span></header>
+        ${c.summary ? `<div class="as">${esc(c.summary)}</div>` : ""}</div>${sourceLabel(a) ? `<wa-tag size="small" variant="neutral">${sourceLabel(a)}</wa-tag>` : ""}<span class="where ${a.sim ? "sim" : "hw"}">${where}</span></header>
       ${c.error ? `<div class="aerr">${esc(c.error)}</div>` : ""}
       ${pa ? `<ul class="prearm">${(pa.checked as string[]).map(x => `<li class="ok-t">✓ ${esc(PRE[x] ?? x)}</li>`).join("")}${(pa.failed as string[]).map(f => `<li class="warn-t">✕ ${esc(f)}</li>`).join("")}</ul>` : ""}
       ${steps.length ? `<ol class="asteps">${steps.map((st, i) => stepRow(st, i, steps.length)).join("")}</ol>` : ""}
@@ -562,16 +562,22 @@ export function initAgent(call: Call) {
   call("agent_config").then(c => {
     if (c?.configured) badge(/ollama|localhost|127\.0\.0\.1|:11434/i.test(`${c.provider} ${c.base_url}`) ? "local" : "cloud");
     if (!c || c.configured) return;
-    document.querySelectorAll(".setup-card").forEach(e => e.remove());   // 只保留一张
-    // 首次打开：平静的三步引导，不出现报错卡
-    const card = add(`<div class="ag-setup"><b>开始使用 Agent</b><p>三步即可开始。不配置模型时，调参、示波、评分与急停照常可用。</p>
-      <ol class="ag-guide"><li><span class="n">1</span><span class="t">选模型</span><button class="btn sm" type="button" data-r="cfg">选择模型</button></li>
-      <li><span class="n">2</span><span class="t">连板子</span><button class="btn sm ghost" type="button" data-r="conn">连接</button></li>
-      <li><span class="n">3</span><span class="t">选题目</span><button class="btn sm ghost" type="button" data-r="req">去读题</button></li></ol></div>`, "card setup-card");
-    card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
-    card.querySelector<HTMLElement>("[data-r=conn]")!.onclick = () => document.getElementById("connect")?.click();
-    card.querySelector<HTMLElement>("[data-r=req]")!.onclick = () => document.querySelector<HTMLElement>('#steps [data-step="项目"]')?.click();
+    showSetup(true);
   }).catch(() => {});
+
+  // 未配置模型：右栏只放这一张（说明 + 去配置）；建议卡自己标来源（来自规则引擎 / 来自模型）
+  function showSetup(on: boolean) {
+    document.querySelectorAll(".setup-card").forEach(e => e.remove());
+    if (!on) return;
+    const card = add(`<div class="ag-setup"><b>Agent 还没有大模型</b><p>配置后可以一句话建工程、读题、解释波形。调参、示波、评分、急停和规则引擎建议不依赖它。</p>
+      <wa-button size="small" appearance="outlined" data-r="cfg">去配置</wa-button></div>`, "card setup-card");
+    card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
+  }
+  let lastAgentState: string | null = null;
+  function onAgentState(m: any) {   // status.agent.state 驱动（fix_action=configure_model → 去配置）
+    const st = agentState(m); if (!st || st === lastAgentState) return; lastAgentState = st;
+    showSetup(st === "unconfigured" || m?.[AGENT_F.obj]?.[AGENT_F.fix] === AGENT_F.cfgFix);
+  }
 
   // ---------------------------------------------------------------- 计划 / 撤销
   let planEl: HTMLElement | null = null;
@@ -660,6 +666,7 @@ export function initAgent(call: Call) {
   }
   return {
     onMsg(m: Msg) {
+      if (m.type === "status") onAgentState(m);
       if (isRetry(m)) onRetry(m);
       else if (retryEl && clearsRetry(m.type)) { retryEl.remove(); retryEl = null; }
       if (typeof m.type === "string" && m.type.startsWith("agent_")) watch.touch(performance.now());
