@@ -1,4 +1,4 @@
-// llm_retry（模型服务繁忙自动重试）：Agent 流内联一句进度 + 「切到本地模型」；字段名映射见 fieldmap.ts
+// llm_retry（模型服务 502/503/504 自动重试）：Agent 流内联一句进度 + 「切到本地模型」；字段名映射见 fieldmap.ts
 import type { Retry } from "./fieldmap";
 export const LOCAL_LABEL = "切到本地模型";
 export function retryText(r: Retry): string {
