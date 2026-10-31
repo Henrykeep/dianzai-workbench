@@ -55,3 +55,37 @@ def test_true_host_loss_still_trips():
 def test_hb_timeout_cause_message_and_fix_action():
     d = estop_cause_dict(2, 5000, 1001.0)
     assert d["message_zh"] == "心跳超时 1001 ms" and d["fix_action"] == "estop_clear"
+
+
+def test_heartbeat_cadence_about_250ms_while_lock_held():
+    s = _session()
+    time.sleep(0.3)
+    with s.lock:
+        n0 = len(s.tr.t)
+        time.sleep(1.5)
+        ts = s.tr.t[n0:]
+    gaps = [b - a for a, b in zip(ts, ts[1:])]
+    assert len(ts) >= 5 and max(gaps) < 0.4 and min(gaps) > 0.15, gaps
+    s._gen += 1
+
+
+def test_threshold_unknown_is_not_invented():
+    d = estop_cause_dict(2, 5000, 1001.0)
+    assert d["threshold_ms"] is None and "阈值未知" in d["detail_zh"]
+    assert estop_cause_dict(2, 5000, 1600.0, threshold_ms=1500)["threshold_ms"] == 1500
+
+
+def test_latch_record_and_restored_message(tmp_path, monkeypatch):
+    from dzbench import latch, progress
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path))
+    es = estop_cause_dict(2, 5000, 1001.0, threshold_ms=1000)
+    latch.set("sim:x", None, "firmware:hb_timeout", es["message_zh"], cause=es)
+    rec = latch.get("sim:x", None)
+    assert rec["reason"] == "hb_timeout" and rec["gap_ms"] == 1001 and rec["threshold_ms"] == 1000
+    assert time.strptime(rec["latched_at"][:19], "%Y-%m-%dT%H:%M:%S")
+    v = latch.restored_view(rec)
+    hm = time.strftime("%H:%M", time.localtime(rec["t"]))
+    assert v["message_zh"] == f"{hm} 心跳超时 1001 ms，已锁存" and v["restored"] is True and v["fix_action"] == "estop_clear"
+    b = progress.blockers({"link": {"board": "connected"}, "estop": True, "estop_cause": v, "estop_reason": v["message_zh"]})
+    e = next(x for x in b if x["code"] == "estop")
+    assert e["message_zh"] == v["message_zh"] and e["restored"] is True and e["fix_action"] == "estop_clear"
