@@ -117,6 +117,14 @@ def check(spec: dict, params: list) -> list[str]:
         um = st.get("u_max", 0)
         if isinstance(um, str) and um not in pnames:
             errs.append(f"step[{k}].u_max={um} 不是参数名")
+    act = spec.get("actuator")
+    if act is not None:
+        if not isinstance(act, dict) or set(act) - {"u_min", "u_max", "sat"} or not all(isinstance(v, (int, float)) for v in act.values()):
+            errs.append("actuator 只能写 {u_min, u_max, sat} 数值（执行器物理限值，进握手帧）")
+        elif act.get("u_min") is not None and act.get("u_max") is not None and not act["u_min"] < act["u_max"]:
+            errs.append("actuator.u_min 须 < u_max")
+    if spec.get("relay", True) not in (True, False, "on", "off"):
+        errs.append("relay 只能是 on / off（默认 on：模板带 0x7C 继电输出接管）")
     if len(spec.get("step") or []) > 4:
         errs.append("step 通道最多 4 个")
     for p in params:
@@ -165,6 +173,13 @@ def schema(spec: dict, params: list) -> dict:
     for f, src in zip(s["telemetry"]["fields"], tel.get("fields", [])):
         if src.get("cal"):
             f["cal"] = src["cal"]
+    # 握手帧（心跳 schema_hash 绑定的这份表）带上声明的物理限值：未声明一律 null，上位机不猜
+    act = spec.get("actuator") or {}
+    st0 = (spec.get("step") or [{}])[0]
+    num = lambda v: None if v is None else float(v)
+    rng = st0.get("range") if st0.get("range") is not None else st0.get("sensor_range")
+    s["limits"] = {"u_min": num(act.get("u_min")), "u_max": num(act.get("u_max")), "sat": num(act.get("sat")), "range": num(rng)}
+    s["relay"] = spec.get("relay", True) not in (False, "off")
     for k in ("accept", "loops", "protect_fixed"):
         if spec.get(k):
             s[k] = spec[k]
@@ -195,7 +210,8 @@ def render(spec: dict, params: list, struct: str | None, sch: dict) -> tuple[str
     if not own:
         h.append('#include "project_gen.h"')
     h += ["", f"#define LINK_SCHEMA_HASH 0x{sch['hash']:08X}u", f"#define LINK_TELEM_ID {sch['telemetry']['id']}u",
-          f"#define LINK_TELEM_PERIOD_MS {sch['telemetry']['period_ms']}u", f"#define LINK_N_PARAMS {len(params)}u", "",
+          f"#define LINK_TELEM_PERIOD_MS {sch['telemetry']['period_ms']}u", f"#define LINK_N_PARAMS {len(params)}u",
+          f"#define LINK_RELAY_EN {1 if sch['relay'] else 0}   /* link.yaml relay: off → 0x7C 不接管输出 */", "",
           "typedef struct {"]
     h += [f"    {C_TYPES[f['type']][0]} {f['name']};  /**< {f.get('unit', '')} */" for f in fields] or ["    uint8_t unused_;"]
     h += ["} link_telem_t;", ""]

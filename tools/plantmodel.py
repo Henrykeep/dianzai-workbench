@@ -232,12 +232,14 @@ void app_loop(void)
 """ % ctrl_period_us
 
 
-def link_yaml(unit: str, ranges: dict, init: dict, step: dict | None = None, u_max_hi: float = 1.0) -> str:
+def link_yaml(unit: str, ranges: dict, init: dict, step: dict | None = None, u_max_hi: float = 1.0,
+              sat: tuple[float, float] | None = None) -> str:
     """通用 link: 段（sp/y/u 遥测、kp/ki/kd/u_max 参数、一个阶跃通道）。step 只写给了的键（物理上限等）。"""
     md = lambda k: _r((ranges[k][1] - ranges[k][0]) * 0.25, 3)
     st = ", ".join(f"{k}: {v}" for k, v in (step or {}).items())
+    act = f"  actuator: {{ u_min: {sat[0]}, u_max: {sat[1]} }}\n" if sat else ""
     return f"""link:
-  telemetry:
+{act}  telemetry:
     id: 2
     period_ms: 10
     fields:
@@ -298,7 +300,8 @@ def scaffold(app_yaml: pathlib.Path, out: pathlib.Path) -> None:
         txt += "requires:\n  uart: [LINK]\n  timer: [CTRL]\n"
     if "link" not in doc:
         r, i = param_ranges(d)
-        txt += link_yaml(d["unit"], r, i, step=step_limits(d), u_max_hi=_r(max(abs(x) for x in sat_limits(d)), 4))
+        txt += link_yaml(d["unit"], r, i, step=step_limits(d), u_max_hi=_r(max(abs(x) for x in sat_limits(d)), 4),
+                         sat=tuple(_r(float(x), 4) for x in sat_limits(d)))
     (out / "app.yaml").write_text(txt, encoding="utf-8")
     if not any(out.glob("*.c")):
         (out / "app_main.c").write_text(generic_app(int(round(float(d.get("sample_s", 0.001)) * 1e6))), encoding="utf-8")
