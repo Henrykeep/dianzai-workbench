@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import pathlib
 import sys
@@ -70,6 +69,7 @@ def main(argv=None) -> int:
         ds = int(time.strftime("%Y%m%d", time.gmtime()))
         seeds.append(ds)
         print(f"tunegate：日期种子 {ds}（复现：tools/tunegate.py --seed {ds}）")
+    import tunegate_grade as G
     t_start = time.monotonic()
     print(f"tunegate：对象来源 = {source()}{'（STAND-IN，未合入）' if source() == 'standin' else ''}；seeds {seeds[0]}…{seeds[-1]}（{len(seeds)} 个）")
     rs = []
@@ -81,36 +81,27 @@ def main(argv=None) -> int:
         except Exception as e:  # noqa: BLE001
             r = {"seed": s, "ok": False, "errors": [f"异常：{type(e).__name__}: {e}"]}
         rs.append(r)
-        mark = "✓" if r["ok"] else "✗"
-        print(f"{mark} seed={s} {r.get('kind', '?')} feasible={r.get('feasible')} verdict={r.get('verdict')}/{r.get('category')} "
-              f"cost {json.dumps({k: round(v, 4) if math.isfinite(v) else None for k, v in (r.get('cost') or {}).items()})} {'; '.join(r['errors'])}")
-    und = [r for r in rs if r.get("bucket") == "undecided"]
-    sus = [r for r in rs if r.get("bucket") == "truth_label_suspect"]
-    bad = [r for r in rs if not r["ok"]]
-    fake = [r for r in rs if r.get("false_pass")]
-    feas = [r for r in rs if r.get("feasible") is True]
-    infe = [r for r in rs if r.get("feasible") is False]
-    unk = [r for r in rs if r.get("feasible") == "unknown"]
-    den = len(rs) - len(und)                                        # undecided 不进通过率分母
-    good = den - len(bad)
-    print(f"tunegate：{good}/{den} 通过（feasible {len(feas)}，infeasible {len(infe)}，unknown {len(unk)}；undecided {len(und)} 不计）"
-          + (f"；失败 seed：{','.join(str(r['seed']) for r in bad)}（tools/tunegate.py --seed N 复现）" if bad else ""))
-    ratio = len(unk) / len(rs) if rs else 0.0
-    print(f"tunegate：feasible=unknown {len(unk)}/{len(rs)}（{ratio:.0%}）" + (f"：seed {','.join(str(r['seed']) for r in unk)}" if unk else ""))
-    if ratio > MAX_UNKNOWN:
-        print(f"::warning::tunegate unknown 比例 {ratio:.0%} > {MAX_UNKNOWN:.0%}（randplant 标签不确定的太多）")
-    print(f"tunegate：truth_label_suspect {len(sus)} 个（标签 false、复核找到达标参数；不算后端假达标）" + (f"：seed {','.join(str(r['seed']) for r in sus)}" if sus else ""))
+        print(G.line(r))
+    S = G.summarize(rs)
+    print(f"tunegate：{S['good']}/{S['den']} 通过（可行 {S['feas_good']}/{S['n_feas']}，不可行 {S['n_infeas']}，unknown {len(S['unknown'])}；"
+          f"undecided {len(S['undecided'])} 不计）" + (f"；失败 seed：{','.join(map(str, S['bad']))}（tools/tunegate.py --seed N 复现）" if S["bad"] else ""))
+    print(f"tunegate：unknown {len(S['unknown'])}/{S['n']}（{S['unknown_ratio']:.0%}）" + (f"：seed {','.join(map(str, S['unknown']))}" if S["unknown"] else ""))
+    if S["unknown_ratio"] > MAX_UNKNOWN:
+        print(f"::warning::tunegate unknown 比例 {S['unknown_ratio']:.0%} > {MAX_UNKNOWN:.0%}（randplant 标签不确定的太多）")
+    print(f"tunegate：truth_label_suspect {len(S['truth_label_suspect'])} 个；初值已达标未调参 {len(S['unchanged'])} 个；"
+          f"各原因类别 {json.dumps(S['per_category'], ensure_ascii=False)}")
     if a.json:
         pathlib.Path(a.json).write_text(json.dumps(rs, ensure_ascii=False, indent=1, default=str), "utf-8")
     if source() == "standin":
         print("tunegate：未合入——对象来自 STAND-IN（TUNEGATE_SOURCE=standin），结果不算门禁通过")
         return 2
     print(f"tunegate：用时 {time.monotonic() - t_start:.1f} s")
-    if bad:
-        print(f"::warning::tunegate 通过率 {good}/{den}；未通过 seed {','.join(str(r['seed']) for r in bad)}")
-    print(f"tunegate：假达标 {len(fake)} 个（硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in fake)}" if fake else "")
-          + f"；通过率 {good}/{den}（软指标，未通过只警告）")
-    return 1 if fake else 0
+    if S["bad"]:
+        print(f"::warning::tunegate 通过率 {S['good']}/{S['den']}；未通过 seed {','.join(map(str, S['bad']))}")
+    fake, early = S["false_pass"], S["early_stop_not_pass"]
+    print(f"tunegate：假达标 {len(fake)} 个、可行对象提前停未达标 {len(early)} 个（硬门禁，都必须 0）"
+          + (f"：seed {','.join(map(str, fake + early))}" if fake or early else "") + f"；通过率 {S['good']}/{S['den']}（软指标，未通过只警告）")
+    return 1 if fake or early else 0
 
 
 if __name__ == "__main__":

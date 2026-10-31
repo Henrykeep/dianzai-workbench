@@ -255,8 +255,166 @@ def _is_step_reject(e) -> bool:
     ex = getattr(e, "extra", None) or {}
     return getattr(e, "code", None) == "invalid_param" and (ex.get("reject") == "step" or ex.get("reason") == "step")
 
+# ---------------------------------------------------------------- 整定策略：代价对齐题面 / 增益下限 / 收敛停 / 按证据诊断
+BUDGET_BASE, BUDGET_PER_PARAM, BUDGET_MAX = 12, 6, 48         # 板上试参次数上限随可调参数个数自适应
+FAC0, FAC_MIN, IMPROVE_REL = 1.6, 1.05, 0.01
+FLOOR_FRAC = 0.02                                               # 增益下限 = 候选里最大值的 2%、初值的 2% 取大（且不低于声明 min）
+FLOOR_INIT = 0.02
+STOP_ZH = {"converged": "已满足题面，停止搜索", "budget_exhausted": "试参次数用完仍未满足题面",
+           "at_limit": "参数都已顶到声明范围边界，挪不动了"}
+CAUSE_ZH = {"saturation": "执行器饱和", "delay": "纯滞后过大", "nonminimum_phase": "非最小相位（起步反向）"}
+LEVEL = {"strong": 3, "medium": 2, "weak": 1}
+UNCHANGED_ZH = "初值已满足题面，本次没有改动参数"
 
-def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: int = 12) -> dict:
+
+def spec_cost(m: dict, sp: dict) -> float:
+    """板上代价 = 题面指标超标量（相对题面值，加权大）+ 原 IAE 代价（细分）；题面没写指标 → 退回原代价。"""
+    base = cost(m)
+    if base >= 1e9:
+        return base
+    v = 0.0
+    for k in ("ss_err_pct", "overshoot_pct", "settle_s"):
+        lim = sp.get(k)
+        if lim is None:
+            continue
+        x = m.get(k)
+        if x is None or not math.isfinite(x):
+            v += 10.0
+        else:
+            v += max(0.0, x - lim) / (abs(lim) if lim else 1.0)
+    return 10.0 * v + base
+
+
+def _reproduces(rerun, sp: dict, times: int = 2) -> bool:
+    """达标要复现：同参数再跑 times 次（带噪声），每次都满足才算。"""
+    return all(not meets(rerun(), sp) for _ in range(times))
+
+
+def gain_floor(decl: list[dict], cands: list[dict]) -> dict:
+    out = {}
+    for d in decl:
+        if d["role"] in ("kp", "ki") and d["min"] >= 0:
+            top = max((abs(float(c.get(d["role"], 0.0))) for c in cands if c), default=0.0)
+            out[d["role"]] = max(float(d["min"]), FLOOR_FRAC * top, FLOOR_INIT * abs(float(cands[0].get(d["role"], 0.0))))
+    return out
+
+
+def _clip_floor(p: dict, decl: list[dict], floor: dict) -> dict:
+    c = _clip(p, decl)
+    return _clip({k: max(v, floor.get(k, -math.inf)) for k, v in c.items()}, decl)
+
+
+def plant_features(model: "LinModel", dt: float) -> dict:
+    """开环特征从辨识模型的阶跃响应读（不从闭环数据猜）：稳态增益 K、积分与否、L/T、起步反向幅度。"""
+    from ..agent import stepident
+    n = 3000
+    f = model.stepper()
+    y = np.array([f(1.0) for _ in range(n)])
+    if not np.all(np.isfinite(y)):
+        return {}
+    tail = np.diff(y[-50:]) / dt
+    integ = abs(float(np.mean(tail))) > 1e-3 * (abs(y[-1]) + 1e-9) / (n * dt) * 10
+    fin = float(y[-1])
+    if abs(fin) < 1e-12:
+        return {}
+    s = 1.0 if fin > 0 else -1.0
+    rise = np.where(s * y >= 0.1 * abs(fin))[0]
+    inv = max(0.0, -float(np.min(s * y[: (int(rise[0]) if len(rise) else n) + 1])) / abs(fin))
+    out = {"integrating": bool(integ), "inv": inv, "K": None if integ else fin, "kv": float(np.mean(tail)) if integ else None}
+    if not integ:
+        idn = stepident.identify([i * dt for i in range(-3, n)], [0.0] * 3 + list(y), 0.0, 1.0)
+        if idn and idn.get("ok") and idn.get("T"):
+            out["LT"] = float(idn["L"]) / float(idn["T"])
+    return out
+
+
+def _lvl(x: float, strong: float, medium: float, weak: float):
+    return "strong" if x >= strong else "medium" if x >= medium else "weak" if x >= weak else None
+
+
+def diagnose(feat: dict, bu, by, amp: float, lim: float, win_s: float, bm: dict, sp: dict) -> list[dict]:
+    """每个候选原因各自按证据打分（strong / medium / weak），按证据强弱排序；不按固定先后。"""
+    out = []
+    sgn = 1.0 if amp >= 0 else -1.0
+    by = np.nan_to_num(np.asarray(by, float))
+    rise = np.where(sgn * by >= 0.1 * abs(amp))[0]
+    inv_b = max(0.0, -float(np.min(sgn * by[: (int(rise[0]) if len(rise) else len(by)) + 1])) / abs(amp))
+    inv_m = float(feat.get("inv") or 0.0)
+    lv = "strong" if inv_m >= 0.05 and inv_b >= 0.03 else _lvl(inv_m, 1e9, 0.08, 0.03)
+    if lv:
+        out.append({"code": "nonminimum_phase", "evidence": lv, "score": inv_m,
+                    "basis_zh": f"辨识模型起步先反向 {inv_m * 100:.1f}%（板上 {inv_b * 100:.1f}%）：非最小相位，快了必反冲"})
+    bu = np.nan_to_num(np.asarray(bu, float))
+    LT_m = float(feat.get("LT") or 0.0)
+    LT_b = _board_LT(bu, by, sgn, abs(amp))
+    LT = max(LT_m, LT_b)
+    lv = _lvl(LT, 1.5, 0.8, 0.5)
+    if lv:
+        out.append({"code": "delay", "evidence": lv, "score": LT,
+                    "basis_zh": f"纯滞后 / 上升时间 ≈ {LT:.2f}（模型 {LT_m:.2f}，板上 {LT_b:.2f}）：时延过大"})
+    satf = float(np.mean(np.abs(bu[: max(len(bu) // 2, 1)]) >= 0.98 * lim)) if math.isfinite(lim) else 0.0
+    K = feat.get("K")
+    reach = abs(K) * lim / abs(amp) if K is not None and math.isfinite(lim) else None
+    lv, basis, sc = None, "", 0.0
+    if reach is not None and reach < 0.98:
+        lv, sc = ("strong" if reach < 0.9 else "medium"), 1 - reach
+        basis = f"按辨识增益，满输出稳态只能到目标的 {reach * 100:.0f}%：执行器饱和"
+    elif feat.get("integrating") and feat.get("kv") and sp.get("settle_s") and math.isfinite(lim):
+        tmin = abs(amp) / (abs(feat["kv"]) * lim)
+        if tmin > 0.7 * float(sp["settle_s"]):
+            lv, sc = ("strong" if tmin > sp["settle_s"] else "medium"), tmin / float(sp["settle_s"])
+            basis = f"满输出走完阶跃至少要 {tmin:.2g} s（题面调节时间 {sp['settle_s']:g} s）：执行器饱和"
+    if lv is None:
+        osc = (bm.get("overshoot_pct") or 0.0) > 5.0              # 振荡顶限幅不算饱和证据
+        lv = None if osc else _lvl(satf, 1e9, 0.5, 0.3)
+        sc = satf
+        basis = f"执行器 {satf * 100:.0f}% 时间顶在上限：饱和，再加增益也快不了"
+    if lv:
+        out.append({"code": "saturation", "evidence": lv, "score": sc, "basis_zh": basis})
+    out.sort(key=lambda c: (LEVEL[c["evidence"]], c["score"]), reverse=True)
+    return out
+
+
+def _board_LT(bu, by, sgn: float, a: float) -> float:
+    """板上实测：控制量开始动 → 输出开始动（>2%）= 纯滞后；输出 2% → 63% = 上升时间。按拍数比，与采样周期无关。"""
+    mu = np.where(np.abs(bu) > 1e-6 * (np.max(np.abs(bu)) if len(bu) else 0) + 1e-12)[0]
+    if not len(mu):
+        return 0.0
+    k0 = int(mu[0])
+    ky = np.where(sgn * by[k0:] > 0.02 * a)[0]
+    k6 = np.where(sgn * by[k0:] > 0.63 * a)[0]
+    if not len(ky) or not len(k6) or k6[0] <= ky[0]:
+        return 0.0
+    return float(ky[0]) / float(k6[0] - ky[0])
+
+
+def _close(a: dict, b: dict) -> bool:
+    return LEVEL[a["evidence"]] == LEVEL[b["evidence"]]
+
+
+def _unchanged(seed, sp, amp, n, timing, info, name, p0, m0, c0, amp_reduced, amp_spec, max_step, link) -> dict:
+    """初值已满足题面：只按题面判、不改参数、不算“整定成功”；逐项给余量。"""
+    extra = {}
+    verdict, verdict_zh = "pass", "通过（初值已达标，未调参）"
+    if amp_reduced:
+        extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None,
+                 "retest_blocked_by": step_block(amp_spec, max_step, int(link.get("ch") or 0), link.get("unit") or None),
+                 "warning_zh": AMP_WARN_ZH}
+        verdict, verdict_zh = "partial", "未验题面幅度"
+    items = [{"key": k, "spec": sp[k], "measured": m0.get(k), "margin": sp[k] - m0.get(k),
+              "verdict": "partial" if amp_reduced else "pass", "verdict_zh": "未验题面幅度" if amp_reduced else "达标"} | extra
+             for k in ("ss_err_pct", "overshoot_pct", "settle_s") if sp.get(k) is not None]
+    pr = {name[k]: v for k, v in p0.items()}
+    return {"seed": seed, "verdict": verdict, "verdict_zh": verdict_zh, "category": None, "pass_basis": UNCHANGED_ZH,
+            "spec": sp, "amp": amp, "n": n, "items": items, **extra, "causes": [], "unchanged": True, "unchanged_zh": UNCHANGED_ZH,
+            "tuned": False, "margins": {it["key"]: it["margin"] for it in items},
+            "stop_reason": "converged", "stop_reason_zh": UNCHANGED_ZH, "budget": 0,
+            "timing": timing, "ident": info, "initial": {"params": pr, "metrics": m0, "cost": c0},
+            "best": {"params": pr, "roles": dict(p0), "metrics": m0, "cost": c0}, "rounds": 0}
+
+
+
+def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: int | None = None) -> dict:
     """board：read_params() / write_param(name, v)（受 max_delta，超了拒写）/ step(amp, n) → (t, r, y, u)。"""
     import control  # noqa: F401  python-control：模型仿真 / 设计
     from ..agent import stepident
@@ -319,57 +477,73 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         model = LinModel(sysd, dn)
     except Exception as e:  # noqa: BLE001
         model, info = None, {"error": str(e)}
-    # 4) python-control 模型上搜初值 → 上板迭代
-    hist = [(cost(m_init), p0, m_init, (t, r, y, u))]
+    # 4) python-control 模型上搜初值 → 上板迭代（代价与题面指标对齐；收敛 / 预算 / 到边界才停）
+    J = lambda m: spec_cost(m, sp)                              # noqa: E731
+    hist = [(J(m_init), p0, m_init, (t, r, y, u))]
+    if not meets(m_init, sp) and _reproduces(lambda: run(p0, amp, n)[4], sp):
+        return _unchanged(seed, sp, amp, n, timing, info, name, p0, m_init, J(m_init), amp_reduced, amp_spec, max_step, link)
     cands = [design(model, decl, amp, dt, n, u_max, rng, p0)] if model else []
     simc = simc_pid(model, decl, dt) if model else None
     if simc:
         cands.append(simc)
+    floor = gain_floor(decl, [p0] + cands)                      # 增益下限：不让搜索把增益压到 ≈0（“不动”不算整定）
     for c in cands:
+        c = _clip_floor(c, decl, floor)
         res = run(c, amp, n)
-        hist.append((cost(res[4]), c, res[4], res[:4]))
-    steps = [(r_, f) for r_ in (d["role"] for d in decl if d["role"] != "ulim") for f in (1.6, 1 / 1.6)]
-    for k in range(rounds):                                   # 上板坐标搜索：每轮挑一个参数 ×/÷，只保留变好的
+        hist.append((J(res[4]), c, res[4], res[:4]))
+    tun = [d["role"] for d in decl if d["role"] != "ulim"]
+    budget = min(BUDGET_MAX, BUDGET_BASE + BUDGET_PER_PARAM * len(tun)) if rounds is None else rounds
+    fac, stop_reason, used, stale = FAC0, "budget_exhausted", 0, 0
+    while used < budget:
         best = min(hist, key=lambda h: h[0])
-        r_, f = steps[k % len(steps)] if steps else ("kp", 1.0)
-        c = _clip(dict(best[1], **{r_: max(best[1][r_], 1e-6 * (next(d for d in decl if d["role"] == r_)["max"] or 1)) * f}), decl)
-        res = run(c, amp, n)
-        hist.append((cost(res[4]), c, res[4], res[:4]))
+        if not meets(best[2], sp):
+            stop_reason = "converged"                           # 达标即停（达标要另外复现）
+            break
+        improved, moved = False, False
+        for r_ in tun:
+            for f in (fac, 1 / fac):
+                if used >= budget:
+                    break
+                d = next(x for x in decl if x["role"] == r_)
+                base = best[1][r_] if abs(best[1][r_]) > 0 else max(floor.get(r_, 0.0), 1e-6 * (d["max"] or 1))
+                c = _clip_floor(dict(best[1], **{r_: base * f}), decl, floor)
+                if all(abs(c[k] - best[1][k]) <= 1e-12 * max(1.0, abs(best[1][k])) for k in c):
+                    continue                                    # 撞边界，挪不动
+                moved = True
+                res = run(c, amp, n)
+                used += 1
+                hist.append((J(res[4]), c, res[4], res[:4]))
+                if hist[-1][0] < best[0] * (1 - IMPROVE_REL):
+                    best, improved = hist[-1], True
+        if not moved:
+            stop_reason = "at_limit"
+            break
+        if not improved:
+            fac = math.sqrt(fac)                                # 一圈没变好 → 步子缩小继续；不提前宣布收敛
+            stale += 1
+            if fac < FAC_MIN:
+                fac, stale = FAC0, 0                            # 步子太小 → 重新放大跳出（直到预算用完）
     bc, bp, bm, (bt, br, by, bu) = min(hist, key=lambda h: h[0])
     bad = meets(bm, sp)
-    if not bad:                                                 # 达标要复现：同参数再跑两次（带噪声），任一次不达标就不算 pass
-        for _ in range(2):
-            mm = run(bp, amp, n)[4]
-            if meets(mm, sp):
-                bad = meets(mm, sp)
-                break
-    # 5) 诚实判定：卡在哪
+    if not bad and not _reproduces(lambda: run(bp, amp, n)[4], sp):
+        bad = meets(run(bp, amp, n)[4], sp) or ["reproduce"]
+    if bad and stop_reason == "converged":
+        stop_reason = "budget_exhausted"
+    # 5) 诚实判定：按证据给原因（不按固定顺序）
     lim = min(u_max, bp.get("ulim", math.inf))
-    sat = float(np.mean(np.abs(bu[: max(len(bu) // 2, 1)]) >= 0.98 * lim))
-    sgn = 1.0 if amp >= 0 else -1.0
-    rise = np.where(sgn * by >= 0.1 * abs(amp))[0]                 # 只看第一次到 10% 之前：起步反向 = 非最小相位
-    inv = float(np.min(sgn * by[: (int(rise[0]) if len(rise) else len(by)) + 1])) / abs(amp)
-    LT = (idn["L"] / idn["T"]) if idn and idn.get("ok") and idn.get("T") else 0.0
+    feat = plant_features(model, dt) if model else {}
     if not bad:
-        verdict, why = "pass", "各项指标实测满足题面"
-        cat = None
+        verdict, why, cat, causes = "pass", "各项指标实测满足题面", None, []
+        verdict_zh = "达标"
     else:
         verdict = "fail"
-        Kst = abs(float(idn["K"])) if idn and idn.get("ok") and idn.get("K") is not None else None
-        settled = bool(idn and idn.get("ok") and (idn["L"] + 3 * idn["T"]) < 0.7 * n_probe * dt)   # 探测窗里走稳了，K 才可信
-        reach = (Kst * lim / abs(amp)) if Kst and settled else None             # 满输出的稳态能走到目标的几成（积分对象不看）
-        if inv < -0.03:
-            cat, why = "nonminimum_phase", f"起步先反向 {abs(inv) * 100:.1f}%：非最小相位，快了必反冲"
-        elif reach is not None and reach < 0.98 and not (idn or {}).get("integrating"):
-            cat, why = "saturation", f"满输出稳态只能到目标的 {reach * 100:.0f}%：执行器饱和"
-        elif LT > 0.8:
-            cat, why = "delay", f"纯滞后 / 时间常数 ≈ {LT:.2f}：时延过大"
-        elif sat > 0.3:
-            cat, why = "saturation", f"执行器 {sat * 100:.0f}% 时间顶在上限：饱和，再加增益也快不了"
+        causes = diagnose(feat, bu, by, amp, lim, n * dt, bm, sp)
+        cat = causes[0]["code"] if causes else "unconfirmed"
+        if len(causes) >= 2 and _close(causes[0], causes[1]):
+            verdict_zh = f"未达标：可能是{CAUSE_ZH[causes[0]['code']]}或{CAUSE_ZH[causes[1]['code']]}"
         else:
-            cat, why = "unconfirmed", "原因待确认：模型与板上都没搜到满足题面的参数，特征不足以归类"
-        why += "；未达标：" + "、".join(bad)
-    verdict_zh = {"pass": "达标", "fail": "未达标"}[verdict]
+            verdict_zh = "未达标" + (f"：{CAUSE_ZH[cat]}" if cat in CAUSE_ZH else "")
+        why = (causes[0]["basis_zh"] if causes else "原因待确认：特征不足以归类") + "；未达标：" + "、".join(bad)
     extra = {}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
         extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None,
@@ -386,7 +560,8 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     for it in items:
         it["verdict_zh"] = {"pass": "达标", "fail": "未达标", "partial": "未验题面幅度"}[it["verdict"]]
     return {"seed": seed, "verdict": verdict, "verdict_zh": verdict_zh, "category": cat, "pass_basis": why, "spec": sp, "amp": amp, "n": n,
-            "items": items, **extra,
+            "items": items, **extra, "causes": causes, "stop_reason": stop_reason, "stop_reason_zh": STOP_ZH[stop_reason],
+            "unchanged": False, "tuned": True, "budget": budget,
             "timing": timing, "ident": info, "initial": {"params": {name[k]: v for k, v in p0.items()}, "metrics": m_init, "cost": cost(m_init)},
             "best": {"params": {name[k]: v for k, v in bp.items()}, "roles": bp, "metrics": bm, "cost": bc},
             "rounds": len(hist) - 1}

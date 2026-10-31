@@ -388,6 +388,9 @@ def test_autotune_run_uses_same_code_as_tunegate(monkeypatch):
         def set_param(self, n, v):
             board.write_param(n, v); self.params[n] = v
 
+        def read_all_params(self):
+            self.params = dict(board.read_params())
+
         def step_start(self, ch, it, amp, dur_ms):
             t, r, y, u = board.step(amp, int(round(dur_ms / 1000 / case["link"]["sample_s"])))
             self.w = [(float(a), {"sp": float(b), "y": float(c), "u": float(d)}) for a, b, c, d in zip(t, r, y, u)]

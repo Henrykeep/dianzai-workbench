@@ -321,3 +321,17 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - #127：`PARAM_ACK` 回来的 float32 存成最短且能还原同一 float32 的十进制（以前 `round(,6)` 会改掉小数值的位，本地参数哈希和板上 `step_result.params_hash` 对不上 → 连续 `hash_mismatch`）。`autotune` 结束把 `best.params` 写回板子并从板上重读参数；结果多 `applied_best: true`、`params_hash`（写回后本地算的 CRC32）。
 - #128：`iterate_start` / `iterate_plan` 的 `step_too_large` 带与 #129 同一份字段 `reason, limit, limit_unit, limit_name, message_zh`，外加 `max_step, target, fix_action:"lower_step"`。`iterate.stopped` 本身带 `verdict` / `verdict_zh`：`reason:"pass"` → 「通过」（#121），没有可用一轮 → `unknown`。
 - `agent_tool`、`agent_action` 事件新增 `tier`（auto/log/human/forbid，仿真按 SIM_RELAX 降档）、`tier_zh`、`name_zh`（`agent/risk.py NAME_ZH`，每个登记工具都有）。`autotune` = 「通用自动整定」，实机 human、仿真 log。
+
+## 通用整定策略：按证据诊断、增益下限、收敛停、代价对齐题面、初值已达标（tuning strategy）
+`autotune` 结果（Agent 工具 `autotune` 的返回 / 指标卡）新增字段：
+- `causes: [{code, evidence, basis_zh, score}]`：未达标时每个候选原因（`saturation` / `delay` / `nonminimum_phase`）各自按证据打分，`evidence ∈ strong | medium | weak`，按证据强弱排序（不按固定先后）。证据来源：辨识模型阶跃响应（稳态增益 → 满输出能走到几成、起步反向幅度）+ 板上实测（控制量开始动 → 输出开始动的纯滞后 / 上升时间、顶限幅时间占比；振荡顶限幅不算饱和证据）。`category` = 第一个原因的 `code`；没有证据 = `unconfirmed`。前两个证据同档 → `verdict_zh` 写「未达标：可能是 A或B」。
+- `stop_reason ∈ converged | budget_exhausted | at_limit` + `stop_reason_zh`：只有满足题面（且同参数复现两次都满足）才算 `converged`；参数全撞声明边界 = `at_limit`；否则一直搜到 `budget`（板上试参次数，`12 + 6 × 可调参数个数`，上限 48）用完 = `budget_exhausted`。一圈没变好就缩小步子继续，不提前宣布收敛。
+- 板上代价 = 题面指标超标量（相对题面值）×10 + IAE 代价；题面没写指标退回 IAE 代价。
+- 增益下限：`kp` / `ki` 不低于候选（初值、模型设计、SIMC）最大值的 2%、初值的 2%、声明 `min` 三者取大，搜索不会把增益压到 ≈0。
+- 初值已满足题面（复现两次）：不改参数直接返回，`unchanged: true`、`tuned: false`、`unchanged_zh` / `pass_basis` =「初值已满足题面，本次没有改动参数」、`margins: {指标: 题面值 − 实测值}`（`items[].margin` 同），`verdict_zh` =「通过（初值已达标，未调参）」，不显示为整定成功；降幅测的照旧 `partial`。
+
+tunegate（`tools/tunegate.py`，汇总在 `tools/tunegate_grade.py summarize()`）：
+- 每行带 `stop=`、`unchanged`；汇总打印通过率（全部 / 只算可行）、unknown 比例、初值已达标个数、各原因类别 `{n, cause_ok}`。
+- 硬门禁（退出码 1）：假达标 = 0，且可行对象上「报收敛却未达标」（`early_stop_not_pass`）= 0。
+- 判卷：不可行对象未达标时卡上 `category` 必须等于真值原因（不再放过 `unconfirmed`）；`unchanged` 且真值满足题面 → 只按题面判，不要求“比初值好”。
+- `make check` 的 `check_no_truth_leak`：真值键（feasible / feasibility / reason_category / infeasible_reason / witness）和 plant.json 只许判卷模块、出题方（randplant*、tunegate_plant、feascheck）和测试引用；后端、tools/tunegate.py 及 tools/ 其余脚本里任何字符串常量、属性、变量名、关键字参数、取键都算泄漏。
