@@ -373,3 +373,9 @@ clean:
 	rm -rf build
 
 -include $(OBJS:.o=.d) $(patsubst %.o,%.d,$(filter %.c.o,$(HAL_OBJS)))
+
+# #78 随机对象门禁：真 randplant 对象（tools/randplant.py → tools/tunegate_plant.py），失败打印 seed（TUNEGATE_N 个、按时间取种子）
+.PHONY: tunegate
+TUNEGATE_N ?= 16
+tunegate:
+	TUNEGATE_SOURCE=randplant $(PY) tools/tunegate.py --n $(TUNEGATE_N)
