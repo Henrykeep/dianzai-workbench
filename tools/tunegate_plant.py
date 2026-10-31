@@ -51,7 +51,7 @@ def make(seed: int, kind: str = "any", out: str | None = None) -> dict:
              "deadzone": float(rp["deadzone"]), "noise_std": float(rp["noise_std"]), "sample_s": float(rp["dt_s"]),
              "range": float(rp["sensor_range"]), "unit": unit}
     app = {"params": params, "channels": {"sp": "sp", "y": "y", "u": "u"}, "unit": unit}
-    link = {"sample_s": plant["sample_s"], "u_max": plant["u_max"], "sensor_range": plant["range"], "max_step": float(rp["max_step"])}
+    link = {"sample_s": plant["sample_s"], "u_max": plant["u_max"], "sensor_range": plant["range"], "max_step": float(rp["max_step"]), "unit": unit or None}
     ref = reference(plant, app, float(rp["reference"]["step_amp"]))
     spec, feasible = rp["spec_text"], rp["feasible"]            # True / False / "unknown"（fw-feas #124：三态透传，不 bool()）
     cat = CAT.get(rp.get("reason_category") or "", rp.get("reason_category"))

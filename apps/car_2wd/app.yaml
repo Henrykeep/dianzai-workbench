@@ -31,8 +31,8 @@ link:
   step:
     - { sp: 0, y: spd_a, u_max: 0.9, range: 10, abs_tol: 0.05 }
   params:
-    - { name: kp,             type: float,  default: 0.08, min: 0,   max: 2,    desc: 轮速 PID（起步值，未实测） }
-    - { name: ki,             type: float,  default: 1.5,  min: 0,   max: 20,   desc: 轮速 PID（起步值，未实测） }
+    - { name: kp,             type: float,  default: 0.08, min: 0,   max: 2,    desc: 轮速 PID（起步值，未实测）, role: P }
+    - { name: ki,             type: float,  default: 1.5,  min: 0,   max: 20,   desc: 轮速 PID（起步值，未实测）, role: I }
     - { name: max_rps,        type: float,  default: 5.0,  min: 0,   max: 20,   unit: rps, protect: 限幅 }
     - { name: accel_rps2,     type: float,  default: 10.0, min: 0.1, max: 100,  unit: rps/s, protect: 限幅 }
     - { name: cmd_timeout_ms, type: uint32, default: 200,  min: 50,  max: 2000, unit: ms, desc: 断线停车, protect: 断线停车 }

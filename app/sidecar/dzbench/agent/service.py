@@ -1026,6 +1026,7 @@ class AgentService:
         u_max = float(self.s.params.get(um, 1.0)) if isinstance(um, str) else float(um or (sch.d.get("limits") or {}).get("u_max") or 1.0)
         dt = float(st.get("sample_s") or (sch.d.get("telemetry") or {}).get("period_ms", 10) / 1000)
         link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
+        link["unit"] = next((f.get("unit") or None for f in sch.fields if f["name"] == st.get("y")), None)   # #140：被阶跃信号声明的单位，没写 = null
         return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
 
     def confirm_roles(self, roles: dict, app_dir: str | None = None) -> dict:
@@ -1033,12 +1034,17 @@ class AgentService:
         from ..tuning.session_board import ROLES
         bad = {n: r for n, r in (roles or {}).items() if r not in ROLES}
         if not roles or bad:
-            raise GatewayError("bad_role", f"角色只能是 {'/'.join(ROLES)}：{bad or '（空）'}", "每个参数选一个角色", {"fix_action": "confirm_roles"})
+            raise GatewayError("bad_role", f"确认参数角色失败：角色只能是 {'/'.join(ROLES)}，收到 {bad or '空的角色表'}；没有写 app.yaml",
+                               "每个参数选一个角色后再点“确认角色”", {"fix_action": "confirm_roles"})
         sch = getattr(getattr(self, "s", None), "schema", None)
         if sch and sch.params:
             unk = sorted(set(roles) - {p["name"] for p in sch.params})
             if unk:
-                raise GatewayError("bad_param", f"握手参数表里没有：{'、'.join(unk)}", "用 list_params 看参数名", {"fix_action": "confirm_roles"})
+                raise GatewayError("bad_param", f"确认参数角色失败：板子握手参数表里没有参数 {'、'.join(unk)}；没有写 app.yaml",
+                                   "用 list_params 看参数名，改对后再确认", {"fix_action": "confirm_roles"})
+            cur = {p["name"]: p.get("role") for p in sch.params}
+            if all(cur.get(n) == r for n, r in roles.items()):      # 与握手里现有角色相同：幂等，不改文件（重复点击无害）
+                return {"ok": True, "roles": roles, "unchanged": True, "message_zh": "角色与板上握手一致，无需改动"}
         y = self._app_yaml(app_dir)
         lines = y.read_text(encoding="utf-8").splitlines(keepends=True)
         done = set()
@@ -1061,7 +1067,8 @@ class AgentService:
                 done.add(m.group(2))
         left = sorted(set(roles) - done)
         if left:
-            raise GatewayError("bad_param", f"app.yaml link.params 里没找到：{'、'.join(left)}", "用 list_params 看参数名", {"fix_action": "confirm_roles"})
+            raise GatewayError("bad_param", f"确认参数角色失败：app.yaml link.params 里没找到参数 {'、'.join(left)}；没有写 app.yaml",
+                               "用 list_params 看参数名，改对后再确认", {"fix_action": "confirm_roles"})
         y.write_text("".join(lines), encoding="utf-8")
         return {"ok": True, "app_yaml": str(y), "roles": roles,
                 "message_zh": "角色已写回 app.yaml；重新生成握手表（重编 / 重连仿真板）后生效", "fix_action": "rebuild"}

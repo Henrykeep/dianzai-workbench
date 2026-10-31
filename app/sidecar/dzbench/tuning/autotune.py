@@ -333,7 +333,8 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     verdict_zh = {"pass": "达标", "fail": "未达标"}[verdict]
     extra = {}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
-        extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "warning_zh": AMP_WARN_ZH}
+        extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None,
+                 "warning_zh": AMP_WARN_ZH}
         if verdict == "pass":
             verdict, verdict_zh, why = "partial", "未验题面幅度", why + f"（按降幅 {amp:g} 测，题面 {amp_spec:g} 超 max_step / 量程）"
     items = []

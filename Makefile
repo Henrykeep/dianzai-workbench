@@ -299,6 +299,7 @@ check:
 	$(PY) tools/check_problem_specific.py
 	$(PY) tools/check_no_truth_leak.py --selftest   # 真值只许判卷模块 tools/tunegate_grade.py 读
 	$(PY) tools/check_no_truth_leak.py
+	$(PY) tools/gen_reason_codes.py --check   # #139 docs/dev/reason_codes.json 与后端原因码同步
 	$(PY) tools/check_redef.py
 	$(PY) tools/tree_guard.py --selftest
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)

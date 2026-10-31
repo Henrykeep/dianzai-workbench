@@ -482,6 +482,7 @@ def test_amp_reduced_is_partial_never_pass(tmp_path):
     res = AT.autotune(G.board(str(tmp_path), app, 3001, "randplant"), app, link, spec, 3001)
     assert res["amp_reduced"] is True and res["amp_spec"] == big and abs(res["amp_tested"]) <= float(link["max_step"]) + 1e-9
     assert res["verdict"] in ("partial", "fail") and res["verdict"] != "pass"
+    assert res["amp_unit"] == (link.get("unit") or None) and all(it["amp_unit"] == res["amp_unit"] for it in res["items"])   # #140
     assert res["items"] and all(it["amp_reduced"] and it["warning_zh"] == "按降幅测试，未验题面幅度" for it in res["items"])
     for it in res["items"]:
         assert it["verdict"] in ("partial", "fail") and (it["verdict"] != "partial" or it["verdict_zh"] == "未验题面幅度")
@@ -489,3 +490,15 @@ def test_amp_reduced_is_partial_never_pass(tmp_path):
         assert res["verdict_zh"] == "未验题面幅度"
     g = G.grade(str(tmp_path), 3001, res | {"verdict": "pass"}, app, spec)     # 假如给了 pass：判卷算假达标
     assert g["false_pass"] and g["bucket"] == "false_pass"
+
+
+def test_confirm_roles_idempotent(tmp_path):
+    (tmp_path / "app.yaml").write_text("link:\n  params:\n    - { name: a, type: float, min: 0, max: 1, role: P }\n", "utf-8")
+    before = (tmp_path / "app.yaml").stat().st_mtime_ns
+    o = S.AgentService.__new__(S.AgentService)
+    o.s = types.SimpleNamespace(schema=types.SimpleNamespace(params=[{"name": "a", "type": "f32", "min": 0, "max": 1, "role": "P"}]))
+    r = o.confirm_roles({"a": "P"}, str(tmp_path))
+    assert r["ok"] and r["unchanged"] and (tmp_path / "app.yaml").stat().st_mtime_ns == before
+    with pytest.raises(S.GatewayError) as e:
+        o.confirm_roles({"a": "kp"}, str(tmp_path))
+    assert "P/I/D/FF/LIM/other" in e.value.message and "没有写 app.yaml" in e.value.message
