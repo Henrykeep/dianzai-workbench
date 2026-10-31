@@ -31,7 +31,9 @@ export function initHbStrip(el: HTMLElement, onJump: (c: Cell) => void, show = 6
   let cells: Cell[] = [];
   const render = () => {
     const tail = cells.slice(-show), ref = median(cells.slice(-30).map(c => c.fps).filter(f => f > 0));
-    el.innerHTML = tail.map(c => `<i class="hb-${level(c, ref)}" data-i="${c.i}" title="${tip(c)}"></i>`).join("");
+    // 设计 v10：小型中性迷你柱图，高度 = 帧率 / 近期中位数；异常只换深浅，不用红（真正断链由急停/链路横幅负责）
+    const h = (c: Cell) => ref > 0 ? Math.max(15, Math.min(100, Math.round(c.fps / ref * 100))) : (c.fps > 0 ? 100 : 15);
+    el.innerHTML = tail.map(c => `<i class="hb-${level(c, ref)}" data-i="${c.i}" style="--h:${h(c)}%" title="${tip(c)}"></i>`).join("");
   };
   el.onclick = e => {
     const i = (e.target as HTMLElement).dataset?.i;

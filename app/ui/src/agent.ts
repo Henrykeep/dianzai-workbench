@@ -462,11 +462,12 @@ export function initAgent(call: Call) {
     bs = dropFlashBlockers(bs); const fresh = newBlockers(seenBlk, bs);
     gateN.sync(bs.map(b => b.code)); for (const k of [...notes.keys()]) if (!seenBlk.has(k)) notes.delete(k);
     if (!primed) { primed = true; bs.forEach(b => gateN.offer(b.code)); return; }   // 打开页面时已有的 blocker 不刷屏
-    for (const b of fresh) if (gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
+    for (const b of fresh) if (b.code !== "params_not_saved" && gateN.offer(b.code)) noteEl(b.code, `<div><b>${esc(b.message)}</b></div>`, b.fix_action);
   }
   function onNotice(n: Notice) {
     if (!n?.blocker_code || isFlashNotice(n)) return;   // #63 未写入 Flash 只在保存参数旁
     if (n.blocker_code === "estop_cleared") return;   // 解除提示由主界面统一一张卡（estopbtn.clearedOnce），这里不重复
+    if (n.blocker_code === "params_not_saved") return;   // 设计 v11：未保存只在页头出现一次
     const fallback = notes.get(n.blocker_code)?.dataset.src !== "notice" && notes.has(n.blocker_code);
     if (!gateN.offer(n.blocker_code) && !fallback) return;   // 未清除的同一 blocker 不重复
     seenBlk.add(n.blocker_code);
@@ -562,9 +563,14 @@ export function initAgent(call: Call) {
     if (c?.configured) badge(/ollama|localhost|127\.0\.0\.1|:11434/i.test(`${c.provider} ${c.base_url}`) ? "local" : "cloud");
     if (!c || c.configured) return;
     document.querySelectorAll(".setup-card").forEach(e => e.remove());   // 只保留一张
-    const card = add(`<div class="ag-setup"><b>Agent 未配置</b><p>原因：尚未配置大模型服务。处理：点击「配置模型」。未配置时，新建项目、烧录、示波、调参、评分与急停均可正常使用。</p></div>
-      <div class="act"><button class="btn" data-r="cfg">配置模型</button></div>`, "card setup-card");
+    // 首次打开：平静的三步引导，不出现报错卡
+    const card = add(`<div class="ag-setup"><b>开始使用 Agent</b><p>三步即可开始。不配置模型时，调参、示波、评分与急停照常可用。</p>
+      <ol class="ag-guide"><li><span class="n">1</span><span class="t">选模型</span><button class="btn sm" type="button" data-r="cfg">选择模型</button></li>
+      <li><span class="n">2</span><span class="t">连板子</span><button class="btn sm ghost" type="button" data-r="conn">连接</button></li>
+      <li><span class="n">3</span><span class="t">选题目</span><button class="btn sm ghost" type="button" data-r="req">去读题</button></li></ol></div>`, "card setup-card");
     card.querySelector<HTMLElement>("[data-r=cfg]")!.onclick = () => openCfg(true);
+    card.querySelector<HTMLElement>("[data-r=conn]")!.onclick = () => document.getElementById("connect")?.click();
+    card.querySelector<HTMLElement>("[data-r=req]")!.onclick = () => document.querySelector<HTMLElement>('#steps [data-step="项目"]')?.click();
   }).catch(() => {});
 
   // ---------------------------------------------------------------- 计划 / 撤销

@@ -5,6 +5,7 @@ const KEY = "dz.theme";
 
 export function applyTheme(t: string): void {
   document.documentElement.dataset.theme = t;
+  const sw = document.getElementById("theme") as HTMLInputElement | null; if (sw) sw.checked = t === "dark";
   // plot 通过 getComputedStyle 读变量，切主题后让它重绘
   window.dispatchEvent(new Event("dz-theme"));
 }
