@@ -163,18 +163,18 @@ compdb: $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $
 $(OUT)/obj/%.c.o: %.c $(REQ_OK) $(GEN)/board_gen.h $(if $(PROJECT_YML),$(PROJ_GEN)/project_gen.h) $(if $(LINK_YML),$(LINK_GEN)/link_gen.h)
 	@mkdir -p $(dir $@)
 	@echo "  CC  $<"
-	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -c $< -o $@
+	$(Q)$(CC) $(CFLAGS) $(INC) -MMD -MP -c $< -o $@
 define DRV_OBJ_RULE
 $(call obj_of,$(1)): $(1) $$(REQ_OK) $$(GEN)/board_gen.h $$(if $$(PROJECT_YML),$$(PROJ_GEN)/project_gen.h) $$(if $$(LINK_YML),$$(LINK_GEN)/link_gen.h)
 	@mkdir -p $$(dir $$@)
 	@echo "  CC  $$<"
-	$$(Q)$$(CC) $$(CFLAGS) $$(INC) -MMD -c $$< -o $$@
+	$$(Q)$$(CC) $$(CFLAGS) $$(INC) -MMD -MP -c $$< -o $$@
 endef
 $(foreach s,$(DRV_SRCS),$(eval $(call DRV_OBJ_RULE,$(s))))
 $(OUT)/hal/%.c.o: %.c $(GEN)/board_gen.h
 	@mkdir -p $(dir $@)
 	@echo "  CC  $< (第三方，关闭警告)"
-	$(Q)$(CC) $(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$(CFLAGS)) $(INC) -w -c $< -o $@
+	$(Q)$(CC) $(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$(CFLAGS)) $(INC) -w -MMD -MP -c $< -o $@
 $(OUT)/hal/%.s.o: %.s
 	@mkdir -p $(dir $@)
 	@echo "  AS  $<"
@@ -183,7 +183,7 @@ define HAL_DRV_OBJ_RULE
 $(call hal_obj_of,$(1)): $(1) $$(if $$(filter %.c,$(1)),$$(GEN)/board_gen.h)
 	@mkdir -p $$(dir $$@)
 	@echo "  CC  $$< (第三方，关闭警告)"
-	$$(Q)$$(CC) $$(if $$(filter %.c,$$<),$$(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$$(CFLAGS)) $$(INC) -w,$$(MCU)) -c $$< -o $$@
+	$$(Q)$$(CC) $$(if $$(filter %.c,$$<),$$(filter-out -Werror -Wshadow -Wdouble-promotion -Wextra,$$(CFLAGS)) $$(INC) -w -MMD -MP,$$(MCU)) -c $$< -o $$@
 endef
 $(foreach s,$(HAL_DRV_SRCS),$(eval $(call HAL_DRV_OBJ_RULE,$(s))))
 
@@ -247,6 +247,7 @@ test:
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
 	tools/test_fetch_retry.sh   # 第三方下载重试 + sha256（CI 41199129663 curl exit 56）
+	tools/test_dep_rename.sh   # 头文件改名/删除后不 clean 增量编译（-MMD -MP）
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
@@ -371,4 +372,4 @@ fetch:   ## 拉全部第三方 SDK（HAL F1/F4、FreeRTOS、CMSIS、MSPM0 SDK）
 clean:
 	rm -rf build
 
--include $(OBJS:.o=.d)
+-include $(OBJS:.o=.d) $(patsubst %.o,%.d,$(filter %.c.o,$(HAL_OBJS)))
