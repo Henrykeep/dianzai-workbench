@@ -155,3 +155,16 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
   - `ss_err.inside` 为 `null`（单位对不上 / 实机未标定）→ 一律 `unknown`，界面显示 `verdict_zh`，**不得**写「各项指标均已达标」。
   - `inside=true` 且停止原因 `pass` → `pass`；其余 → `fail`。
 - **WS op `project_switch_example {example}`**：从内置例题复制出全新项目（新 slug，例题目录只读、不复用旧项目），只写审计（`project_switch_example`）不出确认卡；推 `project_forked {example, project, path, message_zh, via: "project_switch_example"}`，返回同样字段加 `fork`。例题不存在 → `bad_example`。
+
+## 提交确认卡 `git_confirm`（#88）
+
+写文件确认卡（`change`）**只授权写文件**。`change_decide accept=true` 后：写入 → 跑门禁 → `change.status = "written"`（不再直接 `committed`），并紧接一张提交确认卡：
+
+`{type:"git_confirm", id, change_id, op:"commit", title_zh, files:[相对路径], message, status}`
+
+- `status`：`pending` → `committed` / `rejected` / `failed`。
+- 人点确认/拒绝：`{"op":"git_confirm_decide","id":<id>,"accept":true|false}`。
+  - 批准：提交，返回 `{ok:true, ...change 卡（status=committed, commit=短哈希）}`，并重发 `git_confirm`（committed）和 `change` 卡。
+  - 拒绝或失败：不提交，返回 `{ok:false, ...git_confirm 卡, reason_zh, fix_action}`；`fix_action` 取 `commit_manually_or_reopen`（拒绝）或 `retry_commit`（提交失败）。文件仍留在工作区。
+- 任何 Agent 发起的 git 写操作（commit/branch/reset/push/tag/merge/rebase/checkout/revert/stash/cherry-pick）未经批准一律返回 `{ok:false, op, reason_zh, fix_action:"propose_git_confirm"}`，不执行。
+- `pending` 列表里同时包含待批的 `git_confirm` 卡。

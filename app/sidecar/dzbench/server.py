@@ -501,6 +501,8 @@ class Server:
             return self.svc.configure(m["set"]) if m.get("set") else agent_llm.public_config() | {"repo": str(self.svc.gw.root)}
         if op == "yaml_writeback":
             return await run(None, lambda: self.svc.yaml_writeback(m.get("path"), m.get("values")))
+        if op == "git_confirm_decide":             # #88 提交确认卡
+            return await run(None, self.svc.gw.commit_decide, int(m["id"]), bool(m["accept"]))
         if op == "change_decide":
             return await run(None, self.svc.gw.decide, int(m["id"]), bool(m["accept"]))
         if op == "rollback":
