@@ -624,7 +624,10 @@ class Session:
                         es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16),
                                               threshold_ms=getattr(self.schema, "wd_timeout_ms", None) if self.schema else None)
                         if len(payload) >= 40:
-                            if not self._info_asked:     # 有效的 40 B 心跳 = 对端是我们的固件：发一次 'I'
+                            # 有效的 40 B 心跳 = 对端是我们的固件：发一次 'I'。只在心跳急停位(bit10)清零时发：
+                            # dzctl < 0.17.0 的 link_app 把未知单字节命令当「新指令」，会清掉 'R' 解除后的输出保持（L->estop）；
+                            # bit10 置位（锁存或解除后保持）期间不发，等它清零（输出本已放开）再问，旧固件上发 'I' 才无副作用。
+                            if not self._info_asked and not ((self.hb_status or 0) & (1 << 10)) and not self.tx_locked:
                                 self._info_asked = True
                                 threading.Thread(target=self._ask_info, daemon=True).start()
                             m_, t_, ph = struct.unpack_from("<III", payload, 28)

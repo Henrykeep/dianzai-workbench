@@ -187,3 +187,24 @@ def test_info_reply_wd_mismatch_same_hash_is_schema_conflict(home):
         assert getattr(ei.value, "code", None) == "schema_conflict"
     finally:
         s.disconnect()
+
+
+def test_info_not_sent_while_heartbeat_estop_bit_set(home):
+    """旧固件（< 0.17.0）把未知单字节命令当新指令、会清 'R' 后的输出保持：心跳 bit10 置位时不发 'I'，清零后才发。"""
+    from dzbench._dzlink import HEARTBEAT as _HB
+    sent = []
+    s = Session()
+    s.emit = lambda e: None
+    s._send = lambda kind, id_, payload=b"", check=False: sent.append((kind, id_, bytes(payload))) or True
+
+    def hb(status):
+        return _encode(_HB, 0, 1, _st.pack("<IIII", 0x1234, 0, 0, status) + bytes(24))
+    s._on_bytes(hb(1 << 10))
+    time.sleep(0.2)
+    assert not s._info_asked and (_DATA, 0x7E, b"I") not in sent
+    s.tx_locked = False
+    s._on_bytes(hb(0))
+    t0 = time.monotonic()
+    while (_DATA, 0x7E, b"I") not in sent and time.monotonic() - t0 < 2:
+        time.sleep(0.02)
+    assert s._info_asked and sent.count((_DATA, 0x7E, b"I")) == 1
