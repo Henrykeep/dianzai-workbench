@@ -261,6 +261,7 @@ FAC0, FAC_MIN, IMPROVE_REL = 1.6, 1.05, 0.01
 KEPT_INITIAL_ZH = "调参未能改善，已保留初值"
 # 配对比较不确定（改善没超出噪声带）：不说「已改善」，不默认采用
 UNCONFIRMED_ZH = "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测"
+KEPT_INITIAL_CAUSES_ZH = ["调后参数在某个终验窗口实测代价高于初值"]
 UNCONFIRMED_CAUSES_ZH = ["测量噪声大", "采样窗口偏短", "改善幅度小于重复测量的波动"]
 NOISE_BAND_K = 2.0          # 改善要大于 K × 噪声带（同参数重复测两次代价之差，最好参数与初值各一对）
 FLOOR_FRAC = 0.02                                               # 增益下限 = 候选里最大值的 2%、初值的 2% 取大（且不低于声明 min）
@@ -592,8 +593,18 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     if unconf:
         why = UNCONFIRMED_ZH + "；" + why
         verdict_zh = UNCONFIRMED_ZH + "；" + verdict_zh
-    extra_u = {"improvement_confirmed": improvement_confirmed, "adopt_default": not (kept_initial or unconf),
-               **({"reason": "improvement_unconfirmed", "message_zh": UNCONFIRMED_ZH, "unconfirmed_causes": UNCONFIRMED_CAUSES_ZH} if unconf else {})}
+    imp = "worse" if kept_initial else ("inconclusive" if unconf else "confirmed")
+    if imp == "worse":
+        info = {"reason": "kept_initial", "message_zh": KEPT_INITIAL_ZH, "causes": KEPT_INITIAL_CAUSES_ZH}
+    elif imp == "inconclusive":
+        info = {"reason": "improvement_unconfirmed", "message_zh": UNCONFIRMED_ZH, "causes": UNCONFIRMED_CAUSES_ZH}
+    else:
+        info = {"reason": None, "message_zh": None, "causes": []}
+    dflt = "adopt" if imp == "confirmed" else "keep_initial"
+    # 卡片契约：improvement ∈ confirmed|inconclusive|worse；顶层 reason / message_zh；整定原因码的 causes 放 improvement_info（顶层 causes 是未达标诊断）
+    extra_u = {"improvement": imp, "improvement_confirmed": improvement_confirmed, "default_action": dflt, "adopt_default": dflt == "adopt",
+               "improvement_info": {"improvement": imp, **info, "default_action": dflt},
+               **({"reason": info["reason"], "message_zh": info["message_zh"], "unconfirmed_causes": info["causes"]} if info["reason"] else {})}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
         extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None, "amp_unit_decl": link.get("unit_decl") or None,
                  "retest_blocked_by": step_block(amp_spec, max_step, int(link.get("ch") or 0), link.get("unit") or None),

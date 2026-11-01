@@ -84,6 +84,8 @@ def test_never_deliver_worse_than_initial():
                 res["best"]["params"] == res["initial"]["params"], res
             assert AT.KEPT_INITIAL_ZH in res["verdict_zh"] and AT.KEPT_INITIAL_ZH in res["pass_basis"], res
             assert res["unchanged"] and not res["tuned"]
+            assert res["improvement"] == "worse" and res["default_action"] == "keep_initial" and res["reason"] == "kept_initial"
+            assert res["improvement_info"]["causes"] and res["message_zh"] == AT.KEPT_INITIAL_ZH
             if res["verdict"] != "pass":
                 assert res["causes"], res                      # 退回初值也要给原因
         else:
@@ -123,6 +125,9 @@ def test_improvement_within_noise_band_is_unconfirmed(monkeypatch):
     assert fc["noise_band"] >= 0 and un["improvement_confirmed"] is False, fc
     assert un["reason"] == "improvement_unconfirmed" and un["message_zh"] == AT.UNCONFIRMED_ZH and un["unconfirmed_causes"]
     assert un["verdict_zh"].startswith(AT.UNCONFIRMED_ZH) and "已改善" not in un["verdict_zh"] + un["pass_basis"]
-    assert un["adopt_default"] is False
+    assert un["adopt_default"] is False and un["improvement"] == "inconclusive" and un["default_action"] == "keep_initial"
+    ii = un["improvement_info"]
+    assert ii["reason"] == "improvement_unconfirmed" and ii["message_zh"] == AT.UNCONFIRMED_ZH and ii["causes"] and ii["default_action"] == "keep_initial"
+    assert ok["improvement"] == "confirmed" and ok["default_action"] == "adopt" and ok["improvement_info"]["reason"] is None
     t = RC.table()["improvement_unconfirmed"]
     assert t["message_zh"] == AT.UNCONFIRMED_ZH and t["causes"]

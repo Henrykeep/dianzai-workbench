@@ -13,6 +13,7 @@ STOP_ZH = {"pass": "连续 2 轮达标", "estop": "急停", "stopped": "人点�
 # 停止原因的可能起因（界面列出来让人逐项排查）
 CAUSES_ZH = {"plant_unresponsive": ["没上电", "接线", "方向（执行器 / 传感器极性接反）", "执行器饱和"]}
 CAUSES_ZH["improvement_unconfirmed"] = ["测量噪声大", "采样窗口偏短", "改善幅度小于重复测量的波动"]
+CAUSES_ZH["kept_initial"] = ["调后参数在某个终验窗口实测代价高于初值"]
 # 整定结果卡（autotune）的结论原因码
 TUNE_ZH = {"improvement_unconfirmed": "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测",
            "kept_initial": "调参未能改善，已保留初值"}
