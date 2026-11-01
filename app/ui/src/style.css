@@ -1202,3 +1202,4 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .rc-stopped{color:var(--danger);font-weight:600;margin:var(--sp1) 0}
 .rc-causes{font-size:var(--t-sm);margin:var(--sp1) 0}.rc-causes ul{margin:0;padding-left:1.4em}
 .rc-durcap{margin:var(--sp1) 0;font-size:var(--t-sm)}.rc-durcap a{margin-left:var(--sp2)}
+.rc-inconcl{margin:var(--sp1) 0;font-weight:600}

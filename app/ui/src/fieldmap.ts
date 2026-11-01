@@ -316,3 +316,28 @@ export const ROUND_BIND_F = { run: "run_id", iter: "iter" } as const;
 // r10x 执行器闸门 + 默认阶跃时长提示（字段名只在这里）
 export const GATE_F = { resuming: "resuming", deferred: "estop_latched_ident_deferred", pending: "ident_pending", durNotice: "dur_cap_notice_zh", fixAction: "fix_action", fixField: "fix_field", editDecl: "edit_declaration",
   resumingZh: "正在恢复连接", deferredZh: "急停中，暂不识别板子", lockedZh: "驱动执行器的操作已暂停", declZh: "去声明", hbFlags: "hb_flags", hbEstop: "急停" } as const;
+// #156 ws 地址只在这里定：?ws= 优先；页面由侧车提供（http/https，非 Tauri、非 vite 开发）→ 同主机、侧车约定的 ws 端口（UI 在 --port+1，ws 在 --port）；
+// 其余（Tauri / vite 开发 / file:）退回默认 8765
+export const WS_F = { query: "ws", fallback: "ws://127.0.0.1:8765", uiPortOffset: 1, tauriHosts: ["tauri.localhost"], tauriProto: ["tauri:", "asset:"] } as const;
+export function wsUrlFor(loc: { protocol: string; hostname: string; port: string; search: string }, dev = false): string {
+  const q = new URLSearchParams(loc.search).get(WS_F.query); if (q) return q;
+  const http = loc.protocol === "http:" || loc.protocol === "https:";
+  const tauri = (WS_F.tauriProto as readonly string[]).includes(loc.protocol) || (WS_F.tauriHosts as readonly string[]).includes(loc.hostname);
+  const p = +loc.port;
+  if (!http || tauri || dev || !p) return WS_F.fallback;
+  const host = loc.hostname.includes(":") ? `[${loc.hostname}]` : loc.hostname;
+  return `${loc.protocol === "https:" ? "wss" : "ws"}://${host}:${p - WS_F.uiPortOffset}`;
+}
+// #158 结果不确定（不能说已改善）：后端字段未定，这张表就是映射；改字段名只改这里
+// 任一规则命中 → 不确定；文案取 msg 字段（没有就取 reasonField），再没有用 fallbackZh
+export const INCONCL_F = {
+  rules: [{ field: "improvement", is: "inconclusive" }, { field: "kept_initial", is: true }, { field: "verdict.improvement", is: "inconclusive" }] as { field: string; is: unknown }[],
+  msg: ["message_zh", "verdict.message_zh", "kept_initial_reason_zh", "kept_initial_reason"],
+  fallbackZh: "无法确认比初值好", headZh: "未确认改善", keepZh: "保留初值", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用",
+} as const;
+const pick = (o: any, path: string) => path.split(".").reduce((a, k) => a == null ? undefined : a[k], o);
+export function inconclusiveOf(r: any): { msg: string } | null {
+  if (!r || typeof r !== "object" || !INCONCL_F.rules.some(x => pick(r, x.field) === x.is)) return null;
+  for (const k of INCONCL_F.msg) { const v = pick(r, k); if (typeof v === "string" && v) return { msg: v }; }
+  return { msg: INCONCL_F.fallbackZh };
+}

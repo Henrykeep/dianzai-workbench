@@ -80,7 +80,8 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&am
 const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isNaN(v) || ("na" in p && p.na === v) ? "—" : p.type === "f32" ? (Math.abs(v) < 1e-30 ? "0" : (+v.toPrecision(6)).toString()) : String(Math.round(v));
 
 const q = new URLSearchParams(location.search);
-const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
+const link = new Link(wsUrlFor(location, !!(import.meta as any).env?.DEV));   // #156 规则见 fieldmap.wsUrlFor
+import { wsUrlFor } from "./fieldmap";
 const plot = new Plot($("pb"));
 const UNDO = new UndoLog();   // 参数下发前的板上值（保护阈值表的“撤销”）
 // 心跳条点格子：回放按 dzlog 时间跳；实时把曲线停在那一秒（缓冲里还有的话）
@@ -875,6 +876,7 @@ function renderIter() {
   c.hidden = false;
   c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null, schema: S.schema }) + metricCardHtml(IT.s.result);   // r9p6 有 metrics_card 就追加通用指标卡
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
+  { const k = c.querySelector<HTMLElement>("#it-keep"); if (k) k.onclick = () => c.querySelector<HTMLElement>("#it-x")!.click(); }   // #158 保留初值 = 不采用（参数不动）
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
   const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
   const rr = c.querySelector<HTMLElement & { disabled: boolean }>("#it-rerun");
@@ -889,6 +891,7 @@ function renderIter() {
   c.querySelectorAll<HTMLElement>("[data-decl-unit]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); openDeclField(a.dataset.declUnit!); }));   // #148
   c.querySelector<HTMLElement>("#it-decl")?.addEventListener("click", e => { e.preventDefault(); openDeclField((e.target as HTMLElement).dataset.field!); });
   if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
+    if (w.dataset.confirm2 === "1" && w.dataset.armed !== "1") { w.dataset.armed = "1"; w.textContent = w.dataset.confirmZh ?? ""; return; }   // #158 不确定：采用要第二次点击确认
     const part = w.dataset.partial === "1";   // #141 降幅：先确认；采用后不记为已验证档（前端不登记任何验证状态）
     if (part && !window.confirm(partialConfirmZh(IT.s.phase === "done" ? IT.s.result : null))) return;
     w.disabled = true;
