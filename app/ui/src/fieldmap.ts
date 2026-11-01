@@ -314,6 +314,10 @@ export const BOARD_PENDING = "pending", BOARD_PENDING_ZH = "正在识别板子�
 // #154 对轮：run_id（UUID）+ 轮号，两者都有就都要对上
 export const ROUND_BIND_F = { run: "run_id", iter: "iter" } as const;
 // r10x 执行器闸门 + 默认阶跃时长提示（字段名只在这里）
+// #160 恢复连接超时（暂定码，后端定名后改这里）：link.state.reason 命中 codes，或 fix_action 是重连类 → 通用原因横幅（message_zh / 原因表）+「重新连接」，执行器全程锁
+// op：events.md 定义了重连 / 重新握手的 op 名就填上（发 op）；null = 直接断开 ws 重拨（重拨后照常握手）
+export const RESUME_TO_F = { codes: ["resuming_timeout", "resume_timeout"], fix: "fix_action", fixReconnect: ["reconnect", "rehello"], op: null as string | null, btnZh: "重新连接" };
+export const isResumeTimeout = (m: any) => !!m && typeof m === "object" && (RESUME_TO_F.codes.includes(m.reason) || RESUME_TO_F.fixReconnect.includes(m[RESUME_TO_F.fix]));
 export const GATE_F = { resuming: "resuming", deferred: "estop_latched_ident_deferred", pending: "ident_pending", durNotice: "dur_cap_notice_zh", fixAction: "fix_action", fixField: "fix_field", editDecl: "edit_declaration",
   resumingZh: "正在恢复连接", deferredZh: "急停中，暂不识别板子", lockedZh: "驱动执行器的操作已暂停", declZh: "去声明", hbFlags: "hb_flags", hbEstop: "急停" } as const;
 // #156 ws 地址只在这里定，顺序：?ws= > <meta name="dzbench-ws"> > 同源 /config.json 的 ws_url（短超时，404 忽略）> 页面端口 - 1（侧车 UI 在 --port+1）> 默认 8765

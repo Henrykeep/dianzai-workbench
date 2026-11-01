@@ -110,13 +110,14 @@ void WRITE_IDS;
 // 板子身份 + 结构冲突（握手 / 事件 / blockers 三个来源，任一未解决就挡写入）
 import { fwUnsafeOf, fromBlockersFw, lockActuateIn, fwBannerHtml, type FwUnsafe } from "./fwsafe";
 const fws: Record<string, FwUnsafe | null> = { event: null, blockers: null };
-import { estopBitOf, actGateOf, deferredOf, fromBlockersGate, isGateCode, codeOf, gateBannerHtml, type Gate } from "./actgate";
+import { estopBitOf, actGateOf, gateReconnect, deferredOf, fromBlockersGate, isGateCode, codeOf, gateBannerHtml, type Gate } from "./actgate";
 const gate: { deferred: Gate | null; blk: Gate | null } = { deferred: null, blk: null };
 const curGate = () => actGateOf({ link: lkMsg, pending: !!boardId?.pending, deferred: gate.deferred ?? gate.blk });
 function renderFwSafe() {
   const u = fws.event ?? fws.blockers, g = curGate(), el = document.getElementById("fws-banner"); lockActuateIn(document, false); if (u) lockActuateIn(document, true); else if (g) lockActuateIn(document, true, g.text);
   const gb = !u && g && g.code !== "resuming";   // 恢复连接的横幅已在 lk-banner，不重复
   if (!el) return; el.hidden = !u && !gb; el.innerHTML = u ? fwBannerHtml(u, esc) : gb ? gateBannerHtml(g!, esc) : "";
+  el.querySelector<HTMLElement>("[data-gate-reconnect]")?.addEventListener("click", () => gateReconnect(link));   // #160 执行器锁不撤，等新的 link.state
   el.querySelector<HTMLElement>("[data-fwsafe-fix]")?.addEventListener("click", ev => runAction((ev.currentTarget as HTMLElement).dataset.fwsafeFix!, s => goStepRef(s)));
 }
 setInterval(() => { const g = curGate(); if (fws.event ?? fws.blockers) lockActuateIn(document, true); else if (g) lockActuateIn(document, true, g.text); }, 300);   // 参数行等会重建：持续补禁用

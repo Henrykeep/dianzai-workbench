@@ -33,6 +33,8 @@ export class Link {
     };
   }
 
+  // #160 手动重新连接：关掉当前连接，onclose 按原逻辑重拨（重拨后照常握手）
+  reconnect() { if (this.ws && this.ws.readyState <= 1) this.ws.close(); else this.dial(); }
   on(f: (m: Msg) => void) { this.subs.push(f); }
 
   /** 启动瞬间 / 重连中最多等 3 s 再报“未连接”，免得一打开就弹假错误 */
