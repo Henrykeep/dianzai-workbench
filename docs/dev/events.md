@@ -352,3 +352,5 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - `status`：本次连接握手未完成时 `board_ident_source: "pending"`、`uid_supported: null`、`board_id_message_zh: "正在识别板子…"`（#151）。
 - `link.state`：侧车重启自动连回后，上位机心跳真正发出前保持 `board: lost, reason: resuming`；此时执行器操作返回 `code: resuming`（#155）。
 - `schema_conflict`（事件与进度阻塞项）：`fix_action` 按种类 `clear_schema_cache` / `build` / `reflash`，并带 `fix_zh`。
+- `iterate.stopped`（plant_unresponsive）带 `output_stopped: true`；原因码表对应条目 `stops_output: true`。
+- `link.state` 新增 `message_zh`：reason=resuming 时为「正在恢复连接」，其余为 null。

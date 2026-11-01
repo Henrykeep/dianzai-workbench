@@ -123,6 +123,7 @@ def test_unresponsive_plant_hits_hard_cap(cap, expect):
     assert S.AgentService._verdict({"inside": True}, out, None)[0] == "unknown"
     from dzbench.agent.reason_codes import table
     t = table()["plant_unresponsive"]
+    assert out["output_stopped"] is True and t["stops_output"] is True        # 前端：卡片明说已停输出
     assert t["message_zh"] == "对象无响应" and t["causes"] == ["没上电", "接线", "方向（执行器 / 传感器极性接反）", "执行器饱和"]
 
 

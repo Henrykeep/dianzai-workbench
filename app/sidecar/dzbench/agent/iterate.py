@@ -25,6 +25,7 @@ MIN_SAMPLES = 20
 MAX_DUR_MS = 30000            # 板上阶跃时长上限（与 session.step_start 校验一致）
 # 对象不响应（no_rise / settle_zero）时阶跃时长翻倍的硬上限：取声明 link.step[ch].max_step_dur_ms，
 # 没声明用这个默认值（再夹 MAX_DUR_MS）。到上限仍无响应 → 停止输出，原因码 plant_unresponsive，不给结论。
+STOPS_OUTPUT = {"plant_unresponsive"}     # 侧车已主动停输出的停止原因（reason_codes 表里 stops_output: true）
 NO_RESPONSE_DUR_CAP_MS = 12000
 CONSEC_PASS, CONSEC_INVALID, CONSEC_NO_IMPROVE = 2, 3, 3
 UNSTABLE_OVERSHOOT = 40.0
@@ -228,6 +229,8 @@ class Iterator:
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
                                               "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
                "next_zh": self._next_hint(reason)}
+        if reason in STOPS_OUTPUT:                                   # 已主动停输出：卡片 / 事件明说（与 reason_codes.stops_output 同源）
+            out["output_stopped"] = True
         if reason == "plant_unresponsive" and self.dur_cap_default:     # 没声明上限：卡上明说用了默认值，并指到要改的声明字段
             out["dur_cap_notice_zh"] = f"未声明阶跃时长上限，使用默认 {NO_RESPONSE_DUR_CAP_MS // 1000} s"
             out["fix_action"] = "edit_declaration"

@@ -139,7 +139,7 @@ def test_resume_waits_for_host_heartbeat(tmp_path):
     s = _bare(tmp_path)
     s.port, s.tr, s.resume_hb_wait = "COM9", object(), True
     st = s.link_state(time.monotonic())
-    assert st["reason"] == "resuming" and st["board"] != "connected"
+    assert st["reason"] == "resuming" and st["board"] != "connected" and st["message_zh"] == "正在恢复连接"
     with pytest.raises(LinkError) as ei:
         s._check_actuate()
     assert ei.value.code == "resuming" and ei.value.message == "正在恢复连接"
