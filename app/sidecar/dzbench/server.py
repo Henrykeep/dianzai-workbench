@@ -15,6 +15,7 @@ import pathlib
 
 import websockets
 
+from . import datafiles as _datafiles
 from . import events, lastsession, snapshots
 from . import project as project_mod
 from .agent import llm as agent_llm
@@ -144,11 +145,14 @@ class Server:
     async def _op(self, m: dict):
         s, op = self.session, m.get("op")
         run = asyncio.get_running_loop().run_in_executor
+        if op == "selfcheck_data":                         # 随包数据文件自检（界面『运行自检』）；与 CLI / selfcheck_data.py 同一函数
+            return _datafiles.report()
         if op == "hello":
             return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()},
                     "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
                     "schema": s.schema.summary() if s.schema else None, "params": s.params,
-                    "snapshots": snapshots.list_all(s.schema.hash) if s.schema else []}
+                    "snapshots": snapshots.list_all(s.schema.hash) if s.schema else [],
+                    "data_tables": _datafiles.tables()}
         if op == "project.list":                       # 可打开的项目（只读，读题页空状态用）
             return {"projects": await run(None, project_mod.list_projects, self.svc.gw.root), "current": project_mod.current()}
         if op == "project.migrate":                    # 旧版写在仓库 examples/ 的用户工程 → $DZBENCH_HOME/projects/：只复制不删；先 confirmed=false 出清单给界面确认卡，人确认后 confirmed=true

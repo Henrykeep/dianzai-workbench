@@ -28,6 +28,7 @@ def home(tmp_path, monkeypatch):
 # Windows（mingw 没有 asan/ubsan、Makefile 用了 POSIX 命令）或没有 make/cc 时统一跳过。
 # 没标却起了仿真板 → 直接失败，免得只在 Windows CI 上才暴露（v0.8.0 的 app-windows 就是这样挂的）。
 import shutil  # noqa: E402
+import time  # noqa: E402
 
 SIM_OK = os.name != "nt" and bool(shutil.which("make")) and bool(shutil.which("cc"))
 
@@ -160,3 +161,44 @@ def wd_timeout_ms(src) -> int:
     d = d or {}
     v = d.get("wd_timeout_ms") or (d.get("link") or {}).get("wd_timeout_ms")
     return int(v) if v else 1000
+
+
+def _child_pids() -> set:
+    """本进程的直接子进程（Linux /proc；别的平台返回空集，不做检查）。"""
+    me = str(os.getpid())
+    out = set()
+    try:
+        for d in os.listdir("/proc"):
+            if d.isdigit():
+                try:
+                    with open(f"/proc/{d}/stat", encoding="utf-8") as f:
+                        st = f.read().rsplit(")", 1)[1].split()
+                    if st[1] == me and st[0] != "Z":
+                        out.add(int(d))
+                except (OSError, IndexError):
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+@pytest.fixture(autouse=True)
+def _no_leaked_children():
+    """每个测试结束后不许留下仿真板 / 侧车子进程（上一个测试残留的板子会占串口、抢 schema）。"""
+    before = _child_pids()
+    yield
+    t0 = time.monotonic()
+    left = _child_pids() - before
+    while left and time.monotonic() - t0 < 3:
+        time.sleep(0.05)
+        left = _child_pids() - before
+    if left:
+        cmds = []
+        for p in sorted(left):
+            try:
+                with open(f"/proc/{p}/cmdline", "rb") as f:
+                    cmd = f.read().replace(b"\0", b" ").decode(errors="replace")[:120]
+                cmds.append(f"{p}:{cmd}")
+            except OSError:
+                cmds.append(str(p))
+        pytest.fail("测试结束后还有子进程没收：" + "；".join(cmds), pytrace=False)

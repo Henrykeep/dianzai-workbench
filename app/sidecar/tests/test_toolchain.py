@@ -307,9 +307,12 @@ def test_sim_as_hw_step_test_needs_arm_card_and_prearm(home, tmp_path):
     s = Session(emit=lambda e: None)
     s.connect("sim:car_2wd+hw", 115200, log=False)
     try:
+        # 等到“表已解析 + 实验通道已在遥测里”（预检看的就是这个）；以前只等 schema_hash（≤5 s、超时也往下走），
+        # 机器忙时仿真板编译 / 首帧遥测晚到，预检就报「遥测里没有实验通道 spd_a, sp_a」。
         t0 = time.monotonic()
-        while s.schema_hash is None and time.monotonic() - t0 < 5:
+        while time.monotonic() - t0 < 30 and not (s.schema and any({"spd_a", "sp_a"} <= set(v) for _, v in s.window(0.5))):
             time.sleep(0.05)
+        assert s.schema and any({"spd_a", "sp_a"} <= set(v) for _, v in s.window(0.5)), "仿真板没起来 / 遥测没到"
         subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
         (tmp_path / "dzbench.json").write_text(json.dumps({"step_test": {"kind": "data", "id": 1, "fmt": "<ff", "low": [0, 0],
             "high": [0.4, 0], "hold_s": 1.0, "pre_s": 0.3, "y": "spd_a", "sp": "sp_a"}}), encoding="utf-8")

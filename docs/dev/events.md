@@ -281,6 +281,16 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - `fix_action: "estop_clear"`。
 `estop_latch.json` 记录同名字段：`reason`、`reason_zh`、`latched_at`、`measured_ms`、`threshold_ms`。
 
+## 随包数据表 `hello.data_tables`（#136）
+`hello` 返回里多一项 `data_tables: {roles, reason_codes}`，每项为 `{sha256, content}` 或 `null`：
+- `sha256`：对文件原始字节（docs/dev/<名>.json）算的十六进制 SHA-256；`content`：原样解析的 JSON（不改字段）。
+- 文件缺失、不是合法 JSON 或 `schema_version` 不认识 → 该项为 `null`，同时 `progress` 出阻塞项 `{code/reason: "data_file_missing", file, message_zh, fix_action: "reinstall"}`。`reason_codes.json` 尚未生成时为 `null`，不算缺（可选表）。
+- 查找顺序：安装包解包目录 → `DZBENCH_REPO` → 本仓库根。命令行自检：`python -m dzbench selfcheck-data`（必需表缺失退出 1）。
+- `roles.content`：`{schema_version: 1, roles: [{code, zh}]}`；侧车的 `no_roles` 提示也只读这份。
+
+### op `selfcheck_data`（数据文件自检）
+请求 `{op:"selfcheck_data"}` → `{ok, items:[{file, status:"ok"|"missing"|"invalid", message_zh, fix_action}]}`；`fix_action` 为 `"reinstall"` 或 `null`。
+与 `python -m dzbench selfcheck-data`、独立脚本 `python <安装目录>/app/sidecar/selfcheck_data.py`（自己把所在目录放进 sys.path，适配忽略 PYTHONPATH 的嵌入式 Python）是**同一个函数** `datafiles.report()`，脚本打印同一份 JSON，缺必需文件退出 1。面向用户的 `message_zh` 不出现命令行，只说“重新安装工作台”“点『运行自检』”。
 ## #129 降幅测试（题面幅度超过 max_step / 量程）
 - `autotune` 结果和 metrics_card `items[]` 每项加 `amp_reduced: true`、`amp_spec`（题面阶跃幅度）、`amp_tested`（实际测的幅度）、`warning_zh: "按降幅测试，未验题面幅度"`；没降幅时这些字段都不出现。
 - 同时带 `amp_unit`：被阶跃信号（link.step 的 y）在握手里声明的单位；没声明 = `null`（不写死）。

@@ -36,16 +36,91 @@ def test_hb_timeout_text_uses_handshake_threshold():
     assert "阈值" not in n["detail_zh"] and n["threshold_ms"] is None, n
 
 
-def test_role_hint_matches_gen_link_enum():
-    """#136：no_roles 提示里的角色取值来自 gen_link.ROLES，提示里的例子要能过 gen_link.check。"""
-    import importlib.util, pathlib, re
-    from dzbench.agent.service import role_hint_zh, link_roles
-    f = pathlib.Path(__file__).resolve().parents[3] / "tools" / "gen_link.py"
-    spec = importlib.util.spec_from_file_location("gl_t", f); gl = importlib.util.module_from_spec(spec); spec.loader.exec_module(gl)
-    assert link_roles() == tuple(gl.ROLES)
-    h = role_hint_zh()
-    assert "kp" not in h and all(r in h for r in gl.ROLES), h
-    ex = re.search(r"role: (\w+)", h).group(1)
-    p = {"name": "g", "type": "float", "default": 0.1, "min": 0, "max": 1, "role": ex}
-    assert not [e for e in gl.check({}, [p]) if "role" in e], gl.check({}, [p])
-    assert [e for e in gl.check({}, [dict(p, role="kp")]) if "role" in e]
+
+def test_find_by_hash_prefers_newest_of_same_hash(tmp_path, monkeypatch):
+    """flaky 根因：同一应用编给多块板 → 同 hash 多份 link_schema.json（hash 不含 wd_timeout_ms）；
+    以前按文件系统顺序取第一份，拿到旧固件的表 → threshold 读成 null，测试按 1000 ms 等，板子 1500 ms 才锁存。"""
+    import json, os
+    from dzbench import schema as SC
+    base = {"hash": 0x1234, "telemetry": {"id": 2, "fields": [{"name": "y", "type": "f32"}]}, "params": []}
+    old = tmp_path / "a-old-board" / "app" / "linkgen" / "link_schema.json"
+    new = tmp_path / "b-host-sim" / "app" / "linkgen" / "link_schema.json"
+    for f, d in ((old, base), (new, dict(base, wd_timeout_ms=2300))):
+        f.parent.mkdir(parents=True); f.write_text(json.dumps(d), "utf-8")
+    os.utime(old, (1e9, 1e9))
+    monkeypatch.setattr(SC, "search_dirs", lambda: [tmp_path])
+    assert SC.find_by_hash(0x1234).wd_timeout_ms == 2300
+
+
+def test_roles_hint_list_equals_roles_json_codes():
+    import json, pathlib
+    from dzbench.agent import service as SV
+    d = json.loads((pathlib.Path(__file__).resolve().parents[3] / "docs/dev/roles.json").read_text("utf-8"))
+    codes = [r["code"] for r in d["roles"]]
+    assert list(SV.link_roles()) == codes
+    h = SV.role_hint_zh()
+    assert [c for c in codes if f"{c}（" in h] == codes and "kp" not in h, h
+
+
+def _datafiles_at(tmp_path, monkeypatch, content):
+    from dzbench import datafiles
+    if content is not None:
+        f = tmp_path / "docs" / "dev" / "roles.json"; f.parent.mkdir(parents=True); f.write_text(content, "utf-8")
+    monkeypatch.setattr(datafiles, "roots", lambda: [tmp_path])
+    return datafiles
+
+
+def test_roles_json_missing_is_blocker_and_cli_fails(tmp_path, monkeypatch, capsys):
+    from dzbench import progress
+    from dzbench.agent import service as SV
+    df = _datafiles_at(tmp_path, monkeypatch, None)
+    probs = df.check()
+    assert probs and probs[0]["reason"] == "data_file_missing" and probs[0]["fix_action"] == "reinstall" and probs[0]["file"].endswith("roles.json")
+    bl = progress.blockers({"data_missing": probs, "link": {"board": "connected"}})
+    assert bl[0]["code"] == "data_file_missing" and bl[0]["fix_action"] == "reinstall" and "重新安装" in bl[0]["message_zh"]
+    assert "没找到" in SV.role_hint_zh() and "role: " not in SV.role_hint_zh()
+    assert df.main() == 1
+
+
+def test_roles_json_unknown_version_rejected(tmp_path, monkeypatch):
+    from dzbench.agent import service as SV
+    df = _datafiles_at(tmp_path, monkeypatch, '{"schema_version": 2, "roles": [{"code": "P", "zh": "比例"}]}')
+    assert df.check()[0]["reason"] == "data_file_missing" and "版本 2" in df.check()[0]["message_zh"]
+    assert SV.link_roles() == () and "版本 2" in SV.role_hint_zh()
+    assert df.main() == 1
+
+
+def test_hello_data_tables_sha256_matches_file_bytes(tmp_path, monkeypatch):
+    import hashlib, json, pathlib
+    from dzbench import datafiles
+    t = datafiles.tables()
+    f = pathlib.Path(__file__).resolve().parents[3] / "docs/dev/roles.json"
+    assert t["roles"]["sha256"] == hashlib.sha256(f.read_bytes()).hexdigest()
+    assert t["roles"]["content"] == json.loads(f.read_text("utf-8"))
+    rc = datafiles.find("reason_codes.json")
+    assert (t["reason_codes"] is None) == (rc is None or bool(datafiles.load("reason_codes.json")[1]))
+    _datafiles_at(tmp_path, monkeypatch, None)
+    assert datafiles.tables() == {"roles": None, "reason_codes": None}
+
+
+def test_selfcheck_standalone_script_from_other_cwd_without_pythonpath(tmp_path):
+    import json, os, pathlib, subprocess, sys
+    from dzbench import datafiles
+    script = pathlib.Path(__file__).resolve().parents[1] / "selfcheck_data.py"
+    env = {k: v for k, v in os.environ.items() if k not in ("PYTHONPATH", "DZBENCH_REPO")}
+    r = subprocess.run([sys.executable, str(script)], cwd=tmp_path, env=env, capture_output=True, timeout=60)
+    out = json.loads(r.stdout.decode("utf-8"))
+    assert r.returncode == 0 and out["ok"] and out == datafiles.report()
+    assert all(set(i) == {"file", "status", "message_zh", "fix_action"} for i in out["items"])
+
+
+def test_selfcheck_op_missing_has_no_command_line(tmp_path, monkeypatch):
+    import asyncio
+    from dzbench import server
+    _datafiles_at(tmp_path, monkeypatch, None)
+    sv = server.Server.__new__(server.Server)
+    sv.session = None
+    r = asyncio.run(sv._op({"op": "selfcheck_data"}))
+    it = next(i for i in r["items"] if i["file"].endswith("roles.json"))
+    assert not r["ok"] and it["status"] == "missing" and it["fix_action"] == "reinstall"
+    assert "python" not in it["message_zh"] and "-m" not in it["message_zh"] and "『运行自检』" in it["message_zh"]

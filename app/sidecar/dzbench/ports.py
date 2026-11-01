@@ -13,6 +13,14 @@ from .transport import SIM_PREFIX, sim_elf, sim_root
 BAUDS = [460800, 921600, 115200, 230400, 1000000, 500000, 57600, 9600]
 
 
+
+def _platform() -> str:
+    """"posix" / "nt"。测试要模拟别的平台就换 ports._IS_POSIX，别改全局 os.name（Windows 上 pathlib 会去实例化 PosixPath）。"""
+    return "nt" if os.name == "nt" else "posix"
+
+
+_IS_POSIX = _platform() == "posix"
+
 def _yaml_top(y) -> dict:
     """app.yaml / project.yaml 顶层键（只看 key: 开头的行，name 取值）。"""
     keys: dict = {}
@@ -68,7 +76,7 @@ def list_ports() -> list[dict]:
     global SIM_APPS
     info = sim_app_info()                     # #100：每次列端口都重扫（新建项目不用重启侧车）
     SIM_APPS = list(info)
-    can_sim = (os.name != "nt" and shutil.which("make")) or any(sim_elf(a).exists() for a in SIM_APPS)   # 安装包自带编好的仿真板
+    can_sim = (_IS_POSIX and shutil.which("make")) or any(sim_elf(a).exists() for a in SIM_APPS)   # 安装包自带编好的仿真板
     if can_sim:
         for a in SIM_APPS:
             nm = info[a]["name"]
@@ -132,7 +140,7 @@ def open_serial(device: str, baud: int, **kw):
     """POSIX 上独占打开（Windows 本来就独占）：两个窗口/程序抢同一个口时第二个直接报“被占用”，而不是两边都收到半截数据。
     DTR/RTS 在 open() 之前设好，避免打开瞬间的电平跳变把板子复位。"""
     import serial
-    if os.name != "nt":
+    if _IS_POSIX:
         kw.setdefault("exclusive", True)
     lines = {k: v for k, v in line_settings().items() if v is not None}
     if not lines:

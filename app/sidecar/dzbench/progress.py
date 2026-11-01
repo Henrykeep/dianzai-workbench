@@ -44,15 +44,17 @@ ACTIONS = {
     "cal_polarity": "极性自检",
     "score": "评分项逐项验收",
     "precontest": "赛前全绿检查与封箱清单",
+    "reinstall": "重新安装工作台",
 }
 
-BLOCKER_CODES = ("no_board", "missing_deps", "gains_zero", "estop", "selftest_fail", "params_not_saved")
-FIX = {"no_board": "connect", "missing_deps": "fetch_deps", "gains_zero": "tune_relay",
+BLOCKER_CODES = ("data_file_missing", "no_board", "missing_deps", "gains_zero", "estop", "selftest_fail", "params_not_saved")
+FIX = {"data_file_missing": "reinstall", "no_board": "connect", "missing_deps": "fetch_deps", "gains_zero": "tune_relay",
        "estop": "estop_clear", "selftest_fail": "run_selftest", "params_not_saved": "params_flash"}
 STEP_ACTION = {"req": "project_flow", "project": "project_flow", "sim": "build", "bringup": "cal_polarity",
                "tune": "tune_relay", "score": "score", "seal": "precontest"}
 # 每类阻塞挡住哪些步骤（"mode:standalone" = 切换到脱机模式）
-BLOCKS = {"no_board": ["sim", "bringup", "tune", "score", "seal"],
+BLOCKS = {"data_file_missing": ["tune"],
+          "no_board": ["sim", "bringup", "tune", "score", "seal"],
           "missing_deps": ["project", "sim"],
           "gains_zero": ["tune"],
           "estop": ["bringup", "tune", "score"],
@@ -77,6 +79,10 @@ def _blocker(code: str, message: str, detail=None) -> dict:
 def blockers(f: dict) -> list[dict]:
     """facts → 阻塞项列表（顺序即处理优先级）。"""
     out = []
+    for p in f.get("data_missing") or []:               # 随包数据文件缺 / 版本不认识（datafiles.check）
+        b = _blocker("data_file_missing", p["message_zh"], {"file": p["file"]})
+        b.update({"reason": "data_file_missing", "file": p["file"], "message_zh": p["message_zh"]})
+        out.append(b)
     if f.get("deps_missing"):
         names = "、".join(f["deps_missing"][:4])
         out.append(_blocker("missing_deps", f"开发环境缺少必需依赖：{names}。"))
@@ -157,7 +163,7 @@ def derive(f: dict) -> dict:
     else:
         nxt = {"title": "全部完成", "action": "", "hint": "各步骤均已完成，可导出封箱清单存档。"}
     return {"steps": steps, "current": current, "next": nxt,
-            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks", "source", "detail") if k in b} for b in bl],
+            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks", "source", "detail", "reason", "file", "message_zh") if k in b} for b in bl],
             "mode": f.get("mode"), "project": f.get("project"),
             **{k: (f.get("fw") or {}).get(k) for k in FW_FIELDS}}
 
@@ -183,6 +189,14 @@ def _params_saved(s) -> bool | None:
 def estop_cause_of(fw: dict | None, st: dict | None) -> dict | None:
     """急停原因只有这一个来源：优先 fw_status()（会话快照）；没上报时再读 status.estop_cause。"""
     return (fw or {}).get("estop_cause") or (st or {}).get("estop_cause") or None
+
+
+def _data_missing() -> list[dict]:
+    from . import datafiles
+    try:
+        return datafiles.check()
+    except Exception:  # noqa: BLE001 —— 进度只读
+        return []
 
 
 def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
@@ -228,6 +242,7 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
         "has_samples": bool(s.samples),
         "sim_board": str(st.get("port") or "").startswith("sim:"),
         "params_read": len(s.params),
+        "data_missing": _data_missing(),
         "deps_missing": [d["name"] for d in (deps or []) if d.get("level") == "fail"],
         "estop": estop, "estop_reason": reason,
         "estop_source": getattr(s, "estop_source", None) or ((ec or {}).get("source")),

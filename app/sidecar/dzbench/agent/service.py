@@ -54,26 +54,26 @@ NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse
 
 
 
-ROLES_JSON = pathlib.Path(__file__).resolve().parents[4] / "docs" / "dev" / "roles.json"
-
-
-def load_roles(path=None) -> list:
-    """角色枚举只读 docs/dev/roles.json（随安装包分发；make check 保证它 == gen_link ROLES）。运行时不加载 tools/。"""
-    f = pathlib.Path(path or os.environ.get("DZBENCH_ROLES_JSON") or ROLES_JSON)
-    doc = json.loads(f.read_text(encoding="utf-8"))
-    rs = [r for r in doc.get("roles", []) if isinstance(r, dict) and r.get("code")]
-    if not rs:
-        raise ValueError(f"{f} 里没有 roles")
-    return rs
-
+def load_roles() -> tuple[list, str]:
+    """#136：参数角色只读 docs/dev/roles.json（{schema_version:1, roles:[{code, zh}]}，gen_link 生成；侧车不留副本）。
+    返回 ([{code, zh}], 问题说明)。"""
+    from .. import datafiles
+    d, prob = datafiles.load("roles.json")
+    if prob:
+        return [], prob["message_zh"]
+    rs = [r for r in d.get("roles") or [] if isinstance(r, dict) and isinstance(r.get("code"), str)]
+    return (rs, "") if rs else ([], "参数角色取值表 roles.json 里没有角色，请重新安装工作台")
 
 def link_roles() -> tuple:
-    return tuple(r["code"] for r in load_roles())
+    return tuple(r["code"] for r in load_roles()[0])
 
 
 def role_hint_zh() -> str:
-    rs = link_roles()
-    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {' / '.join(rs)}（例如比例增益写 role: {rs[0]}）"
+    rs, why = load_roles()
+    if not rs:
+        return f"在 app.yaml 的 link.params.<参数名>.role 上写角色；{why}，这里列不出可选值"
+    opts = " / ".join(f"{r['code']}（{r.get('zh') or r['code']}）" for r in rs)
+    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {opts}（例如比例增益写 role: {rs[0]['code']}）"
 
 class AgentService:
     def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):
