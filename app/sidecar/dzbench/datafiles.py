@@ -90,6 +90,8 @@ def report() -> dict:
 
 
 def main() -> int:
+    from . import stdio_utf8
+    stdio_utf8.ensure()                 # #146：cp1252 控制台也输出 UTF-8
     r = report()
     print(json.dumps(r, ensure_ascii=False, indent=1))
     return 0 if r["ok"] else 1
