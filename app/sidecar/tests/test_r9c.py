@@ -102,6 +102,31 @@ def test_slow_plant_extends_duration_instead_of_three_invalid_rounds():
     assert io.calls[:3] == [2000, 4000, 8000]
 
 
+class DeadIO(MockIO):
+    """对象完全不响应：每轮都 no_rise。"""
+    def step(self, it, ch, target, dur_ms):
+        self.calls.append(dur_ms)
+        return dzstep.decode_step_result(result_bytes(it, I.params_hash(self.order(), self.v), settle=0, rise=None))
+
+
+@pytest.mark.parametrize("cap,expect", [(None, [2000, 4000, 8000, 12000]), (5000, [2000, 4000, 5000])])
+def test_unresponsive_plant_hits_hard_cap(cap, expect):
+    io, ev = DeadIO(), []
+    out = I.Iterator(io, dict(PLAN, dur_ms=2000, max_step_dur_ms=cap), True, emit=ev.append).run()
+    assert out["reason"] == "plant_unresponsive" and out["best"] is None and "round0" not in out, out
+    assert io.calls == expect and getattr(io, "output_stopped", False)
+    if cap is None:                                  # 没声明：卡上明说用默认 12 s，并指到声明字段
+        assert out["dur_cap_notice_zh"] == "未声明阶跃时长上限，使用默认 12 s"
+        assert out["fix_action"] == "edit_declaration" and out["fix_field"] == "link.step.max_step_dur_ms"
+    else:
+        assert "dur_cap_notice_zh" not in out and "fix_action" not in out
+    assert S.AgentService._verdict({"inside": True}, out, None)[0] == "unknown"
+    from dzbench.agent.reason_codes import table
+    t = table()["plant_unresponsive"]
+    assert out["output_stopped"] is True and t["stops_output"] is True        # 前端：卡片明说已停输出
+    assert t["message_zh"] == "对象无响应" and t["causes"] == ["没上电", "接线", "方向（执行器 / 传感器极性接反）", "执行器饱和"]
+
+
 @pytest.mark.needs_sim
 @pytest.mark.parametrize("seed", [3, 3010])
 def test_direct_iterate_start_and_main_flow_use_same_plan(seed, home):
@@ -137,3 +162,17 @@ def test_direct_iterate_start_and_main_flow_use_same_plan(seed, home):
             assert main["target"] == pytest.approx(float(o["step_target"]))
     finally:
         s.disconnect()
+
+
+@pytest.mark.parametrize("cache,vs_board,expect", [(True, False, "clear_schema_cache"), (False, False, "build"), (False, True, "reflash")])
+def test_schema_conflict_fix_action_by_kind(tmp_path, monkeypatch, cache, vs_board, expect):
+    """schema_conflict 的修法按种类：有缓存拷贝 → clear_schema_cache；只有编译产物互冲 → build；编译产物对板子 → reflash。
+    进度阻塞项（progress.blockers）用同一个 fix_action，不再一律 clear_schema_cache。"""
+    from dzbench import progress, schema
+    monkeypatch.setattr(schema, "cache_dir", lambda: tmp_path / "cache")
+    p1 = (tmp_path / "cache" if cache else tmp_path / "build") / "a.json"
+    e = schema.SchemaConflict(0x1234ABCD, [str(p1), str(tmp_path / "build2/b.json")], None, vs_board=vs_board)
+    d = e.as_dict()
+    assert d["fix_action"] == expect and d["fix_zh"]
+    bl = [b for b in progress.blockers({"link": {"board": "connected"}, "schema_conflict": d}) if b["code"] == "schema_conflict"]
+    assert bl and bl[0]["fix_action"] == expect and bl[0]["fix_zh"] == d["fix"]

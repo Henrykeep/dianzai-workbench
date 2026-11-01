@@ -23,6 +23,7 @@ import time
 LOST_AFTER_S = 2.0        # 4 个板子心跳周期
 PUSH_EVERY_S = 1.0        # 状态不变时的保活推送间隔
 STALE_AFTER_MS = 3000
+REASON_ZH = {"resuming": "正在恢复连接"}   # 需要界面原样显示的 reason 中文（其余 reason 由前端自己映射）
 FW_FIELDS = ("run_mode", "selftest", "params_saved", "params_hash", "estop_cause")   # 固件上报的状态快照字段
 MODES = ("tethered", "standalone")   # 板子运行模式（联机 / 脱机），固件上报才有；没报 = mode: null     # UI 超过这么久没收到 link.state = 侧车无响应
 
@@ -72,5 +73,5 @@ class LinkState:
         self.last = {"type": "link.state", "seq": self._seq, "sidecar": "ok", "board": board,
                 "port": key[1] or None, "since": self._since_ms,
                 "last_rx_ms": int((now - last_frame) * 1000) if heard else None,
-                "reason": reason or None, "mode": mode, "stale_after_ms": STALE_AFTER_MS, **fw}
+                "reason": reason or None, "message_zh": REASON_ZH.get(reason) if reason else None, "mode": mode, "stale_after_ms": STALE_AFTER_MS, **fw}
         return self.last

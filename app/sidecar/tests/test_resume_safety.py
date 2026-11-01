@@ -100,9 +100,10 @@ def _run_kill_restart(board, home, estop: bool):
         p, port = _start(home)
         ui = UI(port)
         assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 3.5), "3 s 内自动连回"
-        time.sleep(2.0)                                         # 重连后的读参、心跳都跑完
+        # #155：“已连接”只在上位机心跳真的发出后才报；这里再等心跳帧真的到板子（有上限，不固定睡）
+        assert until(lambda: any(f[1] == HEARTBEAT for f in board.rx if f[0] > t_kill), 3.0), "连回后 3 s 内板子没收到上位机心跳"
+        time.sleep(0.5)                                         # 再看一小段，确认没有运动/目标/命令帧
         after = [f for f in board.rx if f[0] > t_kill]
-        assert after, "重连后应有心跳/读参"
         assert _forbidden(after) == [], "自动重连发出了运动/目标/命令帧"
         tl = sp(board)
         assert tl and tl["sp_a"] == 0.0 and abs(tl["spd_a"]) < 0.05, f"板子不应在跑：{tl}"
@@ -135,3 +136,38 @@ def test_link_lost_stops_timed_sends():
     snd.stop_all = lambda why="": stopped.append(why)
     s.emit({"type": "error", "code": "link_lost", "message": "x", "fix": ""})
     assert stopped == ["连接断开"]
+
+
+def test_sidecar_only_restart_board_latched_e2e(board, home):
+    """只重启侧车、不重启 host-sim 板（PtyBoard 不动，真后端）：板上急停锁存（心跳 bit10）时新侧车不发 'I'，
+    并按 bit10 自己锁存 tx_locked → 执行器操作立刻（远小于 2 s 上限）被 tx_locked 拒绝，不无限等、不当成旧固件，板子不动。
+    注：estop_latched_ident_deferred 只在“bit10 仍置位但侧车未锁存”时出现；真后端里 bit10 一置位侧车就锁存、
+    解除要等 bit10 清零才放开（_confirm_clear），所以该分支在真后端 + host-sim 上走不到，由单元测试覆盖。"""
+    from wsui import UI
+    p, port = _start(home)
+    try:
+        ui = UI(port)
+        ui.ok("connect", port=str(board.path), baud="auto")
+        wd_ms = wd_timeout_ms(ui.wait(lambda e: e["type"] == "schema"))
+        time.sleep(0.6)
+        ui.ok("estop")                                          # 板上急停锁存（心跳 bit10 置位）
+        ui.close()
+        p.send_signal(signal.SIGKILL)
+        p.wait()
+        t_kill = time.monotonic()
+        time.sleep(wd_ms / 1000 + 0.5)
+        p, port = _start(home)
+        ui = UI(port)
+        assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 6.0), "自动连回"
+        assert until(lambda: any(f[1] == HEARTBEAT for f in board.rx if f[0] > t_kill), 3.0)
+        t0 = time.monotonic()
+        r = ui.call("send_data", id=1, hex=GO)
+        dt = time.monotonic() - t0
+        err = r.get("error") or r
+        assert r["ok"] is False and err.get("code") == "tx_locked", r
+        assert dt < 1.0, dt
+        assert not any(k == DATA and i == 0x7E for _t, k, i, _pl in board.rx if _t > t_kill), "急停位在时不发 'I'"
+        assert sp(board)["sp_a"] == 0.0
+        ui.close()
+    finally:
+        p.kill()

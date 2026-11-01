@@ -40,6 +40,9 @@ class MockIO:
     def locked(self):
         return self._locked
 
+    def stop_output(self):
+        self.output_stopped = True
+
     def busy(self):
         return False
 

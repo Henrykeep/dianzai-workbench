@@ -96,7 +96,9 @@ def blockers(f: dict) -> list[dict]:
     sc = f.get("schema_conflict")
     if sc:                                               # 同哈希多份不同内容的 link_schema.json：一份都不用（schema.find_by_hash）
         b = _blocker("schema_conflict", sc["message_zh"], {"hash": sc.get("hash"), "board_uid": sc.get("board_uid"), "files": sc.get("files")})
-        b.update({"reason": "schema_conflict", "message_zh": sc["message_zh"], "hash": sc.get("hash"),
+        if sc.get("fix_action"):                         # 按冲突种类给修法：clear_schema_cache（有缓存）/ build（编译产物互冲）/ reflash（编译产物对板子）
+            b["fix_action"] = sc["fix_action"]
+        b.update({"reason": "schema_conflict", "message_zh": sc["message_zh"], "hash": sc.get("hash"), "fix_zh": sc.get("fix"),
                   "board_uid": sc.get("board_uid"), "files": sc.get("files")})
         out.append(b)
     if f.get("estop"):

@@ -583,6 +583,7 @@ class AgentService:
         if tol is None:                                                          # 新声明只写物理上限：容差 = 传感器量程的 ABS_TOL_FRAC
             tol = float(span) * self.ABS_TOL_FRAC if span else None
         out = {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(tol) if tol is not None else None,
+               "max_step_dur_ms": st.get("max_step_dur_ms"),          # 无响应时阶跃时长硬上限（link.step；没声明 → iterate.NO_RESPONSE_DUR_CAP_MS）
                "params": [dict(sch.params[sch.param_index[n]]) for n in names]}
         if fallback:
             zh = {"dur_default": "时长用默认 2000 ms", "span_quarter": f"目标用量程的 1/4（{float(span):g} / 4）" if span else "",
@@ -704,12 +705,14 @@ class AgentService:
         ss = self._ss_band(best.get("metrics") or {})
         v, vzh = self._verdict(ss, res, best.get("metrics"))
         res["verdict"], res["verdict_zh"], res["ss_err"] = v, vzh, ss
-        # #147：卡上的 params / metrics 都取自同一个 best（同一轮对象），round_id = 该轮 iter，前端用它对齐显示
-        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+        # #147：卡上的 params / metrics 都取自同一个 best（同一轮对象）。#154：round_id = run_id(uuid4) + 轮号，
+        # 跨 run 全局唯一（光用 iter 两次迭代都会有“第 3 轮”），前端用它对齐显示
+        rid = f"{res.get('run_id') or self.current_run_id()}:{best['iter']}"
+        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "round_id": rid,
                                              "metrics": best.get("metrics"), "params_hash": best["params_hash"],
                                              "ss_err": ss, "verdict": v, "verdict_zh": vzh,
                                              "compare": self._compare(res.get("round0"), best)}, lambda: None)
-        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "round_id": rid,
                        "metrics": best.get("metrics"), "params_hash": best["params_hash"], "ss_err": ss,
                        "verdict": v, "verdict_zh": vzh, "pass_basis": ss.get("pass_basis"), "compare": self._compare(res.get("round0"), best)}
         return r.get("action_id")
@@ -718,6 +721,8 @@ class AgentService:
     def _verdict(ss: dict, res: dict, metrics: dict | None = None) -> tuple[str, str]:
         """卡片级结论 pass | fail | unknown | invalid（#68/#75：卡片、台账 tune_round、提议卡都用这一个）。
         阶跃无效 → invalid；ss_err.inside 为 null（单位对不上、实机未标定）→ unknown。这两种文案里都不出现「达标」。"""
+        if res.get("reason") == "plant_unresponsive":     # 对象无响应：已停输出，不下结论
+            return "unknown", "对象无响应，不下结论：检查是否上电、接线、方向、执行器是否饱和"
         why = step_invalid(metrics) if metrics is not None else None
         if why or res.get("reason") == "invalid":
             why = why or res.get("why_invalid")
@@ -960,8 +965,10 @@ class AgentService:
     def _iter_emit(self, e: dict) -> None:
         if str(e.get("type", "")).startswith("iterate."):
             e.setdefault("run_id", self.current_run_id())
+        if e.get("type") == "iterate.round" and "iter" in e:
+            e.setdefault("round_id", f"{e['run_id']}:{e['iter']}")            # #154：和结果卡 / 采用回包同一个口径
         if e.get("type") == "iterate.round" and e.get("valid"):
-            self.memory().add("round", run_id=self.current_run_id(), iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
+            self.memory().add("round", run_id=self.current_run_id(), round_id=e["round_id"], iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
                               score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
         if e.get("type") == "iterate.stopped" and "pass_basis" not in e:
             try:

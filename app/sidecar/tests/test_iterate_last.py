@@ -71,7 +71,14 @@ def test_card_round_id_same_round(tmp_path):
     res = {**RES, "best": {**RES["best"], "metrics": {"sse": 3.0}}}
     svc._best_card(res)
     c = res["card"]
-    assert c["round_id"] == c["iter"] == res["best"]["iter"] == seen["round_id"]
+    rid = svc.current_run_id()
+    assert c["iter"] == res["best"]["iter"] and c["round_id"] == seen["round_id"] == f"{rid}:{c['iter']}"   # #154
+    import re
+    assert re.fullmatch(r"[0-9a-f]{12}:\d+", c["round_id"])
+    svc.run_id = None                                  # 新一次迭代：同一轮号也不会撞 round_id
+    res2 = {**RES, "best": {**RES["best"], "metrics": {"sse": 3.0}}}
+    svc._best_card(res2)
+    assert res2["card"]["iter"] == c["iter"] and res2["card"]["round_id"] != c["round_id"]
     assert c["params"] == res["best"]["params"] == seen["params"]
     assert c["metrics"] == res["best"]["metrics"] == seen["metrics"]
     assert c["params_hash"] == res["best"]["params_hash"]

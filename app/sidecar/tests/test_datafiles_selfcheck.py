@@ -68,3 +68,25 @@ def test_reason_codes_missing_hello_table_null(tmp_path, monkeypatch):
     monkeypatch.setattr(datafiles, "roots", lambda: [tmp_path])
     assert datafiles.tables()["reason_codes"] is None and datafiles.tables()["roles"] is not None
     assert [p["file"] for p in datafiles.check()] == ["docs/dev/reason_codes.json"]
+
+
+@pytest.mark.parametrize("content,expect", [
+    ("{not json", "不是合法 JSON（第 1 行第 2 列"),
+    ("[1, 2]", "顶层应是 JSON 对象，实际是 list"),
+    ('{"roles": ["a"]}', "缺 schema_version 字段"),
+    ('{"schema_version": 9, "roles": ["a"]}', "schema_version 是 9，本地服务只认 1"),
+    ('{"schema_version": 1}', "缺 roles 字段"),
+    ('{"schema_version": 1, "roles": []}', "roles 列表是空的"),
+    ('{"schema_version": 1, "roles": {}}', "roles 应是列表"),
+])
+def test_broken_roles_names_file_and_problem(tmp_path, monkeypatch, content, expect):
+    """#150：坏的 roles.json → 消息里有文件完整路径和具体哪里不对；任何情况下都不出现“版本 None”。"""
+    from dzbench import datafiles
+    dd = tmp_path / datafiles.REL
+    dd.mkdir(parents=True)
+    (dd / "roles.json").write_text(content, "utf-8")
+    monkeypatch.setattr(datafiles, "roots", lambda: [tmp_path])
+    d, p = datafiles.load("roles.json")
+    assert d is None and p["fix_action"] == "reinstall"
+    assert str(dd / "roles.json") in p["message_zh"] and expect in p["message_zh"], p["message_zh"]
+    assert "None" not in p["message_zh"]

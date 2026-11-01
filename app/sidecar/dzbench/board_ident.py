@@ -13,6 +13,9 @@ OLD_FW_ZH = "固件版本过旧，不支持板子识别"
 INFO_CMD = b"I"            # DATA id=0x7E {'I'}（dzctl 0.17.0）
 INFO_LEN = 23
 INFO_TIMEOUT_S = 2.0
+IDENT_WAIT_S = 2.0                 # 执行器操作等 'I' 回包的上限；到点仍未定 → estop_latched_ident_deferred / fw_estop_unsafe
+IDENT_DEFERRED_ZH = "急停中，暂不识别板子"
+PENDING_ZH = "正在识别板子…"            # #151 握手没完：不能说“不支持”
 
 # fw_estop_unsafe：急停可被误清除的固件（dzctl < 0.18.0）或没有 'I' 回包 → 禁止一切驱动执行器的操作，只许读和烧录。
 # 规格：fw-unknown-cmd 854b6a1 docs/dev/fw-handshake.md —— info_ver=2、27 B 回包，偏移 23 的 u32 proto_ver = major<<16|minor<<8|patch。

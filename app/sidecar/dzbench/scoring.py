@@ -121,6 +121,15 @@ def _insert_evidence(text: str, item: str, line: str) -> str:
     return "\n".join(ls)
 
 
+def _shown_path(p: pathlib.Path, root: pathlib.Path) -> str:
+    """给界面看的相对路径：仓库内 → 相对仓库根；用户工程目录内 → projects/<工程>/...（与改动卡同口径）；都不是 → 只给文件名。"""
+    p = p.resolve()
+    for base, pre in ((root.resolve(), ""), (paths.projects_dir().resolve(), "projects/")):
+        if p.is_relative_to(base):
+            return pre + p.relative_to(base).as_posix()
+    return p.name
+
+
 def writeback(svc, m: dict) -> dict:
     """m = {path?, item, dir, layer, result: pass|fail|partial, note, confirm?, sha?}。不带 confirm 只返回 diff；带 confirm 且文件没被改过才写。"""
     import difflib, hashlib, os
@@ -148,8 +157,9 @@ def writeback(svc, m: dict) -> dict:
     it = next(x for x in doc["items"] if str(x.get("id")) == str(m["item"]))
     if not it.get("evidence") or it["evidence"][-1].get("path") != rel:
         raise ScoreError("insert", "插入位置没认出来（排版太特别），请手动贴：" + line)
-    diff = "".join(difflib.unified_diff(old.splitlines(True), new.splitlines(True), p.name, p.name + "（写回后）", n=2))
-    out = {"path": p.relative_to(root).as_posix() if p.is_relative_to(root) else str(p), "diff": diff, "sha": sha}
+    shown = _shown_path(p, root)                                # #152：diff 头和 path 都用相对路径，不暴露本机绝对路径
+    diff = "".join(difflib.unified_diff(old.splitlines(True), new.splitlines(True), f"a/{shown}", f"b/{shown}", n=2))
+    out = {"path": shown, "diff": diff, "sha": sha}
     if m.get("confirm"):
         if m.get("sha") != sha:
             raise ScoreError("changed", "requirements.yaml 在预览之后被改过", "重新预览再确认")

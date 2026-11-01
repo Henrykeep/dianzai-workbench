@@ -4,15 +4,21 @@ docs/dev/reason_codes.json 由 tools/gen_reason_codes.py 从这里生成；tests
 """
 from __future__ import annotations
 
-from .iterate import ACK_ZH, INVALID_ZH
+from .iterate import ACK_ZH, INVALID_ZH, STOPS_OUTPUT
 
 STOP_ZH = {"pass": "连续 2 轮达标", "estop": "急停", "stopped": "人点了停止迭代", "budget_time": "时间预算用完",
            "budget_rounds": "轮数上限用完", "invalid": "连续 3 轮无效", "no_improve": "连续 3 轮没有改进",
-           "unstable": "发散（超调过大）", "blocked": "所有方向都被拒绝或限幅挡住"}
+           "unstable": "发散（超调过大）", "blocked": "所有方向都被拒绝或限幅挡住",
+           "plant_unresponsive": "对象无响应"}
+# 停止原因的可能起因（界面列出来让人逐项排查）
+CAUSES_ZH = {"plant_unresponsive": ["没上电", "接线", "方向（执行器 / 传感器极性接反）", "执行器饱和"]}
 DIVERGE = {"unstable"}
+
 # 连接阻塞（不是迭代原因码，但界面 / Agent 用同一张表取中文）：kind = blocker
-BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
-              "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录"}
+BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作按种类：clear_schema_cache（有缓存拷贝，确认后只删这个哈希的缓存并重新识别）/ build（编译产物互冲，重新编译）/ reflash（编译产物与板上固件不符，重新烧录）",
+              "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录",
+              "estop_latched_ident_deferred": "急停中，暂不识别板子",
+              "resuming": "正在恢复连接"}
 
 
 def table() -> dict:
@@ -23,6 +29,10 @@ def table() -> dict:
         out.setdefault(k, {"zh": zh, "kind": "abort"})
     for k, zh in STOP_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "diverge" if k in DIVERGE else "stop"})
+        if k in CAUSES_ZH:
+            out[k].update(message_zh=zh, causes=CAUSES_ZH[k])
+        if k in STOPS_OUTPUT:
+            out[k]["stops_output"] = True
     for k, zh in BLOCKER_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "blocker"})
     return dict(sorted(out.items()))
