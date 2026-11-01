@@ -41,6 +41,12 @@ THIRD = pathlib.Path(__file__).resolve().parents[3] / "third_party"
 def pytest_configure(config):
     config.addinivalue_line("markers", "needs_sim: 需要 host-sim 仿真板（Windows / 无 make+cc 时跳过）")
     config.addinivalue_line("markers", "needs_third_party(*dirs): 需要 third_party/ 下的 SDK（缺了跳过）")
+    # 每个测试 120 s 上限（pytest-timeout，MIT）：卡死时打印栈并只判该测试失败（Linux 默认 signal 方式，后面的测试照跑），而不是拖到 CI job 超时。
+    # 全局值不许调大；确实长的测试单独加 @pytest.mark.timeout(N) 并写明原因。
+    config.addinivalue_line("markers", "timeout(seconds): pytest-timeout 单测上限（只给确实长的测试，写明原因）")
+    if config.pluginmanager.hasplugin("timeout"):
+        if not config.getoption("timeout", None):
+            config.option.timeout = 120
 
 
 def pytest_collection_modifyitems(config, items):

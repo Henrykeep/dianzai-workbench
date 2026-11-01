@@ -20,6 +20,7 @@ SEEDS = [1, 7, 13, 21, 101, 202, 3008, 5003]
 MEASURED: list[int] = []
 
 
+@pytest.mark.timeout(240)   # 合法地长：慢对象（如种子 21）no_rise 时阶跃时长逐轮翻倍到 30 s，迭代本身预算 BUDGET_S=180 s，测试 join(180)
 @pytest.mark.parametrize("seed", SEEDS)
 def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatch):
     import randplant

@@ -4,12 +4,9 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-try:
-    sys.stdout.reconfigure(encoding="utf-8")
-except Exception:
-    pass
+from dzbench import datafiles, stdio_utf8  # noqa: E402
 
-from dzbench import datafiles  # noqa: E402
+stdio_utf8.ensure()                     # #146：控制台代码页是 cp1252/cp936 也输出 UTF-8
 
 if __name__ == "__main__":
     sys.exit(datafiles.main())
