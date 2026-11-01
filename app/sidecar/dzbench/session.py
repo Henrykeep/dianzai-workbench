@@ -98,6 +98,9 @@ class Session:
         self.health = LinkHealth()
         self.timeline = Timeline()
         self._was_alive = False
+        self._info_asked = False             # 本次连接是否已发过 'I'（只发一次）
+        self._info = None                    # 'I' 回包解码结果
+        self._info_timer = None
         self._pending_marks: list[tuple[str, str]] = []
         self.bb_recs: list[dict] = []             # 最近一次黑匣子导出（DATA 0x7D）
         self.schema: Schema | None = None
@@ -557,6 +560,10 @@ class Session:
                 self.mode_ack = payload[1]
             elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
                 self.save_ack = payload[1]
+            elif kind == DATA and id_ == ID_CMD and len(payload) >= board_ident.INFO_LEN and payload[0] == ord("I"):
+                info = board_ident.decode_info(payload)
+                if info is not None:
+                    self._locked(lambda i=info: self._on_info(i))
             elif kind == DATA and id_ == ID_CMD and len(payload) == 5 and payload[0] == ord("H"):
                 self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
@@ -617,6 +624,9 @@ class Session:
                         es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16),
                                               threshold_ms=getattr(self.schema, "wd_timeout_ms", None) if self.schema else None)
                         if len(payload) >= 40:
+                            if not self._info_asked:     # 有效的 40 B 心跳 = 对端是我们的固件：发一次 'I'
+                                self._info_asked = True
+                                threading.Thread(target=self._ask_info, daemon=True).start()
                             m_, t_, ph = struct.unpack_from("<III", payload, 28)
                             self.selftest, self.params_hash = selftest_dict(m_, t_), ph
                             if self.selftest is not None and (m_, t_) != self._selftest_key:   # 新的一次自检结果：记完成时间 + 当时的参数 hash
@@ -1247,6 +1257,35 @@ class Session:
         if not new["board_id_known"]:
             self.emit({"type": "board_id", **new})
         return new
+
+    def _ask_info(self) -> None:
+        """连上且确认是我们的固件后发一次 DATA 0x7E {'I'}；2 s 内没回包 = 固件 < 0.17.0。"""
+        gen_tr = self.tr
+        try:
+            self._send(DATA, ID_CMD, board_ident.INFO_CMD)
+        except Exception:       # noqa: BLE001  急停锁存等：只是没问到，按超时处理
+            pass
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < board_ident.INFO_TIMEOUT_S:
+            if self._info is not None or self.tr is not gen_tr:
+                return
+            time.sleep(0.02)
+        if self._info is None and self.tr is gen_tr and gen_tr is not None:
+            self._locked(lambda: self.apply_handshake({"fw_too_old": True}))
+
+    def _on_info(self, info: dict) -> None:
+        """'I' 回包：板子身份 + 与缓存 schema 交叉核对（同哈希但 wd_timeout_ms 不同 = schema_conflict）。"""
+        self._info = info
+        sch = self.schema
+        if sch is not None and sch.hash == info["schema_hash"] and info["wd_timeout_ms"] \
+                and sch.wd_timeout_ms is not None and sch.wd_timeout_ms != info["wd_timeout_ms"]:
+            uid = board_ident.parse_handshake(info)["board_uid"]
+            e = SchemaConflict(sch.hash, [sch.path], uid,
+                               message_zh=f"本机格式文件（哈希 {sch.hash:08X}）的看门狗 {sch.wd_timeout_ms} ms 与板子实际烧进去的 "
+                                          f"{info['wd_timeout_ms']} ms 不一致：这份格式文件不是这块板子的。已停止显示遥测和写参数。")
+            self.schema, self.schema_conflict = None, e
+            self.emit(e.as_dict())
+        self.apply_handshake(info)
 
     def clear_schema_cache(self, h: int) -> dict:
         """op clear_schema_cache {hash}：删掉本机缓存里这个哈希的格式文件（只这个哈希），然后重新握手 / 重新识别。

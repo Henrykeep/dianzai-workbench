@@ -107,3 +107,83 @@ def test_heartbeat_tail_48_bytes_not_used_for_board_uid(home, monkeypatch):
         assert s.schema is not None                      # len 48 心跳照常解析（只读前 40 字节）
     finally:
         s.disconnect()
+
+
+# ---- dzctl 0.17.0 'I' 握手信息（DATA 0x7E {'I'} → 23 B 回包）----
+import struct as _st
+
+from dzbench._dzlink import DATA as _DATA, encode as _encode
+
+
+def _info_frame(h, wd, sup, uid, rev=0x1234567):
+    p = bytes([ord("I"), 1]) + _st.pack("<IIBIII", h, wd, 1 if sup else 0, uid & 0xFFFFFFFF, uid >> 32, rev)
+    assert len(p) == 23
+    return _encode(_DATA, 0x7E, 9, p)
+
+
+def test_decode_info_layout():
+    p = bytes([ord("I"), 1]) + _st.pack("<IIBIII", 0xA1B2C3D4, 1500, 1, 0x89ABCDEF, 0x01234567, 7)
+    d = B.decode_info(p)
+    assert d == {"info_ver": 1, "schema_hash": 0xA1B2C3D4, "wd_timeout_ms": 1500, "uid_supported": True,
+                 "board_uid": 0x0123456789ABCDEF, "fw_rev": 7}
+    assert B.parse_handshake(d)["board_uid"] == "0123456789abcdef"
+    assert B.decode_info(p[:22]) is None and B.decode_info(b"H" + p[1:]) is None
+
+
+@pytest.mark.needs_sim
+def test_old_firmware_no_info_reply_reports_too_old(home):
+    """当前仓库 host-sim 固件早于 dzctl 0.17.0、不回 'I'：2 s 后 board_uid null、uid_supported false、reason fw_too_old。"""
+    ev = []
+    s = Session()
+    s.emit = ev.append
+    try:
+        s.connect("sim:car_2wd"); _up(s)
+        assert s._info_asked                                   # 有效 40 B 心跳后发过一次 'I'
+        t0 = time.monotonic()
+        while s.status()["board_id_message_zh"] != B.OLD_FW_ZH and time.monotonic() - t0 < 6:
+            time.sleep(0.05)
+        st = s.status()
+        assert st["board_uid"] is None and st["uid_supported"] is False and st["board_id_message_zh"] == "固件版本过旧，不支持板子识别"
+        assert any(e.get("type") == "board_id" and e.get("reason") == "fw_too_old" for e in ev)
+    finally:
+        s.disconnect()
+
+
+@pytest.mark.needs_sim
+def test_info_reply_stub_frame_through_real_parser(home):
+    """'I' 回包（桩帧，按 18720ae 的布局编码）经真实 Parser 进来：报 16 位小写 hex + uid_supported，不触发过旧提示。"""
+    s = Session()
+    try:
+        s.connect("sim:car_2wd"); _up(s)
+        s._on_bytes(_info_frame(s.schema.hash, s.schema.wd_timeout_ms or 0, True, 0x0123456789ABCDEF))
+        time.sleep(2.5)                                         # 越过 2 s 超时，确认不会被改成「过旧」
+        st = s.status()
+        assert st["board_uid"] == "0123456789abcdef" and st["uid_supported"] is True and st["board_id_message_zh"] is None
+        assert st["schema_conflict"] is None and s.schema is not None
+    finally:
+        s.disconnect()
+
+
+@pytest.mark.needs_sim
+def test_info_reply_wd_mismatch_same_hash_is_schema_conflict(home):
+    """'I' 回包 schema_hash 与缓存一致但 wd_timeout_ms 不同 = 缓存的格式文件不是这块板的 → schema_conflict。"""
+    ev = []
+    s = Session()
+    s.emit = ev.append
+    try:
+        s.connect("sim:car_2wd"); _up(s)
+        sch = s.schema
+        assert sch.wd_timeout_ms
+        s._on_bytes(_info_frame(sch.hash, sch.wd_timeout_ms + 700, True, 0x0123456789ABCDEF))
+        t0 = time.monotonic()
+        while s.schema_conflict is None and time.monotonic() - t0 < 3:
+            time.sleep(0.02)
+        c = s.status()["schema_conflict"]
+        assert c and c["reason"] == "schema_conflict" and c["fix_action"] == "clear_schema_cache"
+        assert c["hash"] == f"{sch.hash:08X}" and c["board_uid"] == "0123456789abcdef" and len(c["files"]) == 1
+        assert s.schema is None
+        with pytest.raises(Exception) as ei:
+            s.set_param(next(iter(sch.params)).name if hasattr(next(iter(sch.params)), "name") else list(sch.params)[0], 1.0)
+        assert getattr(ei.value, "code", None) == "schema_conflict"
+    finally:
+        s.disconnect()

@@ -324,8 +324,13 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - 哈希本身把 `wd_timeout_ms` 与板子身份算进去由固件侧（gen_link）负责，本节只管查找时不挑错。
 
 ## 板子身份 `board_uid` / `uid_supported`（换板识别，r10）
-固件在**握手里报一次**（不在心跳里，心跳仍为 40 字节）：`board_uid`（MCU 唯一 ID 的 64 位 FNV-1a）与 `uid_supported`（bool）。侧车只从握手读（`Session.apply_handshake` → `board_ident.parse_handshake`）。
-- `status.board_uid`：16 位小写十六进制字符串，或 `null`。`status.uid_supported`：bool。`status.board_id_known`：bool。`status.board_id_message_zh`：身份未知时为「此芯片暂不支持板子识别，换板检测不可用」，否则 `null`。
+固件规格见 `docs/dev/fw-handshake.md`（fw-wdhash 18720ae，dzctl 0.17.0）。**心跳仍为 40 字节，侧车从不在心跳里读 board_uid**（0.16.0 曾追加到 48 B，已撤回；侧车对心跳只读前 40 B）。
+- 连上后，收到第一帧**有效的 40 B 心跳**（确认对端是工作台固件）时，侧车发一次 `DATA id=0x7E {'I'}`。
+- 回包 `DATA id=0x7E len=23`（小端）：`'I'`, u8 `info_ver`, u32 `schema_hash`, u32 `wd_timeout_ms`, u8 `uid_supported`, u32 `board_uid_lo`, u32 `board_uid_hi`, u32 `fw_rev`（`board_ident.decode_info`）。
+- **2 s 内没回包**（固件 < dzctl 0.17.0）→ `board_uid:null, uid_supported:false`，推 `{type:"board_id", reason:"fw_too_old", message_zh:"固件版本过旧，不支持板子识别"}`。
+- 回包 `uid_supported=0` → `board_uid:null`，`reason:"uid_unsupported"`，文案「此芯片暂不支持板子识别，换板检测不可用」。
+- **交叉核对**：回包的 `schema_hash` 与已绑定的格式文件相同、但 `wd_timeout_ms` 不同（双方都非 0）→ 这份缓存不是这块板的，按 `schema_conflict` 处理（`files` 为那一份缓存文件的绝对路径，`fix_action:"clear_schema_cache"`）。
+- `status.board_uid`：16 位小写十六进制字符串，或 `null`。`status.uid_supported`：bool。`status.board_id_known`：bool。`status.board_id_message_zh`：身份未知时为上面两句之一（过旧固件 / 芯片不支持），否则 `null`。
 - `uid_supported:false`、`board_uid` 缺失或为 0 → `board_uid:null`，并推 `{type:"board_id", board_uid:null, uid_supported, board_id_known:false, message_zh}`。这种板子**永远不当作**缓存里的任何一块板（不按身份复用缓存）。
 - 按板缓存：schema 绑定按 `(schema 哈希, board_uid)` 缓存；同哈希同内容的两块板不算冲突，同哈希不同内容仍是 `schema_conflict`（不挑最新）。
 - 换板：与上次握手的 `board_uid` 不同，或任一方为 `null` → 推 `{type:"board_changed", from, to, uid_supported, message_zh}`，清掉上一块板的参数读数与 schema 绑定并重新查找。同一块板重启（同 `board_uid`）不推。

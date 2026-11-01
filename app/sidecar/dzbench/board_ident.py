@@ -1,13 +1,28 @@
 """板子身份（换板指纹）：从固件握手读 board_uid（64 位 FNV-1a 的 MCU 唯一 ID）与 uid_supported。
 
-规格（与嵌入式开发-2 约定，r10）：board_uid 只在握手里报一次，不在心跳里；握手同时报 uid_supported(bool)。
+规格：fw-handshake.md（dzctl 0.17.0）——侧车发 DATA 0x7E {'I'}，23 B 回包里报 board_uid64 与 uid_supported；不在心跳里。
 - 报给界面：board_uid = 16 位小写十六进制或 null；uid_supported = bool。
 - uid_supported 为 false、board_uid 缺 / 为 0 → board_uid = null，并显式提示 NO_UID_ZH；这种板子永远不和缓存里的任何板子算同一块。
-固件握手帧尚未推送时，侧车按本规格实现；握手 dict 来自哪种帧由 Session.apply_handshake 的调用方决定。
 """
 from __future__ import annotations
 
+import struct
+
 NO_UID_ZH = "此芯片暂不支持板子识别，换板检测不可用"
+OLD_FW_ZH = "固件版本过旧，不支持板子识别"
+INFO_CMD = b"I"            # DATA id=0x7E {'I'}（dzctl 0.17.0）
+INFO_LEN = 23
+INFO_TIMEOUT_S = 2.0
+
+
+def decode_info(p: bytes) -> dict | None:
+    """'I' 回包（dzctl 0.17.0，小端 23 B）：'I', u8 info_ver, u32 schema_hash, u32 wd_timeout_ms, u8 uid_supported,
+    u32 uid_lo, u32 uid_hi, u32 fw_rev。info_ver 以后只往后追加，长度 ≥ 23 都按前 23 B 解。不是 'I' 回包返回 None。"""
+    if len(p) < INFO_LEN or p[0] != ord("I"):
+        return None
+    ver, h, wd, sup, lo, hi, rev = struct.unpack_from("<BIIBIII", p, 1)
+    return {"info_ver": ver, "schema_hash": h, "wd_timeout_ms": wd, "uid_supported": bool(sup),
+            "board_uid": (hi << 32) | lo, "fw_rev": rev}
 
 
 def _as_int(v) -> int | None:
@@ -28,11 +43,14 @@ def _as_int(v) -> int | None:
 def parse_handshake(d: dict | None) -> dict:
     """握手 dict → {board_uid, uid_supported, board_id_known, message_zh}。"""
     d = d or {}
+    if d.get("fw_too_old"):          # 2 s 内没等到 'I' 回包（固件 < dzctl 0.17.0）
+        return {"board_uid": None, "uid_supported": False, "board_id_known": False,
+                "reason": "fw_too_old", "message_zh": OLD_FW_ZH}
     sup = d.get("uid_supported") is True
     v = _as_int(d.get("board_uid"))
     uid = f"{v & 0xFFFFFFFFFFFFFFFF:016x}" if sup and v else None
     return {"board_uid": uid, "uid_supported": sup, "board_id_known": uid is not None,
-            "message_zh": None if uid else NO_UID_ZH}
+            "reason": None if uid else "uid_unsupported", "message_zh": None if uid else NO_UID_ZH}
 
 
 def same_board(a: str | None, b: str | None) -> bool:

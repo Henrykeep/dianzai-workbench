@@ -82,10 +82,10 @@ class SchemaConflict(Exception):
     """同一个哈希在本机匹配到多份内容不同的 link_schema.json（例如两块板子来回插、哈希没把板子身份 / wd_timeout_ms 算进去）。
     不挑第一份、也不挑最新的一份：挑错了界面就会按错的通道和参数去显示、去写。"""
 
-    def __init__(self, h: int, paths: list[str], board_uid: str | None = None):
+    def __init__(self, h: int, paths: list[str], board_uid: str | None = None, message_zh: str | None = None):
         self.hash, self.paths, self.board_uid = h, paths, board_uid
         names = "；".join(paths)
-        self.message_zh = (f"板子的数据格式（哈希 {h:08X}）在本机对应到 {len(paths)} 份内容不同的格式文件，无法判断是哪一块板子的。"
+        self.message_zh = message_zh or (f"板子的数据格式（哈希 {h:08X}）在本机对应到 {len(paths)} 份内容不同的格式文件，无法判断是哪一块板子的。"
                            "为避免按错的通道和参数显示或写入，已停止显示遥测和写参数。")
         self.fix_zh = "清掉本机缓存的这个哈希的格式文件后重新识别板子；仍不对就按当前这块板子重新编译并烧录固件。"
         self.fix_action = CONFLICT_FIX
