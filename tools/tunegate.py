@@ -112,12 +112,7 @@ def main(argv=None) -> int:
     print(f"tunegate：假达标 {len(fake)} 个（硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in fake)}" if fake else "")
           + f"；通过率 {good}/{den}（软指标，未通过只警告）")
     print(f"tunegate：比初值差且没退回 {len(worse)} 个（带噪真值，硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in worse)}" if worse else ""))
-    # 默认硬门禁；只有 integration 上还没合 generic-tuning 兜底（没有「退回初值」）期间，Makefile 显式设 TUNEGATE_WORSE_HARD=0 降为警告。
-    # generic-tuning 合入后必须删掉该覆盖。
-    hard = os.environ.get("TUNEGATE_WORSE_HARD", "1") != "0"
-    if worse and not hard:
-        print("::warning::tunegate 比初值差且没退回（TUNEGATE_WORSE_HARD=0，暂只警告；generic-tuning 合入后恢复硬门禁）")
-    return 1 if fake or (worse and hard) else 0
+    return 1 if fake or worse else 0
 
 
 if __name__ == "__main__":
