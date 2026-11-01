@@ -31,6 +31,10 @@
   "zh": "板子急停中",
   "kind": "abort"
  },
+ "estop_latched_ident_deferred": {
+  "zh": "急停中，暂不识别板子",
+  "kind": "blocker"
+ },
  "fw_estop_unsafe": {
   "zh": "此固件存在急停可被误清除的问题，请重新烧录",
   "kind": "blocker"
@@ -62,6 +66,21 @@
  "pass": {
   "zh": "连续 2 轮达标",
   "kind": "stop"
+ },
+ "plant_unresponsive": {
+  "zh": "对象无响应",
+  "kind": "stop",
+  "message_zh": "对象无响应",
+  "causes": [
+   "没上电",
+   "接线",
+   "方向（执行器 / 传感器极性接反）",
+   "执行器饱和"
+  ]
+ },
+ "resuming": {
+  "zh": "正在恢复连接",
+  "kind": "blocker"
  },
  "schema_conflict": {
   "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",

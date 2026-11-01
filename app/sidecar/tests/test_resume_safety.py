@@ -100,9 +100,10 @@ def _run_kill_restart(board, home, estop: bool):
         p, port = _start(home)
         ui = UI(port)
         assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 3.5), "3 s 内自动连回"
-        time.sleep(2.0)                                         # 重连后的读参、心跳都跑完
+        # #155：“已连接”只在上位机心跳真的发出后才报；这里再等心跳帧真的到板子（有上限，不固定睡）
+        assert until(lambda: any(f[1] == HEARTBEAT for f in board.rx if f[0] > t_kill), 3.0), "连回后 3 s 内板子没收到上位机心跳"
+        time.sleep(0.5)                                         # 再看一小段，确认没有运动/目标/命令帧
         after = [f for f in board.rx if f[0] > t_kill]
-        assert after, "重连后应有心跳/读参"
         assert _forbidden(after) == [], "自动重连发出了运动/目标/命令帧"
         tl = sp(board)
         assert tl and tl["sp_a"] == 0.0 and abs(tl["spd_a"]) < 0.05, f"板子不应在跑：{tl}"

@@ -20,7 +20,6 @@ SEEDS = [1, 7, 13, 21, 101, 202, 3008, 5003]
 MEASURED: list[int] = []
 
 
-@pytest.mark.timeout(240)   # 合法地长：慢对象（如种子 21）no_rise 时阶跃时长逐轮翻倍到 30 s，迭代本身预算 BUDGET_S=180 s，测试 join(180)
 @pytest.mark.parametrize("seed", SEEDS)
 def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatch):
     import randplant
@@ -44,7 +43,8 @@ def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatc
         tgt = min(0.25 * st["sensor_range"], st.get("max_step") or 1e9)
         r = svc.iterate_start(target=tgt, dur_ms=1500)
         assert r.get("status") == "started", r
-        svc.iter_thread.join(180)
+        svc.iter_thread.join(100)
+        assert not svc.iter_thread.is_alive()
         rounds = [e for e in ev if e.get("type") == "iterate.round"]
         assert rounds, [e.get("type") for e in ev][-10:]
         assert svc.iter_result and svc.iter_result.get("reason") != "error", svc.iter_result
@@ -73,6 +73,39 @@ def test_iterate_start_runs_rounds_on_randplant(seed, home, tmp_path, monkeypatc
         assert "span_quarter" in fb["fallback"] and "dur_default" in fb["fallback"] and fb["fix_action"] == "measure_step_timing"
         assert "测不出" in fb["message_zh"] and "1/4" in fb["message_zh"]
         assert fb["target"] == pytest.approx(min(st["sensor_range"] / 4, st.get("max_step") or 1e9))
+    finally:
+        s.disconnect()
+        shutil.rmtree(ROOT / "build/host-sim" / p["name"], ignore_errors=True)
+
+
+def test_unresponsive_randplant_stops_without_conclusion(home, tmp_path, monkeypatch):
+    """无响应对象（死区吃掉全部执行器输出 = 没上电 / 没接上）：时长翻到硬上限仍无响应 → plant_unresponsive，停输出，不给结论。"""
+    import randplant
+    from dzbench import paths
+    from dzbench.agent import iterate as I
+    from dzbench.agent.service import AgentService
+    from dzbench.agent_api import AgentTools
+    from dzbench.session import Session
+    p = randplant.gen(7)
+    p["name"], p["deadzone"], p["noise_std"] = "itr-dead-7", float(p["sat"]), 0.0
+    shutil.rmtree(ROOT / "build/host-sim" / p["name"], ignore_errors=True)
+    randplant.write(p, paths.projects_dir() / p["name"])
+    s, ev = Session(), []
+    s.connect("sim:" + p["name"])
+    try:
+        t0 = time.monotonic()
+        while not (s.schema and len(s.params) == len(s.schema.params)) and time.monotonic() - t0 < 60:
+            time.sleep(0.05)
+        svc = AgentService(s, AgentTools(s, ev.append), ev.append, root=tmp_path)
+        st = s.schema.step[0]
+        r = svc.iterate_start(target=min(0.25 * st["sensor_range"], st.get("max_step") or 1e9), dur_ms=1500)
+        assert r.get("status") == "started", r
+        svc.iter_thread.join(100)
+        assert not svc.iter_thread.is_alive()
+        res = svc.iter_result
+        assert res["reason"] == "plant_unresponsive" and res["best"] is None, res
+        durs = [e["dur_ms"] for e in ev if e.get("type") == "iterate.dur_extended"]
+        assert durs and max(durs) == I.NO_RESPONSE_DUR_CAP_MS, durs
     finally:
         s.disconnect()
         shutil.rmtree(ROOT / "build/host-sim" / p["name"], ignore_errors=True)

@@ -93,6 +93,7 @@ class Session:
         self.link = LinkState()              # 跨连接保留：since / seq 连续
         self.down_reason = ""                # board=disconnected 时的原因（如 port_not_found）；connect/disconnect 清掉
         self.resuming = False                # 侧车重启后正在自动连回上次的板子
+        self.resume_hb_wait = False          # #155：自动连回后口已打开、上位机心跳还没真正发出去 → 仍算“正在恢复连接”，执行器操作拦下
         self._uid_marked = False
         self._reset()
         # 跨连接保留（_reset 不清）——板子身份（握手里报一次：board_uid 64 位指纹 + uid_supported；见 board_ident）。未知 = 不复用任何按板缓存
@@ -289,6 +290,7 @@ class Session:
                 self.seq = (self.seq + 1) & 0xFF
                 frame = encode(HEARTBEAT, 0, self.seq, b"")
                 tr.write(frame)
+            self.resume_hb_wait = False                       # #155：心跳真的发出去了，恢复完成
         except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
             pass
 
@@ -511,6 +513,8 @@ class Session:
             return {"resumed": False, "reason": self.down_reason}
         finally:
             with self.lock:
+                if self.tr is not None and not getattr(self, "hb_sent_at", None):
+                    self.resume_hb_wait = True       # 连上了但心跳线程还没发出第一帧：状态保持 resuming，直到心跳真的在走
                 self.resuming = False
 
     # ------------------------------------------------------------------ 收
@@ -1303,6 +1307,9 @@ class Session:
     def _check_actuate(self) -> None:
         """fw_estop_unsafe：驱动执行器的操作（写参数、设定值、阶跃、继电、运行模式、自检、原始/数据发送）前查。
         读参数、存 flash、烧录不经过这里。host-sim / 回放不受限（仿真里没有真急停电路）。"""
+        if self._resume_pending():                # #155：自动连回、心跳还没在走：任何驱动执行器的操作都拦
+            raise LinkError("resuming", "正在恢复连接", "等状态变成“已连接”（上位机心跳恢复）再操作", None,
+                            {"reason": "resuming", "message_zh": "正在恢复连接"})
         if not board_ident.ENFORCE_FW_ESTOP:
             return
         if self.port.startswith((SIM_PREFIX, "replay:")) or (self.hb_status is None and self.fw_estop is None):
@@ -1310,10 +1317,14 @@ class Session:
         if self.tx_locked or self.iter_busy():
             return                               # 急停 / 迭代中：让原来更具体的拒绝（estop_clear / iter_busy）先报
         if self.fw_estop is None and self._info is None:
-            # 'I' 已发（或解除急停后下一帧心跳就发）但回包还没到：最多等一个 'I' 超时，别把身份未定当成旧固件
+            # 'I' 已发（或解除急停后下一帧心跳就发）但回包还没到：最多等 IDENT_WAIT_S，绝不无限等
             t0 = time.monotonic()
-            while self.fw_estop is None and self._info is None and time.monotonic() - t0 < board_ident.INFO_TIMEOUT_S + 1.0:
+            while self.fw_estop is None and self._info is None and time.monotonic() - t0 < board_ident.IDENT_WAIT_S:
                 time.sleep(0.02)
+            if self.fw_estop is None and self._info is None and (self.hb_status or 0) & (1 << 10):
+                # 板子急停位(bit10)还在：侧车按规矩不发 'I'，身份定不下来 → 明确拒绝，不当成旧固件也不放行
+                raise LinkError("estop_latched_ident_deferred", board_ident.IDENT_DEFERRED_ZH, "等板子急停位清零（解除急停后输出放开）再操作",
+                                "estop_clear", {"reason": "estop_latched_ident_deferred", "message_zh": board_ident.IDENT_DEFERRED_ZH})
         st = self.fw_estop or board_ident.estop_safety(self._info)
         if not st["safe"]:
             raise LinkError("fw_estop_unsafe", board_ident.ESTOP_UNSAFE_ZH, "到“烧录”步重新烧录 dzctl ≥ " + st["min_version"] + " 的固件",
@@ -1533,15 +1544,19 @@ class Session:
         self.emit(e)
         return e
 
+    def _resume_pending(self) -> bool:
+        """侧车重启后的自动连回还没完成：口没开，或口开了但上位机心跳还没发出第一帧（#155）。"""
+        return bool((self.resuming and self.tr is None) or (self.resume_hb_wait and self.tr is not None))
+
     def link_state(self, now: float | None = None) -> dict | None:
         """唯一的连接状态（见 linkstate.py）；变化或到保活间隔时返回一条 link.state，否则 None。"""
         now = time.monotonic() if now is None else now
         fw = self.fw_status()
         with self.linklock:                    # 不拿 session.lock：长持锁时 link.state 照推（读的都是单个属性）
             return self.link.update(now, port=self.port, port_open=self.tr is not None,
-                                    reconnecting=self.reconnecting or (self.resuming and self.tr is None), t_connect=self._t_tr,
+                                    reconnecting=self.reconnecting or self._resume_pending(), t_connect=self._t_tr,
                                     last_frame=self.last_frame,
-                                    reason="resuming" if self.resuming and self.tr is None else self.down_reason,
+                                    reason="resuming" if self._resume_pending() else self.down_reason,
                                     mode=(run_mode_dict(self.hb_status) or {}).get("mode") or self.run_mode,
                                     fw=fw)
 

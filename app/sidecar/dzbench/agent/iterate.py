@@ -23,6 +23,9 @@ MAX_ROUNDS = {"hw": 8, "sim": 20}
 GOOD_REL = {"overshoot_pct": 10.0, "ss_err_pct": 2.0}
 MIN_SAMPLES = 20
 MAX_DUR_MS = 30000            # 板上阶跃时长上限（与 session.step_start 校验一致）
+# 对象不响应（no_rise / settle_zero）时阶跃时长翻倍的硬上限：取声明 link.step[ch].max_step_dur_ms，
+# 没声明用这个默认值（再夹 MAX_DUR_MS）。到上限仍无响应 → 停止输出，原因码 plant_unresponsive，不给结论。
+NO_RESPONSE_DUR_CAP_MS = 12000
 CONSEC_PASS, CONSEC_INVALID, CONSEC_NO_IMPROVE = 2, 3, 3
 UNSTABLE_OVERSHOOT = 40.0
 HW_RATIO = (0.7, 1.5)          # 实机 HW 档：新值在当前值 ×0.7~×1.5
@@ -138,6 +141,9 @@ class Iterator:
         self.max_rounds = max_rounds or MAX_ROUNDS["sim" if sim else "hw"]
         self.abs_tol = plan.get("abs_tol")
         self.good = plan.get("good")
+        cap = plan.get("max_step_dur_ms")
+        self.dur_cap_ms = int(min(MAX_DUR_MS, float(cap) if cap else NO_RESPONSE_DUR_CAP_MS))
+        self.dur_cap_default = not cap           # 没声明 → 结果卡片提示“使用默认 12 s”并给 edit_declaration
         self.stop_ev = threading.Event()
         self.rounds: list[dict] = []
         self.best: dict | None = None
@@ -214,7 +220,7 @@ class Iterator:
 
     def _stopped(self, reason: str, msg: str) -> dict:
         last_sat = bool(self.rounds and self.rounds[-1].get("sensor_sat"))
-        best = self.best if self.best is not None and self.stable(self.best) and not last_sat else None
+        best = self.best if reason != "plant_unresponsive" and self.best is not None and self.stable(self.best) and not last_sat else None
         if (best is None and any(r["valid"] for r in self.rounds) and not any(self.stable(r) for r in self.rounds)) or last_sat:
             msg = "发散，未找到稳定参数"                              # #102：没有稳定的一轮就不给“最好参数”
         out = {"type": "iterate.stopped", "reason": reason, "sensor_sat": last_sat, "message_zh": msg, "rounds": len([r for r in self.rounds if r["valid"]]),
@@ -222,6 +228,10 @@ class Iterator:
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
                                               "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
                "next_zh": self._next_hint(reason)}
+        if reason == "plant_unresponsive" and self.dur_cap_default:     # 没声明上限：卡上明说用了默认值，并指到要改的声明字段
+            out["dur_cap_notice_zh"] = f"未声明阶跃时长上限，使用默认 {NO_RESPONSE_DUR_CAP_MS // 1000} s"
+            out["fix_action"] = "edit_declaration"
+            out["fix_field"] = "link.step.max_step_dur_ms"
         if reason == "invalid":                                       # 卡上写清楚哪一种无效，不只说“没有可用的一轮”
             whys = [r.get("why_invalid") for r in self.rounds if not r["valid"]][-CONSEC_INVALID:]
             out["why_invalid"] = whys[-1] if whys else None
@@ -242,6 +252,7 @@ class Iterator:
                 "invalid": "连续 3 轮无效：检查通道/遥测（样本太少、被打断或参数哈希对不上）",
                 "no_improve": "连续 3 轮没改进：换参数或换策略（例如先调 ki/kd）",
                 "unstable": "发散：已回到最好一轮" if self.sim else "发散：请确认回到最好一轮的参数",
+                "plant_unresponsive": "对象无响应，已停止输出、不给结论：检查是否上电、接线、方向（极性）、执行器是否饱和",
                 "blocked": "各方向都被板子拒绝或限幅挡住：放宽 max_delta / 范围后重新确认"}.get(reason, "")
 
     # ------------------------------------------------------------ 主循环
@@ -278,9 +289,12 @@ class Iterator:
             if self.io.locked():
                 return self._stopped("estop", "急停")
             if not rec["valid"]:
-                if rec["why_invalid"] in ("settle_zero", "no_rise") and self.plan["dur_ms"] < MAX_DUR_MS:
+                if rec["why_invalid"] in ("settle_zero", "no_rise") and int(self.plan["dur_ms"]) >= self.dur_cap_ms:
+                    self.io.stop_output()                   # 硬上限到了还没响应：停输出，不下结论
+                    return self._stopped("plant_unresponsive", f"阶跃时长已到上限 {self.dur_cap_ms} ms 仍无响应")
+                if rec["why_invalid"] in ("settle_zero", "no_rise") and self.plan["dur_ms"] < self.dur_cap_ms:
                     # 窗口太短（对象慢）：时长翻倍重做同一轮，不算无效（时长由实测得出，不按题目写死）
-                    self.plan = dict(self.plan, dur_ms=min(MAX_DUR_MS, int(self.plan["dur_ms"]) * 2))
+                    self.plan = dict(self.plan, dur_ms=min(self.dur_cap_ms, int(self.plan["dur_ms"]) * 2))
                     self.emit({"type": "iterate.dur_extended", "dur_ms": self.plan["dur_ms"], "why": rec["why_invalid"]})
                     continue
                 streak_invalid += 1
@@ -381,6 +395,13 @@ class SessionIO:
 
     def locked(self) -> bool:
         return bool(self.s.tx_locked)
+
+    def stop_output(self) -> None:
+        """对象无响应：停阶跃（板子回 aborted），设定值放回起点，不再给对象加输出。"""
+        self.s.step_stop()
+        y, slot, _ = self._y(int(getattr(self, "ch", 0)))
+        if getattr(self, "y0", None) is not None and slot is not None:
+            self._send_sp(slot, self.y0)
 
     def busy(self) -> bool:
         return self.s.iter_busy()

@@ -374,3 +374,8 @@ tunegate（`tools/tunegate.py`，汇总在 `tools/tunegate_grade.py summarize()`
 - 硬门禁（退出码 1）：假达标 = 0，且可行对象上「报收敛却未达标」（`early_stop_not_pass`）= 0。
 - 判卷：不可行对象未达标时卡上 `category` 必须等于真值原因（不再放过 `unconfirmed`）；`unchanged` 且真值满足题面 → 只按题面判，不要求“比初值好”。
 - `make check` 的 `check_no_truth_leak`：真值键（feasible / feasibility / reason_category / infeasible_reason / witness）和 plant.json 只许判卷模块、出题方（randplant*、tunegate_plant、feascheck）和测试引用；后端、tools/tunegate.py 及 tools/ 其余脚本里任何字符串常量、属性、变量名、关键字参数、取键都算泄漏。
+
+## 对象无响应硬上限（plant_unresponsive）
+- 阶跃无响应（`no_rise` / `settle_zero`）时 iterate 把阶跃时长翻倍重做，翻倍有硬上限：声明 `link.step[ch].max_step_dur_ms`（毫秒）；没声明用默认 `NO_RESPONSE_DUR_CAP_MS = 12000`（再夹板上上限 30000）。
+- 到上限仍无响应：停阶跃（step_stop）、设定值放回起点，`iterate.stopped` 的 `reason = "plant_unresponsive"`，`best = null`，卡片结论 `unknown`（不给结论）。reason_codes.json 里带 `message_zh`「对象无响应」和 `causes`（没上电 / 接线 / 方向 / 执行器饱和）。
+- 注：`max_step_dur_ms` 要经 tools/gen_link.py 透传进 link_schema.json 才生效（tools/ 归嵌入式开发-2）；未透传前一律按默认值。
