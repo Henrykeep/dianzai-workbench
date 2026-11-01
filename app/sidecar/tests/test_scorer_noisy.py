@@ -124,4 +124,5 @@ def test_worse_than_initial_not_reverted_is_hard_fail_rc(tmp_path, monkeypatch):
     assert not same["worse_not_reverted"]                            # 退回初值不算
     import tunegate as TG
     monkeypatch.setattr(TG, "one", lambda s, k: g | {"seed": s, "rejected_writes": 0, "secs": 0.0, "amp_reduced": False})
+    monkeypatch.setenv("TUNEGATE_WORSE_HARD", "1")
     assert TG.main(["--seed", "1"]) != 0
