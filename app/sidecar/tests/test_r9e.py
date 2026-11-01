@@ -2,6 +2,7 @@
 全部用随机 / 自编声明的对象，不用例题。"""
 from __future__ import annotations
 
+
 import random
 from types import SimpleNamespace
 
@@ -21,7 +22,7 @@ def test_plant_only_project_is_sim_and_rescanned_with_app_name(tmp_path, monkeyp
     monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("DZBENCH_REPO", str(tmp_path / "repo"))
     monkeypatch.setattr(ports.shutil, "which", lambda x: "/usr/bin/" + x)
-    monkeypatch.setattr(ports.os, "name", "posix")
+    monkeypatch.setattr(ports, "_IS_POSIX", True)                   # 只换平台判断，不动全局 os.name
     proj = tmp_path / "home" / "projects"
     (proj / "p_a").mkdir(parents=True)
     (proj / "p_a" / "app.yaml").write_text(_plant_yaml(rng, "随机对象甲"), "utf-8")
@@ -34,6 +35,22 @@ def test_plant_only_project_is_sim_and_rescanned_with_app_name(tmp_path, monkeyp
     (proj / "p_c").mkdir()                                            # 既没 plant: 也没 sim_setup.c → 不是仿真板
     (proj / "p_c" / "app.yaml").write_text("name: x\n", "utf-8")
     assert "p_c" not in ports.sim_apps()
+
+
+def test_plant_only_project_on_windows_needs_prebuilt_sim(tmp_path, monkeypatch):
+    """Windows 变体：没 make 编仿真板 → 只有安装包自带编好的仿真程序才列出来。"""
+    rng = random.Random(1032)
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("DZBENCH_REPO", str(tmp_path / "repo"))
+    monkeypatch.setattr(ports, "_IS_POSIX", False)
+    proj = tmp_path / "home" / "projects"
+    (proj / "p_w").mkdir(parents=True)
+    (proj / "p_w" / "app.yaml").write_text(_plant_yaml(rng, "随机对象丙"), "utf-8")
+    assert not [p for p in ports.list_ports() if p["kind"] == "sim"]
+    elf = tmp_path / "prebuilt.exe"
+    elf.write_bytes(b"x")
+    monkeypatch.setattr(ports, "sim_elf", lambda a: elf)
+    assert "仿真 · 随机对象丙" in {p["label"] for p in ports.list_ports() if p["kind"] == "sim"}
 
 
 def test_no_stable_round_gives_null_best_and_says_diverged():

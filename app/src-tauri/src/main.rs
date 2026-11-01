@@ -10,6 +10,11 @@ use tauri::{AppHandle, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
+// 侧车连不上时的数据表自检：只允许这两个入口（与 app/ui/src/fieldmap.ts SELFCHECK_F 一致）
+// Windows：<安装目录>/python/python.exe <安装目录>/app/sidecar/selfcheck_data.py；Linux/macOS：直接运行 <安装目录>/xintai-selfcheck.sh
+const SELFCHECK_PY_WIN: &str = "python/python.exe";
+const SELFCHECK_SCRIPT_WIN: &str = "app/sidecar/selfcheck_data.py";
+const SELFCHECK_SH: &str = "xintai-selfcheck.sh";
 const EXIT_PORT_IN_USE: i32 = 3; // 与 dzbench/__main__.py 一致
 const MAX_RESTARTS: usize = 5;
 const RESTART_WINDOW: Duration = Duration::from_secs(60);
@@ -89,6 +94,42 @@ fn clear_last_session() {
     }
 }
 
+/// 安装目录 = 可执行文件所在目录；开发版退回仓库根（CARGO_MANIFEST_DIR/../..）
+fn install_dirs() -> Vec<std::path::PathBuf> {
+    let mut v = Vec::new();
+    if let Some(d) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+        v.push(d);
+    }
+    v.push(std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../..")));
+    v
+}
+
+/// 只运行固定的自检入口（不接受前端任何参数，不在 PATH 里找解释器），返回 stdout 的 JSON 文本 {ok, items}
+#[tauri::command]
+fn run_selfcheck() -> Result<String, String> {
+    for base in install_dirs() {
+        let mut cmd = if cfg!(windows) {
+            let (py, script) = (base.join(SELFCHECK_PY_WIN), base.join(SELFCHECK_SCRIPT_WIN));
+            if !py.is_file() || !script.is_file() {
+                continue;
+            }
+            let mut c = std::process::Command::new(py);
+            c.arg(script);
+            c
+        } else {
+            let sh = base.join(SELFCHECK_SH);
+            if !sh.is_file() {
+                continue;
+            }
+            std::process::Command::new(sh)
+        };
+        let out = cmd.current_dir(&base).output().map_err(|_| "spawn_failed".to_string())?;
+        let s = String::from_utf8_lossy(&out.stdout).to_string();
+        return if s.trim().is_empty() { Err("no_output".into()) } else { Ok(s) };
+    }
+    Err("not_installed".into())
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -98,6 +139,7 @@ fn main() {
             }
         }))
         .plugin(tauri_plugin_shell::init())
+        .invoke_handler(tauri::generate_handler![run_selfcheck])
         .setup(|app| {
             app.manage(Sidecar { child: Mutex::new(None), exiting: AtomicBool::new(false) });
             supervise(app.handle().clone());

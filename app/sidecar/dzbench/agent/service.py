@@ -54,19 +54,26 @@ NULL_ON_INVALID = ("overshoot_pct", "overshoot", "settling_s", "settle_ms", "sse
 
 
 
+def load_roles() -> tuple[list, str]:
+    """#136：参数角色只读 docs/dev/roles.json（{schema_version:1, roles:[{code, zh}]}，gen_link 生成；侧车不留副本）。
+    返回 ([{code, zh}], 问题说明)。"""
+    from .. import datafiles
+    d, prob = datafiles.load("roles.json")
+    if prob:
+        return [], prob["message_zh"]
+    rs = [r for r in d.get("roles") or [] if isinstance(r, dict) and isinstance(r.get("code"), str)]
+    return (rs, "") if rs else ([], "参数角色取值表 roles.json 里没有角色，请重新安装工作台")
+
 def link_roles() -> tuple:
-    """#136：role 取值只认 tools/gen_link.py 的 ROLES（同一份枚举，生成器校验什么，提示就写什么）。"""
-    import importlib.util
-    import pathlib
-    f = pathlib.Path(__file__).resolve().parents[4] / "tools" / "gen_link.py"
-    spec = importlib.util.spec_from_file_location("dz_gen_link_roles", f)
-    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
-    return tuple(mod.ROLES)
+    return tuple(r["code"] for r in load_roles()[0])
 
 
 def role_hint_zh() -> str:
-    rs = link_roles()
-    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {' / '.join(rs)}（例如比例增益写 role: {rs[0]}）"
+    rs, why = load_roles()
+    if not rs:
+        return f"在 app.yaml 的 link.params.<参数名>.role 上写角色；{why}，这里列不出可选值"
+    opts = " / ".join(f"{r['code']}（{r.get('zh') or r['code']}）" for r in rs)
+    return f"在 app.yaml 的 link.params.<参数名>.role 上写角色，只能是 {opts}（例如比例增益写 role: {rs[0]['code']}）"
 
 class AgentService:
     def __init__(self, session: Session, tools: AgentTools, emit, root=None, llm=None, runner=None):

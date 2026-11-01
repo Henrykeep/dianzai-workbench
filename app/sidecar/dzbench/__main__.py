@@ -10,6 +10,9 @@ EXIT_PORT_IN_USE = 3        # 外壳（Tauri）看到这个退出码就不再重
 
 
 def main() -> None:
+    if sys.argv[1:2] == ["selfcheck-data"]:            # 随包数据文件自检（安装目录里跑；缺文件退出 1）
+        from . import datafiles
+        sys.exit(datafiles.main())
     ap = argparse.ArgumentParser(prog="dzbench", description="芯台本地服务（串口/仿真 ↔ WebSocket）")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8765)
