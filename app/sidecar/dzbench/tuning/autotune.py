@@ -264,6 +264,7 @@ UNCONFIRMED_ZH = "数据噪声大，无法确认比初值好，建议保留初�
 KEPT_INITIAL_CAUSES_ZH = ["调后参数在某个终验窗口实测代价高于初值"]
 UNCONFIRMED_CAUSES_ZH = ["测量噪声大", "采样窗口偏短", "改善幅度小于重复测量的波动"]
 NOISE_BAND_K = 2.0
+POLISH_SWEEPS = 6            # 达标后继续按代价打磨的圈数（达标不等于接近最优）
 GAIN_REL_MIN = 0.02          # 每个终验窗口都要比初值好至少 2%，否则算「无法分辨」
 SS_NOISE_K = 2.0
 FINAL_WIN_K = (0.5, 0.625, 0.75, 0.875, 1, 1.125, 1.25, 1.375, 1.5, 1.75, 2, 2.5, 3, 4)          # 改善要大于 K × 噪声带（同参数重复测两次代价之差，最好参数与初值各一对）
@@ -554,11 +555,15 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     tun = [d["role"] for d in decl if d["role"] != "ulim"]
     budget = min(BUDGET_MAX, BUDGET_BASE + BUDGET_PER_PARAM * len(tun)) if rounds is None else rounds
     fac, stop_reason, used, stale = FAC0, "budget_exhausted", 0, 0
+    polish_left = POLISH_SWEEPS
     while used < budget:
-        best = min(hist, key=lambda h: h[0])
-        if not meets(best[2], sp):
-            stop_reason = "converged"                           # 达标即停（达标要另外复现）
-            break
+        ok = [h for h in hist if not meets(h[2], sp)]
+        best = min(ok or hist, key=lambda h: h[0])
+        if ok:
+            stop_reason = "converged"                           # 达标后再打磨 POLISH_SWEEPS 圈（只在达标的参数里比代价），再停
+            if polish_left <= 0:
+                break
+            polish_left -= 1
         improved, moved = False, False
         for r_ in tun:
             for f in (fac, 1 / fac):
@@ -583,7 +588,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
             stale += 1
             if fac < FAC_MIN:
                 fac, stale = FAC0, 0                            # 步子太小 → 重新放大跳出（直到预算用完）
-    bc, bp, bm, (bt, br, by, bu) = min(hist, key=lambda h: h[0])
+    bc, bp, bm, (bt, br, by, bu) = min([h for h in hist if not meets(h[2], sp)] or hist, key=lambda h: h[0])
     # 终验：窗口加倍复测最好参数与初值（搜索窗口按探测估的调节时间取，可能偏短：慢收敛 / 晚到的振荡在短窗里看不见），
     # 判定与“是否比初值好”都按终验结果（本机实测，不读真值）
     # 多窗口：n / 2n / 4n 每个窗口下都不能比初值差（均值型代价随窗口变：短窗看不见持续稳态误差，长窗冲淡瞬态）
