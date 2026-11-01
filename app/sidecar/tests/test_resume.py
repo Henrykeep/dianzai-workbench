@@ -155,3 +155,18 @@ def test_resume_bind_timeout_is_declared_setting(monkeypatch):
     assert Session.resume_bind_timeout_s() == 1.5
     row = reason_codes.table()["resume_no_response"]
     assert row["message_zh"] == "重连后板子没有回应，请按『重新连接』" and row["fix_action"] == "reconnect" and row["kind"] == "blocker"
+
+
+def test_reconnect_op_reopens_last_port(monkeypatch):
+    """#160：fix_action=reconnect → WS op "reconnect"（Session.reconnect）：重开当前/上次的口；从没连过 → no_port。"""
+    from dzbench import lastsession
+    from dzbench.session import LinkError, Session
+    s = Session()
+    calls = []
+    monkeypatch.setattr(s, "connect", lambda port, baud=None, log=True: calls.append((port, baud)) or {"port": port})
+    monkeypatch.setattr(lastsession, "read", lambda: {"port": "/dev/ttyUSB7", "baud": 460800})
+    assert s.reconnect() == {"port": "/dev/ttyUSB7"} and calls == [("/dev/ttyUSB7", 460800)]
+    monkeypatch.setattr(lastsession, "read", lambda: None)
+    with pytest.raises(LinkError) as e:
+        s.reconnect()
+    assert e.value.code == "no_port"

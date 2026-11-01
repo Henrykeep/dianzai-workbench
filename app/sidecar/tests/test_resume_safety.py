@@ -235,7 +235,7 @@ def test_resume_no_response_latched_stall(board, home):
         assert r["ok"] is False or r.get("data") is False, json.dumps(r, ensure_ascii=False)   # 执行器全程被拒（或口已关、什么都没发）
         assert not any(k == DATA and i == 1 for _t, k, i, _pl in board.rx if _t > t_kill), "停滞期间不许有运动帧到板子"
         board.proc.send_signal(signal.SIGCONT)
-        ui.ok("connect", port=str(board.path), baud="auto")   # 人点“重新连接”
+        ui.ok("reconnect")                                      # 人点『重新连接』（fix_action=reconnect）
         _connected(ui, p, home, 6.0)
         r = ui.call("send_data", id=1, hex=GO)
         assert r["ok"] is False and (r.get("error") or r).get("code") == "tx_locked", r   # 急停仍锁存

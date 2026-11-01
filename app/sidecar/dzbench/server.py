@@ -205,6 +205,8 @@ class Server:
             return await run(None, s.connect, m["port"], None if baud in (None, "auto", 0) else int(baud))
         if op == "disconnect":
             return await run(None, s.disconnect)
+        if op == "reconnect":                      # #160：fix_action=reconnect 的『重新连接』按钮：重开上次的口（不需要界面记端口），急停锁存照旧保持
+            return await run(None, s.reconnect)
         if op == "estop":                      # 不排队：专用单线程发（不占默认线程池，串口写阻塞也不卡事件循环）
             r = await asyncio.get_running_loop().run_in_executor(self.estop_pool, lambda: s.estop(str(m.get("src") or "")[:20], hold=True))
             try:

@@ -517,6 +517,16 @@ class Session:
                 threading.Thread(target=self._resume_watch, args=(port_now, baud, gen_now, False, dict(rec)),
                                  name="dz-resume-watch", daemon=True).start()
 
+    def reconnect(self) -> dict:
+        """#160『重新连接』（fix_action=reconnect）：重开当前 / 上次的口（自动连回失败后口已关也能找回），走普通 connect()——
+        只恢复通信，急停锁存按锁存文件保持，不重发任何运动/目标。没有可重连的口 → no_port。"""
+        rec = lastsession.read() or {}
+        port = self.port or getattr(self, "_last_port", None) or rec.get("port")
+        baud = self.baud or int(rec.get("baud") or 0) or None
+        if not port:
+            raise LinkError("no_port", "没有可以重新连接的板子（之前没连过）", "在端口列表里选一个口再点“连接”")
+        return self.connect(str(port), baud)
+
     RESUME_NO_RESPONSE = "resume_no_response"
     RESUME_NO_RESPONSE_ZH = "重连后板子没有回应，请按『重新连接』"
 
