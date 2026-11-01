@@ -8,7 +8,10 @@ from .iterate import ACK_ZH, INVALID_ZH
 
 STOP_ZH = {"pass": "连续 2 轮达标", "estop": "急停", "stopped": "人点了停止迭代", "budget_time": "时间预算用完",
            "budget_rounds": "轮数上限用完", "invalid": "连续 3 轮无效", "no_improve": "连续 3 轮没有改进",
-           "unstable": "发散（超调过大）", "blocked": "所有方向都被拒绝或限幅挡住"}
+           "unstable": "发散（超调过大）", "blocked": "所有方向都被拒绝或限幅挡住",
+           "plant_unresponsive": "对象无响应"}
+# 停止原因的可能起因（界面列出来让人逐项排查）
+CAUSES_ZH = {"plant_unresponsive": ["没上电", "接线", "方向（执行器 / 传感器极性接反）", "执行器饱和"]}
 DIVERGE = {"unstable"}
 # 连接阻塞（不是迭代原因码，但界面 / Agent 用同一张表取中文）：kind = blocker
 BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
@@ -23,6 +26,8 @@ def table() -> dict:
         out.setdefault(k, {"zh": zh, "kind": "abort"})
     for k, zh in STOP_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "diverge" if k in DIVERGE else "stop"})
+        if k in CAUSES_ZH:
+            out[k].update(message_zh=zh, causes=CAUSES_ZH[k])
     for k, zh in BLOCKER_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "blocker"})
     return dict(sorted(out.items()))

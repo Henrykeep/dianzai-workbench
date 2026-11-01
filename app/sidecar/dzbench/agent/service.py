@@ -583,6 +583,7 @@ class AgentService:
         if tol is None:                                                          # 新声明只写物理上限：容差 = 传感器量程的 ABS_TOL_FRAC
             tol = float(span) * self.ABS_TOL_FRAC if span else None
         out = {"ch": int(ch), "target": float(target), "dur_ms": int(dur_ms), "abs_tol": float(tol) if tol is not None else None,
+               "max_step_dur_ms": st.get("max_step_dur_ms"),          # 无响应时阶跃时长硬上限（link.step；没声明 → iterate.NO_RESPONSE_DUR_CAP_MS）
                "params": [dict(sch.params[sch.param_index[n]]) for n in names]}
         if fallback:
             zh = {"dur_default": "时长用默认 2000 ms", "span_quarter": f"目标用量程的 1/4（{float(span):g} / 4）" if span else "",
@@ -718,6 +719,8 @@ class AgentService:
     def _verdict(ss: dict, res: dict, metrics: dict | None = None) -> tuple[str, str]:
         """卡片级结论 pass | fail | unknown | invalid（#68/#75：卡片、台账 tune_round、提议卡都用这一个）。
         阶跃无效 → invalid；ss_err.inside 为 null（单位对不上、实机未标定）→ unknown。这两种文案里都不出现「达标」。"""
+        if res.get("reason") == "plant_unresponsive":     # 对象无响应：已停输出，不下结论
+            return "unknown", "对象无响应，不下结论：检查是否上电、接线、方向、执行器是否饱和"
         why = step_invalid(metrics) if metrics is not None else None
         if why or res.get("reason") == "invalid":
             why = why or res.get("why_invalid")

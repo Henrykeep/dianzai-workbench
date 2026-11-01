@@ -341,3 +341,8 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 
 ## 采纳未验证的参数（#141）
 - `agent_action_decide` 采纳 `iterate_apply_best` / `autotune` 卡时，响应多 `verified: bool`、`unverified_reason`。卡（服务端保存的那份，不认客户端标记）verdict 为 `partial` 或任一 item `amp_reduced` → `verified:false, unverified_reason:"amp_reduced"`，不进已验证档 / 封箱清单；否则 `verified:true, unverified_reason:null`。
+
+## 对象无响应硬上限（plant_unresponsive）
+- 阶跃无响应（`no_rise` / `settle_zero`）时 iterate 把阶跃时长翻倍重做，翻倍有硬上限：声明 `link.step[ch].max_step_dur_ms`（毫秒）；没声明用默认 `NO_RESPONSE_DUR_CAP_MS = 12000`（再夹板上上限 30000）。
+- 到上限仍无响应：停阶跃（step_stop）、设定值放回起点，`iterate.stopped` 的 `reason = "plant_unresponsive"`，`best = null`，卡片结论 `unknown`（不给结论）。reason_codes.json 里带 `message_zh`「对象无响应」和 `causes`（没上电 / 接线 / 方向 / 执行器饱和）。
+- 注：`max_step_dur_ms` 要经 tools/gen_link.py 透传进 link_schema.json 才生效（tools/ 归嵌入式开发-2）；未透传前一律按默认值。

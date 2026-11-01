@@ -63,6 +63,17 @@
   "zh": "连续 2 轮达标",
   "kind": "stop"
  },
+ "plant_unresponsive": {
+  "zh": "对象无响应",
+  "kind": "stop",
+  "message_zh": "对象无响应",
+  "causes": [
+   "没上电",
+   "接线",
+   "方向（执行器 / 传感器极性接反）",
+   "执行器饱和"
+  ]
+ },
  "schema_conflict": {
   "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
   "kind": "blocker"
