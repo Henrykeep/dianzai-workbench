@@ -1,6 +1,7 @@
 pyserial>=3.5
 websockets>=12
 pytest>=7
+pytest-timeout>=2.3  # MIT：每个测试 120 s 上限，卡死打印线程栈（tests/conftest.py）
 pyyaml>=6
 jsonschema>=4  # 仿真板编译（tools/boardlib.py）
 pypdf>=4  # 读题 PDF（没有 pdftotext 时）
