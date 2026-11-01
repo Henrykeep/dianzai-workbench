@@ -419,12 +419,14 @@ def test_amp_reduced_is_partial_never_pass(tmp_path):
     spec = _re.sub(r"(阶跃(?:幅度|幅值|大小)?[为是]?\s*)[\d.]+", lambda m: m.group(1) + str(big), (tmp_path / "spec.txt").read_text("utf-8"), count=1)
     if str(big) not in spec:
         spec = f"阶跃幅度 {big}，" + spec
+    link["unit_decl"] = "link.telemetry.fields[name=y].unit"           # #140：服务层按阶跃信号的声明填
     res = AT.autotune(G.board(str(tmp_path), app, 3001, "randplant"), app, link, spec, 3001)
     assert res["amp_reduced"] is True and res["amp_spec"] == big and abs(res["amp_tested"]) <= float(link["max_step"]) + 1e-9
     assert res["verdict"] in ("partial", "fail") and res["verdict"] != "pass"
     rb = res["retest_blocked_by"]                                   # 题面 3×max_step：按题面重测会被 #109 拒
     assert rb["reason"] == "step_too_large" and rb["limit"] == float(link["max_step"]) and rb["limit_name"].endswith(".max_step")
     assert res["amp_unit"] == (link.get("unit") or None) and all(it["amp_unit"] == res["amp_unit"] for it in res["items"])   # #140
+    assert res["amp_unit_decl"] == "link.telemetry.fields[name=y].unit" and all(it["amp_unit_decl"] == res["amp_unit_decl"] for it in res["items"])
     assert res["items"] and all(it["amp_reduced"] and it["warning_zh"] == "按降幅测试，未验题面幅度" for it in res["items"])
     for it in res["items"]:
         assert it["verdict"] in ("partial", "fail") and (it["verdict"] != "partial" or it["verdict_zh"] == "未验题面幅度")

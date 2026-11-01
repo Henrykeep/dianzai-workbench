@@ -628,6 +628,7 @@ class Session:
                             # 有效的 40 B 心跳 = 对端是我们的固件：发一次 'I'。只在心跳急停位(bit10)清零时发：
                             # dzctl < 0.17.0 的 link_app 把未知单字节命令当「新指令」，会清掉 'R' 解除后的输出保持（L->estop）；
                             # bit10 置位（锁存或解除后保持）期间不发，等它清零（输出本已放开）再问，旧固件上发 'I' 才无副作用。
+                            # 永久保留（即使 0.18.0 修好后）：现场还有旧固件板子，问 'I' 之前我们还不知道它是不是旧固件。不许删。
                             if not self._info_asked and not ((self.hb_status or 0) & (1 << 10)) and not self.tx_locked:
                                 self._info_asked = True
                                 threading.Thread(target=self._ask_info, daemon=True).start()
@@ -1292,8 +1293,10 @@ class Session:
     def _check_actuate(self) -> None:
         """fw_estop_unsafe：驱动执行器的操作（写参数、设定值、阶跃、继电、运行模式、自检、原始/数据发送）前查。
         读参数、存 flash、烧录不经过这里。host-sim / 回放不受限（仿真里没有真急停电路；现有仿真都是 0.17）。"""
-        if self.port.startswith((SIM_PREFIX, "replay:")) or (self.hb_status is None and self.fw_estop is None):
-            return                               # 还没认出是工作台固件（没心跳）：不是 dzctl 板子，不在此列
+        if self.port.startswith((SIM_PREFIX, "replay:", "/dev/pts/")) or (self.hb_status is None and self.fw_estop is None):
+            return                               # 仿真（sim: / 测试用 pty 桥接的 host-sim）、回放、还没认出是工作台固件（没心跳）：不在此列
+        if self.tx_locked or self.iter_busy():
+            return                               # 急停 / 迭代中：让原来更具体的拒绝（estop_clear / iter_busy）先报
         st = self.fw_estop or board_ident.estop_safety(self._info)
         if not st["safe"]:
             raise LinkError("fw_estop_unsafe", board_ident.ESTOP_UNSAFE_ZH, "到“烧录”步重新烧录 dzctl ≥ " + st["min_version"] + " 的固件",
@@ -1561,7 +1564,9 @@ class Session:
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
                   "schema_ok": self.schema is not None,
                   "schema_conflict": self.schema_conflict.as_dict() if self.schema_conflict is not None else None,
+                  # 板子身份只来自解码后的 'I' 握手回包（board_ident），原样转发；心跳里的芯片 ID（self.board_uid）只给内部换口/锁存用，不进 status
                   "board_uid": self.board_id.get("board_uid"), "uid_supported": self.board_id.get("uid_supported"),
+                  "proto_ver": (self._info or {}).get("proto_ver"), "board_ident_source": "handshake",
                   "board_id_known": self.board_id.get("board_id_known"), "board_id_message_zh": self.board_id.get("message_zh"), "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "reconnect_attempt": self.reconnect_attempt, "stall_s": self.stall_s, "raw_dropped": self.raw_dropped,

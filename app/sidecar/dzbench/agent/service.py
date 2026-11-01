@@ -1054,6 +1054,8 @@ class AgentService:
         link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
         link["ch"] = int(ch)
         link["unit"] = next((f.get("unit") or None for f in sch.fields if f["name"] == st.get("y")), None)   # #140：被阶跃信号声明的单位，没写 = null
+        # #140：单位在声明里的出处（app.yaml 键路径），界面“改单位”直接指过去；没声明单位 = null
+        link["unit_decl"] = f"link.telemetry.fields[name={st.get('y')}].unit" if link["unit"] else None
         return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
 
     TUNING_ROLES = ("P", "I", "D", "FF")

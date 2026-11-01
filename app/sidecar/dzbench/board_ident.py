@@ -15,37 +15,36 @@ INFO_LEN = 23
 INFO_TIMEOUT_S = 2.0
 
 # fw_estop_unsafe：急停可被误清除的固件（dzctl < 0.18.0）或没有 'I' 回包 → 禁止一切驱动执行器的操作，只许读和烧录。
-# 待嵌入式开发-2 最终确认（pending final confirmation from 嵌入式开发-2）。全仓只此一处定义版本。
-MIN_ESTOP_SAFE_DZCTL = (0, 18, 0)
+# 规格：fw-unknown-cmd 854b6a1 docs/dev/fw-handshake.md —— info_ver=2、27 B 回包，偏移 23 的 u32 proto_ver = major<<16|minor<<8|patch。
+# fw_rev 仍是 git 短哈希，不能当版本用。全仓只此一处定义最低版本。
+MIN_ESTOP_SAFE_PROTO = 0x00001200   # dzctl 0.18.0
+INFO_LEN_V2 = 27
 ESTOP_UNSAFE_ZH = "此固件存在急停可被误清除的问题，请重新烧录"
 
 
-def dzctl_version(info: dict | None) -> tuple[int, int, int] | None:
-    """从 'I' 回包取 dzctl 版本号。dzctl 0.17.0 的 23 B 回包只有 fw_rev（git 短哈希，不是版本号），读不出版本 → None。
-    约定（待嵌入式开发-2 确认）：0.18.0 起 info_ver ≥ 2，在 23 B 之后追加 u8 major, u8 minor, u8 patch，解成 info["dzctl_ver"]。"""
-    v = (info or {}).get("dzctl_ver")
-    return tuple(v) if v else None
+def proto_str(v: int | None) -> str | None:
+    return None if v is None else f"{(v >> 16) & 0xFF}.{(v >> 8) & 0xFF}.{v & 0xFF}"
 
 
 def estop_safety(info: dict | None) -> dict:
-    """{safe, reason, message_zh, fix_action, min_version, version}。没回包 / 读不出版本 / 版本 < 最低 → 不安全。"""
-    ver = None if (info is None or info.get("fw_too_old")) else dzctl_version(info)
-    safe = ver is not None and ver >= MIN_ESTOP_SAFE_DZCTL
+    """{safe, reason, message_zh, fix_action, min_version, version}。没回包 / info_ver < 2 / proto_ver < 最低 → 不安全。"""
+    ok_info = info is not None and not info.get("fw_too_old")
+    pv = info.get("proto_ver") if ok_info and (info.get("info_ver") or 0) >= 2 else None
+    safe = pv is not None and pv >= MIN_ESTOP_SAFE_PROTO
     return {"safe": safe, "reason": None if safe else "fw_estop_unsafe", "message_zh": None if safe else ESTOP_UNSAFE_ZH,
-            "fix_action": None if safe else "reflash", "min_version": ".".join(map(str, MIN_ESTOP_SAFE_DZCTL)),
-            "version": ".".join(map(str, ver)) if ver else None}
+            "fix_action": None if safe else "reflash", "min_version": proto_str(MIN_ESTOP_SAFE_PROTO), "version": proto_str(pv)}
 
 
 def decode_info(p: bytes) -> dict | None:
     """'I' 回包（dzctl 0.17.0，小端 23 B）：'I', u8 info_ver, u32 schema_hash, u32 wd_timeout_ms, u8 uid_supported,
-    u32 uid_lo, u32 uid_hi, u32 fw_rev。info_ver 以后只往后追加，长度 ≥ 23 都按前 23 B 解。不是 'I' 回包返回 None。"""
+    u32 uid_lo, u32 uid_hi, u32 fw_rev；info_ver=2（0.18.0，27 B）再加 u32 proto_ver。info_ver 以后只往后追加。不是 'I' 回包返回 None。"""
     if len(p) < INFO_LEN or p[0] != ord("I"):
         return None
     ver, h, wd, sup, lo, hi, rev = struct.unpack_from("<BIIBIII", p, 1)
     d = {"info_ver": ver, "schema_hash": h, "wd_timeout_ms": wd, "uid_supported": bool(sup),
-         "board_uid": (hi << 32) | lo, "fw_rev": rev}
-    if ver >= 2 and len(p) >= INFO_LEN + 3:          # 0.18.0+ 追加的版本号（见 dzctl_version）
-        d["dzctl_ver"] = tuple(p[INFO_LEN:INFO_LEN + 3])
+         "board_uid": (hi << 32) | lo, "fw_rev": rev, "proto_ver": None}
+    if ver >= 2 and len(p) >= INFO_LEN_V2:           # dzctl 0.18.0+：info_ver=2，27 B，偏移 23 u32 proto_ver
+        d["proto_ver"] = struct.unpack_from("<I", p, INFO_LEN)[0]
     return d
 
 
