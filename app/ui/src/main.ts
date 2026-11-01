@@ -20,7 +20,7 @@ function paintPlant(v: PlantView) {
 }
 import { boardName, SIDECAR_DOWN } from "./batch1";
 import { connButton, declaredBoard, boardLabel, portOption, chUnit, shortHint, paramDesc, lifeSummary } from "./r9p6c";
-import { SCHEMA_CONFLICT_F, SCHEMA_CLEAR_F } from "./fieldmap";
+import { SCHEMA_CONFLICT_F, SCHEMA_CLEAR_F, BOARD_UID_F } from "./fieldmap";
 import { clearArgs, clearResult, removedZh, isClearFix, resultSameBoard, conflictOf, boardIdOf, uidChipHtml, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, type Conflict, type BoardId } from "./boardid";
 import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
@@ -124,7 +124,9 @@ async function clearAndRehandshake() {
   renderConflict();
 }
 // 板子身份只认握手（hello），心跳 / status 不改它
-function applyHelloIdentity(h: any) { boardId = boardIdOf(h); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
+const idSrc = (h: any) => h && (BOARD_UID_F.uid in h || BOARD_UID_F.supported in h) ? h : h?.status;   // 板子身份：握手顶层优先，后端实际放在 status 里
+function setBoardId(src: any) { const nb = boardIdOf(src); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
+function applyHelloIdentity(h: any) { setBoardId(idSrc(h)); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
 setInterval(() => { if (curConflict()) lockSchemaIn(document, true); }, 300);   // 参数行 / 提交卡会重建：持续补禁用
 const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
 function renderAlerts() {
@@ -336,10 +338,12 @@ $("ln-dlg").addEventListener("click", e => {
 $("ln-stall").onchange = e => link.rpc("serial_stall", { s: +(e.target as HTMLInputElement).value || 0 }).then(r => { $("ln-st").textContent = r.stall_s ? `卡死检测：${r.stall_s} s` : "卡死检测已关"; }, lnErr);
 
 // ---------------------------------------------------------------- 通道
+let helloHs: any = null;   // 最近一次 hello 回包（只取 data_tables 用）
 function applySchema(s: Schema | null) {
   S.schema = s;
   queueMicrotask(() => score.refresh());
-  if (s) { ROLES_T.onHandshake(s); REASONS_T.onHandshake(s); } else { ROLES_T.reset(); REASONS_T.reset(); }   // 握手到了才判断数据表来源；到之前不提示
+  const hsSrc = tablesSrc(s, helloHs);   // #143 data_tables 在 hello 顶层
+  if (s) { ROLES_T.onHandshake(hsSrc); REASONS_T.onHandshake(hsSrc); } else { ROLES_T.reset(); REASONS_T.reset(); }   // 握手到了才判断数据表来源；到之前不提示
   queueMicrotask(() => { renderDataNotice(); renderRoleCard(); });
   if (!s) return;
   S.plotted = s.fields.filter(f => f.name !== "t_ms" && !f.enum);
@@ -863,6 +867,7 @@ function renderIter() {
     if (r) { IT.onStartReply(r, performance.now()); } else rr.disabled = false;
     renderIter();
   };
+  c.querySelectorAll<HTMLElement>("[data-decl-unit]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); openDeclField(a.dataset.declUnit!); }));   // #148
   c.querySelector<HTMLElement>("#it-decl")?.addEventListener("click", e => { e.preventDefault(); openDeclField((e.target as HTMLElement).dataset.field!); });
   if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
     const part = w.dataset.partial === "1";   // #141 降幅：先确认；采用后不记为已验证档（前端不登记任何验证状态）
@@ -900,7 +905,7 @@ link.on(m => {
       if (!S.latched) for (const f of S.plotted) if (f.ref_for) { const a = m.y[f.name]; if (a?.length) { spLast = { name: f.name, v: a[a.length - 1] }; RESTORE.noteSent(spLast.v); break; } }   // 兜底：锁存前最后一次的设定值
       break;
     }
-    case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); break;
+    case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); if (BOARD_UID_F.supported in m || BOARD_UID_F.uid in m) setBoardId(m); break;
     case "event": tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
     case "alert_ack": AL.ack(m.upto); renderAlerts(); break;   // 另一个窗口点了“知道了”
     case "schema": applySchema(m.schema); break;
@@ -955,6 +960,7 @@ link.onState = async open => {
     toast({ code: "recovered", message: h.recovered.message, fix: "" }, "warn", 30000);
     if (S.ports.some(p => p.port === h.recovered.port)) $<HTMLSelectElement>("port").value = h.recovered.port;
   }
+  helloHs = h;
   if (h.schema) { applySchema(h.schema); S.applied = h.params; syncParams(); }
   renderStatus(h.status); loadLogs();
 };
@@ -1171,6 +1177,7 @@ function openDeclField(key: string) {
 import { reasonCodesNotice, REASONS_T } from "./reasoncodes";
 import { ROLES_T } from "./rolecodes";
 import { reasonStatusText } from "./fieldmap";
+import { tablesSrc } from "./datatables";
 import { runSelfcheck, selfcheckHtml, fixGuideZh, SELFCHECK_BTN_HTML } from "./selfcheck";
 function renderDataNotice() { const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.innerHTML = t ? `${esc(reasonStatusText(t))} ${SELFCHECK_BTN_HTML}` : ""; el.title = t; } }
 // 「运行自检」：任何提示里的按钮都走这里（事件委托）
@@ -1182,7 +1189,7 @@ document.addEventListener("click", async ev => {
   if (!b) return;
   let host = document.getElementById("sc-host"); if (!host) { host = document.createElement("div"); host.id = "sc-host"; host.className = "sc-host"; document.body.appendChild(host); }
   host.innerHTML = selfcheckHtml(null);
-  const r = await runSelfcheck({ connected: !!S.status?.connected, call: op => call(op), invoke: tauriInvoke() });
+  const r = await runSelfcheck({ connected: link.open, call: op => call(op), invoke: tauriInvoke() });
   host.innerHTML = selfcheckHtml(r);
 });
 renderDataNotice();

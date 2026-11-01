@@ -56,7 +56,7 @@ void DataTable;
 const html = readFileSync("index.html", "utf8"), main = readFileSync("src/main.ts", "utf8");
 assert.equal(html.match(/id="ro-data"/g)?.length, 1);
 assert.match(readFileSync("src/style.css", "utf8"), /#ro-data\{[^}]*font-size:16px/);
-assert.match(main, /ROLES_T\.onHandshake\(s\); REASONS_T\.onHandshake\(s\)/);
+assert.match(main, /ROLES_T\.onHandshake\(hsSrc\); REASONS_T\.onHandshake\(hsSrc\)/); assert.match(main, /hsSrc = tablesSrc\(s, helloHs\)/);   // #143 data_tables 取 hello 顶层
 assert.doesNotMatch(main.replace(/^.*fieldmap.*$/gm, ""), /"data_tables"/);
 console.log("r9m ok");
 // 对齐 events.md（generic-tuning 5ce00ab）

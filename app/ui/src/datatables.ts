@@ -54,3 +54,9 @@ export class DataTable<T> {
     }
   }
 }
+
+// #143 data_tables 在 hello 回包顶层（与 schema 平级）。schema 自己带了就用它（兼容），否则用最近一次 hello 顶层的
+export function tablesSrc(schema: any, hello: any): any {
+  if (schema && typeof schema === "object" && DATA_TABLES_F.obj in schema) return schema;
+  return hello && typeof hello === "object" && DATA_TABLES_F.obj in hello ? { [DATA_TABLES_F.obj]: hello[DATA_TABLES_F.obj] } : null;
+}
