@@ -890,8 +890,9 @@ function renderIter() {
   };
   c.querySelectorAll<HTMLElement>("[data-decl-unit]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); openDeclField(a.dataset.declUnit!); }));   // #148
   c.querySelector<HTMLElement>("#it-decl")?.addEventListener("click", e => { e.preventDefault(); openDeclField((e.target as HTMLElement).dataset.field!); });
-  if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
-    if (w.dataset.confirm2 === "1" && w.dataset.armed !== "1") { w.dataset.armed = "1"; w.textContent = w.dataset.confirmZh ?? ""; return; }   // #158 不确定：采用要第二次点击确认
+  if (w && (id != null || w.dataset.confirm2 === "1")) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
+    if (w.dataset.confirm2 === "1" && w.dataset.armed !== "1") { w.dataset.armed = "1"; w.textContent = w.dataset.confirmZh ?? ""; return; }
+    if (id == null) return;   // 还没有本地服务的确认卡：只做第一步   // #158 不确定：采用要第二次点击确认
     const part = w.dataset.partial === "1";   // #141 降幅：先确认；采用后不记为已验证档（前端不登记任何验证状态）
     if (part && !window.confirm(partialConfirmZh(IT.s.phase === "done" ? IT.s.result : null))) return;
     w.disabled = true;
