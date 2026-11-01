@@ -183,8 +183,6 @@ def schema(spec: dict, params: list) -> dict:
                       **({"max_step": float(st["max_step"])} if st.get("max_step") is not None else {}),
                       **({"phys": {"unit": str(st["phys"]["unit"]), "per_unit": float(st["phys"]["per_unit"])}} if st.get("phys") else {})}
                      for st in spec["step"]]
-    # 链路看门狗进哈希：只差 watchdog_ms 的两份固件行为不同，必须有不同的 schema_hash
-    s["wd_timeout_ms"] = int(spec.get("watchdog_ms", WD_DEFAULT_MS))
     s["hash"] = fnv1a(json.dumps(s, sort_keys=True, separators=(",", ":")).encode())
     for p, src in zip(s["params"], params):
         p["default"] = src.get("default", 0)
@@ -202,7 +200,8 @@ def schema(spec: dict, params: list) -> dict:
     num = lambda v: None if v is None else float(v)
     rng = st0.get("range") if st0.get("range") is not None else st0.get("sensor_range")
     s["limits"] = {"u_min": num(act.get("u_min")), "u_max": num(act.get("u_max")), "sat": num(act.get("sat")), "range": num(rng)}
-    # 链路看门狗 wd_timeout_ms 已在上面进哈希，握手照样报给上位机
+    # 链路看门狗：多久收不到上位机帧就急停锁存；握手里报给上位机（横幅/提示读它，不写死）
+    s["wd_timeout_ms"] = int(spec.get("watchdog_ms", WD_DEFAULT_MS))
     s["relay"] = spec.get("relay", True) not in (False, "off")
     for k in ("accept", "loops", "protect_fixed"):
         if spec.get(k):
