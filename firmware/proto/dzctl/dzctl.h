@@ -22,7 +22,8 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.17.0"
+#define DZCTL_VERSION "0.18.0"
+#define DZCTL_PROTO_VER 0x00001200u   /**< 0.18.0 数值版本（major<<16 | minor<<8 | patch），'I' 回包 [23]；>= 0x1200 = 未知命令不清急停（estop-safe） */
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
@@ -84,10 +85,13 @@ uint32_t dzctl_board_uid(void);
 uint64_t dzctl_board_uid64(void);
 /** 0.17.0 'I' 握手信息（上位机连上后请求一次）。板回 DATA DZCTL_ID_CMD len=23，小端：
  *  [0] u8 'I'  [1] u8 info_ver=1  [2] u32 schema_hash  [6] u32 wd_timeout_ms  [10] u8 uid_supported(0/1)
- *  [11] u32 board_uid_lo  [15] u32 board_uid_hi  [19] u32 fw_rev。uid_supported=0 时 board_uid 恒 0。 */
+ *  [11] u32 board_uid_lo  [15] u32 board_uid_hi  [19] u32 fw_rev（git 短哈希）。uid_supported=0 时 board_uid 恒 0。
+ *  0.18.0 info_ver=2、len=27：追加 [23] u32 proto_ver = DZCTL_PROTO_VER。info_ver<2 / 无回包 = 旧固件，上位机应报 fw_estop_unsafe。 */
 #define DZCTL_CMD_INFO 'I'
-#define DZCTL_INFO_VER 1u
+#define DZCTL_INFO_VER 1u    /**< 0.17.0 布局（len 23）；0.18.0 起板子回 DZCTL_INFO2_* */
 #define DZCTL_INFO_LEN 23u
+#define DZCTL_INFO2_VER 2u   /**< 0.18.0：len 27，[23] u32 proto_ver */
+#define DZCTL_INFO2_LEN 27u
 bool dzctl_is_info_request(const dzframe_t *f);
 void dzctl_info(const dzctl_table_t *t, uint32_t wd_timeout_ms, uint8_t seq, dzframe_t *out);
 /** 固件版本：git 短哈希（7 位十六进制 = 低 28 位），bit31 = 编译时工作区有未提交改动；0 = 未知（Keil/CCS 工程没传 DZ_FW_REV）。
