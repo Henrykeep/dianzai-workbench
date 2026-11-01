@@ -1192,3 +1192,12 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .sc-sum-bad{color:var(--danger)}
 .sconf-files code{margin:0 var(--sp1)}
 .sconf-confirm{display:inline-flex;gap:var(--sp2);align-items:center}
+/* r10w */
+.role-diff{margin:var(--sp2) 0;padding:var(--sp2);max-height:16em;overflow:auto;font:var(--t-sm)/1.45 var(--mono,monospace);background:var(--surface-2);border-radius:4px;white-space:pre}
+.role-diff .dl-add{color:var(--success)}.role-diff .dl-del{color:var(--danger)}.role-diff .dl-hunk{color:var(--warn)}.role-diff .dl-ctx{opacity:.75}
+.sconf-kind{display:inline-block;margin:0 .3em;padding:0 .4em;border-radius:4px;font-size:.85em;border:1px solid currentColor}
+.fws-banner{order:-5}.fws-ver{opacity:.8;margin:0 .5em}
+.rc-ph{font-size:.75em;opacity:.7;margin-left:.4em}
+.role-tgt code{word-break:break-all}
+.rc-stopped{color:var(--danger);font-weight:600;margin:var(--sp1) 0}
+.rc-causes{font-size:var(--t-sm);margin:var(--sp1) 0}.rc-causes ul{margin:0;padding-left:1.4em}

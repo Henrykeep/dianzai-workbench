@@ -1,5 +1,5 @@
 // 板子身份（握手 board_uid / uid_supported）+ 结构冲突（schema_conflict）阻塞写入。纯逻辑 + 传 root 的 DOM 操作，便于测试
-import { BOARD_UID_F, BOARD_UID_ZH, SCHEMA_CONFLICT_F as SC, SCHEMA_CONFLICT_ZH as Z, SCHEMA_CLEAR_F } from "./fieldmap";
+import { BOARD_UID_F, BOARD_UID_ZH, SCHEMA_CONFLICT_F as SC, SCHEMA_CONFLICT_ZH as Z, SCHEMA_CLEAR_F, SCHEMA_FILE_F as SF, SCHEMA_KIND_ZH, SCHEMA_FIX_ZH } from "./fieldmap";
 const SCHEMA_CONFLICT_ZH = Z;
 import { WRITE_SEL } from "./batch1";
 export type BoardId = { uid: string | null; supported: boolean; notice: string; short: string };
@@ -21,7 +21,8 @@ export function sameBoard(a: BoardId | null, b: BoardId | null): boolean | null 
 export const uidChipHtml = (b: BoardId | null, esc: (s: string) => string) =>
   !b ? "" : b.uid ? `<span class="uid-chip mono" title="板子身份 ${esc(b.uid)}">板 ${esc(b.short)}</span>` : `<span class="uid-chip warn-t" data-uid-notice>${esc(b.notice)}</span>`;
 // 结构冲突：返回 {msg, fix} 或 null（已解决）
-export type Conflict = { msg: string; fix: string | null; files: string[]; hash: string | null; uid: string | null };
+export type ConflictFile = { path: string; kind: string | null };
+export type Conflict = { msg: string; fix: string | null; files: ConflictFile[]; hash: string | null; uid: string | null };
 // 两份文件名常常都是 link_schema.json：同名时往上带目录，直到能分开（最多 3 级）
 export function distinctName(f: string, all: string[]): string {
   const seg = (p: string) => p.split(/[\\/]/).filter(Boolean);
@@ -33,7 +34,8 @@ export function conflictOf(x: any): Conflict | null {
   if (!x || typeof x !== "object" || x[SC.resolved] === true) return null;
   const m = typeof x[SC.msg] === "string" && x[SC.msg].trim() ? x[SC.msg] : SCHEMA_CONFLICT_ZH.fallback;
   const f = typeof x[SC.fix] === "string" && x[SC.fix] ? x[SC.fix] : null;
-  const fl = Array.isArray(x[SC.files]) ? x[SC.files].filter((v: unknown) => typeof v === "string" && v).slice(0, 2) : [];
+  const fl: ConflictFile[] = (Array.isArray(x[SC.files]) ? x[SC.files] : []).map((v: any): ConflictFile | null =>
+    typeof v === "string" && v ? { path: v, kind: null } : v && typeof v === "object" && typeof v[SF.path] === "string" && v[SF.path] ? { path: v[SF.path], kind: typeof v[SF.kind] === "string" ? v[SF.kind] : null } : null).filter(Boolean).slice(0, 2) as ConflictFile[];
   const str = (v: unknown) => typeof v === "string" && v ? v : null;
   return { msg: m, fix: f, files: fl, hash: str(x[SC.hash]), uid: str(x[SC.uid]) };
 }
@@ -42,12 +44,12 @@ export const fromBlockers = (bs: any[] | null | undefined): Conflict | null => c
 export const isClearFix = (c: Conflict | null) => c?.fix === SCHEMA_CLEAR_F.action;
 // 横幅：标题 + 原因 + 冲突的两个文件（显示文件名，悬停看完整路径）+ 修复按钮；confirm=true 时换成确认卡
 export function conflictBannerHtml(c: Conflict, fix: { kind: string; label: string; note?: string } | null, esc: (s: string) => string, st: "idle" | "confirm" | "busy" | "fail" = "idle") {
-  const files = c.files.length ? ` <span class="sconf-files">${esc(Z.files)}：${c.files.map(f => `<code title="${esc(f)}">${esc(distinctName(f, c.files))}</code>`).join(" ↔ ")}</span>` : "";
+  const files = c.files.length ? ` <span class="sconf-files">${esc(Z.files)}：${c.files.map(f => `${f.kind ? `<span class="sconf-kind k-${esc(f.kind)}" data-kind="${esc(f.kind)}">${esc(SCHEMA_KIND_ZH[f.kind] ?? f.kind)}</span>` : ""}<code title="${esc(f.path)}">${esc(distinctName(f.path, c.files.map(x => x.path)))}</code>`).join(" ↔ ")}</span>` : "";
   let btn = "";
   if (isClearFix(c)) btn = st === "confirm" ? `<span class="sconf-confirm" data-sconf-confirm><span>${esc(Z.confirm)}</span> <button class="btn sm pri" type="button" data-sconf-ok>${esc(Z.ok)}</button><button class="btn sm" type="button" data-sconf-cancel>${esc(Z.cancel)}</button></span>`
     : st === "busy" ? `<span class="hint">${esc(Z.busy)}</span>`
     : `<button class="btn sm pri" type="button" data-sconf-clear>${esc(Z.clear)}</button>${st === "fail" ? ` <span>${esc(Z.fail)}</span>` : ""}`;
-  else if (c.fix && fix) btn = fix.kind === "run" ? `<button class="btn sm" type="button" data-sc-conflict-fix="${esc(c.fix)}">${esc(fix.label)}</button>` : `<button class="btn sm" type="button" disabled title="${esc(fix.note ?? "")}">${esc(fix.label)}</button>`;
+  else if (c.fix && fix) btn = fix.kind === "run" ? `<button class="btn sm pri" type="button" data-sc-conflict-fix="${esc(c.fix)}">${esc(SCHEMA_FIX_ZH[c.fix] ?? fix.label)}</button>` : `<button class="btn sm" type="button" disabled title="${esc(fix.note ?? "")}">${esc(fix.label)}</button>`;
   return `<b>${esc(Z.title)}</b> <span>${esc(c.msg)}</span>${files} ${btn}`;
 }
 // 写参数 + 提交卡的「确认提交」（取消仍可点）

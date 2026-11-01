@@ -1,9 +1,10 @@
 import { coarseTagHtml } from "./plant";
-import { reasonZh, reasonKind } from "./reasoncodes";
+import { reasonZh, reasonKind, stopCauses } from "./reasoncodes";
+import { CAUSES_ZH, OUTPUT_STOPPED_ZH } from "./fieldmap";
 import { isUnchanged } from "./metriccard";
 import { REASON_KIND_F } from "./fieldmap";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
-import { ampLine, ampLineHtml, ampText, MC_F, DOWNSCALE_ZH, RETEST_F, DECL_STEP_F, ADOPT_F } from "./fieldmap";
+import { hashTagHtml, ampLine, ampLineHtml, ampText, MC_F, DOWNSCALE_ZH, RETEST_F, DECL_STEP_F, ADOPT_F } from "./fieldmap";
 import { LEDGER_ROUND_F, NO_STABLE_ZH, VERDICT_ZH, STOP_F, ABORT_ZH, NO_ROUND_ZH } from "./fieldmap";
 import { pickStr, RESULT_PORT_F, RESULT_CLEAR_EV } from "./fieldmap";
 import { toCompare, METRIC_ZH, type CompareRaw, toVerdict, type Verdict, toSsErr, passBasis, roundMetrics, METRIC_F, ROUND0_F, type SsErr, metricZh, unitOfKey } from "./fieldmap";
@@ -85,7 +86,8 @@ export function ledgerPick(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()
   const run = (r as any)[LEDGER_ROUND_F.runId] != null ? String((r as any)[LEDGER_ROUND_F.runId]) : LEDGER.run();
   if (r.best) {
     const rid = (r.best as any)[LEDGER_ROUND_F.roundId] != null ? String((r.best as any)[LEDGER_ROUND_F.roundId]) : null;   // #147 有 round_id 就按它对轮，不按轮号
-    const hit = rid ? rs.find(x => x.roundId === rid) : run ? inRun(rs, run).find(x => x.n === r.best!.iter) : undefined;   // 只认同一 run_id 的台账轮，别拿别次迭代的同号轮否决
+    const ph = (r.best as any)[LEDGER_ROUND_F.paramsHash] ?? (r as any)[LEDGER_ROUND_F.paramsHash];
+    const hit = rid ? rs.find(x => x.roundId === rid) : typeof ph === "string" && rs.some(x => x.paramsHash === ph) ? [...rs].reverse().find(x => x.paramsHash === ph) : run ? inRun(rs, run).find(x => x.n === r.best!.iter) : undefined;   // 只认同一 run_id 的台账轮，别拿别次迭代的同号轮否决
     if (hit && !hit.valid) return { best: null, unstable: hit.state === "diverged" || saysDiverged(r) };   // #131 只有真发散才说发散
     return { best: !r.best.metrics && hit?.metrics && Object.keys(hit.metrics).length ? { ...r.best, metrics: hit.metrics } : r.best, unstable: false };   // #147 best 没带指标 → 用同 run 同号那一轮的，别拿第 0 轮凑
   }
@@ -228,9 +230,12 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
     : isUnchanged(r) ? ""   // 初值已满足题面、没改参：不给「采用」
     : o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${dis}>采用这组参数</wa-button>` : "";
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
-  const why = v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "";
+  const sc = stopCauses(r);
+  const why = (v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "") +
+    (sc.stopped ? `<p class="rc-stopped" id="rc-stopped">${esc(OUTPUT_STOPPED_ZH)}</p>` : "") +
+    (sc.causes.length ? `<div class="rc-causes" id="rc-causes">${esc(CAUSES_ZH)}<ul>${sc.causes.map(c => `<li>${esc(c)}</li>`).join("")}</ul></div>` : "");
   const amp = r.verdict?.warn ? ampLine(r) : "";   // #134 不管有没有对比表都给幅度行
-  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}</h4>${amp ? `<p class="rc-amp num">${ampLineHtml(r, esc)}</p>` : ""}${blk ? `<p class="rc-blk warn" id="it-blk">${esc(blk.text)}${blk.fix === RETEST_F.editDecl ? ` <a href="#" id="it-decl" data-field="${esc(blk.key)}">去声明里修改</a>` : ""}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}${hashTagHtml(r.best ?? r, esc)}</h4>${amp ? `<p class="rc-amp num">${ampLineHtml(r, esc)}</p>` : ""}${blk ? `<p class="rc-blk warn" id="it-blk">${esc(blk.text)}${blk.fix === RETEST_F.editDecl ? ` <a href="#" id="it-decl" data-field="${esc(blk.key)}">去声明里修改</a>` : ""}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
 }
 
 // r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头
