@@ -90,8 +90,8 @@ def test_roles_json_missing_is_blocker_and_cli_fails(tmp_path, monkeypatch, caps
 def test_roles_json_unknown_version_rejected(tmp_path, monkeypatch):
     from dzbench.agent import service as SV
     df = _datafiles_at(tmp_path, monkeypatch, '{"schema_version": 2, "roles": [{"code": "P", "zh": "比例"}]}')
-    assert df.check()[0]["reason"] == "data_file_missing" and "版本 2" in df.check()[0]["message_zh"]
-    assert SV.link_roles() == () and "版本 2" in SV.role_hint_zh()
+    assert df.check()[0]["reason"] == "data_file_missing" and "schema_version 是 2" in df.check()[0]["message_zh"]
+    assert SV.link_roles() == () and "schema_version 是 2" in SV.role_hint_zh()
     assert df.main() == 1
 
 
