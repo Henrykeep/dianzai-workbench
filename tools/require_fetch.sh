@@ -3,7 +3,7 @@
 # 直接给一句可执行的提示并退出非零，而不是跑到后面才在编译里报一堆找不到头文件。
 # 用法：tools/require_fetch.sh [仓库根，默认当前目录]   |   tools/require_fetch.sh --selftest
 set -u
-MSG="缺少 third_party/CMSIS_6，请先运行 make fetch"
+MSG="缺少第三方依赖 CMSIS_6，请先运行 make fetch"
 check() {   # $1 = 仓库根
   [ -d "$1/third_party/CMSIS_6" ] || { echo "$MSG" >&2; return 1; }
 }
