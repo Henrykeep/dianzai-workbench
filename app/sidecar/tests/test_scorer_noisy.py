@@ -146,3 +146,25 @@ def test_paired_compare_band_from_spread():
     tight = {"costs": [1.05, 1.06, 1.04, 1.05, 1.05, 1.06, 1.04, 1.05]}
     assert G.paired_compare(base, noisy)["result"] == "indistinguishable"
     assert G.paired_compare(base, tight)["result"] == "worse"
+
+
+@pytest.mark.parametrize("label", ["unknown", False, True])
+def test_hard_gates_apply_regardless_of_feasible_label(tmp_path, monkeypatch, label):
+    """feasible=unknown（复核 undecided、不进通过率分母）的对象照样过三道硬门禁：假达标、红 worse、黄 分不出。"""
+    plant, m, hi, lo, amp, n = _noisy_kd_case(np.random.default_rng(1001))
+    app = {"params": [{"name": f"p{i}", "role": r, "min": 0.0, "max": 10 * v + 1, "init": v, "max_delta": 1e9}
+                      for i, (r, v) in enumerate(lo.items())]}
+    _write(tmp_path, plant, m, app, amp, n)
+    pj = json.loads((tmp_path / "plant.json").read_text("utf-8"))
+    pj["feasible"] = label
+    pj["infeasible_reason"] = "saturation" if label is False else None
+    (tmp_path / "plant.json").write_text(json.dumps(pj), "utf-8")
+    monkeypatch.setattr(G, "_recheck", lambda *a, **k: "undecided")
+    base = {"initial": {"roles": lo}, "category": "saturation", "pass_basis": "", "amp": amp, "n": n}
+    w = G.grade(str(tmp_path), 1, base | {"best": {"roles": hi}, "verdict": "fail"}, app, "要求：稳态误差不超过 50%。")
+    assert w["worse_not_reverted"] and not w["ok"]                                  # 红
+    y = G.grade(str(tmp_path), 1, base | {"best": {"roles": dict(lo, ulim=1e12)}, "verdict": "fail"},
+                app, "要求：稳态误差不超过 50%。")
+    assert y["not_reverted_unconfirmed"] and y["paired"]["result"] == "indistinguishable" and not y["worse_not_reverted"]   # 黄（参数变了、效果一样）
+    fp = G.grade(str(tmp_path), 1, base | {"best": {"roles": hi}, "verdict": "pass"}, app, "要求：稳态误差不超过 0.0001%。")
+    assert fp["false_pass"] and fp["bucket"] == "false_pass"                       # 假达标
