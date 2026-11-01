@@ -10,6 +10,7 @@
  *   板 -> 上位机  HEARTBEAT id=0 payload: u32 schema_hash [, u32 board_uid]  —— 上位机据此匹配 link_schema.json；
  *                 0.5.0 起第 4 个 u32 status：低 8 位 = 复位原因（pal_reset_cause_t 数值），高位 = DZCTL_HB_* 标志
  *                 0.8.0 起再追加 u32 急停原因（dzctl_estop_cause_t）、u32 触发时刻 t_ms、f32 触发值（len 28；未急停时原因 0）
+ *   上位机 -> 板  DATA id=DZCTL_ID_CMD len=1 {'I'}  0.17.0 一次性握手信息；板回 DATA id=DZCTL_ID_CMD len=23（见 dzctl_info）
  *                 board_uid（0.3.0 起）= 芯片唯一 ID 折成 32 位，两块同型号板同时插着时上位机靠它认板；0 = 未知
  * 参数表由 tools/gen_link.py 从 yaml 生成，应用不手写。
  */
@@ -21,7 +22,7 @@
 #include <stdint.h>
 #include "dzframe.h"
 
-#define DZCTL_VERSION "0.15.0"
+#define DZCTL_VERSION "0.17.0"
 #define DZCTL_ID_CMD   0x7Eu
 #define DZCTL_ID_ESTOP 0x7Fu
 #define DZCTL_ID_RELAY 0x7Cu   /**< 0.7.0 继电自整定：len=13 u8 loop, f32 amp, f32 hyst, f32 timeout_s 开始；len=0 停止。
@@ -78,6 +79,17 @@ bool dzctl_is_estop(const dzframe_t *f);
 
 /** 芯片唯一 ID 折成 32 位（端口实现；弱默认返回 0 = 未知）。 */
 uint32_t dzctl_board_uid(void);
+/** 0.16.0 换板指纹：MCU 唯一 ID 的 64 位 FNV-1a（端口用 pal_uid64() 覆盖这个弱定义）；0 = 读不到（不支持）。
+ *  只在 'I' 握手信息里报，不进心跳、不进 schema 哈希。 */
+uint64_t dzctl_board_uid64(void);
+/** 0.17.0 'I' 握手信息（上位机连上后请求一次）。板回 DATA DZCTL_ID_CMD len=23，小端：
+ *  [0] u8 'I'  [1] u8 info_ver=1  [2] u32 schema_hash  [6] u32 wd_timeout_ms  [10] u8 uid_supported(0/1)
+ *  [11] u32 board_uid_lo  [15] u32 board_uid_hi  [19] u32 fw_rev。uid_supported=0 时 board_uid 恒 0。 */
+#define DZCTL_CMD_INFO 'I'
+#define DZCTL_INFO_VER 1u
+#define DZCTL_INFO_LEN 23u
+bool dzctl_is_info_request(const dzframe_t *f);
+void dzctl_info(const dzctl_table_t *t, uint32_t wd_timeout_ms, uint8_t seq, dzframe_t *out);
 /** 固件版本：git 短哈希（7 位十六进制 = 低 28 位），bit31 = 编译时工作区有未提交改动；0 = 未知（Keil/CCS 工程没传 DZ_FW_REV）。
  *  make 自动给 dzctl.c 传 -DDZ_FW_REV；应用也可覆盖（弱符号）。 */
 uint32_t dzctl_fw_rev(void);
