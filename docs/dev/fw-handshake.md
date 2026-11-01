@@ -11,7 +11,7 @@
 
 ## 一次性握手信息 `'I'`（dzctl 0.17.0 / PAL 1.9.0）
 
-侧车连上后（收到第一帧心跳即可）发一次：`DATA id=0x7E(DZCTL_ID_CMD) len=1 {'I'}`；板回 `DATA id=0x7E len=23`（小端）：
+侧车连上后（收到第一帧心跳即可）发一次：`DATA id=0x7E(DZCTL_ID_CMD) len=1 {'I'}`；板回 `DATA id=0x7E len=27`（0.17.0 为 23，小端）：
 
 | 偏移 | 类型 | 字段 | 说明 |
 |---|---|---|---|
@@ -22,7 +22,18 @@
 | 10 | u8 | `uid_supported` | 1 = 读到了 MCU 唯一 ID；0 = 本芯片族/端口读不到（`pal_read_uid` 返回 `DZ_ENOTSUP`，如 MSPM0 预量产片、没实现的端口） |
 | 11 | u32 | `board_uid_lo` | MCU 唯一 ID 的 64 位 FNV-1a，低 32 位 |
 | 15 | u32 | `board_uid_hi` | 高 32 位；`uid_supported=0` 时 lo/hi 恒 0 |
-| 19 | u32 | `fw_rev` | 同心跳第 3 个 u32 |
+| 19 | u32 | `fw_rev` | 同心跳第 3 个 u32（git 短哈希） |
+| 23 | u32 | `proto_ver` | **0.18.0 起（info_ver=2，len=27）**：dzctl 数值版本 major<<16\|minor<<8\|patch，0.18.0 = `0x00001200` |
+
+### 急停安全修复版本：**dzctl 0.18.0**（`proto_ver >= 0x00001200`）
+
+0.18.0 之前（含 0.17.0）的 link_app 固件把**不认识的单字节命令**（`DATA 0x7E {c}`，c 非 'R'）当成新指令，会清掉 'R' 之后的输出保持（estop=false），旧设定值下电机会重新动。0.18.0 起：
+- 只有应用 `on_cmd` 回调认识（返回 true）的命令才算显式新指令；不认识的整帧丢弃、不改急停/输出保持，只计数 `L.unknown_cmds`。
+- `'I'` 走 `link_step_dispatch`，只回包，不碰急停。
+- 解除急停的唯一路径：完整 dzframe 帧（SOF + 头 + 有效 CRC16）`DATA id=0x7E len=1 {'R'}`；'R' 只解锁存、设定值清零，输出仍禁止，直到新设定值（DATA id=1）或认识的命令。裸字节 `0x52`、坏 CRC、错波特率乱码都进不了 dzframe 解析器，不会解除。
+- 测试：`tests/estop/estop_sp.c`（`tools/test_estop_sp.sh`，make test）在急停前、锁存中、'R' 后持续注入随机未知命令字节、坏 CRC 帧、CRC 正确但 id 未知的 DATA 帧、错波特率重采样的 'R' 帧、裸 'R' 字节和 'I'；断言锁存中/'R' 后 sp=0、u=0、PWM 不动，急停前设定值不被改。
+
+**侧车建议**：'I' 回包 `info_ver < 2`（或 2 s 无回包）→ 报 `fw_estop_unsafe`（「固件早于 dzctl 0.18.0：收到未知命令可能解除急停输出保持，请重烧」）。字段名/文案由后端定、写进 events.md。
 
 侧车建议报给界面：`board_uid: "0123456789abcdef"`（16 位小写十六进制）+ `uid_supported: true/false`。
 - `uid_supported=false` → 界面明确写「这块板读不到芯片唯一 ID，无法自动判断是否换板」，不要静默 null。

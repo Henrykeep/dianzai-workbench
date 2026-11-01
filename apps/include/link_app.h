@@ -40,7 +40,8 @@ typedef struct {
     volatile uint32_t sp_ms;
     void (*on_params)(void);
     const bb_t *bb;                         /**< 可选：非 NULL 时响应黑匣子导出请求 */
-    void (*on_cmd)(uint8_t c, uint8_t n);   /**< 'R' 以外的单字节命令；n = 第二字节（没有为 0） */
+    bool (*on_cmd)(uint8_t c, uint8_t n);   /**< 'R' 以外的单字节命令；n = 第二字节（没有为 0）。认识返回 true；返回 false 的命令整帧丢弃、不动急停/输出保持 */
+    uint32_t unknown_cmds;                  /**< 丢弃的不认识命令计数（只读诊断） */
     dzrt_t rt;                              /**< 通用运行时（自检 / 运行模式 / 存参） */
     uint32_t now;                           /**< 最近一次 link_app_poll 的时刻（阶跃实验样本时间 = 遥测 t_ms） */
 } link_app_t;
@@ -69,14 +70,14 @@ DZ_WEAK void link_app_sim_cmd(uint8_t c, uint8_t n) { (void)c; (void)n; }
 static inline void link_app_send(const dzframe_t *f);
 static void link_app_send_fwd(const dzframe_t *f) { link_app_send(f); }
 
-static inline void link_app_init(link_app_t *L, void (*on_params)(void), void (*on_cmd)(uint8_t, uint8_t))
+static inline void link_app_init(link_app_t *L, void (*on_params)(void), bool (*on_cmd)(uint8_t, uint8_t))
 {
     dzframe_parser_init(&L->rx);
     dzctl_wd_init(&L->wd, LINK_WD_TIMEOUT_MS);           /* 侧车每 250 ms 发一次心跳 */
     L->last_tx = 0; L->last_hb = 0u - 500u; /* 复位后第一拍就发心跳（带 schema 哈希） */
     L->seq = 0; L->hb_was_estop = false; L->estop = false; L->latched = false; L->sp_ms = 0;
     for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
-    L->on_params = on_params; L->on_cmd = on_cmd; L->bb = 0;
+    L->on_params = on_params; L->on_cmd = on_cmd; L->unknown_cmds = 0; L->bb = 0;
     s_link_app_self = L;
     dzctl_estop_clear();                    /* 上电：RAM 里的旧原因不算（仿真里 app_init 会重跑） */
     if (dzrt_boot(&L->rt, &g_link_params, &g_link_params_default, link_app_still_default, link_app_send_fwd) == 0u && on_params) on_params();
@@ -139,7 +140,8 @@ static inline bool link_app_poll(link_app_t *L, uint32_t now)
                     for (unsigned k = 0; k < 4u; k++) L->sp[k] = 0.0f;
                     L->sp_ms = now;
                 }
-                else { if (!L->latched) L->estop = false; if (L->on_cmd) L->on_cmd(c, n); }
+                else if (L->on_cmd && L->on_cmd(c, n)) { if (!L->latched) L->estop = false; }   /* 认识的命令 = 显式新指令 */
+                else L->unknown_cmds++;          /* 不认识：丢弃，不清急停、不改任何状态（仅 host-sim 的注入钩子仍可看到） */
                 link_app_sim_cmd(c, n);
             }
         }
