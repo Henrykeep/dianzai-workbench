@@ -85,3 +85,10 @@ def test_status_board_ident_only_from_handshake(tmp_path):
     st = s.status()
     assert st["board_uid"] == f"{info['board_uid']:016x}" and st["uid_supported"] is True and st["proto_ver"] == 0x1200
     assert "deadbeef" not in str(st.get("board_uid"))
+
+
+@pytest.mark.xfail(strict=True, reason="pending fw-unknown-cmd 854b6a1 merge; flip ENFORCE_FW_ESTOP to True and host-sim to dzctl 0.18")
+def test_enforce_fw_estop_is_on():
+    import importlib
+    bi = importlib.reload(board_ident)          # 读模块里的真值，不受本文件 autouse 打开开关的影响
+    assert bi.ENFORCE_FW_ESTOP is True
