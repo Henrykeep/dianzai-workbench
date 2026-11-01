@@ -1,17 +1,18 @@
 // 参数角色确认（confirm_roles）：纯逻辑 + HTML，字段名只走 fieldmap
 import { roleCodes, roleCodesNotice } from "./rolecodes";
+import { SELFCHECK_BTN_HTML } from "./selfcheck";
 import { ROLE_F, ROLE_SUGGEST_ZH, ROLE_BTN_ZH, ROLE_RETRY_ZH, ROLE_SENDING_ZH, ROLE_REPLY_F, ROLE_NO_FLASH_ZH, ROLE_LIM_ZH, MISSING_ZH } from "./fieldmap";
 export type RoleReq = { missing: string[]; suggested: Record<string, string>; reason: string };
 const CODES = { has: (c: unknown) => roleCodes().some(x => x[0] === c) };
 export const roleLabel = (c: unknown) => roleCodes().find(x => x[0] === c)?.[1] ?? "";
 export function toRoleReq(m: any): RoleReq | null {
   for (const o of [m, m?.result, m?.error, m?.err]) {
-    if (!o || o[ROLE_F.fix] !== ROLE_F.confirm) continue;
+    if (!o || (o[ROLE_F.fix] !== ROLE_F.confirm && o[ROLE_F.code] !== ROLE_F.unconfirmed)) continue;
     const missing = Array.isArray(o[ROLE_F.missing]) ? o[ROLE_F.missing].filter((x: unknown) => typeof x === "string") : [];
     const sg = o[ROLE_F.suggested] && typeof o[ROLE_F.suggested] === "object" ? o[ROLE_F.suggested] : {};
     const suggested: Record<string, string> = {};
     for (const k of missing) if (CODES.has(sg[k])) suggested[k] = sg[k];
-    return { missing, suggested, reason: typeof o[ROLE_F.reason] === "string" ? o[ROLE_F.reason] : "" };   // reason_zh 原样显示
+    return { missing, suggested, reason: typeof o[ROLE_F.reason] === "string" ? o[ROLE_F.reason] : typeof o[ROLE_F.msg] === "string" ? o[ROLE_F.msg] : "" };   // reason_zh 原样显示
   }
   return null;
 }
@@ -37,7 +38,7 @@ export function roleCardHtml(req: RoleReq | null, st: RoleUi | boolean = { phase
     : `<button class="btn primary" id="role-ok"${s.phase === "sending" || s.left > 0 || (s.phase === "error" && s.same !== false) ? " disabled" : ""}>${s.phase === "sending" ? ROLE_SENDING_ZH : ROLE_BTN_ZH}</button>` +
       (s.left > 0 && s.phase !== "sending" ? `<span class="role-left">${roleLeftZh(s.left)}</span>` : s.phase === "error" && s.same !== false ? `<span class="role-left">请修改角色后再确认</span>` : "");
   return `<div class="card role-card" id="role-card"><b>需要确认参数角色</b><p class="role-why">${esc(req.reason || MISSING_ZH)}</p>` +
-    `<p class="role-nf">${ROLE_NO_FLASH_ZH}</p>${roleCodesNotice() ? `<p class="role-data warn-t" id="role-data">${esc(roleCodesNotice())}</p>` : ""}<p>待确认：${req.missing.map(esc).join("、") || MISSING_ZH}</p>` +
+    `<p class="role-nf">${ROLE_NO_FLASH_ZH}</p>${roleCodesNotice() ? `<p class="role-data warn-t" id="role-data">${esc(roleCodesNotice())} ${SELFCHECK_BTN_HTML}</p>` : ""}<p>待确认：${req.missing.map(esc).join("、") || MISSING_ZH}</p>` +
     (s.phase === "error" && s.msg ? `<p class="role-err">${esc(s.msg)}</p>` : "") + btn + `</div>`;
 }
 // 缺几个：没在下拉里选、也没有合法建议的
