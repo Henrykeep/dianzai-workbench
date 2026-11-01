@@ -265,7 +265,7 @@ export const BOARD_UID_ZH = { unsupported: "此芯片暂不支持板子识别，
 export const SCHEMA_CONFLICT_F = { key: "schema_conflict", code: "reason", codeAlt: "code", codeAlt2: "blocker_code", hash: "hash", uid: "board_uid", msg: "message_zh", fix: "fix_action", resolved: "resolved", files: "files" } as const;
 // 冲突的修复：fix_action=clear_schema_cache → 确认卡 → op clear_schema_cache {hash} → {ok, removed:[path]} → 自动重新 hello
 export const SCHEMA_CLEAR_F = { action: "clear_schema_cache", op: "clear_schema_cache", hash: "hash", ok: "ok", removed: "removed" } as const;
-export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理", files: "冲突的两个文件", clear: "清除旧缓存并重新握手", confirm: "将清除本机缓存的旧结构，然后重新与本地服务握手；工程文件和板上参数不受影响。", ok: "确认清除", cancel: "取消", busy: "正在清除并重新握手…", fail: "清除失败", removed: "已清除 N 个旧缓存文件" } as const;
+export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理", files: "冲突的文件", clear: "清除旧缓存并重新握手", confirm: "将清除本机缓存的旧结构，然后重新与本地服务握手；工程文件和板上参数不受影响。", ok: "确认清除", cancel: "取消", busy: "正在清除并重新握手…", fail: "清除失败", removed: "已清除 N 个旧缓存文件" } as const;
 
 // #148 amp_unit = null：数值照显示，后面挂「（单位未声明）」链接到项目页对应声明（复用 data-decl-key 高亮）
 export const UNIT_UNDECL_ZH = "（单位未声明）";

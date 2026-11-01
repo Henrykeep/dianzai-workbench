@@ -35,9 +35,12 @@ export function conflictOf(x: any): Conflict | null {
   const m = typeof x[SC.msg] === "string" && x[SC.msg].trim() ? x[SC.msg] : SCHEMA_CONFLICT_ZH.fallback;
   const f = typeof x[SC.fix] === "string" && x[SC.fix] ? x[SC.fix] : null;
   const fl: ConflictFile[] = (Array.isArray(x[SC.files]) ? x[SC.files] : []).map((v: any): ConflictFile | null =>
-    typeof v === "string" && v ? { path: v, kind: null } : v && typeof v === "object" && typeof v[SF.path] === "string" && v[SF.path] ? { path: v[SF.path], kind: typeof v[SF.kind] === "string" ? v[SF.kind] : null } : null).filter(Boolean).slice(0, 2) as ConflictFile[];
+    typeof v === "string" && v ? { path: v, kind: null } : v && typeof v === "object" && typeof v[SF.path] === "string" && v[SF.path] ? { path: v[SF.path], kind: typeof v[SF.kind] === "string" ? v[SF.kind] : null } : null).filter(Boolean) as ConflictFile[];
+  fl.sort((a, b) => +(b.kind === SF.cache) - +(a.kind === SF.cache));   // 三份以上：缓存份排前（可清的那份一定看得见），全部列出
   const str = (v: unknown) => typeof v === "string" && v ? v : null;
-  return { msg: m, fix: f, files: fl, hash: str(x[SC.hash]), uid: str(x[SC.uid]) };
+  // 586ab77 的 progress 阻塞项总是 fix_action=clear_schema_cache；文件 kind 全是 build（没有缓存份）时清缓存没用 → 按「重新构建」处理
+  const fx = f === SCHEMA_CLEAR_F.action && fl.length && fl.every(q => q.kind === SF.build) ? SF.build : f;
+  return { msg: m, fix: fx, files: fl, hash: str(x[SC.hash]), uid: str(x[SC.uid]) };
 }
 export const fromHello = (h: any) => h && SC.key in h ? { has: true, c: conflictOf(h[SC.key]) } : { has: false, c: null };
 export const fromBlockers = (bs: any[] | null | undefined): Conflict | null => conflictOf((bs ?? []).find(b => b?.[SC.code] === SC.key || b?.[SC.codeAlt] === SC.key || b?.[SC.codeAlt2] === SC.key));

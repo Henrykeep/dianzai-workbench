@@ -62,9 +62,9 @@ assert.match(ix, /id="sconf-banner"/); assert.match(ix, /id="ro-uid"/);
 for (const f of ["src/boardid.ts", "src/main.ts"]) assert.doesNotMatch(readFileSync(f, "utf8"), /"(board_uid|uid_supported|schema_conflict|message_zh)"/);
 // 冲突的两个文件 + 清缓存重新握手（确认卡）
 const cf = conflictOf({ [K.msg]: "两份结构不一致", [K.fix]: SCHEMA_CLEAR_F.action, [K.files]: ["C:\\a\\cache\\schema.json", "boards/x/params.yaml", "多余"] })!;
-assert.deepEqual(cf.files.map(f => f.path), ["C:\\a\\cache\\schema.json", "boards/x/params.yaml"]); assert.ok(isClearFix(cf));
+assert.deepEqual(cf.files.map(f => f.path), ["C:\\a\\cache\\schema.json", "boards/x/params.yaml", "多余"]); assert.ok(isClearFix(cf));   // r10w：全部列出
 h = conflictBannerHtml(cf, null, esc);
-assert.match(h, /冲突的两个文件：<code title="C:\\a\\cache\\schema.json">schema.json<\/code> ↔ <code title="boards\/x\/params.yaml">params.yaml<\/code>/);
+assert.match(h, /冲突的文件：<code title="C:\\a\\cache\\schema.json">schema.json<\/code> ↔ <code title="boards\/x\/params.yaml">params.yaml<\/code>/);
 assert.match(h, /btn sm pri" type="button" data-sconf-clear>清除旧缓存并重新握手/); assert.doesNotMatch(h, /data-sconf-ok/);
 h = conflictBannerHtml(cf, null, esc, "confirm"); assert.match(h, /data-sconf-confirm/); assert.match(h, /工程文件和板上参数不受影响/); assert.match(h, /data-sconf-ok>确认清除/); assert.match(h, /data-sconf-cancel>取消/); assert.doesNotMatch(h, /data-sconf-clear/);
 assert.match(conflictBannerHtml(cf, null, esc, "busy"), /正在清除/); assert.match(conflictBannerHtml(cf, null, esc, "fail"), /data-sconf-clear.*清除失败/);
