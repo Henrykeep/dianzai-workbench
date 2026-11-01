@@ -704,10 +704,13 @@ class AgentService:
         ss = self._ss_band(best.get("metrics") or {})
         v, vzh = self._verdict(ss, res, best.get("metrics"))
         res["verdict"], res["verdict_zh"], res["ss_err"] = v, vzh, ss
-        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"],
+        # #147：卡上的 params / metrics 都取自同一个 best（同一轮对象），round_id = 该轮 iter，前端用它对齐显示
+        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+                                             "metrics": best.get("metrics"), "params_hash": best["params_hash"],
                                              "ss_err": ss, "verdict": v, "verdict_zh": vzh,
                                              "compare": self._compare(res.get("round0"), best)}, lambda: None)
-        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "ss_err": ss,
+        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+                       "metrics": best.get("metrics"), "params_hash": best["params_hash"], "ss_err": ss,
                        "verdict": v, "verdict_zh": vzh, "pass_basis": ss.get("pass_basis"), "compare": self._compare(res.get("round0"), best)}
         return r.get("action_id")
 
