@@ -147,6 +147,13 @@ class Server:
         run = asyncio.get_running_loop().run_in_executor
         if op == "selfcheck_data":                         # 随包数据文件自检（界面『运行自检』）；与 CLI / selfcheck_data.py 同一函数
             return _datafiles.report()
+        if op == "clear_schema_cache":                     # schema_conflict 的修复：界面确认卡后调；只删这个哈希的缓存格式文件，再重新识别
+            h = m.get("hash")
+            try:
+                hv = int(h, 16) if isinstance(h, str) else int(h)
+            except (TypeError, ValueError):
+                raise LinkError("bad_arg", "clear_schema_cache 需要 hash（十六进制字符串或整数）", "") from None
+            return await run(None, s.clear_schema_cache, hv)
         if op == "hello":
             return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()},
                     "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
@@ -290,9 +297,10 @@ class Server:
                 return await run(None, (fl.preview if op == "flow_preview" else fl.accept), m["step"], m)
             except FlowError as e:
                 raise LinkError(e.code, e.msg, e.fix, e.fix_action) from None
-        if op == "confirm_roles":                                 # 人确认的参数角色写回 app.yaml link.params.<名>.role
+        if op == "confirm_roles":                                 # #145 两步：先回 diff（needs_confirm），确认卡点了带 confirmed+change_id 才写工程目录
             try:
-                return await run(None, lambda: self.svc.confirm_roles(m["roles"], m.get("app_dir")))
+                return await run(None, lambda: self.svc.confirm_roles(m.get("roles") or {}, m.get("app_dir"),
+                                                                      m.get("confirmed") is True, m.get("change_id")))
             except GatewayError as e:
                 raise LinkError(e.code, e.message, e.fix, e.extra.get("fix_action")) from None
         if op == "autotune":                                      # #108 界面“通用整定”：与 tunegate 同一份 tuning.autotune

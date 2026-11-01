@@ -45,10 +45,10 @@ def run(env_add: dict, listen_s: float = 0.0):
         p.kill(); p.wait()
     if info is None:
         raise SystemExit(f"✗ [board_uid] {APP}: 15 s 内没收到 'I' 握手信息回包")
-    if len(info) != 23:
-        raise SystemExit(f"✗ [board_uid] 'I' 回包 len={len(info)}，应为 23")
-    _, ver, sh, wd, sup, lo, hi, rev = struct.unpack("<cBIIBIII", info)
-    return dict(ver=ver, schema_hash=sh, wd=wd, sup=sup, uid=lo | hi << 32, rev=rev, hbs=hbs)
+    if len(info) != 27:
+        raise SystemExit(f"✗ [board_uid] 'I' 回包 len={len(info)}，应为 27（dzctl 0.18.0 info_ver 2）")
+    _, ver, sh, wd, sup, lo, hi, rev, pv = struct.unpack("<cBIIBIIII", info)
+    return dict(ver=ver, schema_hash=sh, wd=wd, sup=sup, uid=lo | hi << 32, rev=rev, pv=pv, hbs=hbs)
 
 
 subprocess.run(["make", "-s", "BOARD=host-sim", f"APP={APP}"], cwd=ROOT, check=True, stdout=subprocess.DEVNULL)
@@ -57,8 +57,8 @@ A = run({"DZ_SIM_UID": "board-A-0001"}, listen_s=4.0)
 B = run({"DZ_SIM_UID": "board-B-0002"})
 A2 = run({"DZ_SIM_UID": "board-A-0001"})
 U = run({"DZ_SIM_UID": "board-A-0001", "DZ_SIM_UID_UNSUPPORTED": "1"})
-if A["ver"] != 1:
-    print(f"✗ [board_uid] info_ver={A['ver']}"); fail = 1
+if A["ver"] != 2 or A["pv"] != 0x001200:
+    print(f"✗ [board_uid] info_ver={A['ver']} proto_ver={A['pv']:#x}，应为 2 / 0x1200（0.18.0）"); fail = 1
 if A["schema_hash"] != B["schema_hash"] or A["wd"] != B["wd"] or A["wd"] < 300:
     print(f"✗ [board_uid] 两块板 schema_hash/wd 应相同：{A['schema_hash']:08X}/{B['schema_hash']:08X} wd {A['wd']}/{B['wd']}"); fail = 1
 if not (A["sup"] == B["sup"] == 1) or A["uid"] == B["uid"]:

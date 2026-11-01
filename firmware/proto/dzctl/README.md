@@ -130,6 +130,10 @@ A = setpoint − initial（分母一律用阶跃幅度，不用 \|setpoint\|）�
 range / abs_tol / y / u / u_max 来自 app.yaml `link.step`。心跳 status **bit17 DZCTL_HB_ITER_BUSY**：实验中 = 1；结果发出即清；急停锁存当拍强制 0（aborted 结果先于急停沿心跳发出）。
 注意：心跳尾部 params_hash 仍是 0.12 的 FNV（不变），step_result 里的是 CRC32。
 
+## 0.18.0 未知命令不清急停；'I' 回包 info_ver=2、len=27，追加 u32 proto_ver（0x00001200）
+
+见 docs/dev/fw-handshake.md「急停安全修复版本」。
+
 ## 0.17.0 一次性握手信息 'I'（换板指纹）
 
 上位机 `DATA 0x7E len=1 {'I'}` → 板回 `DATA 0x7E len=23`：`'I'`、u8 info_ver=1、u32 schema_hash、u32 wd_timeout_ms、u8 uid_supported、u32 board_uid_lo、u32 board_uid_hi、u32 fw_rev。

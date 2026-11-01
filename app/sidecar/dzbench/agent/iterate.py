@@ -254,6 +254,7 @@ class Iterator:
         it = 0
         cand_params = [p for p in self.plan["params"]]
         pi, direction, tried = 0, -1.0, set()             # 坐标搜索：当前参数下标、方向（先降增益）、已试过的(参数,方向)
+        worse: set = set()                                 # tried 里“试过但变差”的那部分（不是被拒 / 到边 / 饱和）
         frac = {p["name"]: STEP_FRAC for p in self.plan["params"]}   # #69：每个参数的相对步长；变差换方向时减半（不再每轮砍一半到 0）
         streak_pass = streak_invalid = streak_noimp = 0
         changed: dict = {}
@@ -310,6 +311,7 @@ class Iterator:
             if not improved and changed:                   # 变差：回到最好一轮的值，换方向，步长减半
                 nm = cand_params[pi]["name"]
                 tried.add((nm, direction))
+                worse.add((nm, direction))
                 direction = -direction
                 frac[nm] = max(MIN_STEP_FRAC, frac[nm] * 0.5)
             base = self.best["params"]
@@ -332,6 +334,16 @@ class Iterator:
                     nxt = (p, min(b, max(a, c0 + direction * d)))   # #69：相对步长（默认 ±25%），夹在本轮允许范围内
                     break
                 if nxt is None:
+                    # 各方向都试过了。若有方向只是“变差”（不是被拒/到边）且步长还能再缩：缩小步长重试这些方向（坐标搜索细化）；
+                    # 步长已到下限 = 局部最优，按“没有改进”收尾。只有真的全被拒绝/限幅挡住才报 blocked。
+                    # （以前变差两个方向也报 blocked：仿真里一轮成绩随调度抖动，单参数时约 1/5 跑出 blocked。）
+                    retry = {k for k in worse if frac[k[0]] > MIN_STEP_FRAC}
+                    if retry:
+                        tried -= retry
+                        worse -= retry
+                        continue
+                    if worse:
+                        return self._stopped("no_improve", "各方向都试过且都变差，步长已到下限（局部最优）")
                     return self._stopped("blocked", "所有方向都被拒绝或限幅挡住")
                 p, v = nxt
                 try:
@@ -427,7 +439,8 @@ class SessionIO:
             return {}
         if getattr(self, "y0", None) is None:          # 整次迭代只定一次起点（无效轮重跑同一 iter 也回这个起点，#94）
             now = self._y_now(y)
-            rng = self._cfg(ch).get("range")
+            c = self._cfg(ch)
+            rng = c.get("range") if c.get("range") is not None else c.get("sensor_range")   # 与 _y 同一口径：range 可省，退到传感器量程
             if target is not None and now is not None and abs(float(target) - now) < 2 * tol and rng:
                 span = self.START_FRAC * float(rng)       # 目标就是当前位置 → 先退到起点再跳，不做 0 幅度阶跃
                 self.y0 = float(target) - span if float(target) - span >= -float(rng) else float(target) + span

@@ -31,6 +31,10 @@
   "zh": "板子急停中",
   "kind": "abort"
  },
+ "fw_estop_unsafe": {
+  "zh": "此固件存在急停可被误清除的问题，请重新烧录",
+  "kind": "blocker"
+ },
  "hash_mismatch": {
   "zh": "参数哈希对不上",
   "kind": "round"
@@ -58,6 +62,10 @@
  "pass": {
   "zh": "连续 2 轮达标",
   "kind": "stop"
+ },
+ "schema_conflict": {
+  "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
+  "kind": "blocker"
  },
  "settle_zero": {
   "zh": "调节时间为 0（窗口没对上）",

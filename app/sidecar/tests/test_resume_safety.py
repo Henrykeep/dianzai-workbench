@@ -72,9 +72,10 @@ def sp(board):
 
 
 def _forbidden(frames):
-    """允许：上位机心跳、读参（PARAM_SET 空载荷）。其余（任何 DATA：运动/目标/命令/R/继电；带值的 PARAM_SET）都算违规。"""
+    """允许：上位机心跳、读参（PARAM_SET 空载荷）、只读的握手信息查询 DATA 0x7E {'I'}（dzctl 0.17.0，恰好 1 字节 'I'，
+    板子只回身份/哈希，不动作；重连后要重新问，可能换了板；急停位置位时侧车不发）。其余（任何 DATA：运动/目标/命令/R/继电；带值的 PARAM_SET）都算违规。"""
     return [(k, i, pl.hex()) for _t, k, i, pl in frames
-            if not (k == HEARTBEAT or (k == PARAM_SET and not pl))]
+            if not (k == HEARTBEAT or (k == PARAM_SET and not pl) or (k == DATA and i == 0x7E and pl == b"I"))]
 
 
 def _run_kill_restart(board, home, estop: bool):

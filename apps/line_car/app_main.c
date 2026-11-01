@@ -30,7 +30,7 @@ static line_obs_t s_obs;
 static bb_t s_bb;
 static bb_rec_t s_bb_ring[16];
 
-static void on_cmd(uint8_t c, uint8_t n) { (void)n; if (c == 'L') line_obs_reset(&s_obs); }
+static bool on_cmd(uint8_t c, uint8_t n) { (void)n; if (c == 'L') { line_obs_reset(&s_obs); return true; } return false; }
 
 static void apply_params(void) { s_dirty = true; }
 

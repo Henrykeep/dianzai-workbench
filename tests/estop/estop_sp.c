@@ -18,10 +18,37 @@ void host_sim_app_setup(void);
 static dzframe_parser_t P;
 static const char *T, *F;
 static int phase;            /* 0 急停前，1 锁存中（未满 50 ms），2 锁存中，3 'R' 后 */
-static int latch_bad, clear_bad, u_bad, n_tel;
+static int latch_bad, clear_bad, u_bad, n_tel; static unsigned pre_h = 2166136261u; static int nofuzz;
 static long long t_inj = -1, t_zero = -1;   /* ESTOP 注入时刻；之后第一帧设定值全 0（且此后不再非 0）的遥测时刻 */
 static void sendf(dzframe_t *f) { uint8_t b[DZFRAME_MAX_FRAME]; size_t n = dzframe_encode(b, sizeof b, f); host_sim_uart_inject_rx(RES_UART_LINK, b, (uint16_t)n); }
 static void send_sp(float v) { dzframe_t f = {0}; f.kind = DZF_DATA; f.id = 1; dzframe_put_f32(&f, v); dzframe_put_f32(&f, 0.0f); sendf(&f); }
+static unsigned rng = 1u;
+static void send_cmd(uint8_t c) { if (nofuzz && c != 'R') return; dzframe_t f = {0}; f.kind = DZF_DATA; f.id = DZCTL_ID_CMD; f.payload[0] = c; f.len = 1; sendf(&f); }
+/* 不认识的单字节命令：只取非字母字节（字母留给应用自定义命令），随机挑 */
+static uint8_t junk(void) { for (;;) { rng = rng * 1103515245u + 12345u; uint8_t c = (uint8_t)(rng >> 16); if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'))) return c; } }
+static void raw(const uint8_t *b, size_t n) { host_sim_uart_inject_rx(RES_UART_LINK, b, (uint16_t)n); }
+static unsigned rnd(void) { rng = rng * 1103515245u + 12345u; return rng >> 16; }
+/* 多字节乱流：坏 CRC 帧、CRC 对但 id 未知的 DATA 帧、错波特率重采样的 'R' 帧、裸 'R' 字节 */
+static void fuzz(void)
+{
+    if (nofuzz) return;
+    uint8_t b[DZFRAME_MAX_FRAME * 3]; size_t n; dzframe_t f = {0};
+    switch (rnd() % 4u) {
+    case 0: f.kind = DZF_DATA; f.id = DZCTL_ID_CMD; f.payload[0] = 'R'; f.len = 1;
+            n = dzframe_encode(b, sizeof b, &f); b[n - 1 - rnd() % 2u] ^= (uint8_t)(1u + rnd() % 255u); raw(b, n); break;   /* 坏 CRC 的 'R' */
+    case 1: f.kind = DZF_DATA; do f.id = (uint8_t)rnd(); while (f.id == 1u || f.id >= 0x70u);   /* 0x70 以上留给 dzctl/实验，id=1 是设定值 */
+            f.len = (uint8_t)(rnd() % 8u); for (unsigned i = 0; i < f.len; i++) f.payload[i] = (uint8_t)rnd();
+            n = dzframe_encode(b, sizeof b, &f); raw(b, n); break;
+    case 2: { uint8_t src[DZFRAME_MAX_FRAME], bits[DZFRAME_MAX_FRAME * 10]; size_t nb = 0, m;   /* 'R' 帧按 8N1 位流、换一个波特率（比值 3/2 或 2/3 ）重采样 */
+            f.kind = DZF_DATA; f.id = DZCTL_ID_CMD; f.payload[0] = 'R'; f.len = 1; m = dzframe_encode(src, sizeof src, &f);
+            for (size_t i = 0; i < m; i++) { bits[nb++] = 0; for (int j = 0; j < 8; j++) bits[nb++] = (src[i] >> j) & 1u; bits[nb++] = 1; }
+            unsigned num = (rnd() & 1u) ? 3u : 2u, den = num == 3u ? 2u : 3u; size_t pos = 0; n = 0;
+            while (n < sizeof b) { size_t s = pos * num / den; while (s < nb && bits[s]) { pos++; s = pos * num / den; } if (s + 9u * num / den >= nb) break;
+                uint8_t c = 0; for (int j = 0; j < 8; j++) c |= (uint8_t)(bits[(pos + 1u + (size_t)j) * num / den] << j); b[n++] = c; pos += 10; }
+            raw(b, n); break; }
+    default: b[0] = 'R'; raw(b, 1); break;                     /* 裸字节，没有帧 */
+    }
+}
 static void hb(void) { dzframe_t h = {0}; h.kind = DZF_HEARTBEAT; sendf(&h); }
 static void check(const dzframe_t *f)
 {
@@ -35,6 +62,7 @@ static void check(const dzframe_t *f)
         default: if (o + 4 > f->len) return; v = dzframe_get_f32(f, o); o += 4;
         }
         if (F[i] == 's' && v != 0.0f) nz = 1;
+        if (phase == 0 && F[i] == 's') { uint32_t x; memcpy(&x, &v, 4); pre_h = (pre_h ^ x) * 16777619u; }   /* 急停前设定值指纹：与不加乱流的同相位对拍 */
         if (phase >= 2 && F[i] == 's' && v != 0.0f) { if (phase == 2) latch_bad++; else clear_bad++; }
         if (phase >= 2 && F[i] == 'u' && v != 0.0f) u_bad++;
     }
@@ -51,7 +79,7 @@ static void tick_ms(void) { app_loop(); drain(); for (int s = 0; s < 10; s++) { 
 int main(int argc, char **argv)
 {
     if (argc < 5) return 2;
-    int k = atoi(argv[1]), m = k % 4; T = argv[2]; F = argv[3]; float V = (float)atof(argv[4]);
+    int k = atoi(argv[1]), m = k % 4; rng = 0x9E3779B9u ^ (unsigned)k; T = argv[2]; F = argv[3]; float V = (float)atof(argv[4]); nofuzz = getenv("ESTOP_NOFUZZ") != NULL;
     host_sim_reset(); host_sim_set_reset_cause(PAL_RESET_POWER_ON); host_sim_app_setup();
     if (pal_init() != DZ_OK || app_init() != DZ_OK) { fprintf(stderr, "init fail\n"); return 2; }
     long long es_ms = 1000 + (k * 37) % 700, r_ms = es_ms + 200 + (k * 53) % 500;
@@ -66,6 +94,10 @@ int main(int argc, char **argv)
             dzframe_t c = {0}; c.kind = DZF_DATA; c.id = DZCTL_ID_CMD; c.payload[0] = 'R'; c.len = 1; sendf(&c);
             phase = 3;
         }
+        /* 锁存中和 'R' 后：随机不认识的命令 + 'I' 握手请求，都不能解除输出保持 */
+        if (ms > 150 && ms % 7 == 0) send_cmd(junk());
+        if (ms > 150 && ms % 11 == 0) fuzz();
+        if (ms > es_ms && ms % 97 == 0) send_cmd('I');
         tick_ms();
     }
     /* 不动：再跑 1 s，PWM（蜂鸣器除外）必须和 'R' 后 1 s 末一致，且上面的遥测已查过 */
@@ -73,6 +105,9 @@ int main(int argc, char **argv)
     for (unsigned i = 0; i < BOARD_PWM_COUNT; i++) snap[i] = host_sim_pwm_duty((pal_id_t)i);
     for (int ms = 0; ms < 1000; ms++) {
         if (ms % 50 == 0) hb();
+        if (ms % 7 == 0) send_cmd(junk());
+        if (ms % 11 == 0) fuzz();
+        if (ms % 97 == 0) send_cmd('I');
         tick_ms();
         for (unsigned i = 0; i < BOARD_PWM_COUNT; i++) {
 #ifdef RES_PWM_BUZZER_PWM
@@ -81,6 +116,6 @@ int main(int argc, char **argv)
             if (host_sim_pwm_duty((pal_id_t)i) != snap[i]) pwm_bad++;
         }
     }
-    printf("%d %d %d %d %d %d %lld\n", k, latch_bad, clear_bad, u_bad, pwm_bad, n_tel, t_zero < 0 ? -1 : t_zero - t_inj);
+    printf("%d %d %d %d %d %d %lld %u\n", k, latch_bad, clear_bad, u_bad, pwm_bad, n_tel, t_zero < 0 ? -1 : t_zero - t_inj, pre_h);
     return 0;
 }

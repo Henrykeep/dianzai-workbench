@@ -10,6 +10,8 @@ EXIT_PORT_IN_USE = 3        # 外壳（Tauri）看到这个退出码就不再重
 
 
 def main() -> None:
+    from . import stdio_utf8
+    stdio_utf8.ensure()                                 # #146：所有子命令（selfcheck-data / --doctor / 服务日志）都写 UTF-8
     if sys.argv[1:2] == ["selfcheck-data"]:            # 随包数据文件自检（安装目录里跑；缺文件退出 1）
         from . import datafiles
         sys.exit(datafiles.main())

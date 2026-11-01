@@ -137,7 +137,7 @@ class AgentService:
             "score_items": lambda path=None: steptools.score_items(self, path),
             "project_chain": self.project_chain,
             "score_run": self.score_run, "score_save": self.score_save, "score_writeback": self.score_writeback,
-            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run, "confirm_roles": self.confirm_roles,
+            "tune_autopilot": self._tune_autopilot_agent, "autotune": self.autotune_run, "confirm_roles": lambda roles, app_dir=None, **_: self.confirm_roles(roles, app_dir),   # #145 Agent 只能拿 diff，写入要人点确认卡（op confirm_roles confirmed=true）
             "iterate_start": self._iterate_start_agent, "iterate_cancel": self.iterate_cancel,
             "polarity_check": lambda **m: pageops.polarity_check(self.s, m),
             "fft": lambda **m: pageops.fft(self.s, m), "wave_measure": lambda **m: pageops.wave_measure(self.s, m),
@@ -704,10 +704,13 @@ class AgentService:
         ss = self._ss_band(best.get("metrics") or {})
         v, vzh = self._verdict(ss, res, best.get("metrics"))
         res["verdict"], res["verdict_zh"], res["ss_err"] = v, vzh, ss
-        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "params_hash": best["params_hash"],
+        # #147：卡上的 params / metrics 都取自同一个 best（同一轮对象），round_id = 该轮 iter，前端用它对齐显示
+        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+                                             "metrics": best.get("metrics"), "params_hash": best["params_hash"],
                                              "ss_err": ss, "verdict": v, "verdict_zh": vzh,
                                              "compare": self._compare(res.get("round0"), best)}, lambda: None)
-        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "ss_err": ss,
+        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+                       "metrics": best.get("metrics"), "params_hash": best["params_hash"], "ss_err": ss,
                        "verdict": v, "verdict_zh": vzh, "pass_basis": ss.get("pass_basis"), "compare": self._compare(res.get("round0"), best)}
         return r.get("action_id")
 
@@ -1051,26 +1054,86 @@ class AgentService:
         link = {"sample_s": dt, "u_max": u_max, "sensor_range": st.get("sensor_range"), "range": st.get("range"), "max_step": st.get("max_step")}
         link["ch"] = int(ch)
         link["unit"] = next((f.get("unit") or None for f in sch.fields if f["name"] == st.get("y")), None)   # #140：被阶跃信号声明的单位，没写 = null
+        # #140：单位在声明里的出处（app.yaml 键路径），界面“改单位”直接指过去；没声明单位 = null
+        link["unit_decl"] = f"link.telemetry.fields[name={st.get('y')}].unit" if link["unit"] else None
         return at.autotune(SessionBoard(self.s, ch, dt), {"params": decl}, link, spec_text, int(seed))
 
-    def confirm_roles(self, roles: dict, app_dir: str | None = None) -> dict:
-        """人确认过的参数角色写进 app.yaml link.params.<名>.role（只改这几行，不重排文件）。"""
+    TUNING_ROLES = ("P", "I", "D", "FF")
+
+    def confirm_roles(self, roles: dict, app_dir: str | None = None, confirmed: bool = False, change_id: int | None = None) -> dict:
+        """#145 两步：① 不带 confirmed → 只算 diff，返回 {needs_confirm, change_id, target, diff}，**不写任何文件**；
+        ② 界面确认卡点了 → confirmed=true + change_id，才写。只写工程目录（$DZBENCH_HOME/projects/<应用>），
+        仓库 apps/、examples/ 一律不写（仓库里的示例先整目录复制成工程副本再改副本）。
+        带 protect（限幅/断线停车/堵转…）的参数不能给调参角色 P/I/D/FF。"""
+        if confirmed:
+            return self._apply_roles(change_id)
         ROLES = link_roles()                                   # #136 同一份枚举（gen_link 校验什么就收什么）
         bad = {n: r for n, r in (roles or {}).items() if r not in ROLES}
         if not roles or bad:
             raise GatewayError("bad_role", f"确认参数角色失败：角色只能是 {'/'.join(ROLES)}，收到 {bad or '空的角色表'}；没有写 app.yaml",
                                "每个参数选一个角色后再点“确认角色”", {"fix_action": "confirm_roles"})
         sch = getattr(getattr(self, "s", None), "schema", None)
+        prot = {}
         if sch and sch.params:
             unk = sorted(set(roles) - {p["name"] for p in sch.params})
             if unk:
                 raise GatewayError("bad_param", f"确认参数角色失败：板子握手参数表里没有参数 {'、'.join(unk)}；没有写 app.yaml",
                                    "用 list_params 看参数名，改对后再确认", {"fix_action": "confirm_roles"})
+            prot = {p["name"]: p.get("protect") for p in sch.params if p.get("protect")}
+        src, target, from_repo = self._roles_target(app_dir)
+        text = src.read_text(encoding="utf-8")
+        for ln in text.splitlines():                           # app.yaml 里写着 protect 的也算（握手可能没带 protect）
+            m = re.match(r"^\s*-\s*\{\s*name:\s*([\w.]+)\s*,(.*)\}\s*$", ln)
+            if m and re.search(r"\bprotect:\s*([^,}]+)", m.group(2)):
+                prot.setdefault(m.group(1), re.search(r"\bprotect:\s*([^,}]+)", m.group(2)).group(1).strip())
+        bad_p = {n: r for n, r in roles.items() if r in self.TUNING_ROLES and n in prot}
+        if bad_p:
+            n0 = sorted(bad_p)[0]
+            raise GatewayError("protect_param_role",
+                               f"确认参数角色失败：{'、'.join(sorted(bad_p))} 是保护参数（{prot[n0]}），不能当调参角色 {'/'.join(self.TUNING_ROLES)}；没有写 app.yaml",
+                               "保护参数只能标 LIM 或 other；调参角色给 PID / 前馈增益",
+                               {"fix_action": "confirm_roles", "reason": "protect_param_role", "params": sorted(bad_p),
+                                "message_zh": f"{'、'.join(sorted(bad_p))} 是保护参数（{prot[n0]}），不能当调参角色"})
+        if sch and sch.params:
             cur = {p["name"]: p.get("role") for p in sch.params}
             if all(cur.get(n) == r for n, r in roles.items()):      # 与握手里现有角色相同：幂等，不改文件（重复点击无害）
                 return {"ok": True, "roles": roles, "unchanged": True, "message_zh": "角色与板上握手一致，无需改动"}
-        y = self._app_yaml(app_dir)
-        lines = y.read_text(encoding="utf-8").splitlines(keepends=True)
+        new = self._roles_rewrite(text, roles)
+        if new == text:
+            return {"ok": True, "roles": roles, "unchanged": True, "message_zh": "角色与 app.yaml 一致，无需改动"}
+        import difflib
+        diff = "".join(difflib.unified_diff(text.splitlines(True), new.splitlines(True), f"a/{src}", f"b/{target}"))
+        if not hasattr(self, "_role_changes"):
+            self._role_changes, self._role_ids = {}, itertools.count(1)
+        cid = next(self._role_ids)
+        self._role_changes[cid] = {"src": src, "target": target, "old": text, "new": new, "roles": dict(roles), "copy_dir": src.parent if from_repo else None}
+        return {"ok": True, "needs_confirm": True, "change_id": cid, "target": str(target), "diff": diff, "roles": roles,
+                "copy_from": str(src.parent) if from_repo else None,
+                "message_zh": ("确认后写入工程目录 " + str(target) + ("（先把仓库示例复制成工程副本，仓库文件不改）" if from_repo else "")),
+                "fix_action": "confirm_roles"}
+
+    def _apply_roles(self, change_id) -> dict:
+        ch = getattr(self, "_role_changes", {}).pop(int(change_id) if change_id is not None else -1, None)
+        if not ch:
+            raise GatewayError("no_change", "这次角色改动不存在或已处理，请重新点“确认角色”", "", {"fix_action": "confirm_roles"})
+        from .. import paths
+        tgt = ch["target"]
+        if not paths.is_writable(tgt) or not str(tgt.resolve()).startswith(str(paths.projects_dir().resolve())):
+            raise GatewayError("not_project_dir", f"只能写工程目录（{paths.projects_dir()}），不写仓库/示例：{tgt}", "", {"fix_action": "confirm_roles"})
+        if ch["copy_dir"] is not None and not tgt.parent.exists():
+            import shutil
+            tgt.parent.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(ch["copy_dir"], tgt.parent, symlinks=True, ignore=shutil.ignore_patterns("build", "__pycache__"))
+        cur = tgt.read_text(encoding="utf-8") if tgt.exists() else None
+        if cur != ch["old"]:
+            raise GatewayError("stale", f"{tgt} 在提议之后被改过，请重新点“确认角色”", "", {"fix_action": "confirm_roles"})
+        tgt.write_text(ch["new"], encoding="utf-8")
+        return {"ok": True, "written": True, "app_yaml": str(tgt), "roles": ch["roles"],
+                "message_zh": "角色已写入工程目录的 app.yaml；重新生成握手表（重编 / 重连仿真板）后生效", "fix_action": "rebuild"}
+
+    @staticmethod
+    def _roles_rewrite(text: str, roles: dict) -> str:
+        lines = text.splitlines(keepends=True)
         done = set()
         for i, ln in enumerate(lines):
             m = re.match(r"^(\s*)-\s*\{\s*name:\s*([\w.]+)\s*,(.*)\}\s*$", ln)
@@ -1093,21 +1156,30 @@ class AgentService:
         if left:
             raise GatewayError("bad_param", f"确认参数角色失败：app.yaml link.params 里没找到参数 {'、'.join(left)}；没有写 app.yaml",
                                "用 list_params 看参数名，改对后再确认", {"fix_action": "confirm_roles"})
-        y.write_text("".join(lines), encoding="utf-8")
-        return {"ok": True, "app_yaml": str(y), "roles": roles,
-                "message_zh": "角色已写回 app.yaml；重新生成握手表（重编 / 重连仿真板）后生效", "fix_action": "rebuild"}
+        return "".join(lines)
 
-    def _app_yaml(self, app_dir: str | None):
+    def _roles_target(self, app_dir: str | None):
+        """→ (读哪份 app.yaml, 写到哪, 是否来自仓库/示例)。写入目标永远在 projects_dir 下。"""
         from .. import paths
         from ..ports import sim_root
+        proj = paths.projects_dir()
         if app_dir:
-            d = pathlib.Path(app_dir)
-        else:
-            name = (self.s.port or "").removeprefix("sim:").split("+")[0]
-            d = next((x / name for x in (paths.projects_dir(), sim_root() / "apps", sim_root() / "examples") if name and (x / name / "app.yaml").exists()), None)
-        if not d or not (d / "app.yaml").exists():
+            d = pathlib.Path(app_dir).expanduser().resolve()
+            try:
+                d.relative_to(proj.expanduser().resolve())
+            except ValueError:
+                raise GatewayError("not_project_dir", f"角色只能写进工程目录（{proj}），不写仓库或示例：{d}",
+                                   "在工程列表里打开（或迁移）这个项目后再确认", {"fix_action": "confirm_roles"}) from None
+            if not (d / "app.yaml").exists():
+                raise GatewayError("no_app", "找不到这个应用的 app.yaml", "传 app_dir（工程目录）", {"fix_action": "confirm_roles"})
+            return d / "app.yaml", d / "app.yaml", False
+        name = (self.s.port or "").removeprefix("sim:").split("+")[0]
+        if name and (proj / name / "app.yaml").exists():
+            return proj / name / "app.yaml", proj / name / "app.yaml", False
+        src = next((x / name / "app.yaml" for x in (sim_root() / "apps", sim_root() / "examples") if name and (x / name / "app.yaml").exists()), None)
+        if src is None:
             raise GatewayError("no_app", "找不到这个应用的 app.yaml", "传 app_dir（工程目录）", {"fix_action": "confirm_roles"})
-        return d / "app.yaml"
+        return src, proj / name / "app.yaml", True
 
     def tune_autopilot(self, rounds: int = 6) -> dict:
         """仅仿真：提议→采纳→阶跃→护栏判，直到护栏说 done/stop 或轮数用完；最后回到最好的一轮。实机每次写都要人点，不走这里。"""
@@ -1418,6 +1490,14 @@ class AgentService:
         cache = getattr(self, "_step_timing", None) or {}
         return dict(cache.get(str(getattr(self.s, "port", "") or "")) or {})
 
+    def _probe_estop(self) -> bool:
+        """探测被急停中止：本地已锁存，或板子发来的中止结果原因不是“上位机停止”（固件急停原因先于本地锁存到达）。"""
+        if getattr(self.s, "tx_locked", False):
+            return True
+        from ..stepproto import dzstep
+        r = getattr(self, "_probe_abort", None)
+        return bool(r) and r.get("abort_cause") != dzstep.ABORT_HOST_STOP
+
     def _probe_wait(self, timeout: float) -> bool:
         """等探测阶跃结果；期间急停（tx_locked）→ 立刻 step_stop 并返回 False。"""
         t_end = time.monotonic() + timeout
@@ -1428,8 +1508,11 @@ class AgentService:
                 except Exception:  # noqa: BLE001  急停锁可能拒发，固件急停自己会停
                     pass
                 return False
-            if self.s.step_wait(0, 0.1) is not None:
-                return True
+            r = self.s.step_wait(0, 0.1)
+            if r is not None:
+                # 急停时固件自己中止阶跃并发 aborted 的结果（常比本地 tx_locked 先到）：中止的结果不能当探测数据用
+                self._probe_abort = r if r.get("aborted") else None
+                return not r.get("aborted") and not getattr(self.s, "tx_locked", False)
         return not getattr(self.s, "tx_locked", False)
 
     def measure_step_timing(self) -> dict:
@@ -1472,7 +1555,9 @@ class AgentService:
                     self.s.step_start(0, 0, amp, dur)
                     if not self._probe_wait(self.PROBE_S + 3):
                         cache[port] = {}
-                        cache[port + "#why"] = {"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                        cache[port + "#why"] = ({"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                                                if self._probe_estop() else
+                                                {"message_zh": "探测阶跃被板子中止，没有用这次数据", "fix_action": "measure_step_timing"})
                         return {}
                     w = [x for x in w0 if c.get("y") in x[1]] + [x for x in self.s.window(self.PROBE_S + 2) if x[0] > tb and c.get("y") in x[1]]
                     us = [float(x[1][c["u"]]) for x in w if c.get("u") in x[1]]
@@ -1503,7 +1588,9 @@ class AgentService:
                 while time.monotonic() < t_end:
                     if getattr(self.s, "tx_locked", False):              # 急停：立刻停止探测
                         cache[port] = {}
-                        cache[port + "#why"] = {"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                        cache[port + "#why"] = ({"message_zh": "探测阶跃期间急停，已中止探测，没有用这次数据", "fix_action": "estop_clear"}
+                                                if self._probe_estop() else
+                                                {"message_zh": "探测阶跃被板子中止，没有用这次数据", "fix_action": "measure_step_timing"})
                         return {}
                     self.s.send_data(int(st["id"]), struct.pack(st["fmt"], *pr))
                     time.sleep(0.1)

@@ -12,6 +12,7 @@ env:
 jobs:
   check-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 45   # 实测整 job 28–39 分钟（make test 23–34）；卡死时快速失败，单测另有 pytest-timeout 120 s（tests/conftest.py）
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
