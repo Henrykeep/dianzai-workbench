@@ -22,6 +22,13 @@ export const uidChipHtml = (b: BoardId | null, esc: (s: string) => string) =>
   !b ? "" : b.uid ? `<span class="uid-chip mono" title="板子身份 ${esc(b.uid)}">板 ${esc(b.short)}</span>` : `<span class="uid-chip warn-t" data-uid-notice>${esc(b.notice)}</span>`;
 // 结构冲突：返回 {msg, fix} 或 null（已解决）
 export type Conflict = { msg: string; fix: string | null; files: string[]; hash: string | null; uid: string | null };
+// 两份文件名常常都是 link_schema.json：同名时往上带目录，直到能分开（最多 3 级）
+export function distinctName(f: string, all: string[]): string {
+  const seg = (p: string) => p.split(/[\\/]/).filter(Boolean);
+  const me = seg(f);
+  for (let n = 1; n <= 3; n++) { const t = me.slice(-n).join("/"); if (all.filter(o => seg(o).slice(-n).join("/") === t).length <= 1) return n > 1 ? "…/" + t : t; }
+  return "…/" + me.slice(-3).join("/");
+}
 export function conflictOf(x: any): Conflict | null {
   if (!x || typeof x !== "object" || x[SC.resolved] === true) return null;
   const m = typeof x[SC.msg] === "string" && x[SC.msg].trim() ? x[SC.msg] : SCHEMA_CONFLICT_ZH.fallback;
@@ -32,11 +39,10 @@ export function conflictOf(x: any): Conflict | null {
 }
 export const fromHello = (h: any) => h && SC.key in h ? { has: true, c: conflictOf(h[SC.key]) } : { has: false, c: null };
 export const fromBlockers = (bs: any[] | null | undefined): Conflict | null => conflictOf((bs ?? []).find(b => b?.[SC.code] === SC.key || b?.[SC.codeAlt] === SC.key || b?.[SC.codeAlt2] === SC.key));
-const base = (p: string) => p.split(/[\\/]/).pop() || p;
 export const isClearFix = (c: Conflict | null) => c?.fix === SCHEMA_CLEAR_F.action;
 // 横幅：标题 + 原因 + 冲突的两个文件（显示文件名，悬停看完整路径）+ 修复按钮；confirm=true 时换成确认卡
 export function conflictBannerHtml(c: Conflict, fix: { kind: string; label: string; note?: string } | null, esc: (s: string) => string, st: "idle" | "confirm" | "busy" | "fail" = "idle") {
-  const files = c.files.length ? ` <span class="sconf-files">${esc(Z.files)}：${c.files.map(f => `<code title="${esc(f)}">${esc(base(f))}</code>`).join(" ↔ ")}</span>` : "";
+  const files = c.files.length ? ` <span class="sconf-files">${esc(Z.files)}：${c.files.map(f => `<code title="${esc(f)}">${esc(distinctName(f, c.files))}</code>`).join(" ↔ ")}</span>` : "";
   let btn = "";
   if (isClearFix(c)) btn = st === "confirm" ? `<span class="sconf-confirm" data-sconf-confirm><span>${esc(Z.confirm)}</span> <button class="btn sm pri" type="button" data-sconf-ok>${esc(Z.ok)}</button><button class="btn sm" type="button" data-sconf-cancel>${esc(Z.cancel)}</button></span>`
     : st === "busy" ? `<span class="hint">${esc(Z.busy)}</span>`

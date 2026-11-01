@@ -90,7 +90,7 @@ export const MC_F = {
   verdict: "verdict", verdictZh: "verdict_zh", basis: "pass_basis", source: "source", evidence: "evidence",
   tuning: "tuning", calib: "calibration", coeffs: "coeffs", signal: "signal_source",
   how: "method", manualSteps: "manual_steps", procedure: "procedure", entry: "manual_entry", eValue: "value", eBy: "by", eAt: "at", srcNote: "source_note",
-  ampReduced: "amp_reduced", ampSpec: "amp_spec", ampTested: "amp_tested", ampUnit: "amp_unit", warning: "warning_zh", partial: "partial",   // #129 降幅测试
+  ampReduced: "amp_reduced", ampSpec: "amp_spec", ampTested: "amp_tested", ampUnit: "amp_unit", ampUnitDecl: "amp_unit_decl" /* 可选：后端给出单位该写在哪条声明 */, warning: "warning_zh", partial: "partial",   // #129 降幅测试
   model: "model",   // 每项 model:{estimate, basis}，后端从 app.yaml plant 抄来；子字段名同 PLANT_F
 } as const;
 // 指标卡导出：CSV / xlsx 由后端生成，前端只调这个 op（op 名未定稿，改名只改这里）
@@ -178,7 +178,7 @@ export const PORT_DIR_F = ["app_dir"] as const;
 export const pickStr = (o: any, keys: readonly string[]): string => { for (const k of keys) { const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); } return ""; };
 
 // #101 r9f：台账一轮（iterate.round 事件 / 阶跃实验收尾）——暂定字段名，后端定稿改这里
-export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", kind: "kind", manual: "manual_step", diverged: "diverged", sat: "sensor_sat", aborted: "aborted", status: "status", why: "reason_zh" } as const;
+export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", roundId: "round_id" /* #147 后端可能加：一轮的唯一号，结果卡 / 采用回包都带 */, kind: "kind", manual: "manual_step", diverged: "diverged", sat: "sensor_sat", aborted: "aborted", status: "status", why: "reason_zh" } as const;
 // #131 结果卡停止原因：无效轮数用后端 invalid_streak（暂定名），没有就数台账；发散只认 diverged / sensor_sat / 后端 reason；中止带后端原因
 export const STOP_F = { invalidN: "invalid_streak", diverged: "diverged", sat: "sensor_sat", why: ["reason_zh", "message_zh"], abortCodes: ["aborted", "stopped", "abort"], invalidCodes: ["invalid", "invalid_streak"], divCodes: ["diverged", "unstable"] } as const;
 export const ABORT_ZH = "中止", NO_ROUND_ZH = "没有可用的一轮";
@@ -264,3 +264,14 @@ export const SCHEMA_CONFLICT_F = { key: "schema_conflict", code: "reason", codeA
 // 冲突的修复：fix_action=clear_schema_cache → 确认卡 → op clear_schema_cache {hash} → {ok, removed:[path]} → 自动重新 hello
 export const SCHEMA_CLEAR_F = { action: "clear_schema_cache", op: "clear_schema_cache", hash: "hash", ok: "ok", removed: "removed" } as const;
 export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理", files: "冲突的两个文件", clear: "清除旧缓存并重新握手", confirm: "将清除本机缓存的旧结构，然后重新与本地服务握手；工程文件和板上参数不受影响。", ok: "确认清除", cancel: "取消", busy: "正在清除并重新握手…", fail: "清除失败", removed: "已清除 N 个旧缓存文件" } as const;
+
+// #148 amp_unit = null：数值照显示，后面挂「（单位未声明）」链接到项目页对应声明（复用 data-decl-key 高亮）
+export const UNIT_UNDECL_ZH = "（单位未声明）";
+export const AMP_UNIT_DECL_KEY = "link.step.unit";   // 后端没给 amp_unit_decl 时的默认声明位置（events.md：link.step 的 y 的单位）
+export function ampLineHtml(x: any, esc: (s: string) => string): string {
+  const t = ampLine(x); if (!t) return "";
+  const own = (a: any) => a && typeof a === "object" && str(a[MC_F.unit]);
+  if (str(x?.[MC_F.ampUnit]) || own(x?.[MC_F.ampSpec]) || own(x?.[MC_F.ampTested])) return esc(t);
+  const key = str(x?.[MC_F.ampUnitDecl]) || AMP_UNIT_DECL_KEY;
+  return `${esc(t)}<a href="#" class="unit-undecl" data-decl-unit="${esc(key)}" title="到项目页声明单位">${esc(UNIT_UNDECL_ZH)}</a>`;
+}
