@@ -376,20 +376,6 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
 }
 
 /* 心跳里的板 ID：仿真板用环境变量 DZ_SIM_UID（测试里模拟“两块同型号板”），没设 = 0 未知 */
-/* 换板指纹：DZ_SIM_UID 字符串的字节（测试用它模拟两块板）；未设时固定 "dz-host-sim"，可复现 */
-dz_err_t pal_read_uid(uint8_t *buf, uint8_t max, uint8_t *len)
-{
-    if (!buf || !len) return DZ_EINVAL;
-    const char *e = getenv("DZ_SIM_UID");
-    if (!e || !*e) e = "dz-host-sim";
-    size_t n = strlen(e);
-    if (n > max) n = max;
-    memcpy(buf, e, n);
-    *len = (uint8_t)n;
-    return DZ_OK;
-}
-uint64_t dzctl_board_uid64(void);
-uint64_t dzctl_board_uid64(void) { return pal_uid64(); }
 uint32_t dzctl_board_uid(void);
 uint32_t dzctl_board_uid(void) { const char *e = getenv("DZ_SIM_UID"); return e ? (uint32_t)strtoul(e, NULL, 0) : 0u; }
 

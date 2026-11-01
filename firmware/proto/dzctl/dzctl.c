@@ -88,8 +88,6 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     (void)dzframe_put_u32(out, s_st_mask);                      /* 0.11.0：自检失败项、自检时刻、RAM 参数指纹（len 40） */
     (void)dzframe_put_u32(out, s_st_t);
     (void)dzframe_put_u32(out, s_par_h);
-    {   uint64_t u = dzctl_board_uid64();                        /* 0.16.0：换板指纹 u64（len 48） */
-        (void)dzframe_put_u32(out, (uint32_t)u); (void)dzframe_put_u32(out, (uint32_t)(u >> 32)); }
 }
 
 void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms) { s_st_mask = fail_mask; s_st_t = t_ms ? t_ms : 1u; }
@@ -178,7 +176,6 @@ uint32_t dzctl_status_word(void) { return s_status; }
 DZ_WEAK uint32_t dzctl_fw_rev(void) { return (uint32_t)(DZ_FW_REV); }
 
 DZ_WEAK uint32_t dzctl_board_uid(void) { return 0u; }
-DZ_WEAK uint64_t dzctl_board_uid64(void) { return 0u; }
 
 void dzctl_wd_init(dzctl_wd_t *w, uint32_t timeout_ms) { w->last_ms = 0u; w->timeout_ms = timeout_ms; w->armed = false; }
 
@@ -210,7 +207,7 @@ int dzctl_selftest(void)
     fail += dzctl_set(&t, 3, 1.0f, &v) != DZCTL_BAD_ID;
     memset(&in, 0, sizeof in); in.kind = DZF_PARAM_SET; in.id = 0;
     dzctl_heartbeat(&t, 1u, &ack);
-    fail += ack.kind != DZF_HEARTBEAT || ack.len != 48u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
+    fail += ack.kind != DZF_HEARTBEAT || ack.len != 40u || dzframe_get_u32(&ack, 0) != 0x1234u || dzframe_get_u32(&ack, 8) != dzctl_fw_rev();
     fail += !dzctl_handle(&t, &in, &ack) || ack.kind != DZF_PARAM_ACK || dzframe_get_u8(&ack, 0) != DZCTL_OK
             || dzframe_get_f32(&ack, 1) != 1.0f;
     {   /* 黑匣子帧 */

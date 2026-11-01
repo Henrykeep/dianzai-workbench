@@ -41,7 +41,7 @@ typedef uint8_t pal_id_t;
 #define PAL_ID_NONE ((pal_id_t)0xFFu)
 
 /** 接口版本，与 firmware/pal/VERSION 一致（tools/check_deps.py 核对）。 */
-#define PAL_VERSION "1.9.0"
+#define PAL_VERSION "1.8.0"
 
 /** PWM 占空比满量程：10000 表示 100.00%。 */
 #define PAL_DUTY_MAX 10000u
@@ -66,32 +66,13 @@ dz_err_t pal_init(void);
 /** 板卡名（与 board.yaml 的 name 一致），用于上电自报。 */
 const char *pal_board_name(void);
 
-/**
- * 读 MCU 出厂唯一 ID 原始字节（换板指纹用；运行时值，不进 schema 哈希）。@since 1.9.0
- * STM32：UID_BASE 96 位（12 字节）；MSPM0：FACTORYREGION DEVICEID+TRACEID（8 字节）；
- * RP2350：pico_get_unique_board_id()（8 字节）；host-sim：环境变量 DZ_SIM_UID 的字节（未设时固定 "dz-host-sim"）。
- * @param buf 输出缓冲；@param max 缓冲字节数（≥16 足够所有芯片族）；@param len 实际字节数
- * @return DZ_OK；DZ_ENOTSUP 本移植层读不到（握手报 board_uid64=0 = 未知）；DZ_EINVAL 空指针/缓冲太小
- */
-dz_err_t pal_read_uid(uint8_t *buf, uint8_t max, uint8_t *len);
-
-/** pal_read_uid() 的 64 位 FNV-1a 指纹；读不到返回 0（= 未知），哈希恰为 0 时给 1。@since 1.9.0 */
-static inline uint64_t pal_uid64(void)
-{
-    uint8_t b[16], n = 0;
-    if (pal_read_uid(b, (uint8_t)sizeof b, &n) != DZ_OK || n == 0u) return 0u;
-    uint64_t h = 0xCBF29CE484222325ull;
-    for (uint8_t i = 0; i < n; i++) { h ^= b[i]; h *= 0x100000001B3ull; }
-    return h ? h : 1u;
-}
-
 /** 最近一次复位原因。pal_init() 之后调用有效。 */
 pal_reset_cause_t pal_reset_cause(void);
 /** 是不是“程序出了问题”的复位（看门狗/内核锁死）：是的话应用上电应进安全态，等人确认。@since 1.4.0 */
 #define PAL_RESET_IS_FAULT(c) ((c) == PAL_RESET_WATCHDOG || (c) == PAL_RESET_LOCKUP)
 
 /**
- * 掉电存储区（可选，@since 1.9.0）：一块按擦除单位擦、擦后才能写的 flash（片内末页 / 外部 SPI flash / 模拟）。
+ * 掉电存储区（可选，@since 1.5.0）：一块按擦除单位擦、擦后才能写的 flash（片内末页 / 外部 SPI flash / 模拟）。
  * 偏移从 0 起，范围 [0, size)。erase 的 off/n 须按 erase_unit 对齐；write 须写在已擦区域，off/n 按 8 字节对齐。
  * 平台没有（或板子没留区）→ 全部返回 DZ_ENOTSUP，应用照常跑（存储永远不能挡住启动）。
  * 不要在中断里调；erase 可能阻塞几十 ms（片内 flash 擦除时 CPU 取指暂停），只在停车/空闲时调。
