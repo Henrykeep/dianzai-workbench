@@ -95,7 +95,7 @@ jobs:
             app/sidecar/dzbench_entry.py
           mkdir -p app/src-tauri/binaries
           cp dist/dzbench.exe app/src-tauri/binaries/dzbench-x86_64-pc-windows-msvc.exe
-          (cd dist && DZBENCH_REPO= ./dzbench.exe selfcheck-data)   # 随包数据文件（roles.json）在包里，缺就红
+          (cd dist && DZBENCH_REPO= PYTHONUTF8=1 PYTHONIOENCODING=utf-8 ./dzbench.exe selfcheck-data)   # 随包数据文件（roles.json）在包里，缺就红
       - name: 冒烟：打包后的侧车能在本进程里跑 tools/*.py
         shell: bash
         working-directory: app/dz-repo
