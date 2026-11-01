@@ -85,3 +85,19 @@ def test_status_board_ident_only_from_handshake(tmp_path):
     st = s.status()
     assert st["board_uid"] == f"{info['board_uid']:016x}" and st["uid_supported"] is True and st["proto_ver"] == 0x1200
     assert "deadbeef" not in str(st.get("board_uid"))
+
+
+def test_enforce_fw_estop_is_on():
+    import importlib
+    bi = importlib.reload(board_ident)          # 读模块里的真值（reload 去掉 autouse 的 monkeypatch）
+    assert bi.ENFORCE_FW_ESTOP is True
+
+
+def test_pending_handshake_waits_for_info_instead_of_blocking(tmp_path):
+    """解除急停后 'I' 已发、回包未到：写操作先等回包；回 0.18.0 → 不拦（e2e_robust 重启恢复后立刻 send_data 的竞态）。"""
+    import threading
+    s = Session(log_dir=tmp_path) if "log_dir" in Session.__init__.__code__.co_varnames else Session()
+    s.port, s.hb_status = "COM9", 0
+    threading.Timer(0.3, lambda: s._set_estop_safety(_info(2, 0x1200))).start()
+    s._check_actuate()
+    assert s.fw_estop["safe"]

@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import statistics
 import time
+import sys
 
 from . import protocol as P
 
@@ -96,7 +97,12 @@ def cmd_stats(a, transport):
 
 
 def cmd_flash(a, transport):
-    import tkinter as tk
+    try:
+        import tkinter as tk
+    except ImportError:
+        sys.exit("flash 子命令要 tkinter 全屏闪白点，当前 Python 没带 tkinter（安装包自带的嵌入版 Python 不含它）。\n"
+                 "办法：改用 python.org 完整版 Python 3.12 运行本命令（Windows 安装时勾选 tcl/tk），"
+                 "或在 Linux 上安装 python3-tk（如 apt install python3-tk）。")
     root = tk.Tk()
     root.attributes("-fullscreen", True)
     root.configure(bg="black")

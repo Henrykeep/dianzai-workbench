@@ -44,6 +44,11 @@ Var DzOldRemoved
     Rename "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$SMPROGRAMS\芯台.lnk"
     DetailPrint "芯台：开始菜单快捷方式 = 芯台.lnk"
   ${EndIf}
+  ; 自检快捷方式：安装目录根的 xintai-selfcheck.bat（自带 python 跑依赖 / 数据自检，中文结果）
+  ${If} ${FileExists} "$INSTDIR\xintai-selfcheck.bat"
+    CreateShortCut "$SMPROGRAMS\芯台 自检.lnk" "$INSTDIR\xintai-selfcheck.bat" "" "$SYSDIR\cmd.exe" 0
+    DetailPrint "芯台：开始菜单快捷方式 = 芯台 自检.lnk"
+  ${EndIf}
   ${If} $DzOldRemoved = 1
     DetailPrint "芯台：你的工程已保留（%USERPROFILE%\.dzbench）"
     MessageBox MB_OK|MB_ICONINFORMATION "你的工程已保留" /SD IDOK
@@ -52,4 +57,5 @@ Var DzOldRemoved
 
 !macro NSIS_HOOK_PREUNINSTALL
   Delete "$SMPROGRAMS\芯台.lnk"
+  Delete "$SMPROGRAMS\芯台 自检.lnk"
 !macroend
