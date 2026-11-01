@@ -368,7 +368,7 @@ def test_user_flow_2026H_fresh_project_memory_and_best_card(repo, tmp_path, monk
         assert "PDF" not in reply, reply                                          # r9q (f)
         evs = [e["type"] for e in ev if str(e.get("type", "")).startswith("iterate.")]
         assert evs[0] == "iterate.started" and evs.count("iterate.stopped") == 1 and "iterate.round" in evs, evs   # r9q (a)
-        assert out.get("best_card"), out                                        # 有板上阶跃走 iterate，没有（2026H 例题固件）走 tune_autopilot，都出卡
+        assert out.get("best_card"), (out, {k: (svc.iter_result or {}).get(k) for k in ("reason", "message_zh", "best_card_error", "rounds")})                                        # 有板上阶跃走 iterate，没有（2026H 例题固件）走 tune_autopilot，都出卡
         assert [c["tool"] for c in _cards(ev)][-1] == "iterate_apply_best"      # 以“采用最好参数”卡收尾
         bc = _cards(ev)[-1]
         se = bc["args"]["ss_err"]                                                 # 卡上：实测稳态误差 + 题目误差带出处 + 是否在带内

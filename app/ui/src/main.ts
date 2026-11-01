@@ -232,7 +232,7 @@ function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", 
   const fa = errFixAction(er), f = fa ? resolveFix(fa) : null;   // #91 修复按钮只来自 fix_action，不自己编
   const btn = f && f.kind !== "wait" ? `<wa-button size="small" variant="brand" class="fx" data-fx="${esc(fa)}">${esc(f.label)}</wa-button>` : "";
   d.innerHTML = kind === "ok" || kind === "info" ? `<b>${esc(er.message)}</b>` : partsHtml(errParts(er), esc, btn);
-  d.querySelector<HTMLElement>(".fx")?.addEventListener("click", ev => { ev.stopPropagation(); runAction(fa, s => goStepRef(s)); d.remove(); });
+  d.querySelector<HTMLElement>(".fx")?.addEventListener("click", ev => { ev.stopPropagation(); if (fa === "reconnect") void call("reconnect").catch(() => {}); else runAction(fa, s => goStepRef(s)); d.remove(); });
   d.onclick = e => { if (!(e.target as Element).closest("details")) d.remove(); };
   $("toasts").prepend(d);
   setTimeout(() => d.remove(), ms);

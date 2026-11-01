@@ -91,8 +91,12 @@ def _stall_dump(p, home) -> str:
 
 
 def _connected(ui, p, home, t):
-    if until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", t):
-        return True
+    end = time.monotonic() + t
+    try:                                                     # 每次 hello 的等待也受同一个截止时间约束；不回 = 侧车卡住，留双方线程栈
+        if until(lambda: ((ui.call("hello", timeout=max(0.2, end - time.monotonic())).get("data") or {}).get("link") or {}).get("board") == "connected", t):
+            return True
+    except TimeoutError as e:
+        raise AssertionError(f"{t} s 内 hello 没回复（侧车事件循环卡住）" + _stall_dump(p, home)) from e
     raise AssertionError(f"{t} s 内没自动连回：{ui.ok('hello')['link']}" + _stall_dump(p, home))
 
 

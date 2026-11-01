@@ -142,6 +142,14 @@ class Server:
         msg = "自检全部通过" if st.get("pass") else "自检没通过：" + ("；".join(i.get("message_zh") or i.get("key") or "" for i in st.get("failed_items") or []) or "心跳报自检失败（旧固件无逐项明细）")
         return {"source": "heartbeat", "selftest": st, "pass": bool(st.get("pass")), "failed_items": st.get("failed_items") or [], "message_zh": msg}
 
+    def _hello(self) -> dict:
+        s = self.session
+        return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()},
+                "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
+                "schema": s.schema.summary() if s.schema else None, "params": s.params,
+                "snapshots": snapshots.list_all(s.schema.hash) if s.schema else [],
+                "data_tables": _datafiles.tables()}
+
     async def _op(self, m: dict):
         s, op = self.session, m.get("op")
         run = asyncio.get_running_loop().run_in_executor
@@ -154,12 +162,8 @@ class Server:
             except (TypeError, ValueError):
                 raise LinkError("bad_arg", "clear_schema_cache 需要 hash（十六进制字符串或整数）", "") from None
             return await run(None, s.clear_schema_cache, hv)
-        if op == "hello":
-            return {"ports": list_ports(), "tools": TOOLS, "status": s.status() | {"clients": len(self.clients), "agent": self.svc.agent_state()},
-                    "recovered": self.recovered, "link": s.link.last, "project": project_mod.current(),
-                    "schema": s.schema.summary() if s.schema else None, "params": s.params,
-                    "snapshots": snapshots.list_all(s.schema.hash) if s.schema else [],
-                    "data_tables": _datafiles.tables()}
+        if op == "hello":                              # 负载修复：枚举串口 / 拿会话锁 / 读快照目录都放线程池，事件循环永远不被会话锁或磁盘卡住（不再拖住其它 op 和急停广播）
+            return await run(None, self._hello)
         if op == "project.list":                       # 可打开的项目（只读，读题页空状态用）
             return {"projects": await run(None, project_mod.list_projects, self.svc.gw.root), "current": project_mod.current()}
         if op == "project.migrate":                    # 旧版写在仓库 examples/ 的用户工程 → $DZBENCH_HOME/projects/：只复制不删；先 confirmed=false 出清单给界面确认卡，人确认后 confirmed=true
