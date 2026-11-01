@@ -1292,13 +1292,18 @@ class Session:
 
     def _check_actuate(self) -> None:
         """fw_estop_unsafe：驱动执行器的操作（写参数、设定值、阶跃、继电、运行模式、自检、原始/数据发送）前查。
-        读参数、存 flash、烧录不经过这里。host-sim / 回放不受限（仿真里没有真急停电路；现有仿真都是 0.17）。"""
+        读参数、存 flash、烧录不经过这里。host-sim / 回放不受限（仿真里没有真急停电路）。"""
         if not board_ident.ENFORCE_FW_ESTOP:
-            return                               # 见 board_ident.ENFORCE_FW_ESTOP：等 integration 的仿真固件到 0.18.0 再拦
+            return
         if self.port.startswith((SIM_PREFIX, "replay:")) or (self.hb_status is None and self.fw_estop is None):
             return                               # 仿真、回放、还没认出是工作台固件（没心跳）：不在此列
         if self.tx_locked or self.iter_busy():
             return                               # 急停 / 迭代中：让原来更具体的拒绝（estop_clear / iter_busy）先报
+        if self.fw_estop is None and self._info is None:
+            # 'I' 已发（或解除急停后下一帧心跳就发）但回包还没到：最多等一个 'I' 超时，别把身份未定当成旧固件
+            t0 = time.monotonic()
+            while self.fw_estop is None and self._info is None and time.monotonic() - t0 < board_ident.INFO_TIMEOUT_S + 1.0:
+                time.sleep(0.02)
         st = self.fw_estop or board_ident.estop_safety(self._info)
         if not st["safe"]:
             raise LinkError("fw_estop_unsafe", board_ident.ESTOP_UNSAFE_ZH, "到“烧录”步重新烧录 dzctl ≥ " + st["min_version"] + " 的固件",
