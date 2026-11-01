@@ -125,3 +125,24 @@ def test_worse_than_initial_not_reverted_is_hard_fail_rc(tmp_path, monkeypatch):
     import tunegate as TG
     monkeypatch.setattr(TG, "one", lambda s, k: g | {"seed": s, "rejected_writes": 0, "secs": 0.0, "amp_reduced": False})
     assert TG.main(["--seed", "1"]) != 0
+
+
+@pytest.mark.parametrize("draw", range(3))
+def test_paired_compare_both_directions_and_indistinguishable(draw):
+    """随机对象：大 kd→kd=0 成对判 better，反向判 worse；同一参数（差全 0）判 indistinguishable；结果确定。"""
+    plant, m, hi, lo, amp, n = _noisy_kd_case(np.random.default_rng(2000 + draw))
+    H, L = G.noisy_truth(plant, m, hi, amp, n), G.noisy_truth(plant, m, lo, amp, n)
+    assert G.paired_compare(H, L)["result"] == "better"
+    w = G.paired_compare(L, H)
+    assert w["result"] == "worse" and w["mean"] - w["half"] > 0 and w["k"] == G.NOISE_K
+    assert G.paired_compare(H, H)["result"] == "indistinguishable"
+    assert G.paired_compare(L, H) == G.paired_compare(G.noisy_truth(plant, m, lo, amp, n), G.noisy_truth(plant, m, hi, amp, n))
+
+
+def test_paired_compare_band_from_spread():
+    """差的均值为正但离散大（区间含 0）→ indistinguishable（黄）；离散小 → worse（红）。"""
+    base = {"costs": [1.0] * 8}
+    noisy = {"costs": [1.0 + x for x in (0.5, -0.4, 0.3, -0.2, 0.4, -0.3, 0.2, -0.1)]}
+    tight = {"costs": [1.05, 1.06, 1.04, 1.05, 1.05, 1.06, 1.04, 1.05]}
+    assert G.paired_compare(base, noisy)["result"] == "indistinguishable"
+    assert G.paired_compare(base, tight)["result"] == "worse"

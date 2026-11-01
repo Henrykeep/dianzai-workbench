@@ -112,6 +112,10 @@ def main(argv=None) -> int:
     print(f"tunegate：假达标 {len(fake)} 个（硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in fake)}" if fake else "")
           + f"；通过率 {good}/{den}（软指标，未通过只警告）")
     print(f"tunegate：比初值差且没退回 {len(worse)} 个（带噪真值，硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in worse)}" if worse else ""))
+    unc = [r for r in rs if r.get("not_reverted_unconfirmed")]
+    print(f"tunegate：调后与初值分不出好坏又没退回 {len(unc)} 个（黄，只警告，不影响退出码）" + (f"：seed {','.join(str(r['seed']) for r in unc)}" if unc else ""))
+    if unc:
+        print(f"::warning::tunegate not_reverted_unconfirmed：seed {','.join(str(r['seed']) for r in unc)}（整定器该退回初值）")
     return 1 if fake or worse else 0
 
 
