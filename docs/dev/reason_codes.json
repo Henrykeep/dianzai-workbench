@@ -33,11 +33,15 @@
  },
  "estop_latched_ident_deferred": {
   "zh": "急停中，暂不识别板子",
-  "kind": "blocker"
+  "kind": "blocker",
+  "message_zh": "急停中，暂不识别板子",
+  "fix_action": "estop_clear"
  },
  "fw_estop_unsafe": {
   "zh": "此固件存在急停可被误清除的问题，请重新烧录",
-  "kind": "blocker"
+  "kind": "blocker",
+  "message_zh": "此固件存在急停可被误清除的问题，请重新烧录",
+  "fix_action": "reflash"
  },
  "hash_mismatch": {
   "zh": "参数哈希对不上",
@@ -79,6 +83,18 @@
   ],
   "stops_output": true
  },
+ "port_ambiguous": {
+  "zh": "本地服务重启后找到不止一块像原来那块的板子，没有自动连回，请在端口列表里选一下再点“连接”",
+  "kind": "blocker",
+  "message_zh": "本地服务重启后找到不止一块像原来那块的板子，没有自动连回，请在端口列表里选一下再点“连接”",
+  "fix_action": "connect"
+ },
+ "port_not_found": {
+  "zh": "本地服务重启后没能自动连回上次的板子（口不在了，也没在别的口找到它）",
+  "kind": "blocker",
+  "message_zh": "本地服务重启后没能自动连回上次的板子（口不在了，也没在别的口找到它）",
+  "fix_action": "connect"
+ },
  "resume_no_response": {
   "zh": "重连后板子没有回应，请按『重新连接』",
   "kind": "blocker",
@@ -87,11 +103,13 @@
  },
  "resuming": {
   "zh": "正在恢复连接",
-  "kind": "blocker"
+  "kind": "blocker",
+  "message_zh": "正在恢复连接"
  },
  "schema_conflict": {
   "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作按种类：clear_schema_cache（有缓存拷贝，确认后只删这个哈希的缓存并重新识别）/ build（编译产物互冲，重新编译）/ reflash（编译产物与板上固件不符，重新烧录）",
-  "kind": "blocker"
+  "kind": "blocker",
+  "message_zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作按种类：clear_schema_cache（有缓存拷贝，确认后只删这个哈希的缓存并重新识别）/ build（编译产物互冲，重新编译）/ reflash（编译产物与板上固件不符，重新烧录）"
  },
  "settle_zero": {
   "zh": "调节时间为 0（窗口没对上）",

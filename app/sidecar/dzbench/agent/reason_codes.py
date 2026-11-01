@@ -19,9 +19,14 @@ BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据�
               "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录",
               "estop_latched_ident_deferred": "急停中，暂不识别板子",
               "resuming": "正在恢复连接",
-              "resume_no_response": "重连后板子没有回应，请按『重新连接』"}
+              "resume_no_response": "重连后板子没有回应，请按『重新连接』",
+              # #164：侧车重启自动连回失败的原因（link.state reason / board=disconnected 的 down_reason）
+              "port_not_found": "本地服务重启后没能自动连回上次的板子（口不在了，也没在别的口找到它）",
+              "port_ambiguous": "本地服务重启后找到不止一块像原来那块的板子，没有自动连回，请在端口列表里选一下再点“连接”"}
 
-BLOCKER_FIX = {"resume_no_response": "reconnect"}   # #160：前端按 fix_action 显示按钮
+# #164：每个连接 / 恢复原因码都带 message_zh（界面原样显示）；有修复动作的再带 fix_action（前端按它显示按钮）
+BLOCKER_FIX = {"resume_no_response": "reconnect", "estop_latched_ident_deferred": "estop_clear", "fw_estop_unsafe": "reflash",
+               "port_not_found": "connect", "port_ambiguous": "connect"}
 
 
 def table() -> dict:
@@ -38,6 +43,7 @@ def table() -> dict:
             out[k]["stops_output"] = True
     for k, zh in BLOCKER_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "blocker"})
+        out[k]["message_zh"] = zh
         if k in BLOCKER_FIX:
-            out[k].update(message_zh=zh, fix_action=BLOCKER_FIX[k])
+            out[k]["fix_action"] = BLOCKER_FIX[k]
     return dict(sorted(out.items()))
