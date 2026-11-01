@@ -36,7 +36,7 @@ const w = resultCardHtml({ ...base, improvement: "worse", reason: "kept_initial"
 assert.doesNotMatch(w, /it-write/); assert.match(w, /id="it-default"[^>]*>保留初值/); assert.match(w, /新参数比初值差/);
 // 主按钮由 default_action 决定：没给 / 不认识 → 没有主按钮，绝不硬塞「保留初值」
 const nd = resultCardHtml({ ...base, default_action: undefined } as any as Stopped, esc, { canApply: true, applyReady: true });
-assert.doesNotMatch(nd, /it-default/); assert.match(nd, /variant="brand" size="small" id="it-write" data-confirm2/);
+assert.doesNotMatch(nd, /it-default/); assert.match(nd, /appearance="outlined" size="small" id="it-write" data-confirm2/);   // #163 不是 confirmed：采用永不当主按钮
 // 正常结果不受影响
 const ok = resultCardHtml({ ...base, reason: "pass", improvement: "confirmed", message_zh: undefined, causes: undefined } as any as Stopped, esc, { canApply: true, applyReady: true });
 assert.doesNotMatch(ok, /it-default|未确认改善/);

@@ -1,8 +1,8 @@
 import { coarseTagHtml } from "./plant";
-import { reasonZh, reasonKind, stopCauses } from "./reasoncodes";
+import { reasonZh, reasonKind, stopCauses, codeZh, looksLikeCode } from "./reasoncodes";
 import { CAUSES_ZH, OUTPUT_STOPPED_ZH } from "./fieldmap";
 import { durCapNoteHtml } from "./actgate";
-import { improvementOf, IMPROVE_F as IC } from "./fieldmap";
+import { improvementOf, improvementConfirmed, IMPROVE_F as IC } from "./fieldmap";
 import { isUnchanged } from "./metriccard";
 import { REASON_KIND_F } from "./fieldmap";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
@@ -234,18 +234,19 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   const blk = part ? retestBlock(r, o.schema) : null;
   const da = inc?.def ? IC.actions[inc.def] : undefined;   // 主按钮 = default_action
   const btn = inc ? (da ? `<wa-button variant="brand" size="small" id="it-default" data-action="${esc(inc.def!)}"${da.decline ? ' data-decline="1"' : ""}>${esc(da.zh)}</wa-button>` : "")
-      + (inc.adopt === "confirm" && o.canApply && v.canWrite ? `<wa-button ${da ? 'appearance="outlined"' : 'variant="brand"'} size="small" id="it-write" data-confirm2="1" data-confirm-zh="${esc(IC.adoptConfirmZh)}"${dis}>${esc(IC.adoptZh)}</wa-button>` : "")
+      + (inc.adopt === "confirm" && o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-confirm2="1" data-confirm-zh="${esc(IC.adoptConfirmZh)}"${dis}>${esc(IC.adoptZh)}</wa-button>` : "")
     : part ? `<wa-button variant="brand" size="small" id="it-rerun"${blk ? " disabled" : ""}>按题面幅度复测</wa-button>` + (o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-partial="1"${dis}>仍采用这组参数</wa-button>` : "")
     : isUnchanged(r) ? ""   // 初值已满足题面、没改参：不给「采用」
-    : o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${dis}>采用这组参数</wa-button>` : "";
+    : o.canApply && v.canWrite ? `<wa-button ${improvementConfirmed(r) ? 'variant="brand"' : 'appearance="outlined"'} size="small" id="it-write"${dis}>采用这组参数</wa-button>` : "";   // #163 只有 improvement === "confirmed" 时采用才是主按钮
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const sc = stopCauses(r);
-  const why = (inc ? `<p class="rc-inconcl warn" id="rc-inconcl">${esc(inc.msg)}</p>` : v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "") +
+  const icz = (c: string) => looksLikeCode(c) ? codeZh(c) : c;   // #162 整定原因里的码也走原因表
+  const why = (inc ? `<p class="rc-inconcl ${inc.tone}" id="rc-inconcl" data-improvement="${esc(inc.kind)}">${esc(inc.msg)}</p>` + (inc.causes.length ? `<div class="rc-icauses" id="rc-icauses">${esc(IC.causesZh)}<ul>${inc.causes.map(c => `<li>${esc(icz(c))}</li>`).join("")}</ul></div>` : "") : v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "") +
     durCapNoteHtml(r, esc) +
     (sc.stopped ? `<p class="rc-stopped" id="rc-stopped">${esc(OUTPUT_STOPPED_ZH)}</p>` : "") +
     (sc.causes.length ? `<div class="rc-causes" id="rc-causes">${esc(CAUSES_ZH)}<ul>${sc.causes.map(c => `<li>${esc(c)}</li>`).join("")}</ul></div>` : "");
   const amp = r.verdict?.warn ? ampLine(r) : "";   // #134 不管有没有对比表都给幅度行
-  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${inc ? "unknown" : v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}${hashTagHtml(r.best ?? r, esc)}</h4>${amp ? `<p class="rc-amp num">${ampLineHtml(r, esc)}</p>` : ""}${blk ? `<p class="rc-blk warn" id="it-blk">${esc(blk.text)}${blk.fix === RETEST_F.editDecl ? ` <a href="#" id="it-decl" data-field="${esc(blk.key)}">去声明里修改</a>` : ""}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
+  return `<wa-card class="itc rc${r.verdict?.warn ? " partial" : ""}"><h4 class="it-verdict ${inc ? (inc.tone === "neutral" ? "neutral" : "unknown") : v.verdict.v}" id="it-verdict">${esc(head)}${coarseTagHtml(r)}${hashTagHtml(r.best ?? r, esc)}</h4>${amp ? `<p class="rc-amp num">${ampLineHtml(r, esc)}</p>` : ""}${blk ? `<p class="rc-blk warn" id="it-blk">${esc(blk.text)}${blk.fix === RETEST_F.editDecl ? ` <a href="#" id="it-decl" data-field="${esc(blk.key)}">去声明里修改</a>` : ""}</p>` : ""}${why}${cmp}${ps}${det}<span class="it-act">${btn}<wa-button appearance="plain" size="small" id="it-x">收起</wa-button></span></wa-card>`;
 }
 
 // r9p5 未改参 / 没有对比数据时也要有指标行：只列当前值，缺的写「—」，不画箭头
