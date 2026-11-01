@@ -43,9 +43,24 @@
   "zh": "参数哈希对不上",
   "kind": "round"
  },
+ "improvement_unconfirmed": {
+  "zh": "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测",
+  "kind": "tune",
+  "message_zh": "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测",
+  "causes": [
+   "测量噪声大",
+   "采样窗口偏短",
+   "改善幅度小于重复测量的波动"
+  ]
+ },
  "invalid": {
   "zh": "连续 3 轮无效",
   "kind": "stop"
+ },
+ "kept_initial": {
+  "zh": "调参未能改善，已保留初值",
+  "kind": "tune",
+  "message_zh": "调参未能改善，已保留初值"
  },
  "no_improve": {
   "zh": "连续 3 轮没有改进",

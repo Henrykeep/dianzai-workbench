@@ -96,3 +96,33 @@ def test_never_deliver_worse_than_initial():
 def test_tuner_pass_agrees_with_grader_4030():
     r = TG.one(4030, "any")                                      # 曾经：整定器说 pass，判卷说比初值差
     assert not (r["verdict"] == "pass" and not r["ok"]), r
+
+
+def _tune(seed, monkeypatch, k):
+    import tempfile
+
+    import tunegate_plant as RP
+    import yaml
+    monkeypatch.setattr(AT, "NOISE_BAND_K", k)
+    with tempfile.TemporaryDirectory() as d:
+        RP.make(seed, "any", d)
+        app = yaml.safe_load(open(f"{d}/app.yaml", encoding="utf-8"))
+        link = yaml.safe_load(open(f"{d}/link.yaml", encoding="utf-8"))
+        spec = open(f"{d}/spec.txt", encoding="utf-8").read()
+        return AT.autotune(G.board(d, app, seed, "randplant"), app, link, spec, seed)
+
+
+def test_improvement_within_noise_band_is_unconfirmed(monkeypatch):
+    """配对比较不确定（改善没超出噪声带）：卡上不说已改善，写明噪声大、建议保留初值或加长采样，不默认采用。"""
+    from dzbench.agent import reason_codes as RC
+    ok = _tune(3001, monkeypatch, 0.0)                           # 这个种子整定后明显比初值好
+    assert not ok["kept_initial"] and ok["improvement_confirmed"] is True and ok["adopt_default"] is True, ok["final_check"]
+    assert "reason" not in ok and AT.UNCONFIRMED_ZH not in ok["verdict_zh"]
+    un = _tune(3001, monkeypatch, 1e12)                          # 同一次比较，噪声带放大到盖过改善
+    fc = un["final_check"]
+    assert fc["noise_band"] >= 0 and un["improvement_confirmed"] is False, fc
+    assert un["reason"] == "improvement_unconfirmed" and un["message_zh"] == AT.UNCONFIRMED_ZH and un["unconfirmed_causes"]
+    assert un["verdict_zh"].startswith(AT.UNCONFIRMED_ZH) and "已改善" not in un["verdict_zh"] + un["pass_basis"]
+    assert un["adopt_default"] is False
+    t = RC.table()["improvement_unconfirmed"]
+    assert t["message_zh"] == AT.UNCONFIRMED_ZH and t["causes"]

@@ -12,6 +12,10 @@ STOP_ZH = {"pass": "连续 2 轮达标", "estop": "急停", "stopped": "人点�
            "plant_unresponsive": "对象无响应"}
 # 停止原因的可能起因（界面列出来让人逐项排查）
 CAUSES_ZH = {"plant_unresponsive": ["没上电", "接线", "方向（执行器 / 传感器极性接反）", "执行器饱和"]}
+CAUSES_ZH["improvement_unconfirmed"] = ["测量噪声大", "采样窗口偏短", "改善幅度小于重复测量的波动"]
+# 整定结果卡（autotune）的结论原因码
+TUNE_ZH = {"improvement_unconfirmed": "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测",
+           "kept_initial": "调参未能改善，已保留初值"}
 DIVERGE = {"unstable"}
 # 连接阻塞（不是迭代原因码，但界面 / Agent 用同一张表取中文）：kind = blocker
 BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
@@ -30,6 +34,10 @@ def table() -> dict:
         out.setdefault(k, {"zh": zh, "kind": "diverge" if k in DIVERGE else "stop"})
         if k in CAUSES_ZH:
             out[k].update(message_zh=zh, causes=CAUSES_ZH[k])
+    for k, zh in TUNE_ZH.items():
+        out.setdefault(k, {"zh": zh, "kind": "tune", "message_zh": zh})
+        if k in CAUSES_ZH:
+            out[k]["causes"] = CAUSES_ZH[k]
     for k, zh in BLOCKER_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "blocker"})
     return dict(sorted(out.items()))

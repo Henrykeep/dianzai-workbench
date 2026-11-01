@@ -368,6 +368,7 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - 增益下限：`kp` / `ki` 不低于候选（初值、模型设计、SIMC）最大值的 2%、初值的 2%、声明 `min` 三者取大，搜索不会把增益压到 ≈0。
 - 初值已满足题面（复现两次）：不改参数直接返回，`unchanged: true`、`tuned: false`、`unchanged_zh` / `pass_basis` =「初值已满足题面，本次没有改动参数」、`margins: {指标: 题面值 − 实测值}`（`items[].margin` 同），`verdict_zh` =「通过（初值已达标，未调参）」，不显示为整定成功；降幅测的照旧 `partial`。
 - 绝不交付比初值差的参数：搜索结束后在 n / 2n / 4n 三个窗口各复测最好参数与初值（整定器自己的实测代价 `cost`，不读真值），任一窗口最好参数更差 → 退回初值：`kept_initial: true`、`unchanged: true`、`tuned: false`、`reason_zh` =「调参未能改善，已保留初值」（`verdict_zh` / `pass_basis` 以它开头），未达标时照常给 `causes`。结果总带 `cost_initial` / `cost_best`（2n 窗口的实测代价）与 `final_check: {n, windows:[{n, best_cost, initial_cost}], best_cost, initial_cost}`；`items[].margin` = 题面值 − 实测值（无穷 / 缺测为 null）。
+- 改善不确定（配对比较落在噪声带内）：终验窗口再各测一次初值和最好参数，噪声带 = 两对重复测量代价之差的和，改善 = 初值较小一次 − 最好参数较大一次；改善 ≤ `NOISE_BAND_K`（2）× 噪声带 → `improvement_confirmed:false`、`reason:"improvement_unconfirmed"`、`message_zh` =「数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测」（`verdict_zh` / `pass_basis` 以它开头，不写「已改善」）、`unconfirmed_causes[]`、`adopt_default:false`（采用卡不默认选中）。确认改善 → `improvement_confirmed:true, adopt_default:true`；`kept_initial` → `adopt_default:false`。`final_check` 多 `noise_band`、`gain`。reason_codes.json 里 `kind:"tune"`，带 `message_zh` 和 `causes`。
 
 tunegate（`tools/tunegate.py`，汇总在 `tools/tunegate_grade.py summarize()`）：
 - 每行带 `stop=`、`unchanged`；汇总打印通过率（全部 / 只算可行）、unknown 比例、初值已达标个数、各原因类别 `{n, cause_ok}`。

@@ -259,6 +259,10 @@ def _is_step_reject(e) -> bool:
 BUDGET_BASE, BUDGET_PER_PARAM, BUDGET_MAX = 12, 6, 48         # 板上试参次数上限随可调参数个数自适应
 FAC0, FAC_MIN, IMPROVE_REL = 1.6, 1.05, 0.01
 KEPT_INITIAL_ZH = "调参未能改善，已保留初值"
+# 配对比较不确定（改善没超出噪声带）：不说「已改善」，不默认采用
+UNCONFIRMED_ZH = "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测"
+UNCONFIRMED_CAUSES_ZH = ["测量噪声大", "采样窗口偏短", "改善幅度小于重复测量的波动"]
+NOISE_BAND_K = 2.0          # 改善要大于 K × 噪声带（同参数重复测两次代价之差，最好参数与初值各一对）
 FLOOR_FRAC = 0.02                                               # 增益下限 = 候选里最大值的 2%、初值的 2% 取大（且不低于声明 min）
 FLOOR_INIT = 0.02
 STOP_ZH = {"converged": "已满足题面，停止搜索", "budget_exhausted": "试参次数用完仍未满足题面",
@@ -546,6 +550,15 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
                 kept_initial = True
         if kept_initial:                                        # 绝不交付比初值差的参数：退回初值并写明
             bp, fb = p0, f0
+    improvement_confirmed = None
+    if bp is not p0:
+        # 噪声带：同一参数在终验窗口各再测一次，两次代价之差就是这次测量的波动；改善不超过 K×波动 → 不确定
+        c0a, cba = final_check["windows"][[x["n"] for x in final_check["windows"]].index(n_fin)]["initial_cost"], cost(fb[4])
+        c0b, cbb = cost(run(p0, amp, n_fin)[4]), cost(run(bp, amp, n_fin)[4])
+        band = abs(c0a - c0b) + abs(cba - cbb)
+        gain = min(c0a, c0b) - max(cba, cbb)
+        final_check["noise_band"], final_check["gain"] = band, gain
+        improvement_confirmed = bool(gain > NOISE_BAND_K * band)
     fw = [x for x in final_check["windows"] if x["n"] == n_fin]
     final_check["best_cost"] = fw[0]["best_cost"] if fw else cost(fb[4])
     final_check["initial_cost"] = fw[0]["initial_cost"] if fw else cost(fb[4])
@@ -575,6 +588,12 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         verdict_zh = KEPT_INITIAL_ZH + "；" + verdict_zh
         why = KEPT_INITIAL_ZH + "（调后实测代价高于初值）；" + why
     extra = {}
+    unconf = improvement_confirmed is False
+    if unconf:
+        why = UNCONFIRMED_ZH + "；" + why
+        verdict_zh = UNCONFIRMED_ZH + "；" + verdict_zh
+    extra_u = {"improvement_confirmed": improvement_confirmed, "adopt_default": not (kept_initial or unconf),
+               **({"reason": "improvement_unconfirmed", "message_zh": UNCONFIRMED_ZH, "unconfirmed_causes": UNCONFIRMED_CAUSES_ZH} if unconf else {})}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
         extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None, "amp_unit_decl": link.get("unit_decl") or None,
                  "retest_blocked_by": step_block(amp_spec, max_step, int(link.get("ch") or 0), link.get("unit") or None),
@@ -594,7 +613,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     return {"seed": seed, "verdict": verdict, "verdict_zh": verdict_zh, "category": cat, "pass_basis": why, "spec": sp, "amp": amp, "n": n,
             "items": items, **extra, "causes": causes, "stop_reason": stop_reason, "stop_reason_zh": STOP_ZH[stop_reason],
             "unchanged": kept_initial, "tuned": not kept_initial, "kept_initial": kept_initial, "final_check": final_check, "cost_initial": final_check["initial_cost"], "cost_best": final_check["best_cost"],
-            **({"reason_zh": KEPT_INITIAL_ZH} if kept_initial else {}), "budget": budget,
+            **({"reason_zh": KEPT_INITIAL_ZH} if kept_initial else {}), "budget": budget, **extra_u,
             "timing": timing, "ident": info, "initial": {"params": {name[k]: v for k, v in p0.items()}, "metrics": m_init, "cost": cost(m_init)},
             "best": {"params": {name[k]: v for k, v in bp.items()}, "roles": bp, "metrics": bm, "cost": bc},
             "rounds": len(hist) - 1}
