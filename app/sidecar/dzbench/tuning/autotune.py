@@ -267,7 +267,8 @@ NOISE_BAND_K = 2.0
 POLISH_SWEEPS = 6            # 达标后继续按代价打磨的圈数（达标不等于接近最优）
 GAIN_REL_MIN = 0.02          # 每个终验窗口都要比初值好至少 2%，否则算「无法分辨」
 SS_NOISE_K = 2.0
-FINAL_WIN_K = (0.5, 0.625, 0.75, 0.875, 1, 1.125, 1.25, 1.375, 1.5, 1.75, 2, 2.5, 3, 4)          # 改善要大于 K × 噪声带（同参数重复测两次代价之差，最好参数与初值各一对）
+SS_REPEATS = 3               # 前 2 次照旧做达标复现；3 次加初测一起估稳态误差的散布
+FINAL_WIN_K = (1, 1.125, 1.25, 1.375, 1.5, 1.75, 2, 2.5, 3, 4)
 FLOOR_FRAC = 0.02                                               # 增益下限 = 候选里最大值的 2%、初值的 2% 取大（且不低于声明 min）
 FLOOR_INIT = 0.02
 STOP_ZH = {"converged": "已满足题面，停止搜索", "budget_exhausted": "试参次数用完仍未满足题面",
@@ -331,16 +332,15 @@ def spec_cost(m: dict, sp: dict) -> float:
     return 10.0 * v + base
 
 
-def ss_noise_floor(m: dict, sp: dict, y, amp: float, n: int) -> list[str]:
-    """噪声感知的稳态判定：尾段均值本身有 σ/√N 的不确定度（闭环跟着噪声走，真输出偏差至少这么大）；
-    实测稳态误差 + SS_NOISE_K×该不确定度 仍不超限才算达标，否则这一项「测不准」按未达标处理。"""
+def ss_noise_floor(reps: list[dict], sp: dict) -> list[str]:
+    """噪声感知的稳态判定：同参数重复测几次，稳态误差的 均值 + SS_NOISE_K×标准差 仍不超限才算达标；
+    重复之间散得开（闭环跟着噪声走，单次读数偶尔落在限内）→ 这一项「测不准」按未达标处理。"""
     lim = sp.get("ss_err_pct")
-    if lim is None or m.get("ss_err_pct") is None or not math.isfinite(m["ss_err_pct"]):
+    xs = [m.get("ss_err_pct") for m in reps]
+    if lim is None or len(xs) < 2 or any(x is None or not math.isfinite(x) for x in xs):
         return []
-    y = np.asarray(y, float)
-    tail = len(y) - int(len(y) * 0.85)
-    unc = SS_NOISE_K * noise_sigma(y) / math.sqrt(max(tail, 1)) / (abs(amp) or 1.0) * 100
-    return ["ss_err_pct(噪声)"] if m["ss_err_pct"] <= lim < m["ss_err_pct"] + unc else []
+    mu, sd = float(np.mean(xs)), float(np.std(xs, ddof=1))
+    return ["ss_err_pct(噪声)"] if mu + SS_NOISE_K * sd > lim else []
 
 
 def _reproduces(rerun, sp: dict, times: int = 2) -> bool:
@@ -632,9 +632,12 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     final_check["initial_cost"] = fw[0]["initial_cost"] if fw else cost(fb[4])
     bc, bm, (bt, br, by, bu) = J(fb[4]), fb[4], fb[:4]
     n = n_fin
-    bad = meets(bm, sp) + ss_noise_floor(bm, sp, by, amp, n)
-    if not bad and not _reproduces(lambda: run(bp, amp, n)[4], sp):
-        bad = meets(run(bp, amp, n)[4], sp) or ["reproduce"]
+    bad = meets(bm, sp)
+    if not bad:
+        reps = [run(bp, amp, n)[4] for _ in range(SS_REPEATS)]
+        bad = next((meets(m_, sp) or None for m_ in reps[:2] if meets(m_, sp)), None) and ["reproduce"] or []
+        if not bad:
+            bad = ss_noise_floor([bm] + reps, sp)
     if bad and stop_reason == "converged":
         stop_reason = "budget_exhausted"
     # 5) 诚实判定：按证据给原因（不按固定顺序）

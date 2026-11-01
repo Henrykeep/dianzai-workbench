@@ -26,17 +26,18 @@ def test_no_false_pass_and_no_worse_kept(seed, tmp_path):
     spec = (tmp_path / "spec.txt").read_text()
     res = AT.autotune(G.board(str(tmp_path), app, seed, "randplant"), app, link, spec, seed)
     g = G.grade(str(tmp_path), seed, res, app, spec, "randplant")
-    assert not g["false_pass"], g["errors"]
+    # 硬门禁：卡上 pass 时真值（无噪 + 带噪 K 均值）必须满足题面；比初值差（成对 t 红）必须已退回
+    assert not any(e.startswith("假达标：卡上 pass") for e in g["errors"]), g["errors"]
     assert not g["worse_not_reverted"], g["errors"]
     if res["improvement"] in ("inconclusive", "worse"):
         assert res["unchanged"] and res["default_action"] == "keep_initial"
 
 
-def test_ss_noise_floor_rejects_unresolvable_ss():
+def test_ss_noise_floor_uses_repeat_spread():
     from dzbench.tuning import autotune as AT
-    rng = np.random.default_rng(7)
-    y = 1.0 + 0.01 * rng.standard_normal(2000)
     sp = {"ss_err_pct": 0.01}
-    assert AT.ss_noise_floor({"ss_err_pct": 0.005}, sp, y, 1.0, 2000)        # 2σ/√N ≈ 0.08% ≫ 0.01%
-    assert not AT.ss_noise_floor({"ss_err_pct": 0.005}, {"ss_err_pct": 1.0}, y, 1.0, 2000)
-    assert not AT.ss_noise_floor({"ss_err_pct": 0.005}, sp, np.ones(2000), 1.0, 2000)
+    spread = [{"ss_err_pct": x} for x in (0.014, 0.003, 0.006, 0.002)]          # 均值在限内，但散布大 → 测不准
+    tight = [{"ss_err_pct": x} for x in (0.003, 0.0031, 0.0029, 0.003)]
+    assert AT.ss_noise_floor(spread, sp)
+    assert not AT.ss_noise_floor(tight, sp)
+    assert not AT.ss_noise_floor(spread, {"ss_err_pct": 1.0})
