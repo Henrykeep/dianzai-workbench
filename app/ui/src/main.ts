@@ -80,8 +80,10 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&am
 const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isNaN(v) || ("na" in p && p.na === v) ? "—" : p.type === "f32" ? (Math.abs(v) < 1e-30 ? "0" : (+v.toPrecision(6)).toString()) : String(Math.round(v));
 
 const q = new URLSearchParams(location.search);
-const link = new Link(wsUrlFor(location, !!(import.meta as any).env?.DEV));   // #156 规则见 fieldmap.wsUrlFor
-import { wsUrlFor } from "./fieldmap";
+let wsPick: WsPick | null = null;   // #156 正在连的地址和来源（横幅用）
+const link = new Link(wsUrlFor(location, { meta: document.querySelector<HTMLMetaElement>(`meta[name="${WS_F.meta}"]`)?.content ?? null, fetch: (u, o) => fetch(u, { ...o, cache: "no-store" }), dev: !!(import.meta as any).env?.DEV })
+  .then(p => { wsPick = p; return p.url; }));
+import { wsUrlFor, wsDownZh, WS_F, type WsPick } from "./fieldmap";
 const plot = new Plot($("pb"));
 const UNDO = new UndoLog();   // 参数下发前的板上值（保护阈值表的“撤销”）
 // 心跳条点格子：回放按 dzlog 时间跳；实时把曲线停在那一秒（缓冲里还有的话）
@@ -1033,8 +1035,10 @@ conn.on(c => {
   $("st-ws").textContent = c.sidecar ? "本地服务 已连接" : "本地服务未连接";
   sidecarUp = c.sidecar; document.documentElement.classList.toggle("sidecar-down", !c.sidecar); renderLinkTag();
   $("banner").hidden = c.sidecar;
-  if (!c.sidecar && !$("banner").querySelector(".sd-x")) {
-    $("banner").innerHTML = partsHtml({ ...SIDECAR_DOWN, why: SIDECAR_DOWN.why + "；板子 1 s 收不到心跳会自动急停" }, esc, `<button class="btn sm sd-x" type="button">重新连接</button>`);
+  const downWhat = wsDownZh(wsPick) ?? SIDECAR_DOWN.what;   // 地址解析完成后横幅换成「正在连接 <地址>（来自…）」
+  if (!c.sidecar && (!$("banner").querySelector(".sd-x") || $("banner").dataset.what !== downWhat)) {
+    $("banner").dataset.what = downWhat;
+    $("banner").innerHTML = partsHtml({ ...SIDECAR_DOWN, what: downWhat, why: SIDECAR_DOWN.why + "；板子 1 s 收不到心跳会自动急停" }, esc, `<button class="btn sm sd-x" type="button">重新连接</button>`);
     $("banner").querySelector<HTMLElement>(".sd-x")!.onclick = () => location.reload();
     $("banner").insertAdjacentHTML("beforeend", `<span class="sd-rc mono" id="sd-rc"></span>`);
   }

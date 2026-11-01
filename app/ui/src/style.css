@@ -1203,3 +1203,5 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .rc-causes{font-size:var(--t-sm);margin:var(--sp1) 0}.rc-causes ul{margin:0;padding-left:1.4em}
 .rc-durcap{margin:var(--sp1) 0;font-size:var(--t-sm)}.rc-durcap a{margin-left:var(--sp2)}
 .rc-inconcl{margin:var(--sp1) 0;font-weight:600}
+.rc-icauses{font-size:.9em;margin:.25em 0}.rc-tune{margin:.25em 0;font-size:.9em}.rc-sat{margin-left:.5em;opacity:.8}.rc-inconcl.neutral{font-weight:400}
+.banner details.raw,.toast details.raw{position:static;inset:auto;display:block;background:none;z-index:auto}.banner details.raw{margin-top:.25em;font-size:.85em}.banner details.raw pre{max-height:120px;overflow:auto;white-space:pre-wrap;margin:.25em 0 0}

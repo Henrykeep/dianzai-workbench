@@ -11,7 +11,8 @@ export class Link {
   downSince: number | null = null; attempts = 0; nextAt: number | null = null;   // r9p6 横幅重连细节
   onState: (open: boolean) => void = () => {};
 
-  constructor(private url: string) { this.dial(); }
+  url = "";
+  constructor(url: string | Promise<string>) { void Promise.resolve(url).then(u => { this.url = u; this.dial(); }); }   // #156 地址可异步解析（config.json）
 
   private dial() {
     const ws = new WebSocket(this.url);
