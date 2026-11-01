@@ -6,7 +6,8 @@
 #   电赛工作台.exe          Tauri 外壳（windows-gnu）
 #   dzbench.exe            侧车（PyInstaller，wine 里打）
 #   repo/                  tools/stage_win_repo.sh 出的工程仓库子集 + Windows 仿真板
-#   （tools/*.py 由 dzbench.exe 在本进程里跑，不再带嵌入版 Python）
+#   python/                官方 CPython 嵌入版（钉版本 + sha256），已打开 site-packages 并离线装好 wheelhouse
+#   wheelhouse/            离线 wheel + manifest.json（python_version/platform，doctor 核对用）
 # 首选是 CI：.github/workflows/app-windows.yml 出 NSIS 安装包；这个脚本只是 CI 不可用时的备用
 # 用法：bash tools/package_windows.sh [输出目录=/workspace/dist]
 set -euo pipefail
@@ -33,12 +34,8 @@ echo "== 2/5 侧车 dzbench.exe（wine + PyInstaller）"
   --hidden-import serial.tools.list_ports --collect-submodules pypdf --collect-data pypinyin "$(zpath "$ROOT/app/sidecar/dzbench_entry.py")")
 cp "$WORK/pyi/dzbench.exe" "$STAGE/dzbench.exe"
 
-echo "== 3/5 离线依赖 wheelhouse（tools/wheelhouse.txt，钉版本；安装时不联网）"
-mkdir -p "$STAGE/wheelhouse"
-grep -v '^\s*#' "$ROOT/tools/wheelhouse.txt" | sed 's/\s*#.*//' | sed '/^\s*$/d' > "$STAGE/wheelhouse/requirements.txt"
-python3 -m pip download --only-binary=:all: --platform win_amd64 --python-version 3.12 --implementation cp \
-  -d "$STAGE/wheelhouse" -r "$STAGE/wheelhouse/requirements.txt" >/dev/null
-printf '@echo off\r\nrem 离线安装 Python 依赖（不联网）：python-control/scipy/numpy/sysidentpy/uncertainties\r\npython -m pip install --no-index --find-links "%%~dp0wheelhouse" -r "%%~dp0wheelhouse\\requirements.txt"\r\n' > "$STAGE/安装离线依赖.bat"
+echo "== 3/5 自带嵌入版 CPython $PYVER + 离线依赖 wheelhouse（tools/wheelhouse.txt，钉版本；安装时不联网）"
+bash "$ROOT/tools/stage_pyembed.sh" "$STAGE"   # 官方 embeddable zip（钉版本 + sha256，fetch_url）+ ._pth + 预装 site-packages + wheelhouse/manifest.json + .bat
 
 echo "== 4/5 Tauri 外壳（x86_64-pc-windows-gnu）"
 mkdir -p "$ROOT/app/src-tauri/binaries" && cp "$STAGE/dzbench.exe" "$ROOT/app/src-tauri/binaries/dzbench-x86_64-pc-windows-gnu.exe"

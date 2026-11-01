@@ -1,0 +1,9 @@
+# 侧车运行时依赖（离线）：Windows 安装包自带的 python\python.exe 要能直接跑 `python -m dzbench …`（selfcheck-data 等），
+# 由 tools/stage_pyembed.sh 和 tools/wheelhouse.txt 一起装进自带解释器。版本钉死；改版本 = 改这里 + 重打包。
+# 只列运行时要的（pytest / pip-licenses / ruff 是开发用，不进安装包）。
+pyserial==3.5  # BSD-3
+websockets==17.3  # BSD-3
+PyYAML==6.0.3  # MIT
+jsonschema==4.26.0  # MIT
+pypdf==6.21.4  # BSD-3
+pypinyin==0.55.0  # MIT
