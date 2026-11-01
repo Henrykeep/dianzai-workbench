@@ -21,6 +21,12 @@ export function reasonZh(code: string | undefined | null, fallback: Record<strin
 // #162 卡片上的原因码 / 可能原因码一律查打包原因表：message_zh > zh > 兜底表 > 「其他原因（代码 xxx）」，不露裸英文码
 export const otherReasonZh = (code: string) => `其他原因（代码 ${code}）`;
 export const looksLikeCode = (s: string) => /^[a-z][a-z0-9]*(_[a-z0-9]+)+$|^[a-z][a-z0-9]{2,}$/.test(s);
+// #165 后端字段可能是中文说明也可能是原因码：像码的（含数字码）走 codeZh，中文原样
+export function plainZh(x: unknown, fallback: Record<string, string> = {}): string {
+  if (typeof x === "number" && Number.isFinite(x)) return codeZh(String(x), fallback);
+  if (typeof x !== "string") return "";
+  const t = x.trim(); return t && (looksLikeCode(t) || /^-?\d+$/.test(t)) ? codeZh(t, fallback) : t;
+}
 export function codeZh(code: string, fallback: Record<string, string> = {}): string {
   const e: any = REASONS_T.value()[code];
   return (typeof e?.message_zh === "string" && e.message_zh) || e?.zh || fallback[code] || otherReasonZh(code);

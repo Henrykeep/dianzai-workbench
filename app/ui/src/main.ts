@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 import { toRoleReq, roleCellHtml, roleCardHtml, collectRoles, roleLeft, RoleSender, rolesKey, type RoleReq, type RoleUi } from "./roles";
 import { ROLE_F, ROLE_CONFIRM_OP } from "./fieldmap";
 import { applyBrand } from "./brand";
@@ -747,7 +748,7 @@ function renderProposal(m: Msg) {
   d.className = "card sugg";
   const gv = getVerdict();
   d.innerHTML = (gv ? `<div class="sg-concl ${esc(gv.v)}">当前结论：${esc(gv.text)}</div>` : "") + `<div class="sg-h"><span class="mono">${esc(m.name)}</span><span class="sg-v">${p ? fmt(m.current, p) : m.current} → <em>${p ? fmt(m.value, p) : m.value}</em></span></div>
-    ${rows}<p>${esc(m.reason)}${m.clamped ? "（已按范围限幅）" : ""}</p><div class="lbl">来源：${esc(m.source)}</div>
+    ${rows}<p>${esc(plainZh(m.reason))}${m.clamped ? "（已按范围限幅）" : ""}</p><div class="lbl">来源：${esc(m.source)}</div>
     <div class="act"><button class="btn pri" data-a="1">采纳 <kbd>Y</kbd></button><button class="btn" data-a="0">驳回 <kbd>N</kbd></button></div>`;
   d.querySelectorAll<HTMLButtonElement>("button").forEach(b => b.onclick = async () => {
     try {

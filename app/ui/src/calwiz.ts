@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 // 标定向导（产品逻辑重组 4）：极性 → 循迹黑白 → 视觉像素表 → FOC 对齐 → IMU 零偏。
 // 每一步 = 准备清单 + 录几段遥测（只读，侧车 wave_measure / polarity_check）+ 算出建议值；
 // 建议值不直接写板子：点“提议写入”走 propose{source:"标定"}，在本页的提议卡上确认后才下发（同一张提议卡、同一个 proposal_decide）。
@@ -68,7 +69,7 @@ export function initCalWiz(call: Call, fields: () => string[], params: () => P[]
           const warn: string[] = [];
           for (let k = 0; k < ch.length; k++) if (ch[k]) {
             const r = await (k ? call<any>("wave_measure", { field: ch[k], seconds: s.secs }) : rec(ch[k], s.secs));
-            if (!r.ok) { warn.push(`${ch[k]}：${r.reason}`); continue; }
+            if (!r.ok) { warn.push(measureFailZh(ch[k], r.reason)); continue; }
             got[`${b.dataset.s}|${k}`] = r.avg;
             if (r.pp > 0.2 * Math.max(1e-9, Math.abs(r.avg)) && s.id !== "line") warn.push(`${ch[k]} 波动 ${r.pp.toPrecision(3)}，不像静止`);
           }
@@ -105,3 +106,6 @@ export function initCalWiz(call: Call, fields: () => string[], params: () => P[]
   render();
   return { refresh: render };
 }
+
+// #165 标定录制失败提示：原因码走原因表
+export const measureFailZh = (field: string, reason: unknown) => `${field}：${plainZh(reason) || "未上报原因"}`;

@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 import { ESTOP_F, ESTOP_CAUSES, ESTOP_GENERIC_ZH, ESTOP_GAP_UNKNOWN_ZH, ESTOP_HB_ZH } from "./fieldmap";
 // 急停提示（问题池 #25 / #28）。来源由本地服务在事件里给 source：heartbeat_lost | firmware:<cause> | ui | selftest。
 // 前三种用固定文案；firmware:<cause> 优先用 status.estop_cause.message_zh；都没有时写「急停已触发，原因未上报」，详情给最近一次心跳时间。
@@ -58,7 +59,7 @@ export function estopLine(ev: any, status: any): { line: string; restored: boole
   const os = [ev, status?.estop, status, status?.estop_cause], restored = estopRestored(...os), cause = estopCause(ev, status), spec = ESTOP_CAUSES[cause];
   const t = latchTime(pick(os, ESTOP_F.at));
   const r0 = pick(os, ESTOP_F.reason), f = spec?.fields ?? [];
-  const reason = spec?.label ?? (typeof r0 === "string" && r0.trim() ? r0.trim() : f.length ? ESTOP_HB_ZH : ESTOP_GENERIC_ZH);
+  const reason = spec?.label ?? (typeof r0 === "string" && r0.trim() ? plainZh(r0) : f.length ? ESTOP_HB_ZH : ESTOP_GENERIC_ZH);
   const ms = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)} ms` : "";
   let tail = "";
   if (f.includes("measured")) {   // 实测有 → 「1601 ms」，阈值有才加「（阈值 1500 ms）」；实测没有 → 只一句「（间隔未知）」

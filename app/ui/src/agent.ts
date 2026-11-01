@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 import { stripToolMarkup } from "./sanitize";
 import { setRound } from "./round";
 // 内置 Agent 面板（docs/18）：离线阶跃分析、对话、文件改动卡片（diff → 确认 → 门禁 → git 提交 / 回滚）、大模型设置
@@ -62,7 +63,7 @@ export function initAgent(call: Call) {
       ${m.ok ? `<table class="met">
         <tr><td>目标</td><td>${n(m.y0)} → ${n(m.target)}</td><td>上升 10–90%</td><td>${n(m.rise_s, 3, " s")}</td></tr>
         <tr><td>超调</td><td>${n(m.overshoot_pct, 1, " %")}</td><td>调节 ±5%</td><td>${n(m.settling_s, 3, " s")}</td></tr>
-        <tr><td>振荡</td><td>${m.oscillations} 次</td><td>稳态误差</td><td>${n(m.sse_pct, 1, " %")}</td></tr></table>` : `<p>${esc(m.reason)}</p>`}
+        <tr><td>振荡</td><td>${m.oscillations} 次</td><td>稳态误差</td><td>${n(m.sse_pct, 1, " %")}</td></tr></table>` : `<p>${esc(plainZh(m.reason))}</p>`}
       <div class="hints"></div>`);
     const hs = d.querySelector(".hints")!;
     r.hints.forEach((h: { level: string; text: string; changes: Record<string, number> }) => {
@@ -199,7 +200,7 @@ export function initAgent(call: Call) {
     if (r.state === "committed") { el.classList.add("done-ok"); res.innerHTML = committedHtml(r.commit, esc); return; }
     if (r.state === "rejected") return showDeclined(el, r.decl!, esc, a => resolveFix(a), goFix);
     el.classList.add("failed");   // 提交本身失败：三段（发生了什么 / 原因 / 处理）+ 修复按钮
-    const pre = `<div class="cc-fail"><b>git 提交失败</b><span>原因：${esc(r.decl!.reason)}</span><span>处理：文件仍在工作区；${r.decl!.fix ? "点击下方按钮处理" : "检查提交钩子后再请 Agent 发起提交"}</span></div>`;
+    const pre = `<div class="cc-fail"><b>git 提交失败</b><span>原因：${esc(plainZh(r.decl!.reason))}</span><span>处理：文件仍在工作区；${r.decl!.fix ? "点击下方按钮处理" : "检查提交钩子后再请 Agent 发起提交"}</span></div>`;
     showDeclined(el, r.decl!, esc, a => resolveFix(a), goFix, pre);
     el.querySelector(".cc-decl")?.remove();
   }
@@ -249,7 +250,7 @@ export function initAgent(call: Call) {
     if ((v.action === "rollback" || v.action === "stop") && props) {
       const c = document.createElement("div"); c.className = "card sugg worse";
       c.innerHTML = `<div class="sg-h"><span class="mono">第 ${v.round} 轮${v.action === "rollback" ? "变差" : "停止"}</span><span class="lbl">程序判定</span></div>
-        <p class="why">超调 ${n(k.overshoot_pct, 1, "%")} · 调节 ${n(k.settling_s, 2, " s")}${v.best ? `；最好是第 ${v.best.round} 轮（评分 ${v.best.score ?? "—"}）` : ""}。${esc(v.reason || "")}</p>
+        <p class="why">超调 ${n(k.overshoot_pct, 1, "%")} · 调节 ${n(k.settling_s, 2, " s")}${v.best ? `；最好是第 ${v.best.round} 轮（评分 ${v.best.score ?? "—"}）` : ""}。${esc(plainZh(v.reason))}</p>
         <div class="act"><button class="btn pri" type="button">回到最好一轮</button><button class="btn" type="button">留在本轮</button></div>`;
       const [go, stay] = c.querySelectorAll("button");
       go.onclick = () => { $("ag-best").click(); c.classList.add("stale"); };
@@ -288,7 +289,7 @@ export function initAgent(call: Call) {
       .finally(() => { b.disabled = false; b.textContent = "自整定"; });
   };
   $("ag-step").onclick = () => call("tune_step_test").catch(() => {});          // 结果走 tune_round 事件 → renderRound
-  $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(r.reason)}</span>`, "msg bot"); }, () => {});
+  $("ag-rule").onclick = () => call<any>("tune_rule_round").then(r => { if (r?.action === "OBSERVE") add(`<span class="lbl">规则建议：${esc(plainZh(r.reason))}</span>`, "msg bot"); }, () => {});
   $("ag-best").onclick = async () => {
     // 回到… → 最好一轮：本次护栏有记录就回那一轮；侧车重启过（护栏清空）就回自动存的“自动-最好一轮”快照（同一个入口）
     const b = await call<any>("tune_best").catch(() => null);

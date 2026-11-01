@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 import { simBoardZh } from "./examples";
 import { reasonText } from "./actgate";
 // r9 batch-1 纯逻辑（无 DOM）：连接标签、仿真/实机标签、迭代锁、param_reject 文案、首页三步引导
@@ -24,7 +25,7 @@ export const ITER_LOCK_ZH = "迭代进行中";
 // param_reject reason → 参数行下一句提示
 export const REJECT_ZH: Record<string, string> = { range: "超出量程，板子没收", type: "类型不对（整型参数给了小数等），板子没收", state: "当前状态不允许改（如运行中 / 急停），板子没收", step: "单步改动过大，分几次小步改" };
 export function rejectHint(r: { reason?: string | number; requested?: number; value?: number; current?: number }): string {
-  const base = REJECT_ZH[String(r.reason)] ?? `板子拒绝（${r.reason}）`;
+  const base = REJECT_ZH[String(r.reason)] ?? `板子拒绝：${plainZh(r.reason) || "未上报原因"}`   // #165 不露裸码;
   const req = r.requested ?? r.value;
   return `${base}${req != null ? `：请求 ${+(+req).toPrecision(6)}` : ""}${r.current != null ? `，板上仍为 ${+(+r.current).toPrecision(6)}` : ""}`;
 }

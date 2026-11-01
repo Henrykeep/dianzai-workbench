@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 import { CLEAR_ONLY_AT, CLEAR_WHERE } from "./r8pre";
 // 项目进度适配层：结构与后端草案 progress.get 一致。接口没上线前，用前端现有数据推断同样的结构；
 // 上线后 fetchProgress() 优先用接口结果，界面代码不用改。步骤状态的判断只写在这里。
@@ -131,7 +132,7 @@ export function render(p: Progress, go: (s: Step) => void) {
     b.dataset.state = s.state;
     b.classList.toggle("done", s.state === "done" && tickable(p));
     b.classList.toggle("next", p.next?.title === s.title && s.id !== p.current);
-    b.title = `${s.title} · ${LABEL[s.state]}${s.detail ? "：" + s.detail : s.reason ? `（${s.reason}）` : ""}`;   // r9d：中文 detail 优先，原代码只在没 detail 时括注
+    b.title = stepHint(s);   // r9d：中文 detail 优先，原代码只在没 detail 时括注
   });
   // 每个 blocker 标到它 blocks 列出的那几步导航下：卡住原因 + fix_action 按钮（接口数据才有 blocks；推断数据不标）
   // 设计 v9：左栏只标一个小圆点（data-blocked），原因写进悬停提示；文字提示只在页头出现一次
@@ -186,3 +187,7 @@ export function blockerRow(b: Blocker, go: (s: Step) => void): HTMLElement {
   }
   return r;
 }
+
+// #165 导航步悬停提示：中文 detail 优先；只有原因码时走原因表，不露裸码
+export const stepHint = (s: { title: string; state: string; detail?: string | null; reason?: string | null }) =>
+  `${s.title} · ${(LABEL as any)[s.state] ?? s.state}${s.detail ? "：" + s.detail : s.reason ? `（${plainZh(s.reason)}）` : ""}`;

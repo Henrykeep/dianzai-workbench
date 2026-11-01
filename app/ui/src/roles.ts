@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 // 参数角色确认（confirm_roles）：纯逻辑 + HTML，字段名只走 fieldmap
 import { roleCodes, roleCodesNotice } from "./rolecodes";
 import { SELFCHECK_BTN_HTML } from "./selfcheck";
@@ -39,7 +40,7 @@ export function roleCardHtml(req: RoleReq | null, st: RoleUi | boolean = { phase
   const btn = s.phase === "sent" ? `<button class="btn" id="role-retry">${ROLE_RETRY_ZH}</button>`
     : `<button class="btn primary" id="role-ok"${s.phase === "sending" || s.left > 0 || (s.phase === "error" && s.same !== false) ? " disabled" : ""}>${s.phase === "sending" ? ROLE_SENDING_ZH : ROLE_BTN_ZH}</button>` +
       (s.left > 0 && s.phase !== "sending" ? `<span class="role-left">${roleLeftZh(s.left)}</span>` : s.phase === "error" && s.same !== false ? `<span class="role-left">请修改角色后再确认</span>` : "");
-  return `<div class="card role-card" id="role-card"><b>需要确认参数角色</b><p class="role-why">${esc(req.reason || MISSING_ZH)}</p>` +
+  return `<div class="card role-card" id="role-card"><b>需要确认参数角色</b><p class="role-why">${esc(plainZh(req.reason) || MISSING_ZH)}</p>` +
     `<p class="role-nf">${ROLE_NO_FLASH_ZH}</p>${roleCodesNotice() ? `<p class="role-data warn-t" id="role-data">${esc(roleCodesNotice())} ${SELFCHECK_BTN_HTML}</p>` : ""}<p>待确认：${req.missing.map(esc).join("、") || MISSING_ZH}</p>` +
     (s.phase === "error" && s.msg ? `<p class="role-err" id="role-err">${s.protect ? `<b>${ROLE_PROTECT_ZH}</b> ` : ""}${esc(s.msg)}${s.fix ? `<br><span class="role-fix">处理：${esc(s.fix)}</span>` : ""}</p>` : "") +
     (s.phase === "sent" && s.msg ? `<p class="role-ok-t">${esc(s.msg)}</p>` : "") + btn + `</div>`;

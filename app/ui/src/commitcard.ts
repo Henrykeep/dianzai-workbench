@@ -1,3 +1,4 @@
+import { plainZh } from "./reasoncodes";
 // #88 git 提交确认卡（通用）：commit_confirm_request → 卡片「保存到工程版本 / 取消」→ op commit_confirm；拒绝 / 超时 → commit_declined。字段名只在 fieldmap
 import { COMMIT_F, COMMIT_OP, COMMIT_DECL_F, NO_REASON_ZH, COMMIT_BTN_ZH, COMMIT_SUB_ZH, COMMIT_REASON_KEYS, COMMIT_REASON_HOSTS, COMMIT_USER_F, USER_DECLINED_ZH } from "./fieldmap";
 export type CommitReq = { id: string; branch: string; files: { path: string; status: string }[]; message: string; messageZh: string };
@@ -45,7 +46,7 @@ export function mountCommitCard(el: HTMLElement, c: CommitReq, send: (op: string
 // 被拒绝 / 超时：卡上写中文原因，修复按钮走已有的 fix_action 机制（resolveFix / runAction）
 export function declinedHtml(d: { reason: string; fix: string }, esc: (s: string) => string, fix: { kind: string; label: string; note?: string } | null): string {
   const btn = fix ? `<button class="btn" data-cc-fix="${esc(d.fix)}"${fix.kind === "run" ? "" : " disabled"} title="${esc(fix.note ?? "")}">${esc(fix.label)}</button>` : "";
-  return `<span class="lbl warn-t cc-decl">未提交：${esc(d.reason)}</span>${btn}`;
+  return `<span class="lbl warn-t cc-decl">未提交：${esc(plainZh(d.reason))}</span>${btn}`;
 }
 export function showDeclined(el: HTMLElement, d: { reason: string; fix: string }, esc: (s: string) => string, resolve: (a: string) => any, run: (a: string) => void, pre?: string) {
   el.querySelectorAll<HTMLButtonElement>("button[data-cc]").forEach(b => b.disabled = true);
