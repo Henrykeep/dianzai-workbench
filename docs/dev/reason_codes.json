@@ -1,94 +1,98 @@
 {
- "aborted": {
-  "zh": "阶跃被打断",
-  "kind": "round"
- },
- "bad_arg": {
-  "zh": "开始帧参数不对（通道/时长 200–30000 ms）",
-  "kind": "abort"
- },
- "blocked": {
-  "zh": "所有方向都被拒绝或限幅挡住",
-  "kind": "stop"
- },
- "budget_rounds": {
-  "zh": "轮数上限用完",
-  "kind": "stop"
- },
- "budget_time": {
-  "zh": "时间预算用完",
-  "kind": "stop"
- },
- "busy": {
-  "zh": "板上已有阶跃实验在跑",
-  "kind": "abort"
- },
- "empty_metrics": {
-  "zh": "指标为空",
-  "kind": "round"
- },
- "estop": {
-  "zh": "板子急停中",
-  "kind": "abort"
- },
- "hash_mismatch": {
-  "zh": "参数哈希对不上",
-  "kind": "round"
- },
- "invalid": {
-  "zh": "连续 3 轮无效",
-  "kind": "stop"
- },
- "no_improve": {
-  "zh": "连续 3 轮没有改进",
-  "kind": "stop"
- },
- "no_result": {
-  "zh": "板子没回结果",
-  "kind": "round"
- },
- "no_rise": {
-  "zh": "没测出上升时间",
-  "kind": "round"
- },
- "offline": {
-  "zh": "板子在脱机模式",
-  "kind": "abort"
- },
- "pass": {
-  "zh": "连续 2 轮达标",
-  "kind": "stop"
- },
- "schema_conflict": {
-  "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
-  "kind": "blocker"
- },
- "settle_zero": {
-  "zh": "调节时间为 0（窗口没对上）",
-  "kind": "round"
- },
- "step_failed": {
-  "zh": "阶跃没做成",
-  "kind": "round"
- },
- "stopped": {
-  "zh": "人点了停止迭代",
-  "kind": "stop"
- },
- "too_few_samples": {
-  "zh": "样本太少",
-  "kind": "round"
- },
- "unstable": {
-  "zh": "发散（超调过大）",
-  "kind": "diverge"
- },
- "unsupported": {
-  "zh": "这个应用没配阶跃通道（app.yaml link.step）",
-  "kind": "abort"
- },
- "zero_step": {
-  "zh": "阶跃幅度为 0（目标就是当前位置）",
-  "kind": "round"
- }
+  "aborted": {
+    "zh": "阶跃被打断",
+    "kind": "round"
+  },
+  "bad_arg": {
+    "zh": "开始帧参数不对（通道/时长 200–30000 ms）",
+    "kind": "abort"
+  },
+  "blocked": {
+    "zh": "所有方向都被拒绝或限幅挡住",
+    "kind": "stop"
+  },
+  "budget_rounds": {
+    "zh": "轮数上限用完",
+    "kind": "stop"
+  },
+  "budget_time": {
+    "zh": "时间预算用完",
+    "kind": "stop"
+  },
+  "busy": {
+    "zh": "板上已有阶跃实验在跑",
+    "kind": "abort"
+  },
+  "empty_metrics": {
+    "zh": "指标为空",
+    "kind": "round"
+  },
+  "estop": {
+    "zh": "板子急停中",
+    "kind": "abort"
+  },
+  "hash_mismatch": {
+    "zh": "参数哈希对不上",
+    "kind": "round"
+  },
+  "invalid": {
+    "zh": "连续 3 轮无效",
+    "kind": "stop"
+  },
+  "no_improve": {
+    "zh": "连续 3 轮没有改进",
+    "kind": "stop"
+  },
+  "no_result": {
+    "zh": "板子没回结果",
+    "kind": "round"
+  },
+  "no_rise": {
+    "zh": "没测出上升时间",
+    "kind": "round"
+  },
+  "offline": {
+    "zh": "板子在脱机模式",
+    "kind": "abort"
+  },
+  "pass": {
+    "zh": "连续 2 轮达标",
+    "kind": "stop"
+  },
+  "schema_conflict": {
+    "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
+    "kind": "blocker"
+  },
+  "settle_zero": {
+    "zh": "调节时间为 0（窗口没对上）",
+    "kind": "round"
+  },
+  "step_failed": {
+    "zh": "阶跃没做成",
+    "kind": "round"
+  },
+  "stopped": {
+    "zh": "人点了停止迭代",
+    "kind": "stop"
+  },
+  "too_few_samples": {
+    "zh": "样本太少",
+    "kind": "round"
+  },
+  "unstable": {
+    "zh": "发散（超调过大）",
+    "kind": "diverge"
+  },
+  "unsupported": {
+    "zh": "这个应用没配阶跃通道（app.yaml link.step）",
+    "kind": "abort"
+  },
+  "zero_step": {
+    "zh": "阶跃幅度为 0（目标就是当前位置）",
+    "kind": "round"
+  },
+  "fw_estop_unsafe": {
+    "zh": "此固件存在急停可被误清除的问题，请重新烧录",
+    "kind": "blocker"
+  }
 }

@@ -14,6 +14,27 @@ INFO_CMD = b"I"            # DATA id=0x7E {'I'}（dzctl 0.17.0）
 INFO_LEN = 23
 INFO_TIMEOUT_S = 2.0
 
+# fw_estop_unsafe：急停可被误清除的固件（dzctl < 0.18.0）或没有 'I' 回包 → 禁止一切驱动执行器的操作，只许读和烧录。
+# 待嵌入式开发-2 最终确认（pending final confirmation from 嵌入式开发-2）。全仓只此一处定义版本。
+MIN_ESTOP_SAFE_DZCTL = (0, 18, 0)
+ESTOP_UNSAFE_ZH = "此固件存在急停可被误清除的问题，请重新烧录"
+
+
+def dzctl_version(info: dict | None) -> tuple[int, int, int] | None:
+    """从 'I' 回包取 dzctl 版本号。dzctl 0.17.0 的 23 B 回包只有 fw_rev（git 短哈希，不是版本号），读不出版本 → None。
+    约定（待嵌入式开发-2 确认）：0.18.0 起 info_ver ≥ 2，在 23 B 之后追加 u8 major, u8 minor, u8 patch，解成 info["dzctl_ver"]。"""
+    v = (info or {}).get("dzctl_ver")
+    return tuple(v) if v else None
+
+
+def estop_safety(info: dict | None) -> dict:
+    """{safe, reason, message_zh, fix_action, min_version, version}。没回包 / 读不出版本 / 版本 < 最低 → 不安全。"""
+    ver = None if (info is None or info.get("fw_too_old")) else dzctl_version(info)
+    safe = ver is not None and ver >= MIN_ESTOP_SAFE_DZCTL
+    return {"safe": safe, "reason": None if safe else "fw_estop_unsafe", "message_zh": None if safe else ESTOP_UNSAFE_ZH,
+            "fix_action": None if safe else "reflash", "min_version": ".".join(map(str, MIN_ESTOP_SAFE_DZCTL)),
+            "version": ".".join(map(str, ver)) if ver else None}
+
 
 def decode_info(p: bytes) -> dict | None:
     """'I' 回包（dzctl 0.17.0，小端 23 B）：'I', u8 info_ver, u32 schema_hash, u32 wd_timeout_ms, u8 uid_supported,
@@ -21,8 +42,11 @@ def decode_info(p: bytes) -> dict | None:
     if len(p) < INFO_LEN or p[0] != ord("I"):
         return None
     ver, h, wd, sup, lo, hi, rev = struct.unpack_from("<BIIBIII", p, 1)
-    return {"info_ver": ver, "schema_hash": h, "wd_timeout_ms": wd, "uid_supported": bool(sup),
-            "board_uid": (hi << 32) | lo, "fw_rev": rev}
+    d = {"info_ver": ver, "schema_hash": h, "wd_timeout_ms": wd, "uid_supported": bool(sup),
+         "board_uid": (hi << 32) | lo, "fw_rev": rev}
+    if ver >= 2 and len(p) >= INFO_LEN + 3:          # 0.18.0+ 追加的版本号（见 dzctl_version）
+        d["dzctl_ver"] = tuple(p[INFO_LEN:INFO_LEN + 3])
+    return d
 
 
 def _as_int(v) -> int | None:
