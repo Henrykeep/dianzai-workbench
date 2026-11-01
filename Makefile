@@ -189,7 +189,7 @@ $(foreach s,$(HAL_DRV_SRCS),$(eval $(call HAL_DRV_OBJ_RULE,$(s))))
 
 $(TARGET): $(OBJS) $(HAL_OBJS) $(LDSCRIPT)
 	@echo "  LD  $@"
-	$(Q)$(CC) $(filter-out $(LDSCRIPT),$^) $(LDFLAGS) -o $@
+	$(Q)$(CC) $(filter-out $(LDSCRIPT),$^) $(LDFLAGS) -o $@.tmp$$$$ && mv -f $@.tmp$$$$ $@   # 先链到同目录临时文件再改名：旧 elf 正在跑也不会 Text file busy
 ifneq ($(filter stm32f4 stm32-cubemx mspm0-driverlib,$(BOARD_FAMILY)),)
 	$(TC)objcopy -O binary $@ $(OUT)/$(APP).bin
 	$(TC)objcopy -O ihex $@ $(OUT)/$(APP).hex
