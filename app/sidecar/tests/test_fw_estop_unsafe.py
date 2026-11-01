@@ -29,6 +29,11 @@ def test_constant_and_decode():
     assert board_ident.ESTOP_UNSAFE_ZH == "此固件存在急停可被误清除的问题，请重新烧录"
 
 
+@pytest.fixture(autouse=True)
+def _enforce(monkeypatch):
+    monkeypatch.setattr(board_ident, "ENFORCE_FW_ESTOP", True)     # 拦截逻辑本身照测（开关只为等 0.18.0 仿真固件进 integration）
+
+
 def _sess(tmp_path, info, port="COM9"):
     s = Session(log_dir=tmp_path) if "log_dir" in Session.__init__.__code__.co_varnames else Session()
     s.port, s.hb_status = port, 0

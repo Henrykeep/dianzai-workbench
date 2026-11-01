@@ -156,7 +156,7 @@ def test_decode_info_layout():
     p = bytes([ord("I"), 1]) + _st.pack("<IIBIII", 0xA1B2C3D4, 1500, 1, 0x89ABCDEF, 0x01234567, 7)
     d = B.decode_info(p)
     assert d == {"info_ver": 1, "schema_hash": 0xA1B2C3D4, "wd_timeout_ms": 1500, "uid_supported": True,
-                 "board_uid": 0x0123456789ABCDEF, "fw_rev": 7}
+                 "board_uid": 0x0123456789ABCDEF, "fw_rev": 7, "proto_ver": None}
     assert B.parse_handshake(d)["board_uid"] == "0123456789abcdef"
     assert B.decode_info(p[:22]) is None and B.decode_info(b"H" + p[1:]) is None
 

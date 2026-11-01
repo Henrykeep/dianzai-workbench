@@ -1293,8 +1293,10 @@ class Session:
     def _check_actuate(self) -> None:
         """fw_estop_unsafe：驱动执行器的操作（写参数、设定值、阶跃、继电、运行模式、自检、原始/数据发送）前查。
         读参数、存 flash、烧录不经过这里。host-sim / 回放不受限（仿真里没有真急停电路；现有仿真都是 0.17）。"""
-        if self.port.startswith((SIM_PREFIX, "replay:", "/dev/pts/")) or (self.hb_status is None and self.fw_estop is None):
-            return                               # 仿真（sim: / 测试用 pty 桥接的 host-sim）、回放、还没认出是工作台固件（没心跳）：不在此列
+        if not board_ident.ENFORCE_FW_ESTOP:
+            return                               # 见 board_ident.ENFORCE_FW_ESTOP：等 integration 的仿真固件到 0.18.0 再拦
+        if self.port.startswith((SIM_PREFIX, "replay:")) or (self.hb_status is None and self.fw_estop is None):
+            return                               # 仿真、回放、还没认出是工作台固件（没心跳）：不在此列
         if self.tx_locked or self.iter_busy():
             return                               # 急停 / 迭代中：让原来更具体的拒绝（estop_clear / iter_busy）先报
         st = self.fw_estop or board_ident.estop_safety(self._info)

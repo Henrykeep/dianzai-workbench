@@ -18,6 +18,9 @@ INFO_TIMEOUT_S = 2.0
 # 规格：fw-unknown-cmd 854b6a1 docs/dev/fw-handshake.md —— info_ver=2、27 B 回包，偏移 23 的 u32 proto_ver = major<<16|minor<<8|patch。
 # fw_rev 仍是 git 短哈希，不能当版本用。全仓只此一处定义最低版本。
 MIN_ESTOP_SAFE_PROTO = 0x00001200   # dzctl 0.18.0
+# 拦截开关：integration 里的 host-sim / e2e 伪串口板还是 0.17（23 B 'I'），现在打开会让 make test 的真仿真 e2e 全部被拦。
+# integration 合入 fw-unknown-cmd 854b6a1（0.18.0）后改成 True。检测、fw_estop_unsafe 事件、status 字段现在就生效。
+ENFORCE_FW_ESTOP = False
 INFO_LEN_V2 = 27
 ESTOP_UNSAFE_ZH = "此固件存在急停可被误清除的问题，请重新烧录"
 
