@@ -31,6 +31,7 @@ actions:
   - {id: reinstall,    label: 重新安装工作台,   at: always:排障, ui: reinstall, dynamic: true, ops: [selfcheck_data]}   # data_file_missing 的 fix_action：随包数据文件（docs/dev/roles.json 等）缺失或版本不认识；进度条动态生成按钮，指引重装
   - {id: reflash,      label: 重新烧录固件,     at: step:烧录, ui: reflash, dynamic: true, ops: []}   # fw_estop_unsafe 的 fix_action：固件急停可被误清除（< dzctl 0.18.0）或没有 'I' 回包，跳到烧录步重烧
   - {id: clear_schema_cache, label: 清除格式缓存,  at: always:排障, ui: clear-schema-cache, dynamic: true, ops: [clear_schema_cache]}   # schema_conflict 的 fix_action：确认卡后只删该哈希的缓存格式文件并重新识别
+  - {id: reconnect,    label: 重新连接,        at: always:连接, ui: reconnect, dynamic: true, ops: [reconnect]}   # #160 resume_no_response 的 fix_action：重开当前/上次的口，急停锁存保持
   # ── 项目 ──
   - {id: project_new,  label: 新建项目,         at: page:req,   ui: pj-new,     ops: []}   # 只把焦点移到一句话输入（project_ask），不另起新建流程
   - {id: project_open, label: 打开项目,         at: page:req,   ui: pj-open,    ops: [project.list, project.open]}   # 列表按钮 .pj-item 是这一入口的选项，选中即 project.open {code}
