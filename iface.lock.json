@@ -1400,6 +1400,15 @@
    "pal.h: typedef enum { PAL_RESET_UNKNOWN = 0, PAL_RESET_POWER_ON, PAL_RESET_PIN, PAL_RESET_BROWNOUT, PAL_RESET_WATCHDOG, PAL_RESET_SOFTWARE, PAL_RESET_LOCKUP } pal_reset_cause_t;",
    "pal.h: dz_err_t pal_init(void);",
    "pal.h: const char *pal_board_name(void);",
+   "pal.h: dz_err_t pal_read_uid(uint8_t *buf, uint8_t max, uint8_t *len);",
+   "pal.h: static inline uint64_t pal_uid64(void) { uint8_t b[16], n = 0;",
+   "pal.h: if (pal_read_uid(b, (uint8_t)sizeof b, &n) != DZ_OK || n == 0u) return 0u;",
+   "pal.h: uint64_t h = 0xCBF29CE484222325ull;",
+   "pal.h: for (uint8_t i = 0;",
+   "pal.h: i < n;",
+   "pal.h: i++) { h ^= b[i];",
+   "pal.h: h *= 0x100000001B3ull;",
+   "pal.h: } return h ? h : 1u;",
    "pal.h: pal_reset_cause_t pal_reset_cause(void);",
    "pal.h: dz_err_t pal_nvm_info(uint32_t *size, uint32_t *erase_unit);",
    "pal.h: dz_err_t pal_nvm_erase(uint32_t off, uint32_t n);",
@@ -1453,8 +1462,8 @@
    "pal.h: dz_err_t pal_i2c_mem_write(pal_id_t id, uint8_t addr7, uint8_t reg, const uint8_t *buf, uint16_t n);",
    "pal.h: dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n);"
   ],
-  "hash": "dd352c8d6b2cdee4",
-  "version": "1.8.0"
+  "hash": "4bf0c7e83568e40b",
+  "version": "1.9.0"
  },
  "firmware/proto/dzctl": {
   "decls": [
@@ -1502,6 +1511,7 @@
    "dzctl.h: dzctl_estop_cause_t dzctl_estop_cause(void);",
    "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
    "dzctl.h: uint32_t dzctl_board_uid(void);",
+   "dzctl.h: uint64_t dzctl_board_uid64(void);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
    "dzctl.h: typedef enum { DZCTL_ST_SUBSYS = 1, DZCTL_ST_PARAMS = 2, DZCTL_ST_NVM = 3, DZCTL_ST_SENSOR = 4, DZCTL_ST_POWER = 5 } dzctl_selftest_item_t;",
    "dzctl.h: typedef bool (*dzctl_selftest_fn)(void);",
@@ -1570,8 +1580,8 @@
    "dzstep.h: void dzstep_finish(dzstep_t *s, bool aborted, uint8_t cause, uint8_t seq, dzframe_t *out);",
    "dzstep.h: int dzstep_selftest(void);"
   ],
-  "hash": "6fe5bd0dbcefe1ff",
-  "version": "0.15.0"
+  "hash": "ed116c8d4cb87e48",
+  "version": "0.16.0"
  },
  "firmware/proto/dzframe": {
   "decls": [
@@ -1743,7 +1753,7 @@
    "host_sim.h: void host_sim_set_reset_cause(pal_reset_cause_t c);"
   ],
   "hash": "095a6d80dde47589",
-  "version": "2.6.0"
+  "version": "2.7.0"
  },
  "ports/mspm0-driverlib": {
   "decls": [
@@ -1828,7 +1838,7 @@
    "wwdt_calc.h: return 1;"
   ],
   "hash": "e2afe126663c3212",
-  "version": "0.11.0"
+  "version": "0.12.0"
  },
  "ports/stm32-cubemx": {
   "decls": [
@@ -1924,7 +1934,7 @@
    "port_cubemx.h: const cm_diag_t *cm_diag(void);"
   ],
   "hash": "fce85c9d3b2c2942",
-  "version": "1.12.0"
+  "version": "1.13.0"
  },
  "ports/stm32f4-hal": {
   "decls": [
@@ -2135,6 +2145,6 @@
    "stm32f4xx_hal_conf.h: void assert_failed(uint8_t* file, uint32_t line);"
   ],
   "hash": "b0214c49a56898f4",
-  "version": "1.4.0"
+  "version": "1.5.0"
  }
 }
