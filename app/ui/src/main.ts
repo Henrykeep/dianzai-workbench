@@ -80,7 +80,8 @@ const esc = (s: unknown) => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&am
 const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isNaN(v) || ("na" in p && p.na === v) ? "—" : p.type === "f32" ? (Math.abs(v) < 1e-30 ? "0" : (+v.toPrecision(6)).toString()) : String(Math.round(v));
 
 const q = new URLSearchParams(location.search);
-const link = new Link(q.get("ws") ?? "ws://127.0.0.1:8765");
+const link = new Link(wsUrlFor(location, !!(import.meta as any).env?.DEV));   // #156 规则见 fieldmap.wsUrlFor
+import { wsUrlFor } from "./fieldmap";
 const plot = new Plot($("pb"));
 const UNDO = new UndoLog();   // 参数下发前的板上值（保护阈值表的“撤销”）
 // 心跳条点格子：回放按 dzlog 时间跳；实时把曲线停在那一秒（缓冲里还有的话）
@@ -107,12 +108,16 @@ void WRITE_IDS;
 // 板子身份 + 结构冲突（握手 / 事件 / blockers 三个来源，任一未解决就挡写入）
 import { fwUnsafeOf, fromBlockersFw, lockActuateIn, fwBannerHtml, type FwUnsafe } from "./fwsafe";
 const fws: Record<string, FwUnsafe | null> = { event: null, blockers: null };
+import { estopBitOf, actGateOf, deferredOf, fromBlockersGate, isGateCode, codeOf, gateBannerHtml, type Gate } from "./actgate";
+const gate: { deferred: Gate | null; blk: Gate | null } = { deferred: null, blk: null };
+const curGate = () => actGateOf({ link: lkMsg, pending: !!boardId?.pending, deferred: gate.deferred ?? gate.blk });
 function renderFwSafe() {
-  const u = fws.event ?? fws.blockers, el = document.getElementById("fws-banner"); lockActuateIn(document, false); if (u) lockActuateIn(document, true);
-  if (!el) return; el.hidden = !u; el.innerHTML = u ? fwBannerHtml(u, esc) : "";
+  const u = fws.event ?? fws.blockers, g = curGate(), el = document.getElementById("fws-banner"); lockActuateIn(document, false); if (u) lockActuateIn(document, true); else if (g) lockActuateIn(document, true, g.text);
+  const gb = !u && g && g.code !== "resuming";   // 恢复连接的横幅已在 lk-banner，不重复
+  if (!el) return; el.hidden = !u && !gb; el.innerHTML = u ? fwBannerHtml(u, esc) : gb ? gateBannerHtml(g!, esc) : "";
   el.querySelector<HTMLElement>("[data-fwsafe-fix]")?.addEventListener("click", ev => runAction((ev.currentTarget as HTMLElement).dataset.fwsafeFix!, s => goStepRef(s)));
 }
-setInterval(() => { if (fws.event ?? fws.blockers) lockActuateIn(document, true); }, 300);   // 参数行等会重建：持续补禁用
+setInterval(() => { const g = curGate(); if (fws.event ?? fws.blockers) lockActuateIn(document, true); else if (g) lockActuateIn(document, true, g.text); }, 300);   // 参数行等会重建：持续补禁用
 let boardId: BoardId | null = null; const sconf: Record<string, Conflict | null> = { hello: null, event: null, blockers: null };
 const curConflict = () => sconf.hello ?? sconf.event ?? sconf.blockers;
 function renderBoardId() { const el = document.getElementById("ro-uid"); if (el) { el.innerHTML = uidChipHtml(boardId, esc); el.hidden = !boardId; } }
@@ -133,7 +138,7 @@ async function clearAndRehandshake() {
 }
 // 板子身份只认握手（hello），心跳 / status 不改它
 const idSrc = (h: any) => h && (BOARD_UID_F.uid in h || BOARD_UID_F.supported in h) ? h : h?.status;   // 板子身份：握手顶层优先，后端实际放在 status 里
-function setBoardId(src: any) { if (!identTrusted(src)) return; const nb = boardIdOf(src); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
+function setBoardId(src: any) { if (!identTrusted(src)) return; const nb = boardIdOf(src); queueMicrotask(renderFwSafe); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
 function applyHelloIdentity(h: any) { setBoardId(idSrc(h)); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
 setInterval(() => { if (curConflict()) lockSchemaIn(document, true); }, 300);   // 参数行 / 提交卡会重建：持续补禁用
 const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
@@ -220,6 +225,7 @@ const S = {
 // ---------------------------------------------------------------- 提示
 function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", ms = 9000) {
   const er: Err = typeof e === "string" ? { code: "", message: e } : e;
+  if (typeof e !== "string") { const gd = deferredOf(e); if (gd) { gate.deferred = gd; renderFwSafe(); } }   // r10x 执行器操作被拒（急停中暂不识别）→ 立刻锁住其它执行器控件
   const d = document.createElement("div");
   d.className = `toast ${kind}`;
   // 侧车已给出 fix 的按原样显示；否则过翻译层（发生了什么 · 原因 · 处理 + 详情）
@@ -246,7 +252,7 @@ function resolveEstop() {
   const prev = AL.list.filter(e => e.kind === "estop").pop() as any;
   if (prev || S.latched) estopHist = clearedLine(Date.now(), estopView(prev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs).head);
   if (wasLatchedUi || S.latched) { SPANS.clear(plot.now()); RESTORE.onClear(); syncMarks(); } wasLatchedUi = false;
-  S.latched = false; resolveEstopAlerts(AL);
+  S.latched = false; resolveEstopAlerts(AL); if (gate.deferred) { gate.deferred = null; renderFwSafe(); }
   { const r = document.getElementById("cmd-r"); if (r) { r.classList.remove("attn"); r.hidden = true; } } $("estop").classList.remove("locked");
   renderAlerts(); purgeEstopBlockers(document); agent.resolveEstop?.();
  
@@ -760,7 +766,9 @@ function renderStatus(st: Msg) {
   renderBoard(st);
   const was = S.status.connected;
   const wasLatched = S.latched;
+  const wasL = S.latched;
   S.latched = latchedOf(st as { tx_locked?: boolean }, S.latched, !!conn.get().sidecar);
+  if (wasL && !S.latched && gate.deferred) { gate.deferred = null; renderFwSafe(); }   // r10x 急停解除（下降沿）才撤「急停中暂不识别」
   if (st.alive) S.lastHbMs = Date.now();
   const relock = wasLatched !== S.latched;
   if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
@@ -868,6 +876,7 @@ function renderIter() {
   c.hidden = false;
   c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null, schema: S.schema }) + metricCardHtml(IT.s.result);   // r9p6 有 metrics_card 就追加通用指标卡
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
+  { const k = c.querySelector<HTMLElement>("#it-default"); if (k && k.dataset.decline === "1") k.onclick = () => c.querySelector<HTMLElement>("#it-x")!.click(); }   // #158 default_action（如 keep_initial）= 不采用，参数不动
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
   const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
   const rr = c.querySelector<HTMLElement & { disabled: boolean }>("#it-rerun");
@@ -881,7 +890,9 @@ function renderIter() {
   };
   c.querySelectorAll<HTMLElement>("[data-decl-unit]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); openDeclField(a.dataset.declUnit!); }));   // #148
   c.querySelector<HTMLElement>("#it-decl")?.addEventListener("click", e => { e.preventDefault(); openDeclField((e.target as HTMLElement).dataset.field!); });
-  if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
+  if (w && (id != null || w.dataset.confirm2 === "1")) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
+    if (w.dataset.confirm2 === "1" && w.dataset.armed !== "1") { w.dataset.armed = "1"; w.textContent = w.dataset.confirmZh ?? ""; return; }
+    if (id == null) return;   // 还没有本地服务的确认卡：只做第一步   // #158 不确定：采用要第二次点击确认
     const part = w.dataset.partial === "1";   // #141 降幅：先确认；采用后不记为已验证档（前端不登记任何验证状态）
     if (part && !window.confirm(partialConfirmZh(IT.s.phase === "done" ? IT.s.result : null))) return;
     w.disabled = true;
@@ -917,15 +928,15 @@ link.on(m => {
       if (!S.latched) for (const f of S.plotted) if (f.ref_for) { const a = m.y[f.name]; if (a?.length) { spLast = { name: f.name, v: a[a.length - 1] }; RESTORE.noteSent(spLast.v); break; } }   // 兜底：锁存前最后一次的设定值
       break;
     }
-    case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); if (BOARD_UID_F.supported in m || BOARD_UID_F.uid in m) setBoardId(m); break;
+    case "status": if (BOARD_UID_F.supported in m || BOARD_UID_F.uid in m) setBoardId(m); if (gate.deferred && estopBitOf(m) === false) { gate.deferred = null; renderFwSafe(); } runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); break;   // r10x 身份先算：pending 立刻锁执行器
     case "event": tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
     case "alert_ack": AL.ack(m.upto); renderAlerts(); break;   // 另一个窗口点了“知道了”
     case "schema": applySchema(m.schema); break;
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
-    case "error": { const fu = fwUnsafeOf(m), sc = (m as any)[SCHEMA_CONFLICT_F.codeAlt] === SCHEMA_CONFLICT_F.key; if (fu) { fws.event = fu; renderFwSafe(); } if (sc) { sconf.event = conflictOf(m); renderConflict(); } if (!fu && !sc) toast(m as unknown as Err); break; }   // r10w：这两类走横幅，不弹 toast
+    case "error": { const fu = fwUnsafeOf(m), sc = (m as any)[SCHEMA_CONFLICT_F.codeAlt] === SCHEMA_CONFLICT_F.key; const gc = codeOf(m), gd = deferredOf(m); if (gd) gate.deferred = gd; if (fu || isGateCode(gc)) renderFwSafe(); if (fu) { fws.event = fu; renderFwSafe(); } if (sc) { sconf.event = conflictOf(m); renderConflict(); } if (!fu && !sc && !isGateCode(gc)) toast(m as unknown as Err); break; }   // r10x 恢复连接 / 急停暂不识别也走横幅   // r10w：这两类走横幅，不弹 toast
     case FW_ESTOP_F.key: fws.event = fwUnsafeOf(m); renderFwSafe(); break;
-    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); sconf.blockers = fromBlockers((m as any).blockers); renderConflict(); fws.blockers = fromBlockersFw((m as any).blockers); renderFwSafe(); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
+    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); sconf.blockers = fromBlockers((m as any).blockers); renderConflict(); fws.blockers = fromBlockersFw((m as any).blockers); gate.blk = fromBlockersGate((m as any).blockers); renderFwSafe(); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
     case SCHEMA_CONFLICT_F.key: sconf.event = conflictOf(m); renderConflict(); break;
     case "agent_notice": if ((m as any).blocker_code === CLEARED_NOTICE) showCleared(); break;   // 与 cleared 事件合并成一张卡
     case "link.state": onLinkState(m as any); showLink(m as any); break;
@@ -1052,7 +1063,7 @@ function showLink(m: any) {
   if (m.board !== "connected" && (lkMsg?.board === "connected" || lkSince == null) && (m.board === "lost" || m.reason === "resuming")) lkSince = Date.now();
   if (m.board === "connected" || m.board === "disconnected") { lkSince = null; lkNext = null; }
   lkMsg = m; renderLinkTag();
-  runState.onLink(m.board);
+  runState.onLink(m.board); renderFwSafe();
   const v = linkView(m), b = $("lk-banner");
   b.hidden = !v.text; b.textContent = v.text; b.className = "lk-banner" + (v.tone ? " " + v.tone : "");
   $("port").classList.toggle("attn", v.portAttn);
@@ -1128,7 +1139,7 @@ const refreshProgress = async () => { const p: any = await fetchProgress(op => l
   paramsDirty: pending().length > 0,
   selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); fws.blockers = fromBlockersFw(p.blockers); renderFwSafe(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
+}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); fws.blockers = fromBlockersFw(p.blockers); gate.blk = fromBlockersGate(p.blockers); renderFwSafe(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
 refreshProgressRef = refreshProgress;
 // 切页时先用上一份进度同步重画页头（不等接口往返），避免新页短暂显示上一页的页头
 window.addEventListener("dz-step", () => { if (lastProgress) renderProgress(lastProgress, goStep); void refreshProgress(); });

@@ -1,7 +1,7 @@
 import { linkView, runState, modeLabel } from "../src/linkmsg.ts";
 import { conn, onLinkState } from "../src/conn.ts";
 const eq = (a: any, b: any, m: string) => { if (JSON.stringify(a) !== JSON.stringify(b)) throw m + " " + JSON.stringify(a); };
-eq(linkView({ board: "lost", reason: "resuming" }), { text: "连接中断，正在重连…", tone: "neutral", portAttn: false }, "resuming 中性");
+eq(linkView({ board: "lost", reason: "resuming" }), { text: "正在恢复连接", tone: "neutral", portAttn: false }, "resuming 中性");
 eq(linkView({ board: "disconnected", reason: "port_not_found" }).text, "未找到上次使用的板子。请检查 USB 连接后点「连接」。", "not_found");
 const am = linkView({ board: "disconnected", reason: "port_ambiguous" });
 if (am.text !== "检测到多块同型号的板子，请选择要连接的端口。" || !am.portAttn) throw "ambiguous 高亮端口";

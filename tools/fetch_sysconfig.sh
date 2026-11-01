@@ -7,9 +7,9 @@ cd "$(dirname "$0")/.."
 VER=1.28.0.4712; F=sysconfig-1.28.0_4712-setup.run
 SHA=222dd65e0c8396e99e4f2839dcf9c2058238e875d85b06869c865a6e21962aee
 DEST=$PWD/third_party/sysconfig_1.28.0
-[ -x "$DEST/sysconfig_cli.sh" ] && { echo "已存在 $DEST，跳过"; exit 0; }
+[ -x "$DEST/sysconfig_cli.sh" ] && [ -f "$DEST/dist/cli.js" ] && { echo "已存在 $DEST，跳过"; exit 0; }
 t=$(mktemp -d); trap 'rm -rf "$t"' EXIT
 curl -fsSL -o "$t/$F" "https://dr-download.ti.com/software-development/ide-configuration-compiler-or-debugger/MD-nsUM6f7Vvb/$VER/$F"
 echo "$SHA  $t/$F" | sha256sum -c - >/dev/null || { echo "✗ $F sha256 不符" >&2; exit 1; }
 chmod +x "$t/$F" && "$t/$F" --mode unattended --prefix "$DEST" >/dev/null
-[ -x "$DEST/sysconfig_cli.sh" ] && echo "✓ SysConfig CLI $VER → $DEST" || { echo "✗ SysConfig 安装失败" >&2; exit 1; }
+[ -x "$DEST/sysconfig_cli.sh" ] && [ -f "$DEST/dist/cli.js" ] && echo "✓ SysConfig CLI $VER → $DEST" || { echo "✗ SysConfig 安装不完整（缺 dist/cli.js，磁盘满？约需 1.1 GB）" >&2; rm -rf "$DEST"; exit 1; }

@@ -27,6 +27,14 @@ jobs:
           tools/arm_toolchain.sh --install
           echo /opt/arm/arm-gnu-toolchain-13.3.rel1-x86_64-arm-none-eabi/bin >> "$GITHUB_PATH"
           tools/arm_toolchain.sh --check
+      - name: 缓存 TI SysConfig CLI 1.28.0.4712
+        uses: actions/cache@v4
+        with: { path: third_party/sysconfig_1.28.0, key: sysconfig-1.28.0.4712-linux-x86_64-v1 }
+      - name: TI SysConfig CLI（官方免登录下载 + sha256 锁定 + unattended 安装，见 tools/fetch_sysconfig.sh）
+        run: |
+          tools/fetch_sysconfig.sh
+          test -x third_party/sysconfig_1.28.0/sysconfig_cli.sh && test -f third_party/sysconfig_1.28.0/dist/cli.js
+          echo "SYSCFG_CLI=$PWD/third_party/sysconfig_1.28.0/sysconfig_cli.sh" >> "$GITHUB_ENV"
       - run: tools/fetch_third_party.sh mspm0 f4 f1 freertos                     # 和 preflight 一样有全套 SDK：test_mspm0_board、从零新建（F1/F4 HAL）、FreeRTOS 板导入编译
       - uses: actions/setup-node@v5                                            # make check 的许可扫描要读 app/ui/node_modules
         with: { node-version: "22", cache: npm, cache-dependency-path: app/ui/package-lock.json }
@@ -34,6 +42,10 @@ jobs:
         working-directory: app/ui
       - run: make check
       - run: make test
+      - name: MSPM0 从零新建（SysConfig 求解器）必须真跑，不许跳过
+        run: |
+          python -m pytest -q -rs app/sidecar/tests/test_projflow.py::test_scratch_mspm0_syscfg 2>&1 | tee /tmp/sc.log
+          grep -q "1 passed" /tmp/sc.log && ! grep -qi skipped /tmp/sc.log || { echo "::error::test_scratch_mspm0_syscfg 没真跑（平台缺工具、未验证）"; exit 1; }
       - name: 随机对象整定门禁（make tunegate：假达标硬、通过率软）
         run: |
           t0=$(date +%s)

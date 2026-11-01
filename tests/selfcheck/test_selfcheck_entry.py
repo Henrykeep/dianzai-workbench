@@ -21,9 +21,9 @@ def _run(py):
                           stdin=subprocess.DEVNULL, timeout=300)
 
 
-def test_order_prefers_venv_then_312():
+def test_order_candidates():
     s = SH.read_text()
-    assert "for c in .venv/bin/python python3.12 python3 python" in s
+    assert ".venv/bin/python python3.12 python3.13 python3.11 python3 python" in s
 
 
 def test_passes_with_deps():

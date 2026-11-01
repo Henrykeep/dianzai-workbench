@@ -313,3 +313,35 @@ export const readableZh = (t: string) => t.replace(/版本\s*(None|null|undefine
 export const BOARD_PENDING = "pending", BOARD_PENDING_ZH = "正在识别板子…";
 // #154 对轮：run_id（UUID）+ 轮号，两者都有就都要对上
 export const ROUND_BIND_F = { run: "run_id", iter: "iter" } as const;
+// r10x 执行器闸门 + 默认阶跃时长提示（字段名只在这里）
+export const GATE_F = { resuming: "resuming", deferred: "estop_latched_ident_deferred", pending: "ident_pending", durNotice: "dur_cap_notice_zh", fixAction: "fix_action", fixField: "fix_field", editDecl: "edit_declaration",
+  resumingZh: "正在恢复连接", deferredZh: "急停中，暂不识别板子", lockedZh: "驱动执行器的操作已暂停", declZh: "去声明", hbFlags: "hb_flags", hbEstop: "急停" } as const;
+// #156 ws 地址只在这里定：?ws= 优先；页面由侧车提供（http/https，非 Tauri、非 vite 开发）→ 同主机、侧车约定的 ws 端口（UI 在 --port+1，ws 在 --port）；
+// 其余（Tauri / vite 开发 / file:）退回默认 8765
+export const WS_F = { query: "ws", fallback: "ws://127.0.0.1:8765", uiPortOffset: 1, tauriHosts: ["tauri.localhost"], tauriProto: ["tauri:", "asset:"] } as const;
+export function wsUrlFor(loc: { protocol: string; hostname: string; port: string; search: string }, dev = false): string {
+  const q = new URLSearchParams(loc.search).get(WS_F.query); if (q) return q;
+  const http = loc.protocol === "http:" || loc.protocol === "https:";
+  const tauri = (WS_F.tauriProto as readonly string[]).includes(loc.protocol) || (WS_F.tauriHosts as readonly string[]).includes(loc.hostname);
+  const p = +loc.port;
+  if (!http || tauri || dev || !p) return WS_F.fallback;
+  const host = loc.hostname.includes(":") ? `[${loc.hostname}]` : loc.hostname;
+  return `${loc.protocol === "https:" ? "wss" : "ws"}://${host}:${p - WS_F.uiPortOffset}`;
+}
+// #158 结果是否比初值好：后端 improvement = confirmed | inconclusive | worse（字段名、取值、动作都只在这里）
+// inconclusive（reason improvement_unconfirmed）：采用是次要按钮且要二次确认；worse（reason kept_initial）：没有采用按钮（后端会拒）
+// 主按钮由 default_action 决定（ACTIONS 表），不写死
+export const IMPROVE_F = {
+  field: "improvement", msg: "message_zh", reason: "reason", causes: "causes", defaultAction: "default_action",
+  kinds: { inconclusive: { adopt: "confirm", headZh: "未确认改善" }, worse: { adopt: "none", headZh: "比初值差，已保留初值" } } as Record<string, { adopt: "confirm" | "none"; headZh: string }>,
+  actions: { keep_initial: { zh: "保留初值", decline: true } } as Record<string, { zh: string; decline: boolean }>,
+  fallbackZh: "无法确认比初值好", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用",
+} as const;
+export type Improve = { kind: string; msg: string; reason: string | null; causes: string[]; def: string | null; adopt: "confirm" | "none"; head: string };
+export function improvementOf(r: any): Improve | null {
+  const k = r?.[IMPROVE_F.field]; const spec = typeof k === "string" ? IMPROVE_F.kinds[k] : undefined;
+  if (!spec) return null;   // confirmed / 没给 → 照常
+  const str = (v: unknown) => typeof v === "string" && v ? v : null;
+  return { kind: k, msg: str(r[IMPROVE_F.msg]) ?? IMPROVE_F.fallbackZh, reason: str(r[IMPROVE_F.reason]), causes: Array.isArray(r[IMPROVE_F.causes]) ? r[IMPROVE_F.causes].filter((x: unknown) => typeof x === "string") : [],
+    def: str(r[IMPROVE_F.defaultAction]), adopt: spec.adopt, head: spec.headZh };
+}
