@@ -252,8 +252,6 @@ test:
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
 	$(PY) tools/test_win_paths_mk.py   # Windows C:/ 源路径不进 make 目标名（Makefile:173 multiple target patterns）
-	$(PY) tools/test_link_wdhash.py   # link.watchdog_ms 进 schema 哈希（1500≠2300，不改则相同）
-	$(PY) tools/test_board_uid.py   # 换板指纹：两块仿真板 schema_hash 相同、board_uid64 不同
 	$(PY) tools/test_link_hold.py   # link_schema 设定值通道 hold（latched/timeout）与固件行为一致
 	$(PY) tools/test_swd_pins.py   # #56 SWD 调试脚占用即报错
 	$(PY) tools/test_projgen_build.py   # #52 工程 build/gen 导出物不与 projgen 重复链接

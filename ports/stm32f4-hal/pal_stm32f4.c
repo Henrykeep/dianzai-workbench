@@ -470,17 +470,6 @@ void pal_irq_restore(uint32_t s) { if (!s) __enable_irq(); }
 void SysTick_Handler(void) { HAL_IncTick(); }
 
 /* 心跳里的板 ID：96 位 UID 折成 32 位（HAL_GetUIDw* 在 F1/F4 HAL 里都有） */
-/* 换板指纹：UID_BASE 96 位原样（RM0090 §39.1 / RM0008 §30.2 Unique device ID register） */
-dz_err_t pal_read_uid(uint8_t *buf, uint8_t max, uint8_t *len)
-{
-    if (!buf || !len || max < 12u) return DZ_EINVAL;
-    uint32_t w[3] = { HAL_GetUIDw0(), HAL_GetUIDw1(), HAL_GetUIDw2() };
-    for (uint8_t i = 0; i < 12u; i++) buf[i] = (uint8_t)(w[i / 4u] >> (8u * (i % 4u)));
-    *len = 12u;
-    return DZ_OK;
-}
-uint64_t dzctl_board_uid64(void);
-uint64_t dzctl_board_uid64(void) { return pal_uid64(); }
 uint32_t dzctl_board_uid(void);   /* 声明在 dzctl.h；端口不依赖 proto 层，这里只覆盖弱定义 */
 uint32_t dzctl_board_uid(void) { uint32_t u = HAL_GetUIDw0() ^ HAL_GetUIDw1() ^ HAL_GetUIDw2(); return u ? u : 1u; }
 
