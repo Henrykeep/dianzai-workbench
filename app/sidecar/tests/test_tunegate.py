@@ -72,7 +72,7 @@ def test_standin_is_opt_in_and_never_passes(monkeypatch, capsys):
     assert "未合入" in capsys.readouterr().out
 
 
-def _graded(tmp_path, monkeypatch, feasible, verdict, recheck):
+def _graded(tmp_path, monkeypatch, feasible, verdict, recheck, truth_fail=None):
     import json
     import yaml
     import tunegate_grade as G
@@ -87,7 +87,7 @@ def _graded(tmp_path, monkeypatch, feasible, verdict, recheck):
     spec = (tmp_path / "spec.txt").read_text("utf-8")
     res = AT.autotune(G.board(str(tmp_path), app, 3001, "randplant"), app, link, spec, 3001)
     monkeypatch.setattr(G, "_recheck", lambda *a: recheck)
-    monkeypatch.setattr(AT, "meets", lambda m, sp: [])            # 真值满足题面
+    monkeypatch.setattr(AT, "meets", lambda m, sp: list(truth_fail or []))   # 默认真值满足题面
     return G.grade(str(tmp_path), 3001, res | {"verdict": verdict, "amp_reduced": False}, app, spec)
 
 
@@ -104,3 +104,16 @@ def test_bucket_truth_label_suspect(tmp_path, monkeypatch):
 def test_bucket_false_label_confirmed_is_false_pass(tmp_path, monkeypatch):
     g = _graded(tmp_path, monkeypatch, False, "pass", "false_pass")
     assert g["bucket"] == "false_pass" and g["false_pass"]
+
+
+
+def test_claims_pass_grader_fails_is_false_pass(tmp_path, monkeypatch):
+    """整定器说 pass、判卷不认 → 记为假达标的子项（r10 一票否决），汇总里单独计数。"""
+    import tunegate_grade as G
+    g = _graded(tmp_path, monkeypatch, True, "pass", "ok", truth_fail=["超调超了"])
+    assert g["claims_pass_grader_fails"] and g["false_pass"] and g["bucket"] == "false_pass" and not g["ok"]
+    assert "说达标判卷不认" in G.line(g)
+    S = G.summarize([g | {"seed": 1}])
+    assert S["claims_pass_grader_fails"] == [1] and S["false_pass"] == [1]
+    ok = _graded(tmp_path, monkeypatch, True, "fail", "ok", truth_fail=["超调超了"])
+    assert not ok["claims_pass_grader_fails"] and not ok["false_pass"]

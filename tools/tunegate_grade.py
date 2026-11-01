@@ -84,6 +84,10 @@ def grade(d, seed: int, res: dict, app: dict, spec: str, source: str = "randplan
             errs.append(f"原因对不上：应为 {plant['infeasible_reason']}，卡上 {res['category']}（{res['pass_basis']}）")
     elif not (v == "pass" and truth_ok) and _recheck(plant, seed, v, truth_ok, source) == "undecided":   # "unknown"
         bucket = "undecided"
+    if v == "pass" and errs and not any(e.startswith("假达标") for e in errs):
+        # 整定器说达标、判卷不认（比初值差 / 离参考太远 / 原因对不上）：算假达标的一个子项
+        errs.insert(0, "假达标（整定器说达标、判卷不认）：" + "；".join(errs))
+    claims = v == "pass" and bool(errs)
     fake = any(e.startswith("假达标") for e in errs)
     early = any(e.startswith("提前停") for e in errs)
     if fake:
@@ -95,7 +99,7 @@ def grade(d, seed: int, res: dict, app: dict, spec: str, source: str = "randplan
     return {"seed": seed, "kind": plant["kind"], "feasible": f, "cause": plant["infeasible_reason"],
             "verdict": v, "category": res["category"], "pass_basis": res["pass_basis"],
             "cost": {"initial": ci, "best": cb, "reference": ref["cost"]}, "ok": not errs, "errors": errs,
-            "false_pass": fake, "early_stop_not_pass": early, "bucket": bucket,
+            "false_pass": fake, "claims_pass_grader_fails": claims, "early_stop_not_pass": early, "bucket": bucket,
             "stop_reason": res.get("stop_reason"), "unchanged": unchanged}
 
 
@@ -104,7 +108,7 @@ def line(r: dict) -> str:
     import math
     cost = {k: round(v, 4) if math.isfinite(v) else None for k, v in (r.get("cost") or {}).items()}
     return (f"{'✓' if r['ok'] else '✗'} seed={r['seed']} {r.get('kind', '?')} feasible={r.get('feasible')} "
-            f"verdict={r.get('verdict')}/{r.get('category')} stop={r.get('stop_reason')}{' unchanged' if r.get('unchanged') else ''} "
+            f"verdict={r.get('verdict')}/{r.get('category')}{' 说达标判卷不认' if r.get('claims_pass_grader_fails') else ''} stop={r.get('stop_reason')}{' unchanged' if r.get('unchanged') else ''} "
             f"cost {json.dumps(cost)} {'; '.join(r.get('errors') or [])}")
 
 
@@ -126,6 +130,7 @@ def summarize(rs: list[dict]) -> dict:
             "unknown": [r["seed"] for r in unk], "unknown_ratio": (len(unk) / len(rs)) if rs else 0.0,
             "undecided": [r["seed"] for r in und],
             "false_pass": [r["seed"] for r in rs if r.get("false_pass")],
+            "claims_pass_grader_fails": [r["seed"] for r in rs if r.get("claims_pass_grader_fails")],   # 已含在 false_pass 里
             "early_stop_not_pass": [r["seed"] for r in rs if r.get("early_stop_not_pass")],
             "truth_label_suspect": [r["seed"] for r in rs if r.get("bucket") == "truth_label_suspect"],
             "unchanged": [r["seed"] for r in rs if r.get("unchanged")],
