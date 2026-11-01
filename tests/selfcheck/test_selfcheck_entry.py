@@ -71,3 +71,21 @@ def test_json_without_deps(tmp_path):
     d = json.loads(r.stdout)
     assert r.returncode == 1 and d["items"][0]["status"] == "missing"
     assert [i["status"] for i in d["items"][1:]] == ["unchecked"] * 3
+
+
+def test_cp1252_console_no_unicode_error():
+    """app-windows 41273621192：cp1252 控制台下 selfcheck.py 打中文崩溃。两种输出都不能抛 UnicodeEncodeError。"""
+    import json as _json
+    import os as _os
+    import pathlib as _pl
+    import subprocess as _sp
+    import sys as _sys
+    tool = _pl.Path(__file__).resolve().parents[2] / "tools" / "selfcheck.py"
+    env = dict(_os.environ, PYTHONIOENCODING="cp1252", PYTHONUTF8="0")
+    for args in (["--json"], []):
+        p = _sp.run([_sys.executable, str(tool), *args], capture_output=True, env=env, timeout=120)
+        assert b"UnicodeEncodeError" not in p.stderr, p.stderr.decode("utf-8", "replace")
+        assert p.returncode in (0, 1, 3)
+        if args:
+            d = _json.loads(p.stdout.decode("ascii"))
+            assert d["rc"] == p.returncode

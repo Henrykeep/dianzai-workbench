@@ -83,11 +83,18 @@ LABEL = {"ok": "[通过]", "missing": "[失败]", "invalid": "[失败]", "unchec
 
 def main(argv=None) -> int:
     argv = sys.argv[1:] if argv is None else argv
+    # Windows 管道/重定向时 stdout 是 cp1252，打中文会 UnicodeEncodeError（app-windows 41273621192）。
+    # 不靠 PYTHONIOENCODING：双击 .bat / Tauri 调用时没有这个环境变量。
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
     items = run_checks()
     rc, summary = summarize(items)
     if "--json" in argv:
         print(json.dumps({"rc": rc, "ok": rc == 0, "complete": not any(i["status"] == "unchecked" for i in items),
-                          "summary_zh": summary, "python": sys.executable, "items": items}, ensure_ascii=False, indent=1))
+                          "summary_zh": summary, "python": sys.executable, "items": items}, ensure_ascii=True, indent=1))  # 纯 ASCII：任何控制台编码下都能被 ConvertFrom-Json 正确读
         return rc
     print(f"芯台自检（Python {sys.version.split()[0]}，{sys.executable}）")
     for i in items:
