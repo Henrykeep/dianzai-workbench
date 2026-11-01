@@ -315,6 +315,8 @@ $("ln-stall").onchange = e => link.rpc("serial_stall", { s: +(e.target as HTMLIn
 function applySchema(s: Schema | null) {
   S.schema = s;
   queueMicrotask(() => score.refresh());
+  if (s) { ROLES_T.onHandshake(s); REASONS_T.onHandshake(s); } else { ROLES_T.reset(); REASONS_T.reset(); }   // 握手到了才判断数据表来源；到之前不提示
+  queueMicrotask(() => { renderDataNotice(); renderRoleCard(); });
   if (!s) return;
   S.plotted = s.fields.filter(f => f.name !== "t_ms" && !f.enum);
   S.enums = s.fields.filter(f => f.enum);
@@ -774,7 +776,7 @@ function renderStatus(st: Msg) {
   if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); $("ro-lq").textContent = "链路 —"; $("ro-lq").className = "lq mono lq-off"; tl.clear(); AL.reset(); renderAlerts(); }
 }
 function applyNone() {
-  S.schema = null; UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
+  S.schema = null; ROLES_T.reset(); REASONS_T.reset(); queueMicrotask(() => renderDataNotice()); UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
   plot.setChannels([], [], []); $("chans").innerHTML = emptyState("activity", "连上后列出通道"); $("chan-n").textContent = ""; $("plot-sub").textContent = "";
   $("snaps").innerHTML = ""; renderParams();
   document.querySelectorAll(".ro.pin").forEach(e => e.remove());   // 断开后不留上一个对象的状态块
@@ -1140,6 +1142,21 @@ function openDeclField(key: string) {
 }
 
 // 原因表兜底提示：状态栏一处，启动时设一次（不弹 toast，不重复）
-import { reasonCodesNotice } from "./reasoncodes";
+import { reasonCodesNotice, REASONS_T } from "./reasoncodes";
+import { ROLES_T } from "./rolecodes";
 import { reasonStatusText } from "./fieldmap";
-{ const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.textContent = reasonStatusText(t); el.title = t; } }
+import { runSelfcheck, selfcheckHtml, fixGuideZh, SELFCHECK_BTN_HTML } from "./selfcheck";
+function renderDataNotice() { const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.innerHTML = t ? `${esc(reasonStatusText(t))} ${SELFCHECK_BTN_HTML}` : ""; el.title = t; } }
+// 「运行自检」：任何提示里的按钮都走这里（事件委托）
+const tauriInvoke = () => { const t = (window as any).__TAURI_INTERNALS__; return t?.invoke ? (cmd: string) => t.invoke(cmd) : null; };
+document.addEventListener("click", async ev => {
+  const b = (ev.target as HTMLElement).closest<HTMLElement>("[data-selfcheck]"), fx = (ev.target as HTMLElement).closest<HTMLElement>("[data-sc-fix]");
+  if (fx) { const g = document.getElementById("sc-guide"); if (g) { g.hidden = false; g.textContent = fixGuideZh(fx.dataset.scFix!); } return; }
+  if ((ev.target as HTMLElement).id === "sc-x") { document.getElementById("sc-host")?.remove(); return; }
+  if (!b) return;
+  let host = document.getElementById("sc-host"); if (!host) { host = document.createElement("div"); host.id = "sc-host"; host.className = "sc-host"; document.body.appendChild(host); }
+  host.innerHTML = selfcheckHtml(null);
+  const r = await runSelfcheck({ connected: !!S.status?.connected, call: op => call(op), invoke: tauriInvoke() });
+  host.innerHTML = selfcheckHtml(r);
+});
+renderDataNotice();

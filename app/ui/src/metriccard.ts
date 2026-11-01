@@ -2,6 +2,8 @@ import { coarseLabel } from "./plant";
 import { PLANT_COARSE } from "./fieldmap";
 // r9p6 通用指标卡：控制 / 测量 / 电源 / 其他题目共用。只按 items 渲染；task_kind 只影响排序和图表类型。
 // 规则：结论只来自后端 verdict（达标 / 不达标 / 待标定），前端不判；缺值一律「—」；单位原样显示，不换算。
+import { MC_X_F, EVIDENCE_ZH, MC_STOP_ZH, UNCHANGED_ZH, MC_F } from "./fieldmap";
+import { reasonZh } from "./reasoncodes";
 import { MC_EXPORT_OP, toMetricsCard, type McItem, type MetricsCard, type TaskKind } from "./fieldmap";
 const D = "—";
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
@@ -49,7 +51,7 @@ function calibHtml(c: McItem["calib"]): string {
 }
 export function metricCardHtml(src: any): string {
   const c = toMetricsCard(src); if (!c) return "";
-  const s = summary(c);
+  const s = summary(c), extra = mcExtrasHtml(src);
   const rows = sortItems(c).map(it => {
     const warn = itemWarnings(it, c.kind);
     const zh = VERDICT_LABEL[it.verdict];   // 标签固定三种；verdict_zh 作补充说明进依据行
@@ -68,6 +70,31 @@ export function metricCardHtml(src: any): string {
   ${it.evidence ? `<a class="mc-ev" href="#" data-evidence="${esc(it.evidence)}" title="${esc(it.evidence)}">打开录波</a>` : ""}
 </div>`;
   }).join("");
-  return `<wa-card class="mc" data-kind="${c.kind}" data-chart="${CHART_OF[c.kind]}"><div class="mc-top"><h4>指标卡 · ${KIND_LABEL[c.kind]}</h4><span class="mc-sum num">${esc(s.text)}</span><span class="mc-exp"><wa-button size="small" appearance="outlined" data-mc-export="csv">导出 CSV</wa-button><wa-button size="small" appearance="outlined" data-mc-export="xlsx">导出 Excel</wa-button></span></div>${c.kindBasis ? `<p class="mc-kb">${esc(c.kindBasis)}</p>` : ""}<div class="mc-list">${rows}</div></wa-card>`;
+  return `<wa-card class="mc" data-kind="${c.kind}" data-chart="${CHART_OF[c.kind]}"><div class="mc-top"><h4>指标卡 · ${KIND_LABEL[c.kind]}</h4>${extra && isUnchanged(src) ? "" : `<span class="mc-sum num">${esc(s.text)}</span>`}<span class="mc-exp"><wa-button size="small" appearance="outlined" data-mc-export="csv">导出 CSV</wa-button><wa-button size="small" appearance="outlined" data-mc-export="xlsx">导出 Excel</wa-button></span></div>${c.kindBasis ? `<p class="mc-kb">${esc(c.kindBasis)}</p>` : ""}${extra}<div class="mc-list">${rows}</div></wa-card>`;
 }
 export const exportArgs = (format: string) => ({ op: MC_EXPORT_OP, args: { format } });   // 文件由后端生成，前端不拼 CSV
+
+// 指标卡补充：原因证据列表（后端判几个就列几个，前端不挑）、未改参说明 + 余量、停止原因
+const mcObj = (src: any) => src?.[MC_F.obj] ?? src?.args?.[MC_F.obj] ?? src?.preview?.[MC_F.obj] ?? null;
+export const isUnchanged = (src: any) => mcObj(src)?.[MC_X_F.unchanged] === true;
+const marginText = (x: any) => {
+  if (typeof x?.[MC_X_F.marginZh] === "string" && x[MC_X_F.marginZh]) return x[MC_X_F.marginZh];
+  const m = x?.[MC_X_F.margin], v = m && typeof m === "object" ? m[MC_X_F.value] : m, un = m && typeof m === "object" ? m[MC_X_F.unit] : x?.target?.unit;
+  return typeof v === "number" && Number.isFinite(v) ? `余量 ${+v.toPrecision(4)}${un ? (un === "%" ? "%" : " " + un) : ""}` : "余量未上报";
+};
+export function mcExtrasHtml(src: any): string {
+  const o = mcObj(src); if (!o) return "";
+  const out: string[] = [];
+  const cs = Array.isArray(o[MC_X_F.causes]) ? o[MC_X_F.causes].filter((c: any) => c && typeof c === "object") : [];
+  if (cs.length) {
+    const vz = typeof o[MC_X_F.verdictZh] === "string" ? o[MC_X_F.verdictZh] : "";
+    out.push(`<div class="mc-causes">${vz ? `<p class="mc-cz">${esc(vz)}</p>` : ""}<ul>${cs.map((c: any) => `<li><b>${esc(reasonZh(String(c[MC_X_F.code] ?? ""), {}))}</b><span class="mc-evd ${esc(String(c[MC_X_F.ev] ?? ""))}">${esc(EVIDENCE_ZH[c[MC_X_F.ev]] ?? "证据强度未上报")}</span>${c[MC_X_F.basis] ? `<span class="mc-cb">${esc(String(c[MC_X_F.basis]))}</span>` : ""}</li>`).join("")}</ul></div>`);
+  }
+  if (o[MC_X_F.unchanged] === true) {
+    const its = Array.isArray(o.items) ? o.items : [];
+    out.push(`<div class="mc-unch"><p>${UNCHANGED_ZH}</p><ul>${its.map((x: any) => `<li>${esc(String(x?.[MC_X_F.name] ?? "—"))}：${esc(marginText(x))}</li>`).join("")}</ul></div>`);
+  }
+  const st = o[MC_X_F.stop];
+  if (typeof st === "string" && st) out.push(`<p class="mc-stop" data-stop="${esc(st)}">${esc(typeof o[MC_X_F.stopZh] === "string" && o[MC_X_F.stopZh] ? o[MC_X_F.stopZh] : MC_STOP_ZH[st] ?? reasonZh(st, {}))}</p>`);
+  return out.join("");
+}
