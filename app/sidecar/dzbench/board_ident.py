@@ -1,6 +1,6 @@
 """板子身份（换板指纹）：从固件握手读 board_uid（64 位 FNV-1a 的 MCU 唯一 ID）与 uid_supported。
 
-规格：fw-handshake.md（dzctl 0.17.0）——侧车发 DATA 0x7E {'I'}，23 B 回包里报 board_uid64 与 uid_supported；不在心跳里。
+规格：fw-wdhash 592ea43 的 docs/dev/fw-handshake.md（dzctl 0.17.0）——侧车发 DATA 0x7E {'I'}，23 B 回包里报 board_uid64 与 uid_supported；不在心跳里。
 - 报给界面：board_uid = 16 位小写十六进制或 null；uid_supported = bool。
 - uid_supported 为 false、board_uid 缺 / 为 0 → board_uid = null，并显式提示 NO_UID_ZH；这种板子永远不和缓存里的任何板子算同一块。
 """
