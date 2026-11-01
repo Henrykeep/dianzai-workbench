@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { linkTag } from "../src/batch1";
 import { linkView } from "../src/linkmsg";
-import { actGateOf, deferredOf, fromBlockersGate, codeOf, isGateCode, gateBannerHtml, durCapNoteHtml, reasonText } from "../src/actgate";
+import { estopBitOf, actGateOf, deferredOf, fromBlockersGate, codeOf, isGateCode, gateBannerHtml, durCapNoteHtml, reasonText } from "../src/actgate";
 import { boardIdOf } from "../src/boardid";
 import { resultCardHtml, type Stopped } from "../src/iterui";
 import { setReasonCodes } from "../src/reasoncodes";
@@ -45,4 +45,6 @@ assert.match(card, /rc-durcap/); assert.match(card, /对象无响应/); assert.m
 // 5 接线：main 的 error / toast / blockers / showLink 都喂闸门
 const main = readFileSync("src/main.ts", "utf8");
 assert.match(main, /gate\.blk = fromBlockersGate/); assert.match(main, /deferredOf\(e\)/); assert.match(main, /runState\.onLink\(m\.board\); renderFwSafe\(\)/);
+assert.equal(estopBitOf({ hb_flags: ["急停", "参数未保存"] }), true); assert.equal(estopBitOf({ hb_flags: [] }), false); assert.equal(estopBitOf({ hb_flags: null }), null);
+assert.match(main, /estopBitOf\(m\) === false/); assert.match(main, /wasL && !S\.latched && gate\.deferred/);
 console.log("r10x ok");

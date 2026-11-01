@@ -107,7 +107,7 @@ void WRITE_IDS;
 // 板子身份 + 结构冲突（握手 / 事件 / blockers 三个来源，任一未解决就挡写入）
 import { fwUnsafeOf, fromBlockersFw, lockActuateIn, fwBannerHtml, type FwUnsafe } from "./fwsafe";
 const fws: Record<string, FwUnsafe | null> = { event: null, blockers: null };
-import { actGateOf, deferredOf, fromBlockersGate, isGateCode, codeOf, gateBannerHtml, type Gate } from "./actgate";
+import { estopBitOf, actGateOf, deferredOf, fromBlockersGate, isGateCode, codeOf, gateBannerHtml, type Gate } from "./actgate";
 const gate: { deferred: Gate | null; blk: Gate | null } = { deferred: null, blk: null };
 const curGate = () => actGateOf({ link: lkMsg, pending: !!boardId?.pending, deferred: gate.deferred ?? gate.blk });
 function renderFwSafe() {
@@ -137,7 +137,7 @@ async function clearAndRehandshake() {
 }
 // 板子身份只认握手（hello），心跳 / status 不改它
 const idSrc = (h: any) => h && (BOARD_UID_F.uid in h || BOARD_UID_F.supported in h) ? h : h?.status;   // 板子身份：握手顶层优先，后端实际放在 status 里
-function setBoardId(src: any) { if (!identTrusted(src)) return; const nb = boardIdOf(src); if (nb && !nb.pending && src?.[BOARD_UID_F.source] === BOARD_UID_F.handshake) gate.deferred = null; queueMicrotask(renderFwSafe); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
+function setBoardId(src: any) { if (!identTrusted(src)) return; const nb = boardIdOf(src); queueMicrotask(renderFwSafe); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
 function applyHelloIdentity(h: any) { setBoardId(idSrc(h)); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
 setInterval(() => { if (curConflict()) lockSchemaIn(document, true); }, 300);   // 参数行 / 提交卡会重建：持续补禁用
 const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
@@ -251,7 +251,7 @@ function resolveEstop() {
   const prev = AL.list.filter(e => e.kind === "estop").pop() as any;
   if (prev || S.latched) estopHist = clearedLine(Date.now(), estopView(prev, (S.status as any).estop_cause ?? latchedCause(), S.lastHbMs).head);
   if (wasLatchedUi || S.latched) { SPANS.clear(plot.now()); RESTORE.onClear(); syncMarks(); } wasLatchedUi = false;
-  S.latched = false; resolveEstopAlerts(AL);
+  S.latched = false; resolveEstopAlerts(AL); if (gate.deferred) { gate.deferred = null; renderFwSafe(); }
   { const r = document.getElementById("cmd-r"); if (r) { r.classList.remove("attn"); r.hidden = true; } } $("estop").classList.remove("locked");
   renderAlerts(); purgeEstopBlockers(document); agent.resolveEstop?.();
  
@@ -765,7 +765,9 @@ function renderStatus(st: Msg) {
   renderBoard(st);
   const was = S.status.connected;
   const wasLatched = S.latched;
+  const wasL = S.latched;
   S.latched = latchedOf(st as { tx_locked?: boolean }, S.latched, !!conn.get().sidecar);
+  if (wasL && !S.latched && gate.deferred) { gate.deferred = null; renderFwSafe(); }   // r10x 急停解除（下降沿）才撤「急停中暂不识别」
   if (st.alive) S.lastHbMs = Date.now();
   const relock = wasLatched !== S.latched;
   if (!conn.get().sidecar) st = { ...st, connected: false, alive: false };   // 侧车断开时不信旧 status
@@ -922,7 +924,7 @@ link.on(m => {
       if (!S.latched) for (const f of S.plotted) if (f.ref_for) { const a = m.y[f.name]; if (a?.length) { spLast = { name: f.name, v: a[a.length - 1] }; RESTORE.noteSent(spLast.v); break; } }   // 兜底：锁存前最后一次的设定值
       break;
     }
-    case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); if (BOARD_UID_F.supported in m || BOARD_UID_F.uid in m) setBoardId(m); break;
+    case "status": if (BOARD_UID_F.supported in m || BOARD_UID_F.uid in m) setBoardId(m); if (gate.deferred && estopBitOf(m) === false) { gate.deferred = null; renderFwSafe(); } runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); break;   // r10x 身份先算：pending 立刻锁执行器
     case "event": tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
     case "alert_ack": AL.ack(m.upto); renderAlerts(); break;   // 另一个窗口点了“知道了”
     case "schema": applySchema(m.schema); break;

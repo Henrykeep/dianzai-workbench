@@ -27,3 +27,5 @@ export function durCapNoteHtml(r: any, esc: (s: string) => string): string {
   const k = r?.[G.fixAction] === G.editDecl ? s(r?.[G.fixField]) ?? "" : "";
   return `<p class="rc-durcap warn" id="rc-durcap">${esc(t)}${k ? ` <a href="#" data-decl-unit="${esc(k)}" title="到项目页声明 ${esc(k)}">${esc(G.declZh)}</a>` : ""}</p>`;
 }
+// 急停中暂不识别何时撤：心跳 hb_flags 里没有「急停」位了（后端同一判据 bit10）；旧固件没 hb_flags → 返回 null，交给急停解除的下降沿
+export const estopBitOf = (st: any): boolean | null => Array.isArray(st?.[G.hbFlags]) ? st[G.hbFlags].includes(G.hbEstop) : null;
