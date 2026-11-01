@@ -41,14 +41,14 @@ for (const c of [...STOP_F.divCodes, ...STOP_F.abortCodes, ...STOP_F.invalidCode
 assert.ok(codes.has("diverged") && codes.size >= 10);
 for (const c of codes) { const z = stopReasonZh({ reason: c } as any, []); assert.doesNotMatch(z, /其他（|[a-z_]{4,}/, `${c} → ${z}`); }
 assert.ok(REASON_ZH.diverged);
-// reason_codes.json：每个代码都显示文件里的 zh；未知代码「未知原因」
+// reason_codes.json：每个代码都显示文件里的 zh；未知代码「其他原因（代码 xxx）」
 const { setReasonCodes } = await import("../src/reasoncodes");
 let file: any; try { file = JSON.parse(readFileSync("../../docs/dev/reason_codes.json", "utf8")); } catch { file = { diverged: { zh: "响应发散", kind: "diverged" }, new_code_x: { zh: "新原因", kind: "abort" } }; }
 setReasonCodes(file);
-for (const [c, v] of Object.entries<any>(file)) if (![...STOP_F.abortCodes, ...STOP_F.invalidCodes].includes(c as any)) assert.equal(stopReasonZh({ reason: c } as any, []), v.zh);
-assert.equal(stopReasonZh({ reason: "zz_not_a_code" } as any, []), "未知原因");
+for (const [c, v] of Object.entries<any>(file)) if (![...STOP_F.abortCodes, ...STOP_F.invalidCodes].includes(c as any)) assert.equal(stopReasonZh({ reason: c } as any, []), v.message_zh || v.zh);
+assert.equal(stopReasonZh({ reason: "zz_not_a_code" } as any, []), "其他原因（代码 zz_not_a_code）");
 setReasonCodes(null);
-assert.equal(stopReasonZh({ reason: "zz_not_a_code" } as any, []), "未知原因");
+assert.equal(stopReasonZh({ reason: "zz_not_a_code" } as any, []), "其他原因（代码 zz_not_a_code）");
 console.log("r9k ok", codes.size);
 })().catch(e => { console.error(e); process.exit(1); });
 // #141 复测被挡（retest_blocked_by）+ 兜底 max_step + 采用回执
