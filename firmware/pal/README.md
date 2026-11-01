@@ -43,13 +43,13 @@ pwm3:
 ## 板子唯一 ID（1.9.0，换板指纹）
 
 `pal_read_uid(buf, max, &len)` 读 MCU 出厂唯一 ID 原始字节；`pal_uid64()`（pal.h 内联）把它折成 64 位 FNV-1a，读不到 = 0（未知）。
-dzctl 0.16.0 在心跳末尾带上它（u64 board_uid64），上位机据此判断「是不是新板」。运行时值，**不进 schema 哈希**。
+dzctl 0.17.0 在一次性 `'I'` 握手信息里报它（`uid_supported` + u64 board_uid，见 docs/dev/fw-handshake.md），不进心跳。运行时值，**不进 schema 哈希**。
 
 | 芯片族 / 端口 | 读的是什么 | 字节数 |
 |---|---|---|
 | STM32（stm32-cubemx 1.13.0 / stm32f4-hal 1.5.0） | `UID_BASE` 96 位（HAL_GetUIDw0..2） | 12 |
 | MSPM0（mspm0-driverlib 0.12.0） | FACTORYREGION `DEVICEID` + `TRACEID`；TRACEID=0（预量产片）→ `DZ_ENOTSUP` | 8 |
 | RP2350 | `pico_get_unique_board_id()`（仓库暂无 RP2350 端口，新端口照此实现）【未做】 | 8 |
-| host-sim 2.7.0 | 环境变量 `DZ_SIM_UID` 的字节；未设时固定 `"dz-host-sim"`（可复现，测试用不同值模拟两块板） | ≤16 |
+| host-sim 2.7.0 | 环境变量 `DZ_SIM_UID` 的字节；未设时固定 `"dz-host-sim"`；`DZ_SIM_UID_UNSUPPORTED=1` → `DZ_ENOTSUP` | ≤16 |
 
 [编译/仿真] host-sim 测过（tools/test_board_uid.py）；真板【未测】。

@@ -380,6 +380,8 @@ dz_err_t pal_spi_xfer(pal_id_t id, const uint8_t *tx, uint8_t *rx, uint16_t n)
 dz_err_t pal_read_uid(uint8_t *buf, uint8_t max, uint8_t *len)
 {
     if (!buf || !len) return DZ_EINVAL;
+    const char *x = getenv("DZ_SIM_UID_UNSUPPORTED");     /* 模拟读不到 UID 的芯片族 → uid_supported=0 */
+    if (x && *x && *x != '0') return DZ_ENOTSUP;
     const char *e = getenv("DZ_SIM_UID");
     if (!e || !*e) e = "dz-host-sim";
     size_t n = strlen(e);
