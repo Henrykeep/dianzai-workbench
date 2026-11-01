@@ -90,6 +90,26 @@ void dzctl_heartbeat(const dzctl_table_t *t, uint8_t seq, dzframe_t *out)
     (void)dzframe_put_u32(out, s_par_h);
 }
 
+bool dzctl_is_info_request(const dzframe_t *f)
+{
+    return f && f->kind == DZF_DATA && f->id == DZCTL_ID_CMD && f->len == 1u && f->payload[0] == (uint8_t)DZCTL_CMD_INFO;
+}
+
+void dzctl_info(const dzctl_table_t *t, uint32_t wd_timeout_ms, uint8_t seq, dzframe_t *out)
+{
+    uint64_t u = dzctl_board_uid64();
+    memset(out, 0, sizeof *out);
+    out->kind = DZF_DATA; out->id = DZCTL_ID_CMD; out->seq = seq;
+    (void)dzframe_put_u8(out, (uint8_t)DZCTL_CMD_INFO);
+    (void)dzframe_put_u8(out, DZCTL_INFO_VER);
+    (void)dzframe_put_u32(out, t ? t->schema_hash : 0u);
+    (void)dzframe_put_u32(out, wd_timeout_ms);
+    (void)dzframe_put_u8(out, u != 0u ? 1u : 0u);              /* uid_supported */
+    (void)dzframe_put_u32(out, (uint32_t)u);
+    (void)dzframe_put_u32(out, (uint32_t)(u >> 32));
+    (void)dzframe_put_u32(out, dzctl_fw_rev());
+}
+
 void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms) { s_st_mask = fail_mask; s_st_t = t_ms ? t_ms : 1u; }
 void dzctl_set_params_hash(uint32_t h) { s_par_h = h; }
 
@@ -176,6 +196,7 @@ uint32_t dzctl_status_word(void) { return s_status; }
 DZ_WEAK uint32_t dzctl_fw_rev(void) { return (uint32_t)(DZ_FW_REV); }
 
 DZ_WEAK uint32_t dzctl_board_uid(void) { return 0u; }
+DZ_WEAK uint64_t dzctl_board_uid64(void) { return 0u; }
 
 void dzctl_wd_init(dzctl_wd_t *w, uint32_t timeout_ms) { w->last_ms = 0u; w->timeout_ms = timeout_ms; w->armed = false; }
 
