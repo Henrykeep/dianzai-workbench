@@ -1,6 +1,7 @@
 import { coarseTagHtml } from "./plant";
 import { reasonZh, reasonKind, stopCauses } from "./reasoncodes";
 import { CAUSES_ZH, OUTPUT_STOPPED_ZH } from "./fieldmap";
+import { durCapNoteHtml } from "./actgate";
 import { isUnchanged } from "./metriccard";
 import { REASON_KIND_F } from "./fieldmap";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
@@ -234,6 +235,7 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   // r9p6 没达标 / 未判定：原因直接写在标题下（白话），不藏进详情，也绝不显示成达标样式
   const sc = stopCauses(r);
   const why = (v.verdict.v !== "pass" ? `<p class="rc-why">${esc(v.reason.replace(/^停止原因：/, "原因："))}</p>` : "") +
+    durCapNoteHtml(r, esc) +
     (sc.stopped ? `<p class="rc-stopped" id="rc-stopped">${esc(OUTPUT_STOPPED_ZH)}</p>` : "") +
     (sc.causes.length ? `<div class="rc-causes" id="rc-causes">${esc(CAUSES_ZH)}<ul>${sc.causes.map(c => `<li>${esc(c)}</li>`).join("")}</ul></div>` : "");
   const amp = r.verdict?.warn ? ampLine(r) : "";   // #134 不管有没有对比表都给幅度行

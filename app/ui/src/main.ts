@@ -107,12 +107,16 @@ void WRITE_IDS;
 // 板子身份 + 结构冲突（握手 / 事件 / blockers 三个来源，任一未解决就挡写入）
 import { fwUnsafeOf, fromBlockersFw, lockActuateIn, fwBannerHtml, type FwUnsafe } from "./fwsafe";
 const fws: Record<string, FwUnsafe | null> = { event: null, blockers: null };
+import { actGateOf, deferredOf, fromBlockersGate, isGateCode, codeOf, gateBannerHtml, type Gate } from "./actgate";
+const gate: { deferred: Gate | null; blk: Gate | null } = { deferred: null, blk: null };
+const curGate = () => actGateOf({ link: lkMsg, pending: !!boardId?.pending, deferred: gate.deferred ?? gate.blk });
 function renderFwSafe() {
-  const u = fws.event ?? fws.blockers, el = document.getElementById("fws-banner"); lockActuateIn(document, false); if (u) lockActuateIn(document, true);
-  if (!el) return; el.hidden = !u; el.innerHTML = u ? fwBannerHtml(u, esc) : "";
+  const u = fws.event ?? fws.blockers, g = curGate(), el = document.getElementById("fws-banner"); lockActuateIn(document, false); if (u) lockActuateIn(document, true); else if (g) lockActuateIn(document, true, g.text);
+  const gb = !u && g && g.code !== "resuming";   // 恢复连接的横幅已在 lk-banner，不重复
+  if (!el) return; el.hidden = !u && !gb; el.innerHTML = u ? fwBannerHtml(u, esc) : gb ? gateBannerHtml(g!, esc) : "";
   el.querySelector<HTMLElement>("[data-fwsafe-fix]")?.addEventListener("click", ev => runAction((ev.currentTarget as HTMLElement).dataset.fwsafeFix!, s => goStepRef(s)));
 }
-setInterval(() => { if (fws.event ?? fws.blockers) lockActuateIn(document, true); }, 300);   // 参数行等会重建：持续补禁用
+setInterval(() => { const g = curGate(); if (fws.event ?? fws.blockers) lockActuateIn(document, true); else if (g) lockActuateIn(document, true, g.text); }, 300);   // 参数行等会重建：持续补禁用
 let boardId: BoardId | null = null; const sconf: Record<string, Conflict | null> = { hello: null, event: null, blockers: null };
 const curConflict = () => sconf.hello ?? sconf.event ?? sconf.blockers;
 function renderBoardId() { const el = document.getElementById("ro-uid"); if (el) { el.innerHTML = uidChipHtml(boardId, esc); el.hidden = !boardId; } }
@@ -133,7 +137,7 @@ async function clearAndRehandshake() {
 }
 // 板子身份只认握手（hello），心跳 / status 不改它
 const idSrc = (h: any) => h && (BOARD_UID_F.uid in h || BOARD_UID_F.supported in h) ? h : h?.status;   // 板子身份：握手顶层优先，后端实际放在 status 里
-function setBoardId(src: any) { if (!identTrusted(src)) return; const nb = boardIdOf(src); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
+function setBoardId(src: any) { if (!identTrusted(src)) return; const nb = boardIdOf(src); if (nb && !nb.pending && src?.[BOARD_UID_F.source] === BOARD_UID_F.handshake) gate.deferred = null; queueMicrotask(renderFwSafe); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
 function applyHelloIdentity(h: any) { setBoardId(idSrc(h)); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
 setInterval(() => { if (curConflict()) lockSchemaIn(document, true); }, 300);   // 参数行 / 提交卡会重建：持续补禁用
 const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
@@ -220,6 +224,7 @@ const S = {
 // ---------------------------------------------------------------- 提示
 function toast(e: Err | string, kind: "crit" | "ok" | "info" | "warn" = "crit", ms = 9000) {
   const er: Err = typeof e === "string" ? { code: "", message: e } : e;
+  if (typeof e !== "string") { const gd = deferredOf(e); if (gd) { gate.deferred = gd; renderFwSafe(); } }   // r10x 执行器操作被拒（急停中暂不识别）→ 立刻锁住其它执行器控件
   const d = document.createElement("div");
   d.className = `toast ${kind}`;
   // 侧车已给出 fix 的按原样显示；否则过翻译层（发生了什么 · 原因 · 处理 + 详情）
@@ -923,9 +928,9 @@ link.on(m => {
     case "schema": applySchema(m.schema); break;
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
-    case "error": { const fu = fwUnsafeOf(m), sc = (m as any)[SCHEMA_CONFLICT_F.codeAlt] === SCHEMA_CONFLICT_F.key; if (fu) { fws.event = fu; renderFwSafe(); } if (sc) { sconf.event = conflictOf(m); renderConflict(); } if (!fu && !sc) toast(m as unknown as Err); break; }   // r10w：这两类走横幅，不弹 toast
+    case "error": { const fu = fwUnsafeOf(m), sc = (m as any)[SCHEMA_CONFLICT_F.codeAlt] === SCHEMA_CONFLICT_F.key; const gc = codeOf(m), gd = deferredOf(m); if (gd) gate.deferred = gd; if (fu || isGateCode(gc)) renderFwSafe(); if (fu) { fws.event = fu; renderFwSafe(); } if (sc) { sconf.event = conflictOf(m); renderConflict(); } if (!fu && !sc && !isGateCode(gc)) toast(m as unknown as Err); break; }   // r10x 恢复连接 / 急停暂不识别也走横幅   // r10w：这两类走横幅，不弹 toast
     case FW_ESTOP_F.key: fws.event = fwUnsafeOf(m); renderFwSafe(); break;
-    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); sconf.blockers = fromBlockers((m as any).blockers); renderConflict(); fws.blockers = fromBlockersFw((m as any).blockers); renderFwSafe(); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
+    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); sconf.blockers = fromBlockers((m as any).blockers); renderConflict(); fws.blockers = fromBlockersFw((m as any).blockers); gate.blk = fromBlockersGate((m as any).blockers); renderFwSafe(); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
     case SCHEMA_CONFLICT_F.key: sconf.event = conflictOf(m); renderConflict(); break;
     case "agent_notice": if ((m as any).blocker_code === CLEARED_NOTICE) showCleared(); break;   // 与 cleared 事件合并成一张卡
     case "link.state": onLinkState(m as any); showLink(m as any); break;
@@ -1052,7 +1057,7 @@ function showLink(m: any) {
   if (m.board !== "connected" && (lkMsg?.board === "connected" || lkSince == null) && (m.board === "lost" || m.reason === "resuming")) lkSince = Date.now();
   if (m.board === "connected" || m.board === "disconnected") { lkSince = null; lkNext = null; }
   lkMsg = m; renderLinkTag();
-  runState.onLink(m.board);
+  runState.onLink(m.board); renderFwSafe();
   const v = linkView(m), b = $("lk-banner");
   b.hidden = !v.text; b.textContent = v.text; b.className = "lk-banner" + (v.tone ? " " + v.tone : "");
   $("port").classList.toggle("attn", v.portAttn);
@@ -1128,7 +1133,7 @@ const refreshProgress = async () => { const p: any = await fetchProgress(op => l
   paramsDirty: pending().length > 0,
   selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); fws.blockers = fromBlockersFw(p.blockers); renderFwSafe(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
+}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); fws.blockers = fromBlockersFw(p.blockers); gate.blk = fromBlockersGate(p.blockers); renderFwSafe(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
 refreshProgressRef = refreshProgress;
 // 切页时先用上一份进度同步重画页头（不等接口往返），避免新页短暂显示上一页的页头
 window.addEventListener("dz-step", () => { if (lastProgress) renderProgress(lastProgress, goStep); void refreshProgress(); });

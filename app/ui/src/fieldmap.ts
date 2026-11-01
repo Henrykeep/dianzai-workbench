@@ -313,3 +313,6 @@ export const readableZh = (t: string) => t.replace(/版本\s*(None|null|undefine
 export const BOARD_PENDING = "pending", BOARD_PENDING_ZH = "正在识别板子…";
 // #154 对轮：run_id（UUID）+ 轮号，两者都有就都要对上
 export const ROUND_BIND_F = { run: "run_id", iter: "iter" } as const;
+// r10x 执行器闸门 + 默认阶跃时长提示（字段名只在这里）
+export const GATE_F = { resuming: "resuming", deferred: "estop_latched_ident_deferred", pending: "ident_pending", durNotice: "dur_cap_notice_zh", fixAction: "fix_action", fixField: "fix_field", editDecl: "edit_declaration",
+  resumingZh: "正在恢复连接", deferredZh: "急停中，暂不识别板子", lockedZh: "驱动执行器的操作已暂停", declZh: "去声明" } as const;
