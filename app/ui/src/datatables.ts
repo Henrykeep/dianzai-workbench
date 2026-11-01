@@ -16,7 +16,7 @@ export function validReasons(c: unknown): ReasonMap | null {
   if (!o || typeof o !== "object" || Array.isArray(o)) return null;
   const es = Object.entries(o);
   if (!es.length || !es.every(([, v]: any) => v && typeof v.zh === "string" && v.zh)) return null;   // 有一条不合格就整表不用
-  const m: ReasonMap = {}; for (const [k, v] of es as any) { m[k] = { zh: v.zh, kind: v.kind }; const cs = Array.isArray(v.causes) ? v.causes.filter((x: unknown) => typeof x === "string" && x) : []; if (cs.length) m[k].causes = cs; if (v.stop === true) m[k].stop = true; if (typeof v.message_zh === "string" && v.message_zh) m[k].message_zh = v.message_zh; } return m;
+  const m: ReasonMap = {}; for (const [k, v] of es as any) { m[k] = { zh: v.zh, kind: v.kind }; const cs = Array.isArray(v.causes) ? v.causes.filter((x: unknown) => typeof x === "string" && x) : []; if (cs.length) m[k].causes = cs; if (v.stop === true || v.stops_output === true) m[k].stop = true; /* fix-r9c 原因表 stops_output */ if (typeof v.message_zh === "string" && v.message_zh) m[k].message_zh = v.message_zh; } return m;
 }
 // 构建闸门：返回错误列表（空 = 通过）。roles.json 必须在且合法；reason_codes.json 在就必须合法，缺失只在 REQUIRE_REASON_CODES 时算错
 export function buildCheck(rolesRaw: string | null, reasonRaw: string | null, requireReason = REQUIRE_REASON_CODES): string[] {

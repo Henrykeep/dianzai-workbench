@@ -64,3 +64,11 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;
 assert.deepEqual(["/a/x/link_schema.json", "/b/linkgen/link_schema.json"].map((f, _, a) => distinctName(f, a)), ["…/x/link_schema.json", "…/linkgen/link_schema.json"]);
 assert.equal(distinctName("/a/s_A.json", ["/a/s_A.json", "/a/s_B.json"]), "s_A.json");
 console.log("r10v ok");
+// fix-r9c #154 round_id = "<run_id>:<iter>"：不透明串对轮（跨 run 同轮号不串）
+{
+  const a = fromRoundEvent({ iter: 2, run_id: "3f2a9c1b0d4e", round_id: "3f2a9c1b0d4e:2", params: { kp: 2 }, overshoot_pct: 25, settle_ms: 800 })!;
+  const b = fromRoundEvent({ iter: 2, run_id: "aa11bb22cc33", round_id: "aa11bb22cc33:2", params: { kp: 4 }, overshoot_pct: 4, settle_ms: 300 })!;
+  assert.equal(a.roundId, "3f2a9c1b0d4e:2");
+  const r = { reason: "pass", run_id: "aa11bb22cc33", best: { iter: 2, round_id: "aa11bb22cc33:2", params: { kp: 4 } }, base: { overshoot_pct: 30 } } as unknown as Stopped;
+  assert.match(currentMetrics(r, [a, b]), /超调 4%/);
+}

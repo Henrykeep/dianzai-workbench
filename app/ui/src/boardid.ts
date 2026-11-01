@@ -23,7 +23,7 @@ export const uidChipHtml = (b: BoardId | null, esc: (s: string) => string) =>
   !b ? "" : b.uid ? `<span class="uid-chip mono" title="板子身份 ${esc(b.uid)}">板 ${esc(b.short)}</span>` : b.pending ? `<span class="uid-chip hint" data-uid-pending>${esc(b.notice)}</span>` : `<span class="uid-chip warn-t" data-uid-notice>${esc(b.notice)}</span>`;
 // 结构冲突：返回 {msg, fix} 或 null（已解决）
 export type ConflictFile = { path: string; kind: string | null };
-export type Conflict = { msg: string; fix: string | null; files: ConflictFile[]; hash: string | null; uid: string | null };
+export type Conflict = { msg: string; fix: string | null; fixZh?: string | null; files: ConflictFile[]; hash: string | null; uid: string | null };
 // 两份文件名常常都是 link_schema.json：同名时往上带目录，直到能分开（最多 3 级）
 export function distinctName(f: string, all: string[]): string {
   const seg = (p: string) => p.split(/[\\/]/).filter(Boolean);
@@ -39,9 +39,9 @@ export function conflictOf(x: any): Conflict | null {
     typeof v === "string" && v ? { path: v, kind: null } : v && typeof v === "object" && typeof v[SF.path] === "string" && v[SF.path] ? { path: v[SF.path], kind: typeof v[SF.kind] === "string" ? v[SF.kind] : null } : null).filter(Boolean) as ConflictFile[];
   fl.sort((a, b) => +(b.kind === SF.cache) - +(a.kind === SF.cache));   // 三份以上：缓存份排前（可清的那份一定看得见），全部列出
   const str = (v: unknown) => typeof v === "string" && v ? v : null;
-  // 586ab77 的 progress 阻塞项总是 fix_action=clear_schema_cache；文件 kind 全是 build（没有缓存份）时清缓存没用 → 按「重新构建」处理
-  const fx = f === SCHEMA_CLEAR_F.action && fl.length && fl.every(q => q.kind === SF.build) ? SF.build : f;
-  return { msg: m, fix: fx, files: fl, hash: str(x[SC.hash]), uid: str(x[SC.uid]) };
+  // fix-r9c 起后端按冲突种类给 fix_action（clear_schema_cache / build / reflash）+ fix_zh，前端照用，不再改写
+  const fz = str(x[SC.fixZh]);
+  return { msg: m, fix: f, ...(fz ? { fixZh: fz } : {}), files: fl, hash: str(x[SC.hash]), uid: str(x[SC.uid]) };
 }
 export const fromHello = (h: any) => h && SC.key in h ? { has: true, c: conflictOf(h[SC.key]) } : { has: false, c: null };
 export const fromBlockers = (bs: any[] | null | undefined): Conflict | null => conflictOf((bs ?? []).find(b => b?.[SC.code] === SC.key || b?.[SC.codeAlt] === SC.key || b?.[SC.codeAlt2] === SC.key));
@@ -53,7 +53,7 @@ export function conflictBannerHtml(c: Conflict, fix: { kind: string; label: stri
   if (isClearFix(c)) btn = st === "confirm" ? `<span class="sconf-confirm" data-sconf-confirm><span>${esc(Z.confirm)}</span> <button class="btn sm pri" type="button" data-sconf-ok>${esc(Z.ok)}</button><button class="btn sm" type="button" data-sconf-cancel>${esc(Z.cancel)}</button></span>`
     : st === "busy" ? `<span class="hint">${esc(Z.busy)}</span>`
     : `<button class="btn sm pri" type="button" data-sconf-clear>${esc(Z.clear)}</button>${st === "fail" ? ` <span>${esc(Z.fail)}</span>` : ""}`;
-  else if (c.fix && fix) btn = fix.kind === "run" ? `<button class="btn sm pri" type="button" data-sc-conflict-fix="${esc(c.fix)}">${esc(SCHEMA_FIX_ZH[c.fix] ?? fix.label)}</button>` : `<button class="btn sm" type="button" disabled title="${esc(fix.note ?? "")}">${esc(fix.label)}</button>`;
+  else if (c.fix && fix) btn = fix.kind === "run" ? `<button class="btn sm pri" type="button" data-sc-conflict-fix="${esc(c.fix)}"${c.fixZh ? ` title="${esc(c.fixZh)}"` : ""}>${esc(SCHEMA_FIX_ZH[c.fix] ?? fix.label)}</button>` : `<button class="btn sm" type="button" disabled title="${esc(fix.note ?? "")}">${esc(fix.label)}</button>`;
   return `<b>${esc(Z.title)}</b> <span>${esc(c.msg)}</span>${files} ${btn}`;
 }
 // 写参数 + 提交卡的「确认提交」（取消仍可点）
