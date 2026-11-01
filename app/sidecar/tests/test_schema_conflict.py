@@ -2,6 +2,7 @@
 侧车不挑第一份、也不挑最新的一份：报 schema_conflict（message_zh + fix_action），挡住显示和依赖 schema 的写入；
 冲突解除（多余那份删掉）后重新连接恢复正常。走真仿真板会话（sim:car_2wd），不替身。"""
 import json
+import pathlib
 import time
 
 import pytest
@@ -48,7 +49,9 @@ def test_two_boards_same_hash_different_content_is_blocked(home, tmp_path, monke
         time.sleep(0.6)                                        # 多收几帧遥测：冲突时不解码、不出 schema 事件
         assert s2.schema is None and not s2.samples
         err = next(e for e in ev if e.get("code") == "schema_conflict")
-        assert err["fix_action"] == "build" and err["message_zh"] and sorted(err["paths"]) == sorted([a.path, str(b)])
+        assert err["fix_action"] == "clear_schema_cache" and err["message_zh"] and err["reason"] == "schema_conflict"
+        assert sorted(err["files"]) == sorted(str(pathlib.Path(x).resolve()) for x in (a.path, b))
+        assert err["hash"] == f"{a.hash:08X}" and "board_uid" in err
         assert not any(e.get("type") == "schema" for e in ev)
         st = s2.status()
         assert st["schema_ok"] is False and st["schema_conflict"]["reason"] == "schema_conflict"
@@ -57,11 +60,12 @@ def test_two_boards_same_hash_different_content_is_blocked(home, tmp_path, monke
                   lambda: s2.step_start(0, 0, 3.0, 1000), lambda: s2.send_data(1, b"\0" * 8)):
             with pytest.raises(LinkError) as ei:
                 f()
-            assert ei.value.code == "schema_conflict" and ei.value.fix_action == "build"
+            assert ei.value.code == "schema_conflict" and ei.value.fix_action == "clear_schema_cache"
         # 进度阻塞项
         snap = PG.derive(PG.collect(s2))
         bl = next(x for x in snap["blockers"] if x["code"] == "schema_conflict")
-        assert bl["fix_action"] == "build" and bl["message_zh"] and "tune" in bl["blocks"]
+        assert bl["fix_action"] == "clear_schema_cache" and bl["message_zh"] and "tune" in bl["blocks"]
+        assert bl["reason"] == "schema_conflict" and bl["hash"] == f"{a.hash:08X}" and len(bl["files"]) == 2 and "board_uid" in bl
         # 冲突解除：删掉不属于这块板的那份 → 重新连接恢复
         b.unlink()
         s2.disconnect()
@@ -70,3 +74,44 @@ def test_two_boards_same_hash_different_content_is_blocked(home, tmp_path, monke
         assert s2.schema_conflict is None
     finally:
         s2.disconnect()
+
+
+def test_clear_schema_cache_removes_only_that_hash_and_rehandshakes(home, tmp_path, monkeypatch):
+    """op clear_schema_cache {hash}：只删这个哈希的缓存格式文件（别的哈希不碰），返回 {ok, removed}，然后重新识别。
+    搜索目录限定在临时目录（不动仓库 build/）。"""
+    from dzbench import schema as SC
+    cache = tmp_path / "cache"
+    monkeypatch.setattr(SC, "search_dirs", lambda: [cache])
+    real = None
+    for d in SC.__dict__["ROOT"].joinpath("build").rglob("link_schema.json"):
+        if "host-sim/car_2wd" in d.as_posix():
+            real = json.loads(d.read_text("utf-8"))
+    assert real, "先 make 出 host-sim car_2wd"
+    fa = cache / "board-a" / "link_schema.json"
+    fb = cache / "board-b" / "link_schema.json"
+    fo = cache / "other" / "link_schema.json"
+    for f, d in ((fa, real), (fb, dict(real, wd_timeout_ms=int(real.get("wd_timeout_ms") or 1000) + 700)),
+                 (fo, dict(real, hash=(int(real["hash"]) ^ 0x1) & 0xFFFFFFFF))):
+        f.parent.mkdir(parents=True)
+        f.write_text(json.dumps(d, ensure_ascii=False), "utf-8")
+    ev = []
+    s = Session()
+    s.emit = ev.append
+    s.connect("sim:car_2wd")
+    try:
+        assert _wait(lambda: s.schema_conflict is not None)
+        ev.clear()
+        r = s.clear_schema_cache(int(real["hash"]))
+        assert r["ok"] and sorted(r["removed"]) == sorted(str(f.resolve()) for f in (fa, fb))
+        assert fo.exists() and not fa.exists() and not fb.exists()               # 别的哈希不碰
+        assert any(e.get("type") == "rehandshake" for e in ev)
+        assert s.schema_conflict is None
+        # 重新识别：这时本机没有这个哈希 → schema_missing；放回正确的一份 → 正常
+        assert _wait(lambda: any(e.get("code") == "schema_missing" for e in ev))
+        fa.parent.mkdir(parents=True, exist_ok=True)
+        fa.write_text(json.dumps(real, ensure_ascii=False), "utf-8")
+        s.disconnect()
+        s.connect("sim:car_2wd")
+        assert _wait(lambda: s.schema is not None) and s.schema_conflict is None
+    finally:
+        s.disconnect()

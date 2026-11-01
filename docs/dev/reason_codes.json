@@ -60,7 +60,7 @@
   "kind": "stop"
  },
  "schema_conflict": {
-  "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数",
+  "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
   "kind": "blocker"
  },
  "settle_zero": {

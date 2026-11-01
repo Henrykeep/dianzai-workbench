@@ -315,8 +315,9 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 
 ## schema 冲突 `schema_conflict`（r10 阻塞项）
 板子心跳报的 schema 哈希在本机匹配到**多份内容不同**的 `link_schema.json`（例如两块板来回插，两次编译出同哈希、`wd_timeout_ms` 等不同的格式文件）时，侧车**一份都不用**（不取第一份，也不取最新的一份）：
-- 推事件 `{type:"error", code:"schema_conflict", reason:"schema_conflict", message_zh, fix, fix_action:"build", hash:"XXXXXXXX", paths:[…]}`；`status.schema_conflict` 为同一对象（无冲突为 `null`），`status.schema_ok` 为 `false`，不推 `schema` 事件，遥测不解码。
-- `progress` 出阻塞项 `{code/reason:"schema_conflict", message_zh, fix_action:"build", blocks:[sim, bringup, tune, score, seal], detail:{hash, paths}}`。
+- 推事件 `{type:"error", code:"schema_conflict", reason:"schema_conflict", message_zh, fix, fix_action:"clear_schema_cache", hash:"XXXXXXXX", board_uid:"16位小写hex"|null, files:[绝对路径A, 绝对路径B]}`；`status.schema_conflict` 为同一对象（无冲突为 `null`），`status.schema_ok` 为 `false`，不推 `schema` 事件，遥测不解码。
+- `progress` 出阻塞项 `{code/reason:"schema_conflict", hash, board_uid, files:[绝对路径…], message_zh, fix_action:"clear_schema_cache", blocks:[sim, bringup, tune, score, seal]}`（`detail` 里同样有 hash/board_uid/files）。
+- 修复 op `clear_schema_cache {hash}`（hash 为十六进制串或整数）：界面先出确认卡，确认后再调。只删本机缓存里这个哈希的格式文件（别的哈希不碰），返回 `{ok:true, removed:[绝对路径…]}`；随后推 `{type:"rehandshake", reason:"clear_schema_cache", hash}` 并清掉该哈希的绑定，下一帧心跳重新绑定（本机已无该哈希 → `schema_missing`，需重新编译/放回正确的那份）。动作 id `clear_schema_cache` 见 entrypoints.yaml。
 - 依赖 schema 的写入一律拒绝，错误码 `schema_conflict`（同上 message_zh / fix_action）：写参数、读参数、阶跃、继电器、存 Flash、应用 DATA 帧。急停、停止阶跃、解除急停不受影响。
 - 修法（`fix` 原文）：按当前这块板重新编译烧录固件后重新连接，或删掉不属于这块板的那份格式文件后重新连接。重新连接时侧车重新查找。
 - 内容完全相同的多份（如 `build/` 与 `~/.dzbench/schemas/` 里的拷贝）不算冲突。导出记录遇到冲突同样报错，不挑一份。

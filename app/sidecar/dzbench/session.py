@@ -759,6 +759,7 @@ class Session:
             s, conflict = (cached, None) if cached is not None else (find_by_hash(h), None)
         except SchemaConflict as e:          # 同哈希多份不同内容：一份都不用，显示和写入都挡住（_check_schema）
             s, conflict = None, e
+            e.board_uid = uid
         with self.lock:
             self.schema = s
             self.schema_conflict = conflict
@@ -1246,6 +1247,19 @@ class Session:
         if not new["board_id_known"]:
             self.emit({"type": "board_id", **new})
         return new
+
+    def clear_schema_cache(self, h: int) -> dict:
+        """op clear_schema_cache {hash}：删掉本机缓存里这个哈希的格式文件（只这个哈希），然后重新握手 / 重新识别。
+        界面先出确认卡再调。"""
+        from . import schema as _schema
+        removed = _schema.clear_cache(int(h))
+        with self.lock:
+            for k in [k for k in self._schema_cache if k[0] == int(h)]:
+                del self._schema_cache[k]
+            if self.schema_hash == int(h):
+                self.schema, self.schema_conflict, self.schema_hash = None, None, None   # 下一帧心跳重新绑定
+        self.emit({"type": "rehandshake", "reason": "clear_schema_cache", "hash": f"{int(h):08X}"})
+        return {"ok": True, "removed": removed}
 
     def _check_schema(self) -> None:
         """schema_conflict 时挡住依赖 schema 的写入（参数、阶跃、应用 DATA 帧）。急停 / 停止 / 解除急停不走这里。"""
