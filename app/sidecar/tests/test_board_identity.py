@@ -176,7 +176,8 @@ def test_info_reply_wd_mismatch_same_hash_is_schema_conflict(home):
         while s.schema_conflict is None and time.monotonic() - t0 < 3:
             time.sleep(0.02)
         c = s.status()["schema_conflict"]
-        assert c and c["reason"] == "schema_conflict" and c["fix_action"] == "clear_schema_cache"
+        assert c and c["reason"] == "schema_conflict" and c["fix_action"] == "build"   # 编译产物对 'I' 回包：重编重烧，不是清缓存
+        assert c["files"][0]["kind"] == "build"
         assert c["hash"] == f"{sch.hash:08X}" and c["board_uid"] == "0123456789abcdef" and len(c["files"]) == 1
         assert s.schema is None
         with pytest.raises(Exception) as ei:

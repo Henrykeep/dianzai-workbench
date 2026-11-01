@@ -75,7 +75,23 @@ def search_dirs() -> list[pathlib.Path]:
     return [pathlib.Path(p) for p in extra.split(os.pathsep) if p] + ([pathlib.Path(os.environ["DZBENCH_REPO"]) / "build"] if os.environ.get("DZBENCH_REPO") else []) + [ROOT / "build", base_dir() / "schemas"]
 
 
-CONFLICT_FIX = "clear_schema_cache"   # 入口规则表 docs/dev/entrypoints.yaml 的动作 id：界面确认卡 → op clear_schema_cache {hash}
+CONFLICT_FIX = "clear_schema_cache"
+REBUILD_FIX = "build"                # 冲突只涉及编译产物（或编译产物对板子 'I' 回包）：重新编译并烧录，不是清缓存
+
+
+def cache_dir() -> pathlib.Path:
+    """侧车自己的格式缓存目录（~/.dzbench/schemas）。clear_schema_cache 只删这里面的文件。"""
+    from .snapshots import base_dir
+    return base_dir() / "schemas"
+
+
+def file_kind(p) -> str:
+    """cache = 侧车缓存拷贝（可删）；build = 编译产物 / 工程 / 仓库里的文件（永不删）。"""
+    try:
+        pathlib.Path(p).resolve().relative_to(cache_dir().resolve())
+        return "cache"
+    except (ValueError, OSError):
+        return "build"   # 入口规则表 docs/dev/entrypoints.yaml 的动作 id：界面确认卡 → op clear_schema_cache {hash}
 
 
 class SchemaConflict(Exception):
@@ -87,15 +103,20 @@ class SchemaConflict(Exception):
         names = "；".join(paths)
         self.message_zh = message_zh or (f"板子的数据格式（哈希 {h:08X}）在本机对应到 {len(paths)} 份内容不同的格式文件，无法判断是哪一块板子的。"
                            "为避免按错的通道和参数显示或写入，已停止显示遥测和写参数。")
-        self.fix_zh = "清掉本机缓存的这个哈希的格式文件后重新识别板子；仍不对就按当前这块板子重新编译并烧录固件。"
-        self.fix_action = CONFLICT_FIX
+        self.kinds = [file_kind(p) for p in paths]
+        if "cache" in self.kinds:
+            self.fix_zh = "清掉本机缓存的这个哈希的格式文件后重新识别板子；仍不对就按当前这块板子重新编译并烧录固件。"
+            self.fix_action = CONFLICT_FIX
+        else:                          # 只有编译产物（或编译产物对板子 'I' 回包）：清缓存没用，也绝不删编译产物
+            self.fix_zh = "编译产物和板子上的固件对不上：按当前这块板子重新编译并烧录固件。"
+            self.fix_action = REBUILD_FIX
         super().__init__(f"{self.message_zh}（{names}）")
 
     def as_dict(self) -> dict:
         return {"type": "error", "code": "schema_conflict", "reason": "schema_conflict", "message": self.message_zh,
                 "message_zh": self.message_zh, "fix": self.fix_zh, "fix_action": self.fix_action,
                 "hash": f"{self.hash:08X}", "board_uid": self.board_uid,
-                "files": [str(pathlib.Path(p).resolve()) for p in self.paths]}
+                "files": [{"path": str(pathlib.Path(p).resolve()), "kind": k} for p, k in zip(self.paths, self.kinds)]}
 
 
 def _canon(d: dict) -> str:
@@ -138,9 +159,11 @@ def schema_files(h: int) -> list[pathlib.Path]:
 
 
 def clear_cache(h: int) -> list[str]:
-    """op clear_schema_cache：只删哈希为 h 的格式文件，别的哈希一个不碰。返回删掉的绝对路径。"""
+    """op clear_schema_cache：只删侧车缓存（cache_dir）里哈希为 h 的格式文件，别的哈希、编译产物一个不碰。返回删掉的绝对路径。"""
     removed = []
     for f in schema_files(h):
+        if file_kind(f) != "cache":         # 编译产物 / 工程 / 仓库里的文件一律不删
+            continue
         try:
             f.unlink()
             removed.append(str(f))
