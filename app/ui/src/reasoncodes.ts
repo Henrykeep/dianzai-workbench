@@ -16,7 +16,14 @@ export const reasonCodes = () => REASONS_T.value();
 export const reasonCodesNotice = (dev = DEV) => REASONS_T.notice(dev);
 export function reasonZh(code: string | undefined | null, fallback: Record<string, string>): string {
   if (!code) return "未上报";
-  return REASONS_T.value()[code]?.zh ?? fallback[code] ?? UNKNOWN_REASON_ZH;
+  return codeZh(code, fallback);
+}
+// #162 卡片上的原因码 / 可能原因码一律查打包原因表：message_zh > zh > 兜底表 > 「其他原因（代码 xxx）」，不露裸英文码
+export const otherReasonZh = (code: string) => `其他原因（代码 ${code}）`;
+export const looksLikeCode = (s: string) => /^[a-z][a-z0-9]*(_[a-z0-9]+)+$|^[a-z][a-z0-9]{2,}$/.test(s);
+export function codeZh(code: string, fallback: Record<string, string> = {}): string {
+  const e: any = REASONS_T.value()[code];
+  return (typeof e?.message_zh === "string" && e.message_zh) || e?.zh || fallback[code] || otherReasonZh(code);
 }
 export const reasonKind = (code: string | undefined | null): string => (code && (REASONS_T.value()[code]?.kind as string)) || "";
 
@@ -24,7 +31,8 @@ export const reasonKind = (code: string | undefined | null): string => (code && 
 import { STOP_CAUSE_F as SC } from "./fieldmap";
 export function stopCauses(r: any): { causes: string[]; stopped: boolean } {
   const e = r?.reason ? REASONS_T.value()[r.reason] : undefined;
-  const one = (c: any): string => typeof c === "string" ? (REASONS_T.value()[c]?.zh ?? c) : c && typeof c === "object" ? String(c[SC.zh] ?? c[SC.msgZh] ?? (c[SC.code] ? REASONS_T.value()[c[SC.code]]?.zh ?? "" : "")) : "";
+  const one = (c: any): string => typeof c === "string" ? (REASONS_T.value()[c] || looksLikeCode(c) ? codeZh(c) : c)
+    : c && typeof c === "object" ? String(c[SC.zh] ?? c[SC.msgZh] ?? (c[SC.code] ? codeZh(String(c[SC.code])) : "")) : "";
   const ev = Array.isArray(r?.[SC.causes]) ? r[SC.causes].map(one).filter(Boolean) : [];
   return { causes: ev.length ? ev : e?.causes ?? [], stopped: SC.stopFlags.some(k => r?.[k] === true) || e?.stop === true };
 }
