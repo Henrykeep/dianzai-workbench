@@ -1628,7 +1628,9 @@ class Session:
 
     def _resume_pending(self) -> bool:
         """侧车重启后的自动连回还没完成：口没开，或口开了但上位机心跳还没发出第一帧（#155）。"""
-        return bool((self.resuming and self.tr is None) or (self.resume_hb_wait and self.tr is not None))
+        # resuming 期间（含 connect() 已返回、resume() 收尾前那一下）一律算未完成：以前只在口没开时算，
+        # 口开了到 finally 置 resume_hb_wait 之间会短暂报“已连接”，紧接着又变回 resuming（高负载下测到）
+        return bool(self.resuming or (self.resume_hb_wait and self.tr is not None))
 
     def link_state(self, now: float | None = None) -> dict | None:
         """唯一的连接状态（见 linkstate.py）；变化或到保活间隔时返回一条 link.state，否则 None。"""
