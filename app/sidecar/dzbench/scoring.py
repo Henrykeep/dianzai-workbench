@@ -130,13 +130,13 @@ def writeback(svc, m: dict) -> dict:
     if m.get("layer") not in ("unit", "sim", "bench", "field"):
         raise ScoreError("bad_layer", "层只能是 unit / sim / bench / field")
     d = pathlib.Path(m["dir"]); d = d if d.is_absolute() else p.parent / d
-    if not paths.is_writable(p):                                # 内置例题只读：写回落到工程根目录的同名工程（第一次先整份复制）
+    copy_from = None
+    if not paths.is_writable(p):                                # 内置例题只读：写回落到工程根目录的同名工程（#145 审计：确认后才复制，预览不落盘）
         wp = paths.projects_dir() / p.parent.name / p.name
         if not wp.exists():
-            import shutil
-            wp.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(p, wp)
-        p = wp
+            copy_from = p
+        else:
+            p = wp
     if not d.is_dir():
         raise ScoreError("no_dir", f"证据目录 {d} 不存在", "先点“保存证据”")
     old = p.read_text(encoding="utf-8"); sha = hashlib.sha1(old.encode()).hexdigest()[:12]
@@ -153,5 +153,9 @@ def writeback(svc, m: dict) -> dict:
     if m.get("confirm"):
         if m.get("sha") != sha:
             raise ScoreError("changed", "requirements.yaml 在预览之后被改过", "重新预览再确认")
-        p.write_text(new, encoding="utf-8"); out["written"] = True
+        if copy_from is not None:
+            p = paths.projects_dir() / copy_from.parent.name / copy_from.name
+            p.parent.mkdir(parents=True, exist_ok=True)
+        assert paths.is_writable(p)
+        p.write_text(new, encoding="utf-8"); out["written"] = True; out["path"] = str(p)
     return out

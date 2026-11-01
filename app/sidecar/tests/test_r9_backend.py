@@ -343,7 +343,10 @@ def test_autotune_run_uses_same_code_as_tunegate(monkeypatch):
 
 
 # ---------------------------------------------------------------- 角色没声明：不按名字猜着跑，回 needs_human；确认写回 app.yaml 后才跑
-def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
+def test_autotune_roles_unconfirmed_then_confirmed(tmp_path, monkeypatch):
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "home"))
+    tmp_path = tmp_path / "home" / "projects" / "rp3008"          # #145：角色只写工程目录
+    tmp_path.mkdir(parents=True)
     import sys as _sys
     import yaml
     root = pathlib.Path(__file__).resolve().parents[3]
@@ -369,7 +372,10 @@ def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
         o.confirm_roles({next(iter(r["missing"])): "kp"}, str(tmp_path))      # 只收 P/I/D/FF/LIM/other
     truth = {nm: role for role, nm in p["roles"].items()}
     out = o.confirm_roles(truth, str(tmp_path))
-    assert out["ok"]
+    assert out["ok"] and out["needs_confirm"] and "role:" in out["diff"]       # #145 第一步只给 diff，不写
+    assert ", role:" not in (tmp_path / "app.yaml").read_text("utf-8")
+    out = o.confirm_roles({}, None, confirmed=True, change_id=out["change_id"])
+    assert out["ok"] and out["written"]
     y = yaml.safe_load((tmp_path / "app.yaml").read_text("utf-8"))
     assert {q["name"]: q.get("role") for q in y["link"]["params"]} == truth
     assert not gen_link.check(*gen_link.load(tmp_path / "app.yaml")[:2])
@@ -428,7 +434,10 @@ def test_amp_reduced_is_partial_never_pass(tmp_path):
     assert g["false_pass"] and g["bucket"] == "false_pass"
 
 
-def test_confirm_roles_idempotent(tmp_path):
+def test_confirm_roles_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "home"))
+    tmp_path = tmp_path / "home" / "projects" / "a"
+    tmp_path.mkdir(parents=True)
     (tmp_path / "app.yaml").write_text("link:\n  params:\n    - { name: a, type: float, min: 0, max: 1, role: P }\n", "utf-8")
     before = (tmp_path / "app.yaml").stat().st_mtime_ns
     o = S.AgentService.__new__(S.AgentService)
