@@ -1,11 +1,12 @@
 // 「运行自检」：本地服务连着 → op selfcheck_data；连不上 → Tauri 跑安装目录里固定的自检脚本（同样输出 {ok, items}）；都不行 → 按平台给菜单入口提示
 // 面向用户的文字里不出现命令行和文件名
-import { SELFCHECK_F, SELFCHECK_FIX_ZH, SELFCHECK_FILE_ZH, SELFCHECK_ST_ZH, SELFCHECK_UNCHECKED } from "./fieldmap";
+import { SELFCHECK_F, SELFCHECK_FIX_ZH, SELFCHECK_FILE_ZH, SELFCHECK_ST_ZH, SELFCHECK_UNCHECKED, SELFCHECK_EXIT } from "./fieldmap";
 export type SelfItem = { file: string; status: string; message_zh: string; fix_action: string };
-export type SelfResult = { src: "service" | "local" | "none"; ok: boolean | null; items: SelfItem[]; error?: string };
+export type SelfResult = { src: "service" | "local" | "none"; ok: boolean | null; items: SelfItem[]; error?: string; exit?: number | null };
 const esc = (s: string) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" } as any)[c]);
-export function parseSelf(r: any): { ok: boolean | null; items: SelfItem[] } | null {
+export function parseSelf(r: any): { ok: boolean | null; items: SelfItem[]; exit?: number | null } | null {
   const o = typeof r === "string" ? (() => { try { return JSON.parse(r); } catch { return null; } })() : r;
+  if (o && typeof o === "object" && SELFCHECK_F.report in o) { const p = parseSelf(o[SELFCHECK_F.report]); return p && { ...p, exit: typeof o[SELFCHECK_F.exit] === "number" ? o[SELFCHECK_F.exit] : null }; }   // Tauri 包装 {exit_code, report}
   if (!o || typeof o !== "object" || !Array.isArray(o[SELFCHECK_F.items])) return null;
   const s = (v: unknown) => typeof v === "string" ? v : "";
   return { ok: typeof o[SELFCHECK_F.ok] === "boolean" ? o[SELFCHECK_F.ok] : null, items: o[SELFCHECK_F.items].map((x: any) => ({ file: s(x?.[SELFCHECK_F.file]), status: s(x?.[SELFCHECK_F.status]), message_zh: s(x?.[SELFCHECK_F.msg]), fix_action: s(x?.[SELFCHECK_F.fix]) })) };
@@ -29,10 +30,10 @@ export async function runSelfcheck(o: { connected: boolean; call: (op: string) =
 export const isUnchecked = (st: string) => SELFCHECK_UNCHECKED.includes(st);
 export function selfSummary(r: SelfResult): { ok: number; bad: number; unchecked: number; text: string; tone: "ok" | "warn" | "bad" } {
   const unchecked = r.items.filter(x => isUnchecked(x.status)).length, ok = r.items.filter(x => x.status === "ok").length, bad = r.items.length - ok - unchecked;
-  const parts = [`${ok} 项正常`, bad ? `${bad} 项有问题` : "", unchecked ? `${unchecked} 项未检查（未检查不算通过）` : ""].filter(Boolean).join("，");
-  if (!r.items.length) return { ok, bad, unchecked, text: "", tone: "warn" };
-  if (bad || r.ok === false) return { ok, bad, unchecked, text: parts, tone: "bad" };
-  if (unchecked) return { ok, bad, unchecked, text: parts, tone: "warn" };
+  const parts = [`${ok} 项正常`, bad ? `${bad} 项有问题` : "", unchecked ? `${unchecked} 项未检查` : ""].filter(Boolean).join("，");
+  if (!r.items.length && r.exit !== SELFCHECK_EXIT.incomplete) return { ok, bad, unchecked, text: "", tone: "warn" };
+  if (bad || r.exit === SELFCHECK_EXIT.fail || (r.ok === false && !unchecked && r.exit !== SELFCHECK_EXIT.incomplete)) return { ok, bad, unchecked, text: parts, tone: "bad" };
+  if (unchecked || r.exit === SELFCHECK_EXIT.incomplete) return { ok, bad, unchecked, text: `自检未完成：${unchecked} 项未检查`, tone: "warn" };
   return { ok, bad, unchecked, text: "全部正常", tone: "ok" };
 }
 export function selfcheckHtml(r: SelfResult | null): string {

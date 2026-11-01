@@ -21,16 +21,17 @@ export function sameBoard(a: BoardId | null, b: BoardId | null): boolean | null 
 export const uidChipHtml = (b: BoardId | null, esc: (s: string) => string) =>
   !b ? "" : b.uid ? `<span class="uid-chip mono" title="板子身份 ${esc(b.uid)}">板 ${esc(b.short)}</span>` : `<span class="uid-chip warn-t" data-uid-notice>${esc(b.notice)}</span>`;
 // 结构冲突：返回 {msg, fix} 或 null（已解决）
-export type Conflict = { msg: string; fix: string | null; files: string[] };
+export type Conflict = { msg: string; fix: string | null; files: string[]; hash: string | null; uid: string | null };
 export function conflictOf(x: any): Conflict | null {
   if (!x || typeof x !== "object" || x[SC.resolved] === true) return null;
   const m = typeof x[SC.msg] === "string" && x[SC.msg].trim() ? x[SC.msg] : SCHEMA_CONFLICT_ZH.fallback;
   const f = typeof x[SC.fix] === "string" && x[SC.fix] ? x[SC.fix] : null;
   const fl = Array.isArray(x[SC.files]) ? x[SC.files].filter((v: unknown) => typeof v === "string" && v).slice(0, 2) : [];
-  return { msg: m, fix: f, files: fl };
+  const str = (v: unknown) => typeof v === "string" && v ? v : null;
+  return { msg: m, fix: f, files: fl, hash: str(x[SC.hash]), uid: str(x[SC.uid]) };
 }
 export const fromHello = (h: any) => h && SC.key in h ? { has: true, c: conflictOf(h[SC.key]) } : { has: false, c: null };
-export const fromBlockers = (bs: any[] | null | undefined): Conflict | null => conflictOf((bs ?? []).find(b => b?.[SC.code] === SC.key || b?.[SC.codeAlt] === SC.key));
+export const fromBlockers = (bs: any[] | null | undefined): Conflict | null => conflictOf((bs ?? []).find(b => b?.[SC.code] === SC.key || b?.[SC.codeAlt] === SC.key || b?.[SC.codeAlt2] === SC.key));
 const base = (p: string) => p.split(/[\\/]/).pop() || p;
 export const isClearFix = (c: Conflict | null) => c?.fix === SCHEMA_CLEAR_F.action;
 // 横幅：标题 + 原因 + 冲突的两个文件（显示文件名，悬停看完整路径）+ 修复按钮；confirm=true 时换成确认卡
@@ -57,3 +58,10 @@ export function resultSameBoard(res: any, portSame: boolean, cur: BoardId | null
   const r = res?.[BOARD_UID_F.uid];
   return typeof r === "string" && HEX16.test(r) ? r.toLowerCase() === cur.uid : portSame;
 }
+// op clear_schema_cache 的参数与回执
+export const clearArgs = (c: Conflict) => c.hash ? { [SCHEMA_CLEAR_F.hash]: c.hash } : {};
+export function clearResult(r: any): { ok: boolean; removed: string[] } {
+  const rm = Array.isArray(r?.[SCHEMA_CLEAR_F.removed]) ? r[SCHEMA_CLEAR_F.removed].filter((v: unknown) => typeof v === "string") : [];
+  return { ok: r?.[SCHEMA_CLEAR_F.ok] === true, removed: rm };
+}
+export const removedZh = (n: number) => Z.removed.replace("N", String(n));

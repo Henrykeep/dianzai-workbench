@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { boardIdOf, shortUid, sameBoard, uidChipHtml, conflictOf, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, SCHEMA_LOCK_SEL, resultSameBoard } from "../src/boardid";
 import { isClearFix } from "../src/boardid";
-import { selfSummary, selfcheckHtml } from "../src/selfcheck";
+import { selfSummary, selfcheckHtml, parseSelf } from "../src/selfcheck";
+import { clearArgs, clearResult, removedZh } from "../src/boardid";
 import { SCHEMA_CLEAR_F, SELFCHECK_F } from "../src/fieldmap";
 import { BOARD_UID_F, BOARD_UID_ZH, SCHEMA_CONFLICT_F } from "../src/fieldmap";
 const esc = (s: string) => s.replace(/[&<>"]/g, c => `&#${c.charCodeAt(0)};`);
@@ -30,8 +31,8 @@ assert.equal(resultSameBoard({}, true, ok), true);
 // 结构冲突
 const K = SCHEMA_CONFLICT_F;
 assert.equal(conflictOf(null), null); assert.equal(conflictOf({ [K.resolved]: true }), null);
-assert.deepEqual(conflictOf({ [K.msg]: "参数表版本与固件不一致", [K.fix]: "flash" }), { msg: "参数表版本与固件不一致", fix: "flash", files: [] });
-assert.deepEqual(conflictOf({}), { msg: "工程与板子的结构不一致", fix: null, files: [] });
+assert.deepEqual(conflictOf({ [K.msg]: "参数表版本与固件不一致", [K.fix]: "flash" }), { msg: "参数表版本与固件不一致", fix: "flash", files: [], hash: null, uid: null });
+assert.deepEqual(conflictOf({}), { msg: "工程与板子的结构不一致", fix: null, files: [], hash: null, uid: null });
 assert.deepEqual(fromHello({}), { has: false, c: null }); assert.equal(fromHello({ [K.key]: null }).has, true);
 assert.equal(fromHello({ [K.key]: { [K.msg]: "x" } }).c!.msg, "x");
 assert.equal(fromBlockers([{ code: "estop" }]), null); assert.equal(fromBlockers(undefined), null);
@@ -69,7 +70,6 @@ h = conflictBannerHtml(cf, null, esc, "confirm"); assert.match(h, /data-sconf-co
 assert.match(conflictBannerHtml(cf, null, esc, "busy"), /正在清除/); assert.match(conflictBannerHtml(cf, null, esc, "fail"), /data-sconf-clear.*清除失败/);
 assert.deepEqual(conflictOf({ [K.files]: "x" })!.files, []);
 assert.match(m, /data-sconf-ok\]"\)\?\.addEventListener\("click", \(\) => \{ sconfSt = "busy"; renderConflict\(\); void clearAndRehandshake/);
-assert.match(m, /await call\(SCHEMA_CLEAR_F\.op\); const h: any = await link\.rpc\("hello"\)/);
 // 板子身份只来自握手：boardIdOf 只在 applyHelloIdentity 里，applyHelloIdentity 只喂 hello 的回复
 assert.equal((m.match(/boardIdOf\(/g) ?? []).length, 1); assert.match(m, /function applyHelloIdentity\(h: any\) \{ boardId = boardIdOf\(h\)/);
 for (const call of m.match(/applyHelloIdentity\(\w+\);/g) ?? []) assert.equal(call, "applyHelloIdentity(h);");
@@ -77,12 +77,29 @@ assert.equal((m.match(/boardId = /g) ?? []).length, 1);
 // 自检：skipped / unchecked → 琥珀「未检查」，单独计数，绝不显示全部正常
 const it = (status: string) => ({ file: "roles.json", status, message_zh: "", fix_action: "" });
 let sm = selfSummary({ src: "service", ok: true, items: [it("ok"), it("skipped"), it("unchecked")] });
-assert.deepEqual([sm.ok, sm.bad, sm.unchecked, sm.tone], [1, 0, 2, "warn"]); assert.equal(sm.text, "1 项正常，2 项未检查（未检查不算通过）");
+assert.deepEqual([sm.ok, sm.bad, sm.unchecked, sm.tone], [1, 0, 2, "warn"]); assert.equal(sm.text, "自检未完成：2 项未检查");
 let sh = selfcheckHtml({ src: "service", ok: true, items: [it("ok"), it("skipped")] });
-assert.doesNotMatch(sh, /全部正常|自检通过/); assert.match(sh, /<tr class="sc-unchecked"><td>角色表<\/td><td>未检查/); assert.match(sh, /sc-sum-warn">1 项正常，1 项未检查/);
+assert.doesNotMatch(sh, /全部正常|自检通过/); assert.match(sh, /<tr class="sc-unchecked"><td>角色表<\/td><td>未检查/); assert.match(sh, /sc-sum-warn">自检未完成：1 项未检查/);
 assert.match(selfcheckHtml({ src: "service", ok: true, items: [it("ok")] }), /sc-sum-ok">全部正常/);
-sm = selfSummary({ src: "local", ok: false, items: [it("missing"), it("skipped")] }); assert.equal(sm.tone, "bad"); assert.equal(sm.text, "0 项正常，1 项有问题，1 项未检查（未检查不算通过）");
+sm = selfSummary({ src: "local", ok: false, items: [it("missing"), it("skipped")] }); assert.equal(sm.tone, "bad"); assert.equal(sm.text, "0 项正常，1 项有问题，1 项未检查");
 assert.match(readFileSync("src/style.css", "utf8"), /\.sc-unchecked td:nth-child\(2\)\{color:var\(--warn\)/);
 // Windows 自检脚本在 repo\ 下（fw-pyembed 布局）
 assert.equal(SELFCHECK_F.scriptWin, "repo/app/sidecar/selfcheck_data.py");
+// 最终字段：reason=schema_conflict 的冲突（含 hash / board_uid）；clear_schema_cache {hash} → {ok, removed}
+const fc = fromBlockers([{ reason: "schema_conflict", hash: "abc123", board_uid: "0123456789abcdef", files: ["/x/a.json", "/y/b.json"], message_zh: "缓存旧", fix_action: "clear_schema_cache" }])!;
+assert.equal(fc.hash, "abc123"); assert.equal(fc.uid, "0123456789abcdef"); assert.ok(isClearFix(fc)); assert.equal(SCHEMA_CLEAR_F.op, "clear_schema_cache");
+assert.deepEqual(clearArgs(fc), { hash: "abc123" }); assert.deepEqual(clearArgs({ ...fc, hash: null }), {});
+assert.deepEqual(clearResult({ ok: true, removed: ["/x/a.json", 3] }), { ok: true, removed: ["/x/a.json"] }); assert.equal(clearResult({}).ok, false);
+assert.equal(removedZh(2), "已清除 2 个旧缓存文件");
+assert.match(m, /clearResult\(await call\(SCHEMA_CLEAR_F\.op, c0 \? clearArgs\(c0\) : \{\}\)\); if \(!cr\.ok\) throw 0;.*await link\.rpc\("hello"\)/);
+// 独立自检退出码（Tauri 包装 {exit_code, report}）：3 = 未完成，琥珀
+const wrap = (code: number, items: any[]) => JSON.stringify({ exit_code: code, report: { ok: code === 0, items } });
+let ps = parseSelf(wrap(3, [it("ok"), it("unchecked"), it("unchecked")]))!;
+assert.equal(ps.exit, 3); assert.equal(ps.items.length, 3);
+sm = selfSummary({ src: "local", ...ps }); assert.equal(sm.text, "自检未完成：2 项未检查"); assert.equal(sm.tone, "warn");
+sm = selfSummary({ src: "local", ...parseSelf(wrap(3, []))! }); assert.equal(sm.tone, "warn"); assert.match(sm.text, /自检未完成/);
+sm = selfSummary({ src: "local", ...parseSelf(wrap(1, [it("ok")]))! }); assert.equal(sm.tone, "bad");
+sm = selfSummary({ src: "local", ...parseSelf(wrap(0, [it("ok")]))! }); assert.equal(sm.text, "全部正常");
+assert.equal(parseSelf(JSON.stringify({ ok: true, items: [] }))!.exit, undefined);
+const rs = readFileSync("../src-tauri/src/main.rs", "utf8"); assert.match(rs, /exit_code/); assert.match(rs, /\\"report\\":/);
 console.log("r9r ok");

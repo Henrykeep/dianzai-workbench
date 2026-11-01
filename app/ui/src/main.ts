@@ -21,7 +21,7 @@ function paintPlant(v: PlantView) {
 import { boardName, SIDECAR_DOWN } from "./batch1";
 import { connButton, declaredBoard, boardLabel, portOption, chUnit, shortHint, paramDesc, lifeSummary } from "./r9p6c";
 import { SCHEMA_CONFLICT_F, SCHEMA_CLEAR_F } from "./fieldmap";
-import { isClearFix, resultSameBoard, conflictOf, boardIdOf, uidChipHtml, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, type Conflict, type BoardId } from "./boardid";
+import { clearArgs, clearResult, removedZh, isClearFix, resultSameBoard, conflictOf, boardIdOf, uidChipHtml, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, type Conflict, type BoardId } from "./boardid";
 import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
@@ -119,7 +119,7 @@ function renderConflict() {
 }
 // 清除旧缓存 → 重新 hello：身份 / 冲突 / 参数表都按新握手刷新
 async function clearAndRehandshake() {
-  try { await call(SCHEMA_CLEAR_F.op); const h: any = await link.rpc("hello"); sconf.event = null; sconf.blockers = null; applyHelloIdentity(h); if (h?.schema) { applySchema(h.schema); S.applied = h.params; syncParams(); } if (h?.status) renderStatus(h.status); sconfSt = "idle"; }
+  try { const c0 = curConflict(); const cr = clearResult(await call(SCHEMA_CLEAR_F.op, c0 ? clearArgs(c0) : {})); if (!cr.ok) throw 0; toast(removedZh(cr.removed.length), "info", 3000); const h: any = await link.rpc("hello"); sconf.event = null; sconf.blockers = null; applyHelloIdentity(h); if (h?.schema) { applySchema(h.schema); S.applied = h.params; syncParams(); } if (h?.status) renderStatus(h.status); sconfSt = "idle"; }
   catch { sconfSt = "fail"; }
   renderConflict();
 }

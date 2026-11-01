@@ -104,7 +104,7 @@ fn install_dirs() -> Vec<std::path::PathBuf> {
     v
 }
 
-/// 只运行固定的自检入口（不接受前端任何参数，不在 PATH 里找解释器），返回 stdout 的 JSON 文本 {ok, items}
+/// 只运行固定的自检入口（不接受前端任何参数，不在 PATH 里找解释器），返回 {exit_code, report:{ok, items}}
 #[tauri::command]
 fn run_selfcheck() -> Result<String, String> {
     for base in install_dirs() {
@@ -124,8 +124,13 @@ fn run_selfcheck() -> Result<String, String> {
             std::process::Command::new(sh)
         };
         let out = cmd.current_dir(&base).output().map_err(|_| "spawn_failed".to_string())?;
-        let s = String::from_utf8_lossy(&out.stdout).to_string();
-        return if s.trim().is_empty() { Err("no_output".into()) } else { Ok(s) };
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if s.is_empty() {
+            return Err("no_output".into());
+        }
+        // 退出码一起带回：0 通过 / 1 失败 / 3 未完成（有未检查项）；report 原样是脚本的 JSON
+        let code = out.status.code().unwrap_or(-1);
+        return Ok(format!("{{\"exit_code\":{},\"report\":{}}}", code, s));
     }
     Err("not_installed".into())
 }
