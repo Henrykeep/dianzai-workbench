@@ -250,7 +250,7 @@ export const reasonStatusText = (t: string) => t;   // 状态栏原样显示提�
 // 握手里的数据表（暂定名）：data_tables {roles:{sha256, content}, reason_codes:{sha256, content}}
 export const DATA_TABLES_F = { obj: "data_tables", sha: "sha256", content: "content", roles: "roles", reasons: "reason_codes" } as const;
 // reason_codes.json kind ∈ round | abort | stop | diverge（events.md #139）
-export const REASON_KIND_F = { kind: "kind", diverge: "diverge", abort: "abort" } as const;
+export const REASON_KIND_F = { kind: "kind", diverge: "diverge", abort: "abort", tune: "tune" } as const;   // tune：整定结论说明（不是失败 / 停止）
 // 指标卡补充（暂定名）：causes[{code, evidence: strong|medium|weak, basis_zh}] + 卡级 verdict_zh；unchanged:true + 每项 margin；stop_reason converged|budget_exhausted|at_limit（+ stop_reason_zh）
 export const MC_X_F = { causes: "causes", code: "code", ev: "evidence", basis: "basis_zh", verdictZh: "verdict_zh", unchanged: "unchanged", margin: "margin", marginZh: "margin_zh", stop: "stop_reason", stopZh: "stop_reason_zh", name: "name", unit: "unit", value: "value" } as const;
 export const EVIDENCE_ZH: Record<string, string> = { strong: "证据强", medium: "证据中等", weak: "证据弱" };
@@ -316,32 +316,77 @@ export const ROUND_BIND_F = { run: "run_id", iter: "iter" } as const;
 // r10x 执行器闸门 + 默认阶跃时长提示（字段名只在这里）
 export const GATE_F = { resuming: "resuming", deferred: "estop_latched_ident_deferred", pending: "ident_pending", durNotice: "dur_cap_notice_zh", fixAction: "fix_action", fixField: "fix_field", editDecl: "edit_declaration",
   resumingZh: "正在恢复连接", deferredZh: "急停中，暂不识别板子", lockedZh: "驱动执行器的操作已暂停", declZh: "去声明", hbFlags: "hb_flags", hbEstop: "急停" } as const;
-// #156 ws 地址只在这里定：?ws= 优先；页面由侧车提供（http/https，非 Tauri、非 vite 开发）→ 同主机、侧车约定的 ws 端口（UI 在 --port+1，ws 在 --port）；
-// 其余（Tauri / vite 开发 / file:）退回默认 8765
-export const WS_F = { query: "ws", fallback: "ws://127.0.0.1:8765", uiPortOffset: 1, tauriHosts: ["tauri.localhost"], tauriProto: ["tauri:", "asset:"] } as const;
-export function wsUrlFor(loc: { protocol: string; hostname: string; port: string; search: string }, dev = false): string {
-  const q = new URLSearchParams(loc.search).get(WS_F.query); if (q) return q;
-  const http = loc.protocol === "http:" || loc.protocol === "https:";
-  const tauri = (WS_F.tauriProto as readonly string[]).includes(loc.protocol) || (WS_F.tauriHosts as readonly string[]).includes(loc.hostname);
+// #156 ws 地址只在这里定，顺序：?ws= > <meta name="dzbench-ws"> > 同源 /config.json 的 ws_url（短超时，404 忽略）> 页面端口 - 1（侧车 UI 在 --port+1）> 默认 8765
+// 每一步都记下来源（src），连不上时横幅照实说「正在连接 <地址>（来自 <来源>），无响应」
+export const WS_F = { query: "ws", meta: "dzbench-ws", config: "/config.json", configKey: "ws_url", timeoutMs: 800, fallback: "ws://127.0.0.1:8765", uiPortOffset: 1,
+  tauriHosts: ["tauri.localhost"], tauriProto: ["tauri:", "asset:"],
+  srcZh: { query: "地址栏 ?ws=", meta: "页面 meta dzbench-ws", config: "config.json", port: "页面端口推算", fallback: "默认地址" } as Record<WsSrc, string> } as const;
+export type WsSrc = "query" | "meta" | "config" | "port" | "fallback";
+export type WsPick = { url: string; src: WsSrc };
+type Loc = { protocol: string; hostname: string; port: string; search: string };
+const servedBySidecar = (loc: Loc, dev: boolean) => (loc.protocol === "http:" || loc.protocol === "https:") && !dev
+  && !(WS_F.tauriProto as readonly string[]).includes(loc.protocol) && !(WS_F.tauriHosts as readonly string[]).includes(loc.hostname);
+const isWs = (v: unknown): v is string => typeof v === "string" && /^wss?:\/\/\S+$/.test(v);
+// 后两步（不需要网络）：页面端口 - 1，否则默认
+export function wsFromPort(loc: Loc, dev = false): WsPick {
   const p = +loc.port;
-  if (!http || tauri || dev || !p) return WS_F.fallback;
+  if (!servedBySidecar(loc, dev) || !p) return { url: WS_F.fallback, src: "fallback" };
   const host = loc.hostname.includes(":") ? `[${loc.hostname}]` : loc.hostname;
-  return `${loc.protocol === "https:" ? "wss" : "ws"}://${host}:${p - WS_F.uiPortOffset}`;
+  return { url: `${loc.protocol === "https:" ? "wss" : "ws"}://${host}:${p - WS_F.uiPortOffset}`, src: "port" };
 }
-// #158 结果是否比初值好：后端 improvement = confirmed | inconclusive | worse（字段名、取值、动作都只在这里）
-// inconclusive（reason improvement_unconfirmed）：采用是次要按钮且要二次确认；worse（reason kept_initial）：没有采用按钮（后端会拒）
-// 主按钮由 default_action 决定（ACTIONS 表），不写死
+export type WsDeps = { meta?: string | null; fetch?: (u: string, o: { signal: AbortSignal }) => Promise<{ ok: boolean; status: number; json(): Promise<any> }>; dev?: boolean };
+export async function wsUrlFor(loc: Loc, d: WsDeps = {}): Promise<WsPick> {
+  const q = new URLSearchParams(loc.search).get(WS_F.query); if (q) return { url: q, src: "query" };
+  if (isWs(d.meta?.trim())) return { url: d.meta!.trim(), src: "meta" };
+  if (servedBySidecar(loc, !!d.dev) && d.fetch) {
+    const ac = new AbortController(), t = setTimeout(() => ac.abort(), WS_F.timeoutMs);
+    try { const r = await d.fetch(WS_F.config, { signal: ac.signal }); if (r.ok) { const j = await r.json(); if (isWs(j?.[WS_F.configKey])) return { url: j[WS_F.configKey], src: "config" }; } }
+    catch { /* 超时 / 404 / 非 JSON：跳过 */ } finally { clearTimeout(t); }
+  }
+  return wsFromPort(loc, !!d.dev);
+}
+export const wsDownZh = (p: WsPick | null) => p ? `正在连接 ${p.url}（来自${WS_F.srcZh[p.src]}），无响应` : null;
+// #158 整定结果卡契约（后端 events.md「整定结果卡契约」）：字段名、取值、动作只在这里
+// improvement：confirmed → 照常；inconclusive（reason improvement_unconfirmed）→ 采用为次要且二次确认；worse（reason kept_initial）→ 无采用；
+// null（字段在、值为 null）→ 初值已达标未调参，中性显示、无采用。完整信息优先取 improvement_info，再取顶层。
+// improvement_info.causes = 整定原因（单独一块）；顶层 causes 仍是未达标诊断（走原来的「可能原因」）。主按钮由 default_action 决定。
 export const IMPROVE_F = {
-  field: "improvement", msg: "message_zh", reason: "reason", causes: "causes", defaultAction: "default_action",
-  kinds: { inconclusive: { adopt: "confirm", headZh: "未确认改善" }, worse: { adopt: "none", headZh: "比初值差，已保留初值" } } as Record<string, { adopt: "confirm" | "none"; headZh: string }>,
+  field: "improvement", info: "improvement_info", msg: "message_zh", reason: "reason", causes: "causes", defaultAction: "default_action",
+  untunedKey: "null",
+  kinds: {
+    inconclusive: { adopt: "confirm", headZh: "未确认改善", tone: "warn" },
+    worse: { adopt: "none", headZh: "比初值差，已保留初值", tone: "warn" },
+    null: { adopt: "none", headZh: "初值已达标，未调参", tone: "neutral" },
+  } as Record<string, { adopt: "confirm" | "none"; headZh: string; tone: "warn" | "neutral" }>,
   actions: { keep_initial: { zh: "保留初值", decline: true } } as Record<string, { zh: string; decline: boolean }>,
-  fallbackZh: "无法确认比初值好", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用",
+  fallbackZh: "无法确认比初值好", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用", causesZh: "为什么这样判断：",
+  // #159 等整定原因（tuning_causes[]）：文案取条目 message_zh，再取原因表；前后饱和占比字段有就附上
+  tuning: "tuning_causes", code: "code", satBefore: "sat_frac_initial", satAfter: "sat_frac_best", satZh: "执行器饱和占比",
 } as const;
-export type Improve = { kind: string; msg: string; reason: string | null; causes: string[]; def: string | null; adopt: "confirm" | "none"; head: string };
+export type Improve = { kind: string; msg: string; reason: string | null; causes: string[]; def: string | null; adopt: "confirm" | "none"; head: string; tone: "warn" | "neutral" };
+const strOr = (v: unknown) => typeof v === "string" && v ? v : null;
 export function improvementOf(r: any): Improve | null {
-  const k = r?.[IMPROVE_F.field]; const spec = typeof k === "string" ? IMPROVE_F.kinds[k] : undefined;
-  if (!spec) return null;   // confirmed / 没给 → 照常
-  const str = (v: unknown) => typeof v === "string" && v ? v : null;
-  return { kind: k, msg: str(r[IMPROVE_F.msg]) ?? IMPROVE_F.fallbackZh, reason: str(r[IMPROVE_F.reason]), causes: Array.isArray(r[IMPROVE_F.causes]) ? r[IMPROVE_F.causes].filter((x: unknown) => typeof x === "string") : [],
-    def: str(r[IMPROVE_F.defaultAction]), adopt: spec.adopt, head: spec.headZh };
+  if (!r || typeof r !== "object") return null;
+  const info = r[IMPROVE_F.info] && typeof r[IMPROVE_F.info] === "object" ? r[IMPROVE_F.info] : null;
+  const src = info && IMPROVE_F.field in info ? info : IMPROVE_F.field in r ? r : null;
+  if (!src) return null;
+  const k = src[IMPROVE_F.field] === null ? IMPROVE_F.untunedKey : src[IMPROVE_F.field];
+  const spec = typeof k === "string" ? IMPROVE_F.kinds[k] : undefined;
+  if (!spec) return null;   // confirmed / 不认识 → 照常
+  const get = (f: string) => strOr(info?.[f]) ?? strOr(r[f]);
+  const cs = Array.isArray(info?.[IMPROVE_F.causes]) ? info[IMPROVE_F.causes].filter((x: unknown) => typeof x === "string" && x) : [];
+  return { kind: k, msg: get(IMPROVE_F.msg) ?? (k === IMPROVE_F.untunedKey ? spec.headZh : IMPROVE_F.fallbackZh), reason: get(IMPROVE_F.reason), causes: cs,
+    def: get(IMPROVE_F.defaultAction), adopt: spec.adopt, head: spec.headZh, tone: spec.tone };
 }
+export type TuneNote = { code: string; msg: string; sat: [number, number] | null };
+// msgOf：原因码 → 原因表 message_zh / zh（调用方传入，fieldmap 不依赖原因表模块）
+export function tuningNotesOf(r: any, msgOf: (code: string) => string | null): TuneNote[] {
+  const xs = Array.isArray(r?.[IMPROVE_F.tuning]) ? r[IMPROVE_F.tuning] : [];
+  return xs.filter((x: any) => x && typeof x === "object").map((x: any) => {
+    const code = strOr(x[IMPROVE_F.code]) ?? "", a = x[IMPROVE_F.satBefore], b = x[IMPROVE_F.satAfter];
+    return { code, msg: strOr(x[IMPROVE_F.msg]) ?? (code ? msgOf(code) : null) ?? code, sat: typeof a === "number" && typeof b === "number" ? [a, b] as [number, number] : null };
+  }).filter((n: TuneNote) => n.msg);
+}
+const pct = (f: number) => `${Math.round((f <= 1 ? f * 100 : f))}%`;
+export const tuningNotesHtml = (ns: TuneNote[], esc: (s: string) => string) => ns.map(n =>
+  `<p class="rc-tune" data-tune="${esc(n.code)}">${esc(n.msg)}${n.sat ? ` <span class="num rc-sat">${esc(IMPROVE_F.satZh)} ${pct(n.sat[0])} → ${pct(n.sat[1])}</span>` : ""}</p>`).join("");
