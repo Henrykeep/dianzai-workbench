@@ -22,6 +22,13 @@ NEAR_ABS = 0.02
 # 聚合取 K 次的均值（AGG="mean"）；p75 更严，作为诊断字段一并给出。noise_std=0 的对象只跑一次（与无噪一致）。
 NOISE_K = 8
 NOISE_SEEDS = tuple(0x5C0_0000 + k for k in range(NOISE_K))
+# 「比初值差」的统计判定：同 K 个判卷噪声种子上成对差 d_k = 调后真值代价 − 初值真值代价，
+# mean(d) 与双侧 95% 配对 t 区间半宽 t(0.975, K−1)·std(d, ddof=1)/√K 比较（K=8 → t=2.365）。
+#   mean(d) − 半宽 > 0  → worse（红，硬失败，rc≠0，除非已退回初值）
+#   区间含 0            → indistinguishable（黄：没退回则记 not_reverted_unconfirmed，单独计数，只警告）
+#   mean(d) + 半宽 < 0  → better
+# 无噪对象只有一次仿真、确定性结果：半宽 = 0，按 mean(d) 符号直接判。对所有对象同一规则，不按种子调。
+T975 = {1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571, 6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262}
 REF_TRIES = 48       # 带噪参考：在无噪参考 / 其 kd 缩放 / 初值上再做乘性局部搜索的次数
 
 
@@ -45,8 +52,21 @@ def noisy_truth(plant: dict, m, p: dict, amp: float, n: int) -> dict:
         co.append(AT.cost(AT.metrics(t, r, ym, amp)))
         sf.append(_sat_frac(u, p, plant["u_max"]))
         mets.append(mt)
-    return {"cost": float(np.mean(ct)), "p75": float(np.percentile(ct, 75)), "observed": float(np.mean(co)),
+    return {"costs": [float(c) for c in ct], "cost": float(np.mean(ct)), "p75": float(np.percentile(ct, 75)), "observed": float(np.mean(co)),
             "sat_frac": float(np.mean(sf)), "k": len(seeds), "metrics": mets}
+
+
+def paired_compare(ni: dict, nb: dict) -> dict:
+    """调后 vs 初值：同噪声种子成对差（见 T975 上方说明）。"""
+    d = np.asarray(nb["costs"], float) - np.asarray(ni["costs"], float)
+    k = len(d)
+    if not np.all(np.isfinite(d)):
+        mean = float(np.nanmean(d)) if np.any(np.isfinite(d)) else 0.0
+        return {"mean": mean, "half": math.inf, "k": k, "result": "indistinguishable"}
+    mean = float(d.mean())
+    half = float(T975[k - 1] * d.std(ddof=1) / math.sqrt(k)) if k > 1 else 0.0
+    res = "worse" if mean - half > 0 else "better" if mean + half < 0 else "indistinguishable"
+    return {"mean": mean, "half": half, "k": k, "result": res}
 
 
 def reference_noisy(plant: dict, m, app: dict, ref: dict) -> dict:
@@ -156,12 +176,14 @@ def grade(d, seed: int, res: dict, app: dict, spec: str, source: str = "randplan
         # 整定器说达标、判卷不认（比初值差 / 离参考太远 / 原因对不上）：算假达标的一个子项
         errs.insert(0, "假达标（整定器说达标、判卷不认）：" + "；".join(errs))
     claims = v == "pass" and bool(errs)
-    # 比初值差且没退回（带噪真值，硬失败，单独计数）：最好参数 ≠ 初值，带噪真值代价严格大于初值
+    # 比初值差且没退回（带噪真值成对统计；所有对象，含不可行）：worse → 红硬失败；分不出 → 黄，单独计数
     reverted = all(abs(float(pb.get(k, 0.0)) - float(pi.get(k, 0.0))) <= 1e-12 * max(1.0, abs(float(pi.get(k, 0.0))))
                    for k in set(pb) | set(pi))
-    worse = (not reverted) and ci < 1e9 and cb > ci * (1 + 1e-9)
+    pc = paired_compare(ni, nb)
+    worse = (not reverted) and pc["result"] == "worse"
+    unconfirmed = (not reverted) and pc["result"] == "indistinguishable"
     if worse:
-        errs.append(f"比初值差且没退回：带噪真值代价 {cb:.4g} > 初值 {ci:.4g}（硬失败）")
+        errs.append(f"比初值差且没退回：带噪真值成对差 {pc['mean']:+.4g} ± {pc['half']:.3g}（95% 配对 t，K={pc['k']}），硬失败")
     fake = any(e.startswith("假达标") for e in errs)
     early = any(e.startswith("提前停") for e in errs)
     if fake:
@@ -180,7 +202,8 @@ def grade(d, seed: int, res: dict, app: dict, spec: str, source: str = "randplan
             "observed": {"initial": ni["observed"], "best": nb["observed"]},
             "sat_frac": {"initial": ni["sat_frac"], "best": nb["sat_frac"]},
             "ok": not errs, "errors": errs,
-            "false_pass": fake, "worse_not_reverted": worse, "claims_pass_grader_fails": claims, "early_stop_not_pass": early, "bucket": bucket,
+            "false_pass": fake, "worse_not_reverted": worse, "not_reverted_unconfirmed": unconfirmed,
+            "paired": pc | {"reverted": reverted}, "claims_pass_grader_fails": claims, "early_stop_not_pass": early, "bucket": bucket,
             "stop_reason": res.get("stop_reason"), "unchanged": unchanged}
 
 
@@ -214,6 +237,7 @@ def summarize(rs: list[dict]) -> dict:
             "claims_pass_grader_fails": [r["seed"] for r in rs if r.get("claims_pass_grader_fails")],   # 已含在 false_pass 里
             "early_stop_not_pass": [r["seed"] for r in rs if r.get("early_stop_not_pass")],
             "worse_not_reverted": [r["seed"] for r in rs if r.get("worse_not_reverted")],
+            "not_reverted_unconfirmed": [r["seed"] for r in rs if r.get("not_reverted_unconfirmed")],
             "truth_label_suspect": [r["seed"] for r in rs if r.get("bucket") == "truth_label_suspect"],
             "unchanged": [r["seed"] for r in rs if r.get("unchanged")],
             "per_category": cats}

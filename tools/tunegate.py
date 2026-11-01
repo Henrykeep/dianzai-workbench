@@ -102,6 +102,10 @@ def main(argv=None) -> int:
     print(f"tunegate：假达标 {len(fake)} 个、可行对象提前停未达标 {len(early)} 个（硬门禁，都必须 0）"
           + (f"：seed {','.join(map(str, fake + early))}" if fake or early else "") + f"；通过率 {S['good']}/{S['den']}（软指标，未通过只警告）")
     print(f"tunegate：比初值差且没退回 {len(worse)} 个（带噪真值，硬门禁，必须 0）" + (f"：seed {','.join(map(str, worse))}" if worse else ""))
+    unc = S["not_reverted_unconfirmed"]
+    print(f"tunegate：调后与初值分不出好坏又没退回 {len(unc)} 个（黄，只警告，不影响退出码）" + (f"：seed {','.join(map(str, unc))}" if unc else ""))
+    if unc:
+        print(f"::warning::tunegate not_reverted_unconfirmed：seed {','.join(map(str, unc))}（整定器该退回初值）")
     return 1 if fake or early or worse else 0
 
 
