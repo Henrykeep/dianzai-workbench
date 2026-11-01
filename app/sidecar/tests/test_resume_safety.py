@@ -68,10 +68,25 @@ def _start(home, **env_extra):
     env = dict(os.environ, PYTHONPATH=SIDECAR, DZBENCH_HOME=str(home), **env_extra)
     err = open(home / "sidecar.err", "ab")
     p = subprocess.Popen([sys.executable, "-c", BOOT, "--port", str(port)], env=env, cwd=SIDECAR,
-                         stdout=subprocess.DEVNULL, stderr=err)
+                         stdout=subprocess.DEVNULL, stderr=err, preexec_fn=_die_with_parent)
     err.close()
-    wait_port(port)
+    try:
+        wait_port(port)
+    except BaseException:
+        p.kill()                                         # 起不来也不许留孤儿侧车
+        p.wait()
+        raise
     return p, port
+
+
+def _die_with_parent():
+    """负载复测根因：pytest 被杀 / 超时时侧车成了孤儿，还在按上次记录自动连回、重扫端口，抢占后面测试的 pty
+    （同号 /dev/pts 复用 → “被别的程序占着” / port_not_found）。Linux 上让侧车随测试进程一起退出。"""
+    try:
+        import ctypes
+        ctypes.CDLL(None).prctl(1, signal.SIGKILL)       # PR_SET_PDEATHSIG
+    except Exception:  # noqa: BLE001  非 Linux：靠 finally 里的 kill
+        pass
 
 
 def _stall_dump(p, home) -> str:
