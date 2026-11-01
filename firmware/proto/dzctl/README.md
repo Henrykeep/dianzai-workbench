@@ -129,3 +129,9 @@ dzframe/1 之上的三件事：**参数读写（板端限幅、回传生效值�
 A = setpoint − initial（分母一律用阶跃幅度，不用 \|setpoint\|）。\|A\| < max(0.01·range, abs_tol) 时用 abs 口径（如已在 0 附近再给 sp=0）。
 range / abs_tol / y / u / u_max 来自 app.yaml `link.step`。心跳 status **bit17 DZCTL_HB_ITER_BUSY**：实验中 = 1；结果发出即清；急停锁存当拍强制 0（aborted 结果先于急停沿心跳发出）。
 注意：心跳尾部 params_hash 仍是 0.12 的 FNV（不变），step_result 里的是 CRC32。
+
+## 0.17.0 一次性握手信息 'I'（换板指纹）
+
+上位机 `DATA 0x7E len=1 {'I'}` → 板回 `DATA 0x7E len=23`：`'I'`、u8 info_ver=1、u32 schema_hash、u32 wd_timeout_ms、u8 uid_supported、u32 board_uid_lo、u32 board_uid_hi、u32 fw_rev。
+board_uid = MCU 唯一 ID 的 FNV-1a 64（PAL 1.9.0 `pal_read_uid` / `pal_uid64`），不进心跳、不进 schema 哈希。**心跳布局不变（40 B）。**
+应用不用写代码：`link_step_dispatch()` 统一回包。字段说明与链路占用见 docs/dev/fw-handshake.md。[仿真] host-sim；真板【未测】。

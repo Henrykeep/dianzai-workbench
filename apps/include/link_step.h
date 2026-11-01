@@ -127,6 +127,15 @@ static inline bool link_step_dispatch(const dzframe_t *f, const link_step_io_t *
     uint8_t sch; float stg; int sr;
     dzframe_t ack, rej; bool has_rej;
     s_link_step_sp_now = io->sp_now;
+    if (dzctl_is_info_request(f)) {                     /* dzctl 0.17.0 'I'：一次性握手信息（schema 哈希、看门狗、板 ID） */
+#ifdef LINK_WD_TIMEOUT_MS
+        dzctl_info(io->tbl, LINK_WD_TIMEOUT_MS, f->seq, &ack);
+#else
+        dzctl_info(io->tbl, 0u, f->seq, &ack);
+#endif
+        io->send(&ack);
+        return true;
+    }
     sr = link_step_rx(f, io->latched, io->offline, io->now, io->tbl, io->seq, io->send, &sch, &stg);
     if (sr != 0) {
         if (sr == 2 && io->on_target) io->on_target(g_link_step[sch].sp_idx, stg, io->ctx);

@@ -1471,6 +1471,9 @@
    "dzctl.h: #define DZCTL_ID_ESTOP 0x7Fu",
    "dzctl.h: #define DZCTL_ID_RELAY 0x7Cu",
    "dzctl.h: #define DZCTL_ID_BB 0x7Du",
+   "dzctl.h: #define DZCTL_CMD_INFO 'I'",
+   "dzctl.h: #define DZCTL_INFO_VER 1u",
+   "dzctl.h: #define DZCTL_INFO_LEN 23u",
    "dzctl.h: #define DZCTL_HB_SAFE_BOOT (1u << 8)",
    "dzctl.h: #define DZCTL_HB_STALL (1u << 9)",
    "dzctl.h: #define DZCTL_HB_ESTOP (1u << 10)",
@@ -1512,6 +1515,8 @@
    "dzctl.h: bool dzctl_is_estop(const dzframe_t *f);",
    "dzctl.h: uint32_t dzctl_board_uid(void);",
    "dzctl.h: uint64_t dzctl_board_uid64(void);",
+   "dzctl.h: bool dzctl_is_info_request(const dzframe_t *f);",
+   "dzctl.h: void dzctl_info(const dzctl_table_t *t, uint32_t wd_timeout_ms, uint8_t seq, dzframe_t *out);",
    "dzctl.h: uint32_t dzctl_fw_rev(void);",
    "dzctl.h: typedef enum { DZCTL_ST_SUBSYS = 1, DZCTL_ST_PARAMS = 2, DZCTL_ST_NVM = 3, DZCTL_ST_SENSOR = 4, DZCTL_ST_POWER = 5 } dzctl_selftest_item_t;",
    "dzctl.h: typedef bool (*dzctl_selftest_fn)(void);",
@@ -1580,8 +1585,8 @@
    "dzstep.h: void dzstep_finish(dzstep_t *s, bool aborted, uint8_t cause, uint8_t seq, dzframe_t *out);",
    "dzstep.h: int dzstep_selftest(void);"
   ],
-  "hash": "ed116c8d4cb87e48",
-  "version": "0.16.0"
+  "hash": "fff221f18df4c0ba",
+  "version": "0.17.0"
  },
  "firmware/proto/dzframe": {
   "decls": [
