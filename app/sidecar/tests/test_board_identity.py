@@ -91,3 +91,19 @@ def test_unsupported_uid_never_same_board(home):
         _up(s)
     finally:
         s.disconnect()
+
+
+@pytest.mark.needs_sim
+def test_heartbeat_tail_48_bytes_not_used_for_board_uid(home, monkeypatch):
+    """integration 已含 fw-wdhash 2216f76（心跳 len 48，尾部 u64 board_uid64）。后端不依赖它：
+    board_uid 只从握手来；没握手时即使心跳带了 UID 也报未知 + 明确中文提示。"""
+    monkeypatch.setenv("DZ_SIM_UID", "board-x")
+    s = Session()
+    try:
+        s.connect("sim:car_2wd"); _up(s)
+        st = s.status()
+        assert st["board_uid"] is None and st["board_id_known"] is False
+        assert st["board_id_message_zh"] == B.NO_UID_ZH
+        assert s.schema is not None                      # len 48 心跳照常解析（只读前 40 字节）
+    finally:
+        s.disconnect()
