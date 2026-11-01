@@ -346,3 +346,9 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - 阶跃无响应（`no_rise` / `settle_zero`）时 iterate 把阶跃时长翻倍重做，翻倍有硬上限：声明 `link.step[ch].max_step_dur_ms`（毫秒）；没声明用默认 `NO_RESPONSE_DUR_CAP_MS = 12000`（再夹板上上限 30000）。
 - 到上限仍无响应：停阶跃（step_stop）、设定值放回起点，`iterate.stopped` 的 `reason = "plant_unresponsive"`，`best = null`，卡片结论 `unknown`（不给结论）。reason_codes.json 里带 `message_zh`「对象无响应」和 `causes`（没上电 / 接线 / 方向 / 执行器饱和）。
 - 注：`max_step_dur_ms` 要经 tools/gen_link.py 透传进 link_schema.json 才生效（tools/ 归嵌入式开发-2）；未透传前一律按默认值。
+
+### r10 后端补充（fix-r9c）
+- `iterate.round` / 结果卡 / `iterate_apply_best`：`round_id = "<run_id>:<iter>"`（run_id 为 uuid4 前 12 位，#154），跨 run 唯一；台账 round 记录同样带 `round_id`。
+- `status`：本次连接握手未完成时 `board_ident_source: "pending"`、`uid_supported: null`、`board_id_message_zh: "正在识别板子…"`（#151）。
+- `link.state`：侧车重启自动连回后，上位机心跳真正发出前保持 `board: lost, reason: resuming`；此时执行器操作返回 `code: resuming`（#155）。
+- `schema_conflict`（事件与进度阻塞项）：`fix_action` 按种类 `clear_schema_cache` / `build` / `reflash`，并带 `fix_zh`。

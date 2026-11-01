@@ -44,6 +44,9 @@ def test_writeback_preview_then_confirm(tmp_path):
         m = m0 | {"item": item, "dir": d, "layer": "bench", "result": "pass", "note": "台架通过（未现场验收）：最慢 1.2 s"}
         pv = scoring.writeback(svc, m)
         assert "+" in pv["diff"] and "台架通过" in pv["diff"] and (not rq.exists() or rq.read_text(encoding="utf-8") == before)   # 预览不写
+        hdr = [x for x in pv["diff"].splitlines() if x.startswith(("---", "+++"))]   # #152：相对路径，不带本机绝对路径
+        assert all(str(tmp_path) not in x and " /" not in x and ":\\" not in x for x in hdr + [pv["path"]]), (hdr, pv["path"])
+        assert not pv["path"].startswith("/") and pv["path"].endswith("requirements.yaml")
         with pytest.raises(scoring.ScoreError):
             scoring.writeback(svc, m | {"confirm": True, "sha": "stale"})
         scoring.writeback(svc, m | {"confirm": True, "sha": pv["sha"]}); before = rq.read_text(encoding="utf-8")

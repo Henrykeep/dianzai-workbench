@@ -15,13 +15,25 @@ FILES = {"roles.json": (True, 1, "参数角色取值表"),
          "reason_codes.json": (True, None, "原因码表")}   # 原因码表（tools/gen_reason_codes.py 生成）没有 schema_version：按结构校验
 
 
-def _shape_ok(name: str, d) -> bool:
-    """内容结构：roles.json 要有 roles 列表；reason_codes.json 是 {code: {zh, kind}} 且非空。"""
+def _shape_problem(name: str, d) -> str | None:
+    """内容结构：roles.json 要有非空 roles 列表；reason_codes.json 是 {code: {zh, kind}} 且非空。→ 哪里不对（中文），没问题 None。"""
     if name == "roles.json":
-        return isinstance(d.get("roles"), list) and bool(d["roles"])
+        r = d.get("roles")
+        if r is None:
+            return "缺 roles 字段"
+        if not isinstance(r, list):
+            return f"roles 应是列表，实际是 {type(r).__name__}"
+        return None if r else "roles 列表是空的"
     if name == "reason_codes.json":
-        return bool(d) and all(isinstance(v, dict) and isinstance(v.get("zh"), str) and v["zh"] for v in d.values())
-    return True
+        if not d:
+            return "内容是空的"
+        badk = [k for k, v in d.items() if not (isinstance(v, dict) and isinstance(v.get("zh"), str) and v["zh"])]
+        return f"原因码 {', '.join(badk[:3])} 缺中文 zh" if badk else None
+    return None
+
+
+def _shape_ok(name: str, d) -> bool:
+    return _shape_problem(name, d) is None
 
 
 def roots() -> list[pathlib.Path]:
@@ -52,15 +64,23 @@ def load(name: str) -> tuple[dict | None, dict | None]:
                       "message_zh": msg, "fix_action": "reinstall"}
     if f is None:
         return bad(f"{zh} {REL.as_posix()}/{name} 没找到，安装包可能不完整，请重新安装工作台，装好后点『运行自检』确认", "missing")
+    where = str(f)                                               # #150：报出具体是哪个文件、哪里不对，绝不出现“版本 None”
     try:
         d = json.loads(f.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return bad(f"{zh} {name} 读不出来或不是合法 JSON，请重新安装工作台")
-    if not isinstance(d, dict) or (ver is not None and d.get("schema_version") != ver):
-        v = d.get("schema_version") if isinstance(d, dict) else None
-        return bad(f"{zh} {name} 的版本 {v!r} 本地服务不认识（只认 {ver}），请重新安装同一版本的工作台")
-    if not _shape_ok(name, d):
-        return bad(f"{zh} {name} 内容不完整或已损坏，请重新安装工作台")
+    except OSError as e:
+        return bad(f"{zh} {where} 读不出来（{e.strerror or e}），请重新安装工作台")
+    except ValueError as e:
+        pos = f"第 {e.lineno} 行第 {e.colno} 列" if hasattr(e, "lineno") else "编码"
+        return bad(f"{zh} {where} 不是合法 JSON（{pos}：{getattr(e, 'msg', e)}），请重新安装工作台")
+    if not isinstance(d, dict):
+        return bad(f"{zh} {where} 顶层应是 JSON 对象，实际是 {type(d).__name__}，请重新安装工作台")
+    if ver is not None and "schema_version" not in d:
+        return bad(f"{zh} {where} 缺 schema_version 字段（本地服务要求 {ver}），请重新安装同一版本的工作台")
+    if ver is not None and d.get("schema_version") != ver:
+        return bad(f"{zh} {where} 的 schema_version 是 {d.get('schema_version')!r}，本地服务只认 {ver}，请重新安装同一版本的工作台")
+    why = _shape_problem(name, d)
+    if why:
+        return bad(f"{zh} {where} 内容不对：{why}，请重新安装工作台")
     return d, None
 
 

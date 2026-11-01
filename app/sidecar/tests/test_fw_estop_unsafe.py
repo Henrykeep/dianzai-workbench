@@ -145,3 +145,66 @@ def test_resume_waits_for_host_heartbeat(tmp_path):
     assert ei.value.code == "resuming" and ei.value.message == "正在恢复连接"
     s.resume_hb_wait = False                       # 心跳发出（_send_hb 成功）后清掉
     assert not s._resume_pending()
+
+
+def test_apply_loop_exit_does_not_strand_queued_job(tmp_path):
+    """dz-rxapply 闲了判空准备退出的那一刻，别的线程（锁还被占着）排进一个活：这个活必须还会被执行（不丢，#155 嫌疑）。"""
+    import collections
+    import threading
+    import time
+    s = _bare(tmp_path)
+    ran, fired, waits = [], [], []
+
+    def hold(sec):                                     # 别的线程占着 session.lock 一会儿（lock 可重入，不能在本线程占）
+        held = threading.Event()
+
+        def run():
+            with s.lock:
+                held.set()
+                time.sleep(sec)
+        threading.Thread(target=run).start()
+        held.wait(2.0)
+
+    class Q(collections.deque):
+        def __bool__(self):
+            empty = len(self) == 0
+            if empty and len(waits) == 2 and not fired and threading.current_thread().name == "dz-rxapply":
+                fired.append(1)                       # 正好卡在“闲到点、判空”之后排一个活进来
+                t = threading.Thread(target=s._locked, args=(lambda: ran.append(1),))
+                t.start()
+                t.join(0.3)
+            return not empty
+
+    class Ev:
+        def wait(self, _t):
+            waits.append(1)
+            if len(waits) == 2:
+                hold(0.6)                             # 第二次闲到点时锁又被占：新活只能排队
+            return False
+        def set(self):
+            pass
+        def clear(self):
+            pass
+
+    s._deferred, s._defer_ev = Q(), Ev()
+    hold(0.2)
+    s._locked(lambda: None)                           # 锁被占 → 排队并起 applier
+    deadline = time.monotonic() + 3.0
+    while not ran and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert fired and ran == [1]
+
+
+def test_status_ident_pending_before_handshake(tmp_path):
+    """#151：口开着、'I' 还没回也没超时 → board_ident_source=pending、uid_supported=null、「正在识别板子…」，不报“不支持”。"""
+    s = _sess(tmp_path, None)
+    s.tr = object()
+    st = s.status()
+    assert st["board_ident_source"] == "pending" and st["uid_supported"] is None and st["board_uid"] is None
+    assert st["board_id_known"] is False and st["board_id_message_zh"] == board_ident.PENDING_ZH
+    s._on_info(_info(2, 0x1200))
+    st = s.status()
+    assert st["board_ident_source"] == "handshake" and st["uid_supported"] is True
+    s._reset()                                       # 新连接：重新回到 pending
+    s.tr = object()
+    assert s.status()["board_ident_source"] == "pending"

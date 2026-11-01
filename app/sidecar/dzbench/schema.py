@@ -76,7 +76,8 @@ def search_dirs() -> list[pathlib.Path]:
 
 
 CONFLICT_FIX = "clear_schema_cache"
-REBUILD_FIX = "build"                # 冲突只涉及编译产物（或编译产物对板子 'I' 回包）：重新编译并烧录，不是清缓存
+REBUILD_FIX = "build"                # 冲突只涉及编译产物（多份编译产物互相打架）：重新编译并烧录，不是清缓存
+REFLASH_FIX = "reflash"              # 编译产物和板子 'I' 回包对不上（板上固件不是这份编译产物）：把这份编译产物烧进板子
 
 
 def cache_dir() -> pathlib.Path:
@@ -98,7 +99,7 @@ class SchemaConflict(Exception):
     """同一个哈希在本机匹配到多份内容不同的 link_schema.json（例如两块板子来回插、哈希没把板子身份 / wd_timeout_ms 算进去）。
     不挑第一份、也不挑最新的一份：挑错了界面就会按错的通道和参数去显示、去写。"""
 
-    def __init__(self, h: int, paths: list[str], board_uid: str | None = None, message_zh: str | None = None):
+    def __init__(self, h: int, paths: list[str], board_uid: str | None = None, message_zh: str | None = None, vs_board: bool = False):
         self.hash, self.paths, self.board_uid = h, paths, board_uid
         names = "；".join(paths)
         self.message_zh = message_zh or (f"板子的数据格式（哈希 {h:08X}）在本机对应到 {len(paths)} 份内容不同的格式文件，无法判断是哪一块板子的。"
@@ -107,13 +108,16 @@ class SchemaConflict(Exception):
         if "cache" in self.kinds:
             self.fix_zh = "清掉本机缓存的这个哈希的格式文件后重新识别板子；仍不对就按当前这块板子重新编译并烧录固件。"
             self.fix_action = CONFLICT_FIX
-        else:                          # 只有编译产物（或编译产物对板子 'I' 回包）：清缓存没用，也绝不删编译产物
-            self.fix_zh = "编译产物和板子上的固件对不上：按当前这块板子重新编译并烧录固件。"
+        elif vs_board:                 # 编译产物对板子 'I' 回包：板上固件不是这份编译产物 → 重新烧录
+            self.fix_zh = "板子上的固件和本机编译产物对不上：把当前工程的编译产物重新烧录到这块板子。"
+            self.fix_action = REFLASH_FIX
+        else:                          # 只有编译产物互相冲突：清缓存没用，也绝不删编译产物 → 重新编译
+            self.fix_zh = "本机有多份同哈希但内容不同的编译产物：按当前这块板子重新编译并烧录固件。"
             self.fix_action = REBUILD_FIX
         super().__init__(f"{self.message_zh}（{names}）")
 
     def as_dict(self) -> dict:
-        return {"type": "error", "code": "schema_conflict", "reason": "schema_conflict", "message": self.message_zh,
+        return {"type": "error", "code": "schema_conflict", "reason": "schema_conflict", "message": self.message_zh, "fix_zh": self.fix_zh,
                 "message_zh": self.message_zh, "fix": self.fix_zh, "fix_action": self.fix_action,
                 "hash": f"{self.hash:08X}", "board_uid": self.board_uid,
                 "files": [{"path": str(pathlib.Path(p).resolve()), "kind": k} for p, k in zip(self.paths, self.kinds)]}

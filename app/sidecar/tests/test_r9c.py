@@ -161,3 +161,17 @@ def test_direct_iterate_start_and_main_flow_use_same_plan(seed, home):
             assert main["target"] == pytest.approx(float(o["step_target"]))
     finally:
         s.disconnect()
+
+
+@pytest.mark.parametrize("cache,vs_board,expect", [(True, False, "clear_schema_cache"), (False, False, "build"), (False, True, "reflash")])
+def test_schema_conflict_fix_action_by_kind(tmp_path, monkeypatch, cache, vs_board, expect):
+    """schema_conflict 的修法按种类：有缓存拷贝 → clear_schema_cache；只有编译产物互冲 → build；编译产物对板子 → reflash。
+    进度阻塞项（progress.blockers）用同一个 fix_action，不再一律 clear_schema_cache。"""
+    from dzbench import progress, schema
+    monkeypatch.setattr(schema, "cache_dir", lambda: tmp_path / "cache")
+    p1 = (tmp_path / "cache" if cache else tmp_path / "build") / "a.json"
+    e = schema.SchemaConflict(0x1234ABCD, [str(p1), str(tmp_path / "build2/b.json")], None, vs_board=vs_board)
+    d = e.as_dict()
+    assert d["fix_action"] == expect and d["fix_zh"]
+    bl = [b for b in progress.blockers({"link": {"board": "connected"}, "schema_conflict": d}) if b["code"] == "schema_conflict"]
+    assert bl and bl[0]["fix_action"] == expect and bl[0]["fix_zh"] == d["fix"]

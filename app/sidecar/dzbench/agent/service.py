@@ -705,12 +705,14 @@ class AgentService:
         ss = self._ss_band(best.get("metrics") or {})
         v, vzh = self._verdict(ss, res, best.get("metrics"))
         res["verdict"], res["verdict_zh"], res["ss_err"] = v, vzh, ss
-        # #147：卡上的 params / metrics 都取自同一个 best（同一轮对象），round_id = 该轮 iter，前端用它对齐显示
-        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+        # #147：卡上的 params / metrics 都取自同一个 best（同一轮对象）。#154：round_id = run_id(uuid4) + 轮号，
+        # 跨 run 全局唯一（光用 iter 两次迭代都会有“第 3 轮”），前端用它对齐显示
+        rid = f"{res.get('run_id') or self.current_run_id()}:{best['iter']}"
+        r = self.gate("iterate_apply_best", {"params": best["params"], "iter": best["iter"], "round_id": rid,
                                              "metrics": best.get("metrics"), "params_hash": best["params_hash"],
                                              "ss_err": ss, "verdict": v, "verdict_zh": vzh,
                                              "compare": self._compare(res.get("round0"), best)}, lambda: None)
-        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "round_id": best["iter"],
+        res["card"] = {"action_id": r.get("action_id"), "params": best["params"], "iter": best["iter"], "round_id": rid,
                        "metrics": best.get("metrics"), "params_hash": best["params_hash"], "ss_err": ss,
                        "verdict": v, "verdict_zh": vzh, "pass_basis": ss.get("pass_basis"), "compare": self._compare(res.get("round0"), best)}
         return r.get("action_id")
@@ -963,8 +965,10 @@ class AgentService:
     def _iter_emit(self, e: dict) -> None:
         if str(e.get("type", "")).startswith("iterate."):
             e.setdefault("run_id", self.current_run_id())
+        if e.get("type") == "iterate.round" and "iter" in e:
+            e.setdefault("round_id", f"{e['run_id']}:{e['iter']}")            # #154：和结果卡 / 采用回包同一个口径
         if e.get("type") == "iterate.round" and e.get("valid"):
-            self.memory().add("round", run_id=self.current_run_id(), iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
+            self.memory().add("round", run_id=self.current_run_id(), round_id=e["round_id"], iter=e["iter"], params=e["params"], params_hash=e.get("params_hash"),   # #39：第 0 轮也带 hash
                               score=e.get("score"), passed=(e.get("pass") or {}).get("all"))
         if e.get("type") == "iterate.stopped" and "pass_basis" not in e:
             try:

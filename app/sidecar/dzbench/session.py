@@ -71,6 +71,7 @@ class Session:
         self._deferred: collections.deque = collections.deque()
         self._defer_ev = threading.Event()
         self._applier: threading.Thread | None = None
+        self._defer_lock = threading.Lock()      # 护“排队 + 判断 applier 在不在”和 applier 的“闲了退出”判定，防丢活
         self._binding_h: int | None = None        # 只护“写串口”这一小段：帧不交错；急停不等 self.lock
         self.history_s = history_s
         self._open = open_transport          # 测试可注入
@@ -101,6 +102,7 @@ class Session:
         self._was_alive = False
         self._info_asked = False             # 本次连接是否已发过 'I'（只发一次）
         self._info = None                    # 'I' 回包解码结果
+        self._hs_conn = False                # #151：本次连接是否已拿到握手结论（'I' 回包或超时判旧固件）
         self.fw_estop: dict | None = None    # board_ident.estop_safety 结果；None = 还没定（'I' 未回也未超时）
         self._info_timer = None
         self._pending_marks: list[tuple[str, str]] = []
@@ -516,16 +518,20 @@ class Session:
             finally:
                 self.lock.release()
             return
-        self._deferred.append(fn)
-        if self._applier is None or not self._applier.is_alive():
-            self._applier = threading.Thread(target=self._apply_loop, name="dz-rxapply", daemon=True)
-            self._applier.start()
+        with self._defer_lock:
+            self._deferred.append(fn)
+            if self._applier is None or not self._applier.is_alive():
+                self._applier = threading.Thread(target=self._apply_loop, name="dz-rxapply", daemon=True)
+                self._applier.start()
         self._defer_ev.set()
 
     def _apply_loop(self) -> None:
         while True:
-            if not self._defer_ev.wait(5.0) and not self._deferred:
-                return                                       # 闲 5 s 退出，下次排队再起
+            if not self._defer_ev.wait(5.0):
+                with self._defer_lock:                       # 闲 5 s 退出；判空和让位在同一把锁下，
+                    if not self._deferred:                   # 否则“刚判空 → 别人排队看见我还活着 → 我退出”会丢活（#155 嫌疑）
+                        self._applier = None
+                        return
             self._defer_ev.clear()
             with self.lock:
                 while self._deferred:
@@ -1252,6 +1258,7 @@ class Session:
         """固件握手（只报一次）里的板子身份：board_uid / uid_supported → self.board_id。
         与上一块板身份不同、或任一方身份未知 = 换板：清掉按板缓存的状态（参数读数、schema 绑定），推 board_changed，并重新查 schema。"""
         new = board_ident.parse_handshake(info)
+        self._hs_conn = True
         old = self.board_id
         first = not getattr(self, "_handshake_seen", False)
         self._handshake_seen = True
@@ -1330,7 +1337,7 @@ class Session:
         if sch is not None and sch.hash == info["schema_hash"] and info["wd_timeout_ms"] \
                 and sch.wd_timeout_ms is not None and sch.wd_timeout_ms != info["wd_timeout_ms"]:
             uid = board_ident.parse_handshake(info)["board_uid"]
-            e = SchemaConflict(sch.hash, [sch.path], uid,
+            e = SchemaConflict(sch.hash, [sch.path], uid, vs_board=True,
                                message_zh=f"本机格式文件（哈希 {sch.hash:08X}）的看门狗 {sch.wd_timeout_ms} ms 与板子实际烧进去的 "
                                           f"{info['wd_timeout_ms']} ms 不一致：这份格式文件不是这块板子的。已停止显示遥测和写参数。")
             self.schema, self.schema_conflict = None, e
@@ -1534,6 +1541,10 @@ class Session:
         self.emit(e)
         return e
 
+    def _ident_pending(self) -> bool:
+        """#151：口开着、本次连接还没拿到握手结论。仿真 / 回放 / 口没开不算 pending。"""
+        return self.tr is not None and not self._hs_conn and not self.port.startswith((SIM_PREFIX, "replay:"))
+
     def _resume_pending(self) -> bool:
         """侧车重启后的自动连回还没完成：口没开，或口开了但上位机心跳还没发出第一帧（#155）。"""
         return bool((self.resuming and self.tr is None) or (self.resume_hb_wait and self.tr is not None))
@@ -1587,9 +1598,13 @@ class Session:
                   "schema_ok": self.schema is not None,
                   "schema_conflict": self.schema_conflict.as_dict() if self.schema_conflict is not None else None,
                   # 板子身份只来自解码后的 'I' 握手回包（board_ident），原样转发；心跳里的芯片 ID（self.board_uid）只给内部换口/锁存用，不进 status
-                  "board_uid": self.board_id.get("board_uid"), "uid_supported": self.board_id.get("uid_supported"),
-                  "proto_ver": (self._info or {}).get("proto_ver"), "board_ident_source": "handshake",
-                  "board_id_known": self.board_id.get("board_id_known"), "board_id_message_zh": self.board_id.get("message_zh"), "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
+                  # #151：本次连接握手还没完成（'I' 没回也没超时）→ source=pending、uid_supported=null，界面显示“正在识别板子”，不判“不支持”
+                  **({"board_uid": None, "uid_supported": None, "board_ident_source": "pending", "board_id_known": False,
+                      "board_id_message_zh": board_ident.PENDING_ZH} if self._ident_pending() else
+                     {"board_uid": self.board_id.get("board_uid"), "uid_supported": self.board_id.get("uid_supported"),
+                      "board_ident_source": "handshake", "board_id_known": self.board_id.get("board_id_known"),
+                      "board_id_message_zh": self.board_id.get("message_zh")}),
+                  "proto_ver": (self._info or {}).get("proto_ver"), "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "reconnect_attempt": self.reconnect_attempt, "stall_s": self.stall_s, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}
