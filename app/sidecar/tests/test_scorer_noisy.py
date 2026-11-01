@@ -109,3 +109,19 @@ def test_no_truth_leak():
     assert out.returncode == 0, out.stdout + out.stderr
     src = (ROOT / "tools" / "tunegate_grade.py").read_text("utf-8")
     assert "28708004" not in src                                      # 判卷无按种子的特殊处理
+
+
+def test_worse_than_initial_not_reverted_is_hard_fail_rc(tmp_path, monkeypatch):
+    """带噪真值比初值差、又没退回初值：grade 标 worse_not_reverted，tunegate 退出码非 0。"""
+    plant, m, hi, lo, amp, n = _noisy_kd_case(np.random.default_rng(1001))
+    app = {"params": [{"name": f"p{i}", "role": r, "min": 0.0, "max": 10 * v + 1, "init": v, "max_delta": 1e9}
+                      for i, (r, v) in enumerate(lo.items())]}
+    _write(tmp_path, plant, m, app, amp, n)
+    res = {"initial": {"roles": lo}, "best": {"roles": hi}, "verdict": "fail", "category": "unconfirmed", "pass_basis": "", "amp": amp, "n": n}
+    g = G.grade(str(tmp_path), 1, res, app, "要求：稳态误差不超过 50%。")
+    assert g["worse_not_reverted"] and g["bucket"] == "worse_not_reverted" and not g["ok"]
+    same = G.grade(str(tmp_path), 1, res | {"best": {"roles": dict(lo)}}, app, "要求：稳态误差不超过 50%。")
+    assert not same["worse_not_reverted"]                            # 退回初值不算
+    import tunegate as TG
+    monkeypatch.setattr(TG, "one", lambda s, k: g | {"seed": s, "rejected_writes": 0, "secs": 0.0, "amp_reduced": False})
+    assert TG.main(["--seed", "1"]) != 0

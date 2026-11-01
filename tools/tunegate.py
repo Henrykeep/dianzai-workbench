@@ -108,9 +108,11 @@ def main(argv=None) -> int:
     print(f"tunegate：用时 {time.monotonic() - t_start:.1f} s")
     if bad:
         print(f"::warning::tunegate 通过率 {good}/{den}；未通过 seed {','.join(str(r['seed']) for r in bad)}")
+    worse = [r for r in rs if r.get("worse_not_reverted")]
     print(f"tunegate：假达标 {len(fake)} 个（硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in fake)}" if fake else "")
           + f"；通过率 {good}/{den}（软指标，未通过只警告）")
-    return 1 if fake else 0
+    print(f"tunegate：比初值差且没退回 {len(worse)} 个（带噪真值，硬门禁，必须 0）" + (f"：seed {','.join(str(r['seed']) for r in worse)}" if worse else ""))
+    return 1 if fake or worse else 0
 
 
 if __name__ == "__main__":

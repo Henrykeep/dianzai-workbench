@@ -149,9 +149,17 @@ def grade(d, seed: int, res: dict, app: dict, spec: str, source: str = "randplan
             errs.append(f"原因对不上：应为 {plant['infeasible_reason']}，卡上 {res['category']}（{res['pass_basis']}）")
     elif not (v == "pass" and truth_ok) and _recheck(plant, seed, v, truth_ok, source) == "undecided":   # "unknown"
         bucket = "undecided"
+    # 比初值差且没退回（带噪真值，硬失败，单独计数）：最好参数 ≠ 初值，带噪真值代价严格大于初值
+    reverted = all(abs(float(pb.get(k, 0.0)) - float(pi.get(k, 0.0))) <= 1e-12 * max(1.0, abs(float(pi.get(k, 0.0))))
+                   for k in set(pb) | set(pi))
+    worse = (not reverted) and ci < 1e9 and cb > ci * (1 + 1e-9)
+    if worse:
+        errs.append(f"比初值差且没退回：带噪真值代价 {cb:.4g} > 初值 {ci:.4g}（硬失败）")
     fake = any(e.startswith("假达标") for e in errs)
     if fake:
         bucket = "false_pass"
+    elif worse:
+        bucket = "worse_not_reverted"
     elif errs:
         bucket = "fail"
     return {"seed": seed, "kind": plant["kind"], "feasible": f, "cause": plant["infeasible_reason"],
@@ -162,4 +170,4 @@ def grade(d, seed: int, res: dict, app: dict, spec: str, source: str = "randplan
             "observed": {"initial": ni["observed"], "best": nb["observed"]},                 # 对照：按带噪测量算，不参与判卷
             "sat_frac": {"initial": ni["sat_frac"], "best": nb["sat_frac"]},                 # 诊断：执行器饱和时间占比
             "ok": not errs, "errors": errs,
-            "false_pass": fake, "bucket": bucket}
+            "false_pass": fake, "worse_not_reverted": worse, "bucket": bucket}
