@@ -10,9 +10,18 @@ import pathlib
 import sys
 
 REL = pathlib.Path("docs") / "dev"
-# 文件名 → (必需, 认的 schema_version, 中文名)。reason_codes.json 生成后自动纳入检查（未生成前不算缺）。
+# 文件名 → (必需, 认的 schema_version, 中文名)。两份都必需（#144：缺原因码表也要报 missing + reinstall，退出 1）。
 FILES = {"roles.json": (True, 1, "参数角色取值表"),
-         "reason_codes.json": (False, None, "原因码表")}   # 原因码表（gen_link 生成）没有 schema_version：是 JSON 对象就认
+         "reason_codes.json": (True, None, "原因码表")}   # 原因码表（tools/gen_reason_codes.py 生成）没有 schema_version：按结构校验
+
+
+def _shape_ok(name: str, d) -> bool:
+    """内容结构：roles.json 要有 roles 列表；reason_codes.json 是 {code: {zh, kind}} 且非空。"""
+    if name == "roles.json":
+        return isinstance(d.get("roles"), list) and bool(d["roles"])
+    if name == "reason_codes.json":
+        return bool(d) and all(isinstance(v, dict) and isinstance(v.get("zh"), str) and v["zh"] for v in d.values())
+    return True
 
 
 def roots() -> list[pathlib.Path]:
@@ -50,6 +59,8 @@ def load(name: str) -> tuple[dict | None, dict | None]:
     if not isinstance(d, dict) or (ver is not None and d.get("schema_version") != ver):
         v = d.get("schema_version") if isinstance(d, dict) else None
         return bad(f"{zh} {name} 的版本 {v!r} 本地服务不认识（只认 {ver}），请重新安装同一版本的工作台")
+    if not _shape_ok(name, d):
+        return bad(f"{zh} {name} 内容不完整或已损坏，请重新安装工作台")
     return d, None
 
 

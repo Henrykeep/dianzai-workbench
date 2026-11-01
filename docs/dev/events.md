@@ -284,7 +284,7 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 ## 随包数据表 `hello.data_tables`（#136）
 `hello` 返回里多一项 `data_tables: {roles, reason_codes}`，每项为 `{sha256, content}` 或 `null`：
 - `sha256`：对文件原始字节（docs/dev/<名>.json）算的十六进制 SHA-256；`content`：原样解析的 JSON（不改字段）。
-- 文件缺失、不是合法 JSON 或 `schema_version` 不认识 → 该项为 `null`，同时 `progress` 出阻塞项 `{code/reason: "data_file_missing", file, message_zh, fix_action: "reinstall"}`。`reason_codes.json` 尚未生成时为 `null`，不算缺（可选表）。
+- 文件缺失、不是合法 JSON 或 `schema_version` 不认识 → 该项为 `null`，同时 `progress` 出阻塞项 `{code/reason: "data_file_missing", file, message_zh, fix_action: "reinstall"}`。两份都必需（#144）：`reason_codes.json` 缺失 / 损坏同样为 `null` + `data_file_missing`，自检 `ok:false`、CLI 退出 1。结构校验：roles.json 要有非空 `roles`；reason_codes.json 每项要有 `zh`。
 - 查找顺序：安装包解包目录 → `DZBENCH_REPO` → 本仓库根。命令行自检：`python -m dzbench selfcheck-data`（必需表缺失退出 1）。
 - `roles.content`：`{schema_version: 1, roles: [{code, zh}]}`；侧车的 `no_roles` 提示也只读这份。
 
