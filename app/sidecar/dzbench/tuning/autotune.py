@@ -258,6 +258,7 @@ def _is_step_reject(e) -> bool:
 # ---------------------------------------------------------------- 整定策略：代价对齐题面 / 增益下限 / 收敛停 / 按证据诊断
 BUDGET_BASE, BUDGET_PER_PARAM, BUDGET_MAX = 12, 6, 48         # 板上试参次数上限随可调参数个数自适应
 FAC0, FAC_MIN, IMPROVE_REL = 1.6, 1.05, 0.01
+KEPT_INITIAL_ZH = "调参未能改善，已保留初值"
 FLOOR_FRAC = 0.02                                               # 增益下限 = 候选里最大值的 2%、初值的 2% 取大（且不低于声明 min）
 FLOOR_INIT = 0.02
 STOP_ZH = {"converged": "已满足题面，停止搜索", "budget_exhausted": "试参次数用完仍未满足题面",
@@ -524,6 +525,16 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
             if fac < FAC_MIN:
                 fac, stale = FAC0, 0                            # 步子太小 → 重新放大跳出（直到预算用完）
     bc, bp, bm, (bt, br, by, bu) = min(hist, key=lambda h: h[0])
+    # 终验：窗口加倍复测最好参数与初值（搜索窗口按探测估的调节时间取，可能偏短：慢收敛 / 晚到的振荡在短窗里看不见），
+    # 判定与“是否比初值好”都按终验结果（本机实测，不读真值）
+    n_fin = int(min(2 * n, 40000))
+    fb, f0 = run(bp, amp, n_fin), (run(p0, amp, n_fin) if bp is not p0 else None)
+    kept_initial = False
+    final_check = {"n": n_fin, "best_cost": cost(fb[4]), "initial_cost": cost((f0 or fb)[4])}
+    if f0 is not None and cost(fb[4]) > cost(f0[4]):            # 绝不交付比初值差的参数：退回初值并写明
+        bp, fb, kept_initial = p0, f0, True
+    bc, bm, (bt, br, by, bu) = J(fb[4]), fb[4], fb[:4]
+    n = n_fin
     bad = meets(bm, sp)
     if not bad and not _reproduces(lambda: run(bp, amp, n)[4], sp):
         bad = meets(run(bp, amp, n)[4], sp) or ["reproduce"]
@@ -544,6 +555,9 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         else:
             verdict_zh = "未达标" + (f"：{CAUSE_ZH[cat]}" if cat in CAUSE_ZH else "")
         why = (causes[0]["basis_zh"] if causes else "原因待确认：特征不足以归类") + "；未达标：" + "、".join(bad)
+    if kept_initial:
+        verdict_zh = KEPT_INITIAL_ZH + "；" + verdict_zh
+        why = KEPT_INITIAL_ZH + "（调后实测代价高于初值）；" + why
     extra = {}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
         extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None,
@@ -556,12 +570,14 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         if sp.get(k) is None:
             continue
         v = "fail" if k in bad else ("partial" if amp_reduced else "pass")
-        items.append({"key": k, "spec": sp[k], "measured": bm.get(k), "verdict": v} | extra)
+        mv = bm.get(k)
+        items.append({"key": k, "spec": sp[k], "measured": mv, "margin": (sp[k] - mv) if mv is not None and math.isfinite(mv) else None,
+                      "verdict": v} | extra)
     for it in items:
         it["verdict_zh"] = {"pass": "达标", "fail": "未达标", "partial": "未验题面幅度"}[it["verdict"]]
     return {"seed": seed, "verdict": verdict, "verdict_zh": verdict_zh, "category": cat, "pass_basis": why, "spec": sp, "amp": amp, "n": n,
             "items": items, **extra, "causes": causes, "stop_reason": stop_reason, "stop_reason_zh": STOP_ZH[stop_reason],
-            "unchanged": False, "tuned": True, "budget": budget,
+            "unchanged": kept_initial, "tuned": not kept_initial, "kept_initial": kept_initial, "final_check": final_check, "budget": budget,
             "timing": timing, "ident": info, "initial": {"params": {name[k]: v for k, v in p0.items()}, "metrics": m_init, "cost": cost(m_init)},
             "best": {"params": {name[k]: v for k, v in bp.items()}, "roles": bp, "metrics": bm, "cost": bc},
             "rounds": len(hist) - 1}

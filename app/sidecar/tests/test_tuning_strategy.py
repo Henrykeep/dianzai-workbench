@@ -64,3 +64,35 @@ def test_grader_cause_must_match_and_early_stop_is_hard(monkeypatch, capsys):
     monkeypatch.setattr(TG, "one", lambda s, k: rs[0])
     assert TG.main(["--seed", "1"]) == 1
     assert "提前停未达标 1" in capsys.readouterr().out
+
+
+def test_never_deliver_worse_than_initial():
+    """绝不交付比初值差的参数：终验（窗口加倍、本机实测代价）里调后不如初值 → 退回初值，卡上写「调参未能改善，已保留初值」。
+    真随机对象（randplant，经真仿真板）逐个跑；判定只看整定器自己的实测，不读真值。"""
+    import tempfile
+    import yaml
+    import tunegate_plant as RP
+    for seed in (4030, 3003, 4037):
+        with tempfile.TemporaryDirectory() as d:
+            RP.make(seed, "any", d)
+            app = yaml.safe_load(open(f"{d}/app.yaml", encoding="utf-8"))
+            link = yaml.safe_load(open(f"{d}/link.yaml", encoding="utf-8"))
+            spec = open(f"{d}/spec.txt", encoding="utf-8").read()
+            res = AT.autotune(G.board(d, app, seed, "randplant"), app, link, spec, seed)
+        if res.get("kept_initial"):
+            assert res["best"]["roles"] == res["initial"].get("roles", res["best"]["roles"]) or \
+                res["best"]["params"] == res["initial"]["params"], res
+            assert AT.KEPT_INITIAL_ZH in res["verdict_zh"] and AT.KEPT_INITIAL_ZH in res["pass_basis"], res
+            assert res["unchanged"] and not res["tuned"]
+            if res["verdict"] != "pass":
+                assert res["causes"], res                      # 退回初值也要给原因
+        else:
+            fc = res["final_check"]                              # 交付的参数在终验里不比初值差
+            assert fc["best_cost"] <= fc["initial_cost"], fc
+        for it in res["items"]:
+            assert "margin" in it
+
+
+def test_tuner_pass_agrees_with_grader_4030():
+    r = TG.one(4030, "any")                                      # 曾经：整定器说 pass，判卷说比初值差
+    assert not (r["verdict"] == "pass" and not r["ok"]), r
