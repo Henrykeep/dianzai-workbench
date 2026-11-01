@@ -95,7 +95,7 @@ def test_unsupported_uid_never_same_board(home):
 
 @pytest.mark.needs_sim
 def test_heartbeat_tail_48_bytes_not_used_for_board_uid(home, monkeypatch):
-    """integration 已含 fw-wdhash 2216f76（心跳 len 48，尾部 u64 board_uid64）。后端不依赖它：
+    """fw-wdhash 2216f76 曾把 u64 board_uid64 追加进心跳（len 48），integration 59f1d0c 已撤回。后端从不依赖心跳里的 UID：
     board_uid 只从握手来；没握手时即使心跳带了 UID 也报未知 + 明确中文提示。"""
     monkeypatch.setenv("DZ_SIM_UID", "board-x")
     s = Session()
