@@ -20,6 +20,8 @@ function paintPlant(v: PlantView) {
 }
 import { boardName, SIDECAR_DOWN } from "./batch1";
 import { connButton, declaredBoard, boardLabel, portOption, chUnit, shortHint, paramDesc, lifeSummary } from "./r9p6c";
+import { SCHEMA_CONFLICT_F, SCHEMA_CLEAR_F } from "./fieldmap";
+import { clearArgs, clearResult, removedZh, isClearFix, resultSameBoard, conflictOf, boardIdOf, uidChipHtml, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, type Conflict, type BoardId } from "./boardid";
 import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
 applyBrand();
@@ -102,6 +104,28 @@ function lockWrites(on: boolean) {
 }
 setInterval(() => { if (writesLocked) lockWritesIn(document, true); }, 300);   // 参数行会重建：锁存期间持续补禁用
 void WRITE_IDS;
+// 板子身份 + 结构冲突（握手 / 事件 / blockers 三个来源，任一未解决就挡写入）
+let boardId: BoardId | null = null; const sconf: Record<string, Conflict | null> = { hello: null, event: null, blockers: null };
+const curConflict = () => sconf.hello ?? sconf.event ?? sconf.blockers;
+function renderBoardId() { const el = document.getElementById("ro-uid"); if (el) { el.innerHTML = uidChipHtml(boardId, esc); el.hidden = !boardId; } }
+let sconfSt: "idle" | "confirm" | "busy" | "fail" = "idle";
+function renderConflict() {
+  const c = curConflict(), el = document.getElementById("sconf-banner"); lockSchemaIn(document, false); if (c) lockSchemaIn(document, true); else sconfSt = "idle";
+  if (!el) return; el.hidden = !c; el.innerHTML = c ? conflictBannerHtml(c, c.fix && !isClearFix(c) ? resolveFix(c.fix) : null, esc, sconfSt) : "";
+  el.querySelector<HTMLElement>("[data-sc-conflict-fix]")?.addEventListener("click", ev => runAction((ev.currentTarget as HTMLElement).dataset.scConflictFix!, s => goStepRef(s)));
+  el.querySelector<HTMLElement>("[data-sconf-clear]")?.addEventListener("click", () => { sconfSt = "confirm"; renderConflict(); });   // 先确认再清
+  el.querySelector<HTMLElement>("[data-sconf-cancel]")?.addEventListener("click", () => { sconfSt = "idle"; renderConflict(); });
+  el.querySelector<HTMLElement>("[data-sconf-ok]")?.addEventListener("click", () => { sconfSt = "busy"; renderConflict(); void clearAndRehandshake(); });
+}
+// 清除旧缓存 → 重新 hello：身份 / 冲突 / 参数表都按新握手刷新
+async function clearAndRehandshake() {
+  try { const c0 = curConflict(); const cr = clearResult(await call(SCHEMA_CLEAR_F.op, c0 ? clearArgs(c0) : {})); if (!cr.ok) throw 0; toast(removedZh(cr.removed.length), "info", 3000); const h: any = await link.rpc("hello"); sconf.event = null; sconf.blockers = null; applyHelloIdentity(h); if (h?.schema) { applySchema(h.schema); S.applied = h.params; syncParams(); } if (h?.status) renderStatus(h.status); sconfSt = "idle"; }
+  catch { sconfSt = "fail"; }
+  renderConflict();
+}
+// 板子身份只认握手（hello），心跳 / status 不改它
+function applyHelloIdentity(h: any) { boardId = boardIdOf(h); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
+setInterval(() => { if (curConflict()) lockSchemaIn(document, true); }, 300);   // 参数行 / 提交卡会重建：持续补禁用
 const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
 function renderAlerts() {
   const el = $("alerts"), l = AL.list;
@@ -858,7 +882,7 @@ $("it-go").onclick = async () => {
 };
 // #101 重连 / 换板：先清结果卡，再按 iterate_status 恢复——只恢复进行中，或结果标明属于当前板的
 const syncIter = () => { IT.reset(); renderIter(); return link.rpc("iterate_status", {}).then((r: any) => {
-  const res = r?.result ?? r?.last?.result, keep = r?.running || (res && IterModel.sameBoard(res, S.status?.port));
+  const res = r?.result ?? r?.last?.result, keep = r?.running || (res && resultSameBoard(res, IterModel.sameBoard(res, S.status?.port), boardId));
   if (keep) IT.onStatus(r, performance.now(), +(localStorage.getItem("dz.iter.done") ?? NaN)); renderIter(); }, () => {}); };
 let iterPort: string | null | undefined;
 function onBoardForIter(port: string | null | undefined) { if (iterPort !== undefined && port !== iterPort && IT.s.phase !== "running") { IT.reset(); renderIter(); } iterPort = port; }
@@ -883,7 +907,8 @@ link.on(m => {
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
     case "error": toast(m as unknown as Err); break;
-    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
+    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); sconf.blockers = fromBlockers((m as any).blockers); renderConflict(); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
+    case SCHEMA_CONFLICT_F.key: sconf.event = conflictOf(m); renderConflict(); break;
     case "agent_notice": if ((m as any).blocker_code === CLEARED_NOTICE) showCleared(); break;   // 与 cleared 事件合并成一张卡
     case "link.state": onLinkState(m as any); showLink(m as any); break;
     case "seeked": plot.clear(); break;
@@ -902,6 +927,7 @@ link.onState = async open => {
   if (!open && S.status.connected) renderStatus({ ...S.status });   // 状态栏同步成未连接
   if (!open) return;
   const h = await link.rpc("hello"); void syncIter();   // 重连 / 刷新：补自动迭代状态
+  applyHelloIdentity(h);
   if ((h as any)?.link) { onLinkState((h as any).link); showLink((h as any).link); }
   if (h && "project" in (h as any)) { hasProject = !!(h as any).project; curProject = (h as any).project ?? null; void proj.show((h as any).project ?? null); }
   S.ports = h.ports; renderPorts(false);
@@ -1083,7 +1109,7 @@ const refreshProgress = async () => { const p: any = await fetchProgress(op => l
   paramsDirty: pending().length > 0,
   selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) agent.onBlockers(p.blockers); if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
+}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
 refreshProgressRef = refreshProgress;
 // 切页时先用上一份进度同步重画页头（不等接口往返），避免新页短暂显示上一页的页头
 window.addEventListener("dz-step", () => { if (lastProgress) renderProgress(lastProgress, goStep); void refreshProgress(); });

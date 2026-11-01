@@ -1183,3 +1183,12 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .hl{outline:2px solid var(--warn);outline-offset:2px}
 #ro-data{font-size:16px;white-space:nowrap}
 .sc-host{position:fixed;right:16px;bottom:48px;z-index:60;max-width:560px}.sc-card{box-shadow:var(--shadow-2)}.sc-t{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0}.sc-t td,.sc-t th{padding:4px 8px;border-bottom:1px solid var(--line);text-align:left}.sc-missing td:nth-child(2),.sc-invalid td:nth-child(2){color:var(--warn)}
+.sconf-banner{order:-4;padding:var(--sp2) var(--sp4);font-size:var(--t-sm);border-bottom:1px solid var(--danger);background:var(--danger-subtle);color:var(--danger)}
+.sconf-banner[hidden]{display:none}
+.uid-chip{margin-left:var(--sp2)}
+.sc-unchecked td:nth-child(2){color:var(--warn);font-weight:600}
+.sc-sum-ok{color:var(--ok)}
+.sc-sum-warn{color:var(--warn)}
+.sc-sum-bad{color:var(--danger)}
+.sconf-files code{margin:0 var(--sp1)}
+.sconf-confirm{display:inline-flex;gap:var(--sp2);align-items:center}

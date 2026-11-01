@@ -11,9 +11,9 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 // 侧车连不上时的数据表自检：只允许这两个入口（与 app/ui/src/fieldmap.ts SELFCHECK_F 一致）
-// Windows：<安装目录>/python/python.exe <安装目录>/app/sidecar/selfcheck_data.py；Linux/macOS：直接运行 <安装目录>/xintai-selfcheck.sh
+// Windows：<安装目录>/python/python.exe <安装目录>/repo/app/sidecar/selfcheck_data.py（代码在 repo\\ 下，同 fw-pyembed 布局）；Linux/macOS：直接运行仓库根的 xintai-selfcheck.sh
 const SELFCHECK_PY_WIN: &str = "python/python.exe";
-const SELFCHECK_SCRIPT_WIN: &str = "app/sidecar/selfcheck_data.py";
+const SELFCHECK_SCRIPT_WIN: &str = "repo/app/sidecar/selfcheck_data.py";
 const SELFCHECK_SH: &str = "xintai-selfcheck.sh";
 const EXIT_PORT_IN_USE: i32 = 3; // 与 dzbench/__main__.py 一致
 const MAX_RESTARTS: usize = 5;
@@ -104,7 +104,7 @@ fn install_dirs() -> Vec<std::path::PathBuf> {
     v
 }
 
-/// 只运行固定的自检入口（不接受前端任何参数，不在 PATH 里找解释器），返回 stdout 的 JSON 文本 {ok, items}
+/// 只运行固定的自检入口（不接受前端任何参数，不在 PATH 里找解释器），返回 {exit_code, report:{ok, items}}
 #[tauri::command]
 fn run_selfcheck() -> Result<String, String> {
     for base in install_dirs() {
@@ -124,8 +124,13 @@ fn run_selfcheck() -> Result<String, String> {
             std::process::Command::new(sh)
         };
         let out = cmd.current_dir(&base).output().map_err(|_| "spawn_failed".to_string())?;
-        let s = String::from_utf8_lossy(&out.stdout).to_string();
-        return if s.trim().is_empty() { Err("no_output".into()) } else { Ok(s) };
+        let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        if s.is_empty() {
+            return Err("no_output".into());
+        }
+        // 退出码一起带回：0 通过 / 1 失败 / 3 未完成（有未检查项）；report 原样是脚本的 JSON
+        let code = out.status.code().unwrap_or(-1);
+        return Ok(format!("{{\"exit_code\":{},\"report\":{}}}", code, s));
     }
     Err("not_installed".into())
 }
