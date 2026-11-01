@@ -334,11 +334,11 @@ def spec_cost(m: dict, sp: dict) -> float:
     return 10.0 * v + base
 
 
-def prefix_worse(rb, r0, r0b, amp: float, pts: int = PREFIX_PTS):
-    """任意观察长度都不许比初值差：在最长终验窗口的前缀上（同一次实验截短，不多跑）逐个算代价。
+def prefix_worse(rb, r0, r0b, amp: float, k_min: int = 20, pts: int = PREFIX_PTS):
+    """不短于探测到的调节时间的任意观察长度都不许比初值差（更短的窗口里对象还没走完过渡，比不出好坏）：在最长终验窗口的前缀上（同一次实验截短，不多跑）逐个算代价。
     容差 = PREFIX_K × 初值两次独立实验在该前缀上的代价差（无噪声对象容差为 0，差一点也算差）。返回第一个变差的前缀拍数或 None。"""
     n = len(rb[0])
-    for k in sorted({max(int(n * (i + 1) / pts), 20) for i in range(pts)}):
+    for k in sorted({max(int(n * (i + 1) / pts), k_min) for i in range(pts)}):
         c = lambda x: cost(metrics(x[0][:k], x[1][:k], x[2][:k], amp))   # noqa: E731
         cb, c0, c0b = c(rb), c(r0), c(r0b)
         if cb > c0 + PREFIX_K * abs(c0 - c0b) + 1e-12 * max(1.0, abs(c0)):
@@ -627,7 +627,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
             if cb_w > c0_w:
                 kept_initial = True
         if not kept_initial and long_b is not None:
-            k = prefix_worse(long_b, long_0, run(p0, amp, wins[-1]), amp)
+            k = prefix_worse(long_b, long_0, run(p0, amp, wins[-1]), amp, max(int(settle / dt), 20))
             if k is not None:
                 final_check["prefix_worse_n"] = k
                 kept_initial = True
