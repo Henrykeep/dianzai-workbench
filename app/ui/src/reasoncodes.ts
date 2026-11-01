@@ -17,3 +17,12 @@ export function reasonZh(code: string | undefined | null, fallback: Record<strin
   return REASONS_T.value()[code]?.zh ?? fallback[code] ?? UNKNOWN_REASON_ZH;
 }
 export const reasonKind = (code: string | undefined | null): string => (code && (REASONS_T.value()[code]?.kind as string)) || "";
+
+// r10w 通用渲染：可能原因（事件给的优先，没有就用原因表的）+ 停输出标志（事件或原因表）
+import { STOP_CAUSE_F as SC } from "./fieldmap";
+export function stopCauses(r: any): { causes: string[]; stopped: boolean } {
+  const e = r?.reason ? REASONS_T.value()[r.reason] : undefined;
+  const one = (c: any): string => typeof c === "string" ? (REASONS_T.value()[c]?.zh ?? c) : c && typeof c === "object" ? String(c[SC.zh] ?? c[SC.msgZh] ?? (c[SC.code] ? REASONS_T.value()[c[SC.code]]?.zh ?? "" : "")) : "";
+  const ev = Array.isArray(r?.[SC.causes]) ? r[SC.causes].map(one).filter(Boolean) : [];
+  return { causes: ev.length ? ev : e?.causes ?? [], stopped: SC.stopFlags.some(k => r?.[k] === true) || e?.stop === true };
+}

@@ -178,7 +178,7 @@ export const PORT_DIR_F = ["app_dir"] as const;
 export const pickStr = (o: any, keys: readonly string[]): string => { for (const k of keys) { const v = o?.[k]; if (typeof v === "string" && v.trim()) return v.trim(); } return ""; };
 
 // #101 r9f：台账一轮（iterate.round 事件 / 阶跃实验收尾）——暂定字段名，后端定稿改这里
-export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", roundId: "round_id" /* #147 后端可能加：一轮的唯一号，结果卡 / 采用回包都带 */, kind: "kind", manual: "manual_step", diverged: "diverged", sat: "sensor_sat", aborted: "aborted", status: "status", why: "reason_zh" } as const;
+export const LEDGER_ROUND_F = { iter: "iter", valid: "valid", params: "params", overshoot: "overshoot_pct", settle: "settle_ms", runId: "run_id", roundId: "round_id", paramsHash: "params_hash" /* #147 后端可能加：一轮的唯一号，结果卡 / 采用回包都带 */, kind: "kind", manual: "manual_step", diverged: "diverged", sat: "sensor_sat", aborted: "aborted", status: "status", why: "reason_zh" } as const;
 // #131 结果卡停止原因：无效轮数用后端 invalid_streak（暂定名），没有就数台账；发散只认 diverged / sensor_sat / 后端 reason；中止带后端原因
 export const STOP_F = { invalidN: "invalid_streak", diverged: "diverged", sat: "sensor_sat", why: ["reason_zh", "message_zh"], abortCodes: ["aborted", "stopped", "abort"], invalidCodes: ["invalid", "invalid_streak"], divCodes: ["diverged", "unstable"] } as const;
 export const ABORT_ZH = "中止", NO_ROUND_ZH = "没有可用的一轮";
@@ -257,21 +257,59 @@ export const EVIDENCE_ZH: Record<string, string> = { strong: "证据强", medium
 export const MC_STOP_ZH: Record<string, string> = { converged: "已收敛：再调也没有明显改进", budget_exhausted: "预算用完：轮数或时间到了，结果不一定是最好", at_limit: "参数到了声明的上下限，再往外调被挡住" };
 export const UNCHANGED_ZH = "初值已满足题面，本次没有改动参数";
 // 握手里的板子身份（暂定名）：board_uid 16 位十六进制或 null；uid_supported 布尔
-export const BOARD_UID_F = { uid: "board_uid", supported: "uid_supported" } as const;
+export const BOARD_UID_F = { uid: "board_uid", supported: "uid_supported", source: "board_ident_source", handshake: "handshake" } as const;
+// r10w：带 board_ident_source 且不是 handshake → 这份身份不可信，忽略；没这个键 → 照旧
+export const identTrusted = (src: any) => !src || !(BOARD_UID_F.source in src) || src[BOARD_UID_F.source] === BOARD_UID_F.handshake || src[BOARD_UID_F.source] === "pending";   // pending → boardIdOf 显示「正在识别」
 export const BOARD_UID_ZH = { unsupported: "此芯片暂不支持板子识别，换板检测不可用", unread: "未读到板子身份" } as const;
 // 工程/板子结构冲突（暂定名）：握手或事件 schema_conflict {message_zh, fix_action}，或 blockers 里 code=schema_conflict；为 null / 缺省 = 已解决
 export const SCHEMA_CONFLICT_F = { key: "schema_conflict", code: "reason", codeAlt: "code", codeAlt2: "blocker_code", hash: "hash", uid: "board_uid", msg: "message_zh", fix: "fix_action", resolved: "resolved", files: "files" } as const;
 // 冲突的修复：fix_action=clear_schema_cache → 确认卡 → op clear_schema_cache {hash} → {ok, removed:[path]} → 自动重新 hello
 export const SCHEMA_CLEAR_F = { action: "clear_schema_cache", op: "clear_schema_cache", hash: "hash", ok: "ok", removed: "removed" } as const;
-export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理", files: "冲突的两个文件", clear: "清除旧缓存并重新握手", confirm: "将清除本机缓存的旧结构，然后重新与本地服务握手；工程文件和板上参数不受影响。", ok: "确认清除", cancel: "取消", busy: "正在清除并重新握手…", fail: "清除失败", removed: "已清除 N 个旧缓存文件" } as const;
+export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", fallback: "工程与板子的结构不一致", why: "结构冲突未解决：先按横幅提示处理", files: "冲突的文件", clear: "清除旧缓存并重新握手", confirm: "将清除本机缓存的旧结构，然后重新与本地服务握手；工程文件和板上参数不受影响。", ok: "确认清除", cancel: "取消", busy: "正在清除并重新握手…", fail: "清除失败", removed: "已清除 N 个旧缓存文件" } as const;
 
 // #148 amp_unit = null：数值照显示，后面挂「（单位未声明）」链接到项目页对应声明（复用 data-decl-key 高亮）
 export const UNIT_UNDECL_ZH = "（单位未声明）";
-export const AMP_UNIT_DECL_KEY = "link.step.unit";   // 后端没给 amp_unit_decl 时的默认声明位置（events.md：link.step 的 y 的单位）
+// #153：声明键只用后端给的 amp_unit_decl（形如 link.telemetry.fields[name=<y>].unit），前端不自己拼；没给 → 链接只打开项目页
+export const AMP_UNIT_DECL_RE = /^link\.telemetry\.fields\[name=[^\]]+\]\.unit$/;
 export function ampLineHtml(x: any, esc: (s: string) => string): string {
   const t = ampLine(x); if (!t) return "";
   const own = (a: any) => a && typeof a === "object" && str(a[MC_F.unit]);
   if (str(x?.[MC_F.ampUnit]) || own(x?.[MC_F.ampSpec]) || own(x?.[MC_F.ampTested])) return esc(t);
-  const key = str(x?.[MC_F.ampUnitDecl]) || AMP_UNIT_DECL_KEY;
+  const key = str(x?.[MC_F.ampUnitDecl]) || "";
   return `${esc(t)}<a href="#" class="unit-undecl" data-decl-unit="${esc(key)}" title="到项目页声明单位">${esc(UNIT_UNDECL_ZH)}</a>`;
 }
+
+// r10w #145 confirm_roles 两步：不带 confirmed 只预览 → {needs_confirm, change_id, target, diff, copy_from, message_zh}；人点确认卡后带 confirmed + change_id 才写
+export const ROLE_PREVIEW_F = { needs: "needs_confirm", changeId: "change_id", diff: "diff", target: "target", copyFrom: "copy_from", confirmed: "confirmed", written: "written", unchanged: "unchanged", msg: "message_zh" } as const;
+// 拒绝：error {code, message, fix, fix_action}；保护参数给 P/I/D/FF → code protect_param_role（可能带 params / reason_zh / message_zh）；change_id 复用 → no_change
+export const ROLE_ERR_F = { code: "code", protect: "protect_param_role", noChange: "no_change", reasonZh: "reason_zh", msgZh: "message_zh", msg: "message", fix: "fix", params: "params" } as const;
+export const ROLE_PREVIEW_ZH = "确认写入以下改动", ROLE_COMMIT_ZH = "确认写入", ROLE_CANCEL_ZH = "取消", ROLE_PROTECT_ZH = "保护参数不能当调参角色";
+
+// r10w schema_conflict.files = [{path, kind: cache|build}]（旧版是路径字符串，kind 未知）；fix_action: clear_schema_cache（有缓存份）| build | reflash
+export const SCHEMA_FILE_F = { path: "path", kind: "kind", cache: "cache", build: "build" } as const;
+export const SCHEMA_KIND_ZH: Record<string, string> = { cache: "本机缓存", build: "构建产物" };
+export const SCHEMA_FIX_ZH: Record<string, string> = { build: "重新构建", reflash: "重新烧录" };
+// r10w fw_estop_unsafe：事件 {type:"fw_estop_unsafe", safe:false, reason, message_zh, fix_action:"reflash", min_version, version}；
+// 驱动执行器的操作回 error code fw_estop_unsafe；progress 阻塞项 code/reason 同名。读参数、存 flash、烧录、解除急停不拦
+export const FW_ESTOP_F = { key: "fw_estop_unsafe", safe: "safe", code: "code", reason: "reason", msg: "message_zh", fix: "fix_action", min: "min_version", ver: "version" } as const;
+export const FW_ESTOP_ZH = { fallback: "此固件存在急停可被误清除的问题，请重新烧录", btn: "重新烧录", why: "固件急停不安全：先重新烧录", min: "最低版本" } as const;
+
+// r10w #147 卡片带 round_id / params_hash：按它们对轮；params_hash 显示短形（前 8 位，悬停看全）
+export const shortHash = (h: unknown) => typeof h === "string" && h ? h.slice(0, 8) : null;
+export function hashTagHtml(x: any, esc: (s: string) => string): string {
+  const h = x?.[LEDGER_ROUND_F.paramsHash]; const s = shortHash(h); return s ? ` <span class="rc-ph mono" data-params-hash="${esc(h)}" title="params_hash ${esc(h)}">#${esc(s)}</span>` : "";
+}
+
+// r10w 通用停止原因：reason_codes.json 条目可带 causes（可能原因，中文串数组）和 stop（这类停止会停输出）；
+// 停止事件也可带 causes（中文串 / 原因码 / {zh|message_zh|code}）和停输出标志。新原因码（如对象无响应）不用前端改代码
+export const REASON_F = { zh: "zh", kind: "kind", causes: "causes", stop: "stop" } as const;
+export const STOP_CAUSE_F = { causes: "causes", stopFlags: ["output_stopped", "stop_output", "stopped", "stop"], zh: "zh", msgZh: "message_zh", code: "code" } as const;
+export const CAUSES_ZH = "可能原因：", OUTPUT_STOPPED_ZH = "已停止输出";
+
+// #150 后端文案里漏出的 Python 空值（「版本 None」）→ 可读中文；只换独立的 None/null/undefined 词
+export const VER_MISSING_ZH = "缺少版本号（文件可能已损坏，请重新安装）";
+export const readableZh = (t: string) => t.replace(/版本\s*(None|null|undefined)(?![A-Za-z])/g, VER_MISSING_ZH).replace(/(?<![A-Za-z_])(None|null|undefined)(?![A-Za-z_])/g, "（空）");
+// #151 握手完成前：board_ident_source=pending 且 uid_supported=null → 「正在识别板子…」，不能说「不支持」
+export const BOARD_PENDING = "pending", BOARD_PENDING_ZH = "正在识别板子…";
+// #154 对轮：run_id（UUID）+ 轮号，两者都有就都要对上
+export const ROUND_BIND_F = { run: "run_id", iter: "iter" } as const;
