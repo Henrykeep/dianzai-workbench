@@ -12,5 +12,7 @@ const sha = (s: string | null) => s == null ? null : createHash("sha256").update
 // Tauri 要求相对路径 + 固定端口；浏览器模式由侧车 --ui dist 直接托管
 export default defineConfig({
   base: "./", server: { port: 1420, strictPort: true }, build: { target: "es2021", outDir: "dist" },
-  define: { __DZ_ROLES_SHA__: JSON.stringify(sha(roles)), __DZ_REASON_SHA__: JSON.stringify(sha(reasons)) },
+  define: { __DZ_ROLES_SHA__: JSON.stringify(sha(roles)), __DZ_REASON_SHA__: JSON.stringify(sha(reasons)),
+    // 打包副本内容直接注入（import.meta.glob 跨出 vite root 时取不到文件，生产包原来是空表）
+    __DZ_ROLES_JSON__: roles ?? "null", __DZ_REASON_JSON__: reasons ?? "null" },
 });

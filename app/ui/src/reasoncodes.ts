@@ -3,9 +3,11 @@ import { DataTable, validReasons, type ReasonMap } from "./datatables";
 export type ReasonCode = { zh: string; kind?: string };
 export const UNKNOWN_REASON_ZH = "未知原因";
 export const REASONS_T = new DataTable<ReasonMap>("reason_codes", "原因表", validReasons, {}, true);
+declare const __DZ_REASON_JSON__: unknown;
 declare const __DZ_REASON_SHA__: string | null;
 try {
   const g: Record<string, any> = typeof (import.meta as any).glob === "function" ? import.meta.glob("../../../docs/dev/reason_codes.json", { eager: true, import: "default" }) : {};
+  if (!Object.keys(g).length && typeof __DZ_REASON_JSON__ !== "undefined") g.inj = __DZ_REASON_JSON__;
   REASONS_T.setBundled(Object.values(g)[0] ?? null, typeof __DZ_REASON_SHA__ === "string" ? __DZ_REASON_SHA__ : null);
 } catch { /* 兜底表 */ }
 const DEV = (() => { try { return !!(import.meta as any).env?.DEV; } catch { return false; } })();
