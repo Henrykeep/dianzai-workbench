@@ -1257,6 +1257,10 @@ class AgentService:
         if not accept:
             return {"id": aid, "status": "rejected"}
         args = dict(a["args"])
+        if a["tool"] in self.ADOPT_TOOLS and (a.get("args") or {}).get("kept_initial"):
+            # 调参没改善、已保留初值的卡不能“采用”（服务端按保存的卡判，不认客户端标记）
+            raise LinkError("kept_initial", "这张卡是「调参未能改善，已保留初值」：板上仍是初值，没有可采用的新参数",
+                            "看卡上的原因（causes）调整声明或题面后重新整定")
         if a["tool"] in self.EXPERIMENTS:               # 一次点击只放行一次实验；卡片放久了板子状态可能已变 → 过期重来
             if time.monotonic() - a.get("t", 0) > self.ARM_TTL_S:
                 raise LinkError("arm_expired", f"这张确认卡已超过 {self.ARM_TTL_S:.0f} s，板子状态可能变了，没有执行", "让 Agent 重新发起一次")

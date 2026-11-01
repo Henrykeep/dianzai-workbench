@@ -339,6 +339,7 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 
 ## 采纳未验证的参数（#141）
 - `agent_action_decide` 采纳 `iterate_apply_best` / `autotune` 卡时，响应多 `verified: bool`、`unverified_reason`。卡（服务端保存的那份，不认客户端标记）verdict 为 `partial` 或任一 item `amp_reduced` → `verified:false, unverified_reason:"amp_reduced"`，不进已验证档 / 封箱清单；否则 `verified:true, unverified_reason:null`。
+- 采纳 `kept_initial: true` 的卡（按服务端保存的卡判）→ 报错 `kept_initial`（「调参未能改善，已保留初值」，板上仍是初值），不记采纳、不进已验证档。
 
 ## 题型与非控制类快速开始（#85）、按 plant: 声明新建（#106）
 - `quick_start` 的 `spec` 新增 `task_kind`（`control` / `measure` / `power` / `other`）和 `task_kind_reason`（命中的通用词，如「题面出现「频率、测量」→ 测量类」）。只按题面通用词判断，不认题号。
@@ -364,6 +365,7 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - 板上代价 = 题面指标超标量（相对题面值）×10 + IAE 代价；题面没写指标退回 IAE 代价。
 - 增益下限：`kp` / `ki` 不低于候选（初值、模型设计、SIMC）最大值的 2%、初值的 2%、声明 `min` 三者取大，搜索不会把增益压到 ≈0。
 - 初值已满足题面（复现两次）：不改参数直接返回，`unchanged: true`、`tuned: false`、`unchanged_zh` / `pass_basis` =「初值已满足题面，本次没有改动参数」、`margins: {指标: 题面值 − 实测值}`（`items[].margin` 同），`verdict_zh` =「通过（初值已达标，未调参）」，不显示为整定成功；降幅测的照旧 `partial`。
+- 绝不交付比初值差的参数：搜索结束后在 n / 2n / 4n 三个窗口各复测最好参数与初值（整定器自己的实测代价 `cost`，不读真值），任一窗口最好参数更差 → 退回初值：`kept_initial: true`、`unchanged: true`、`tuned: false`、`reason_zh` =「调参未能改善，已保留初值」（`verdict_zh` / `pass_basis` 以它开头），未达标时照常给 `causes`。结果总带 `cost_initial` / `cost_best`（2n 窗口的实测代价）与 `final_check: {n, windows:[{n, best_cost, initial_cost}], best_cost, initial_cost}`；`items[].margin` = 题面值 − 实测值（无穷 / 缺测为 null）。
 
 tunegate（`tools/tunegate.py`，汇总在 `tools/tunegate_grade.py summarize()`）：
 - 每行带 `stop=`、`unchanged`；汇总打印通过率（全部 / 只算可行）、unknown 比例、初值已达标个数、各原因类别 `{n, cause_ok}`。

@@ -593,7 +593,8 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         it["verdict_zh"] = {"pass": "达标", "fail": "未达标", "partial": "未验题面幅度"}[it["verdict"]]
     return {"seed": seed, "verdict": verdict, "verdict_zh": verdict_zh, "category": cat, "pass_basis": why, "spec": sp, "amp": amp, "n": n,
             "items": items, **extra, "causes": causes, "stop_reason": stop_reason, "stop_reason_zh": STOP_ZH[stop_reason],
-            "unchanged": kept_initial, "tuned": not kept_initial, "kept_initial": kept_initial, "final_check": final_check, "budget": budget,
+            "unchanged": kept_initial, "tuned": not kept_initial, "kept_initial": kept_initial, "final_check": final_check, "cost_initial": final_check["initial_cost"], "cost_best": final_check["best_cost"],
+            **({"reason_zh": KEPT_INITIAL_ZH} if kept_initial else {}), "budget": budget,
             "timing": timing, "ident": info, "initial": {"params": {name[k]: v for k, v in p0.items()}, "metrics": m_init, "cost": cost(m_init)},
             "best": {"params": {name[k]: v for k, v in bp.items()}, "roles": bp, "metrics": bm, "cost": bc},
             "rounds": len(hist) - 1}

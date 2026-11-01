@@ -456,6 +456,18 @@ def test_adopt_partial_card_not_verified():
     assert o.action_decide(8, True)["verified"] is True and len(o.verified_adoptions()) == 1
 
 
+def test_adopt_kept_initial_card_rejected():
+    """保留初值的卡（kept_initial）服务端拒绝采纳，reason=kept_initial；卡还在客户端也绕不过（按服务端保存的 args 判）。"""
+    o = S.AgentService.__new__(S.AgentService)
+    o.actions = {9: {"tool": "autotune", "args": {"params": {}, "verdict": "fail", "kept_initial": True,
+                                                 "reason_zh": "调参未能改善，已保留初值"}, "t": 0}}
+    o.loop = types.SimpleNamespace(handlers={})
+    o.s = types.SimpleNamespace(params={})
+    with pytest.raises(S.LinkError) as e:
+        o.action_decide(9, True)
+    assert e.value.code == "kept_initial" and not o.__dict__.get("adoptions")
+
+
 def test_retest_blocked_by_agrees_with_iterate_start():
     """#129：retest_blocked_by 与 iterate_start 的 #109 判定是同一个函数，结论不会不一致。"""
     from dzbench.tuning.steplimit import step_block
