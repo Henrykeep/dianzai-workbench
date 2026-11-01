@@ -35,3 +35,11 @@ def test_unsaturated_run_keeps_best():
     io = SatIO(sat_from=10**6, kp=1.0, ki=1.0)
     out = I.Iterator(io, PLAN, True, emit=lambda e: None, max_rounds=3).run()
     assert out["best"] is not None and not out["sensor_sat"]
+
+
+def test_first_valid_round_unstable_does_not_crash():
+    """根因（test_iterate_start_runs_rounds_on_randplant[1] 偶发 TypeError）：第一轮有效但不稳定（到量程 / 发散）时
+    best 还是 None，选下一步时取 best["params"] 崩成 reason=error。应以当前这轮参数为基点继续（先降增益），不报错。"""
+    io = SatIO(sat_from=1, kp=1.0, ki=1.0)
+    out = I.Iterator(io, PLAN, True, emit=lambda e: None, max_rounds=3).run()
+    assert out.get("reason") != "error" and out["best"] is None, out

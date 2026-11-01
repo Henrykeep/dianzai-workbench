@@ -312,7 +312,7 @@ class Iterator:
                 tried.add((nm, direction))
                 direction = -direction
                 frac[nm] = max(MIN_STEP_FRAC, frac[nm] * 0.5)
-            base = self.best["params"]
+            base = self.best["params"] if self.best is not None else rec["params"]   # 还没有稳定的一轮：以本轮参数为基点（先降增益），不崩
             while True:                                    # 选下一步（每轮只改 1 个参数）；被板子拒绝就换方向再选，不空跑阶跃
                 nxt = None
                 for _ in range(2 * len(cand_params) + 2):
