@@ -268,6 +268,42 @@ FLOOR_FRAC = 0.02                                               # 增益下限 =
 FLOOR_INIT = 0.02
 STOP_ZH = {"converged": "已满足题面，停止搜索", "budget_exhausted": "试参次数用完仍未满足题面",
            "at_limit": "参数都已顶到声明范围边界，挪不动了"}
+# #159 噪声被微分放大顶限幅（只看可观测遥测：执行器输出、传感器读数；门限可在 link 里声明，没写用这里的默认）
+NOISE_SAT_FRAC_MIN = 0.3      # link.noise_sat_frac_min：初值执行器饱和时间占比下限
+NOISE_U_FRAC_MIN = 0.25       # link.noise_u_frac_min：kd × 噪声斜率 占输出限幅的比例下限
+NOISE_SAT_DROP = 0.5          # 调后饱和占比 ≤ 初值 × 这个比例才算“减小微分后好了”
+
+
+def sat_frac(u, lim: float) -> float:
+    u = np.nan_to_num(np.asarray(u, float))
+    return float(np.mean(np.abs(u) >= 0.98 * lim)) if math.isfinite(lim) and len(u) else 0.0
+
+
+def noise_sigma(y) -> float:
+    """传感器噪声标准差估计：后半段二阶差分的中位绝对偏差（白噪声二阶差分方差 = 6σ²；平滑响应 / 慢振荡在二阶差分里几乎为 0）。"""
+    y = np.nan_to_num(np.asarray(y, float))
+    t = y[len(y) // 2:]
+    if len(t) < 5:
+        return 0.0
+    d2 = np.diff(t, 2)
+    return float(np.median(np.abs(d2 - np.median(d2))) / 0.6745 / math.sqrt(6))
+
+
+def noise_amplified_saturation(p0: dict, u0, y0, pb: dict, ub, lim: float, dt: float, link: dict) -> dict | None:
+    kd0, kdb = float(p0.get("kd") or 0.0), float(pb.get("kd") or 0.0)
+    if not (math.isfinite(lim) and lim > 0 and kd0 > 0 and kdb < kd0):
+        return None
+    f0, fb = sat_frac(u0, lim), sat_frac(ub, lim)
+    sig = noise_sigma(y0)
+    du = kd0 * sig * math.sqrt(2) / dt                          # 微分项把噪声放大成的输出跳动
+    if f0 >= float(link.get("noise_sat_frac_min") or NOISE_SAT_FRAC_MIN) and du >= float(link.get("noise_u_frac_min") or NOISE_U_FRAC_MIN) * lim \
+            and fb <= f0 * NOISE_SAT_DROP:
+        return {"code": "noise_amplified_saturation", "sat_frac_initial": f0, "sat_frac_best": fb, "noise_sigma": sig,
+                "kd_initial": kd0, "kd_best": kdb, "kd_noise_u": du,
+                "message_zh": f"初值微分过大，噪声被放大，执行器约 {f0 * 100:.0f}% 时间饱和；已减小微分（调后约 {fb * 100:.0f}%）"}
+    return None
+
+
 CAUSE_ZH = {"saturation": "执行器饱和", "delay": "纯滞后过大", "nonminimum_phase": "非最小相位（起步反向）"}
 LEVEL = {"strong": 3, "medium": 2, "weak": 1}
 UNCHANGED_ZH = "初值已满足题面，本次没有改动参数"
@@ -415,6 +451,9 @@ def _unchanged(seed, sp, amp, n, timing, info, name, p0, m0, c0, amp_reduced, am
             "spec": sp, "amp": amp, "n": n, "items": items, **extra, "causes": [], "unchanged": True, "unchanged_zh": UNCHANGED_ZH,
             "tuned": False, "margins": {it["key"]: it["margin"] for it in items},
             "stop_reason": "converged", "stop_reason_zh": UNCHANGED_ZH, "budget": 0,
+            # 没调参：没有可采用的新参数，卡片契约字段照给（improvement = null，不在三态里）
+            "improvement": None, "improvement_confirmed": None, "default_action": "keep_initial", "adopt_default": False, "tuning_causes": [],
+            "improvement_info": {"improvement": None, "reason": None, "message_zh": UNCHANGED_ZH, "causes": [], "default_action": "keep_initial"},
             "timing": timing, "ident": info, "initial": {"params": pr, "metrics": m0, "cost": c0},
             "best": {"params": pr, "roles": dict(p0), "metrics": m0, "cost": c0}, "rounds": 0}
 
@@ -538,8 +577,8 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     fb = run(bp, amp, n_fin)
     final_check = {"n": n_fin, "windows": []}
     kept_initial = False
+    f0 = None
     if bp is not p0:
-        f0 = None
         for w in wins:
             cb_w = cost((fb if w == n_fin else run(bp, amp, w))[4])
             r0 = run(p0, amp, w)
@@ -593,6 +632,12 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     if unconf:
         why = UNCONFIRMED_ZH + "；" + why
         verdict_zh = UNCONFIRMED_ZH + "；" + verdict_zh
+    tcause = None
+    if bp is not p0 and f0 is not None:
+        lim0 = min(u_max, p0.get("ulim", math.inf))
+        tcause = noise_amplified_saturation(p0, f0[3], f0[2], bp, fb[3], min(lim0, lim), dt, link)
+    if tcause and not kept_initial:
+        why = tcause["message_zh"] + "；" + why
     imp = "worse" if kept_initial else ("inconclusive" if unconf else "confirmed")
     if imp == "worse":
         info = {"reason": "kept_initial", "message_zh": KEPT_INITIAL_ZH, "causes": KEPT_INITIAL_CAUSES_ZH}
@@ -602,7 +647,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         info = {"reason": None, "message_zh": None, "causes": []}
     dflt = "adopt" if imp == "confirmed" else "keep_initial"
     # 卡片契约：improvement ∈ confirmed|inconclusive|worse；顶层 reason / message_zh；整定原因码的 causes 放 improvement_info（顶层 causes 是未达标诊断）
-    extra_u = {"improvement": imp, "improvement_confirmed": improvement_confirmed, "default_action": dflt, "adopt_default": dflt == "adopt",
+    extra_u = {"tuning_causes": [tcause] if tcause else [], "improvement": imp, "improvement_confirmed": improvement_confirmed, "default_action": dflt, "adopt_default": dflt == "adopt",
                "improvement_info": {"improvement": imp, **info, "default_action": dflt},
                **({"reason": info["reason"], "message_zh": info["message_zh"], "unconfirmed_causes": info["causes"]} if info["reason"] else {})}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass

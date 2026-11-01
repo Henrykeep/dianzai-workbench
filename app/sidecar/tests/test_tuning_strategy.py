@@ -131,3 +131,70 @@ def test_improvement_within_noise_band_is_unconfirmed(monkeypatch):
     assert ok["improvement"] == "confirmed" and ok["default_action"] == "adopt" and ok["improvement_info"]["reason"] is None
     t = RC.table()["improvement_unconfirmed"]
     assert t["message_zh"] == AT.UNCONFIRMED_ZH and t["causes"]
+
+
+def test_noise_amplified_saturation_function():
+    """#159 只看可观测量：初值 kd×噪声斜率顶限幅、饱和占比高，调后 kd 小了、饱和少了 → 报原因并给前后占比。"""
+    rng = np.random.default_rng(1)
+    y0 = 1.0 + rng.normal(0, 0.01, 2000)
+    u0 = np.where(rng.random(2000) < 0.8, 1.0, 0.2)
+    ub = np.where(rng.random(2000) < 0.1, 1.0, 0.2)
+    c = AT.noise_amplified_saturation({"kd": 1.0}, u0, y0, {"kd": 0.0}, ub, 1.0, 0.005, {})
+    assert c and c["code"] == "noise_amplified_saturation" and c["sat_frac_initial"] > 0.7 and c["sat_frac_best"] < 0.2
+    assert "初值微分过大，噪声被放大，执行器约" in c["message_zh"] and "已减小微分" in c["message_zh"]
+    assert AT.noise_amplified_saturation({"kd": 1.0}, u0, y0, {"kd": 1.0}, ub, 1.0, 0.005, {}) is None       # 微分没减小
+    assert AT.noise_amplified_saturation({"kd": 1.0}, ub, y0, {"kd": 0.0}, ub, 1.0, 0.005, {}) is None       # 初值没怎么饱和
+    assert AT.noise_amplified_saturation({"kd": 1.0}, u0, y0, {"kd": 0.0}, ub, 1.0, 0.005, {"noise_sat_frac_min": 0.95}) is None   # 声明门限优先
+
+
+def _noisy_kd_plant(seed, d, noise_rel, kd_mult):
+    """随机对象 + 「噪声大、初值微分大」的工况（照 #159 那类：微分把噪声放大到顶限幅）。种子随机取，不认具体种子。"""
+    import json
+
+    import tunegate_plant as RP
+    import yaml
+    RP.make(seed, "any", d)
+    app = yaml.safe_load(open(f"{d}/app.yaml", encoding="utf-8"))
+    link = yaml.safe_load(open(f"{d}/link.yaml", encoding="utf-8"))
+    kd = next((x for x in app["params"] if x["role"] == "kd"), None)
+    if kd is None:
+        return None
+    pl = json.load(open(f"{d}/plant.json", encoding="utf-8"))
+    pl["noise_std"] = noise_rel * float(link["max_step"])
+    json.dump(pl, open(f"{d}/plant.json", "w", encoding="utf-8"))
+    if noise_rel:
+        kd["init"] = min(float(kd["max"]), kd_mult * float(link["u_max"]) * float(link["sample_s"]) / (pl["noise_std"] * 2 ** 0.5))
+    yaml.safe_dump(app, open(f"{d}/app.yaml", "w", encoding="utf-8"), allow_unicode=True)
+    return app, link, open(f"{d}/spec.txt", encoding="utf-8").read()
+
+
+def test_noise_amplified_saturation_on_random_plants():
+    import tempfile
+    seeds = [int(s) for s in np.random.default_rng(159).integers(10_000_000, 99_999_999, 40)]
+    hits = 0
+    for seed in seeds:
+        with tempfile.TemporaryDirectory() as d:
+            got = _noisy_kd_plant(seed, d, 0.0075, 2.0)
+            if got is None:
+                continue
+            app, link, spec = got
+            r = AT.autotune(G.board(d, app, seed, "randplant"), app, link, spec, seed)
+            for c in r["tuning_causes"]:
+                assert c["code"] == "noise_amplified_saturation" and c["sat_frac_best"] < c["sat_frac_initial"], c
+                assert c["kd_best"] < c["kd_initial"] and c["message_zh"] in r["pass_basis"]
+                assert r["improvement"] in ("confirmed", "inconclusive")       # 退回初值时不说“已减小微分”
+                hits += 1
+        if hits >= 2:
+            break
+    assert hits >= 2, seeds
+    with tempfile.TemporaryDirectory() as d:                     # 无噪声：不报这个原因
+        for seed in seeds:
+            got = _noisy_kd_plant(seed, d, 0.0, 1.0)
+            if got:
+                app, link, spec = got
+                r = AT.autotune(G.board(d, app, seed, "randplant"), app, link, spec, seed)
+                assert not r["tuning_causes"], r["tuning_causes"]
+                break
+    from dzbench.agent import reason_codes as RC
+    t = RC.table()["noise_amplified_saturation"]
+    assert t["kind"] == "tune" and t["message_zh"] and t["causes"]

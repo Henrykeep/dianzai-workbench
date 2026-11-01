@@ -77,6 +77,16 @@
   "zh": "没测出上升时间",
   "kind": "round"
  },
+ "noise_amplified_saturation": {
+  "zh": "初值微分过大，噪声被放大，执行器长时间饱和；已减小微分",
+  "kind": "tune",
+  "message_zh": "初值微分过大，噪声被放大，执行器长时间饱和；已减小微分",
+  "causes": [
+   "微分增益过大",
+   "传感器噪声大",
+   "缺少微分滤波"
+  ]
+ },
  "offline": {
   "zh": "板子在脱机模式",
   "kind": "abort"
