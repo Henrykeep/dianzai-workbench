@@ -263,7 +263,10 @@ KEPT_INITIAL_ZH = "调参未能改善，已保留初值"
 UNCONFIRMED_ZH = "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测"
 KEPT_INITIAL_CAUSES_ZH = ["调后参数在某个终验窗口实测代价高于初值"]
 UNCONFIRMED_CAUSES_ZH = ["测量噪声大", "采样窗口偏短", "改善幅度小于重复测量的波动"]
-NOISE_BAND_K = 2.0          # 改善要大于 K × 噪声带（同参数重复测两次代价之差，最好参数与初值各一对）
+NOISE_BAND_K = 2.0
+GAIN_REL_MIN = 0.02          # 每个终验窗口都要比初值好至少 2%，否则算「无法分辨」
+SS_NOISE_K = 2.0
+FINAL_WIN_K = (0.5, 0.625, 0.75, 0.875, 1, 1.125, 1.25, 1.375, 1.5, 1.75, 2, 2.5, 3, 4)          # 改善要大于 K × 噪声带（同参数重复测两次代价之差，最好参数与初值各一对）
 FLOOR_FRAC = 0.02                                               # 增益下限 = 候选里最大值的 2%、初值的 2% 取大（且不低于声明 min）
 FLOOR_INIT = 0.02
 STOP_ZH = {"converged": "已满足题面，停止搜索", "budget_exhausted": "试参次数用完仍未满足题面",
@@ -325,6 +328,18 @@ def spec_cost(m: dict, sp: dict) -> float:
         else:
             v += max(0.0, x - lim) / (abs(lim) if lim else 1.0)
     return 10.0 * v + base
+
+
+def ss_noise_floor(m: dict, sp: dict, y, amp: float, n: int) -> list[str]:
+    """噪声感知的稳态判定：尾段均值本身有 σ/√N 的不确定度（闭环跟着噪声走，真输出偏差至少这么大）；
+    实测稳态误差 + SS_NOISE_K×该不确定度 仍不超限才算达标，否则这一项「测不准」按未达标处理。"""
+    lim = sp.get("ss_err_pct")
+    if lim is None or m.get("ss_err_pct") is None or not math.isfinite(m["ss_err_pct"]):
+        return []
+    y = np.asarray(y, float)
+    tail = len(y) - int(len(y) * 0.85)
+    unc = SS_NOISE_K * noise_sigma(y) / math.sqrt(max(tail, 1)) / (abs(amp) or 1.0) * 100
+    return ["ss_err_pct(噪声)"] if m["ss_err_pct"] <= lim < m["ss_err_pct"] + unc else []
 
 
 def _reproduces(rerun, sp: dict, times: int = 2) -> bool:
@@ -572,8 +587,8 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     # 终验：窗口加倍复测最好参数与初值（搜索窗口按探测估的调节时间取，可能偏短：慢收敛 / 晚到的振荡在短窗里看不见），
     # 判定与“是否比初值好”都按终验结果（本机实测，不读真值）
     # 多窗口：n / 2n / 4n 每个窗口下都不能比初值差（均值型代价随窗口变：短窗看不见持续稳态误差，长窗冲淡瞬态）
-    wins = sorted({int(min(k * n, 40000)) for k in (1, 2, 4)})
-    n_fin = wins[1] if len(wins) > 1 else wins[0]
+    wins = sorted({int(min(k * n, 40000)) for k in FINAL_WIN_K})
+    n_fin = int(min(2 * n, 40000))
     fb = run(bp, amp, n_fin)
     final_check = {"n": n_fin, "windows": []}
     kept_initial = False
@@ -598,13 +613,21 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         band = abs(c0a - c0b) + abs(cba - cbb)
         gain = min(c0a, c0b) - max(cba, cbb)
         final_check["noise_band"], final_check["gain"] = band, gain
-        improvement_confirmed = bool(gain > NOISE_BAND_K * band)
+        improvement_confirmed = bool(gain > NOISE_BAND_K * band and gain > GAIN_REL_MIN * min(c0a, c0b)
+                                     and all(x["best_cost"] < (1 - GAIN_REL_MIN) * x["initial_cost"] for x in final_check["windows"]))
+    tcause = None
+    if bp is not p0 and f0 is not None:
+        lim0 = min(u_max, p0.get("ulim", math.inf))
+        tcause = noise_amplified_saturation(p0, f0[3], f0[2], bp, fb[3], min(lim0, min(u_max, bp.get("ulim", math.inf))), dt, link)
+    reverted_unconfirmed = improvement_confirmed is False
+    if reverted_unconfirmed:                                    # 改善不显著（落在噪声带内）→ 同样退回初值，不交付调后参数
+        bp, fb = p0, f0
     fw = [x for x in final_check["windows"] if x["n"] == n_fin]
     final_check["best_cost"] = fw[0]["best_cost"] if fw else cost(fb[4])
     final_check["initial_cost"] = fw[0]["initial_cost"] if fw else cost(fb[4])
     bc, bm, (bt, br, by, bu) = J(fb[4]), fb[4], fb[:4]
     n = n_fin
-    bad = meets(bm, sp)
+    bad = meets(bm, sp) + ss_noise_floor(bm, sp, by, amp, n)
     if not bad and not _reproduces(lambda: run(bp, amp, n)[4], sp):
         bad = meets(run(bp, amp, n)[4], sp) or ["reproduce"]
     if bad and stop_reason == "converged":
@@ -632,10 +655,6 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     if unconf:
         why = UNCONFIRMED_ZH + "；" + why
         verdict_zh = UNCONFIRMED_ZH + "；" + verdict_zh
-    tcause = None
-    if bp is not p0 and f0 is not None:
-        lim0 = min(u_max, p0.get("ulim", math.inf))
-        tcause = noise_amplified_saturation(p0, f0[3], f0[2], bp, fb[3], min(lim0, lim), dt, link)
     if tcause and not kept_initial:
         why = tcause["message_zh"] + "；" + why
     imp = "worse" if kept_initial else ("inconclusive" if unconf else "confirmed")
@@ -668,7 +687,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         it["verdict_zh"] = {"pass": "达标", "fail": "未达标", "partial": "未验题面幅度"}[it["verdict"]]
     return {"seed": seed, "verdict": verdict, "verdict_zh": verdict_zh, "category": cat, "pass_basis": why, "spec": sp, "amp": amp, "n": n,
             "items": items, **extra, "causes": causes, "stop_reason": stop_reason, "stop_reason_zh": STOP_ZH[stop_reason],
-            "unchanged": kept_initial, "tuned": not kept_initial, "kept_initial": kept_initial, "final_check": final_check, "cost_initial": final_check["initial_cost"], "cost_best": final_check["best_cost"],
+            "unchanged": kept_initial or reverted_unconfirmed, "tuned": not (kept_initial or reverted_unconfirmed), "kept_initial": kept_initial, "final_check": final_check, "cost_initial": final_check["initial_cost"], "cost_best": final_check["best_cost"],
             **({"reason_zh": KEPT_INITIAL_ZH} if kept_initial else {}), "budget": budget, **extra_u,
             "timing": timing, "ident": info, "initial": {"params": {name[k]: v for k, v in p0.items()}, "metrics": m_init, "cost": cost(m_init)},
             "best": {"params": {name[k]: v for k, v in bp.items()}, "roles": bp, "metrics": bm, "cost": bc},
