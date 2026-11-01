@@ -1279,6 +1279,7 @@ class Session:
     def _on_info(self, info: dict) -> None:
         """'I' 回包：板子身份 + 与缓存 schema 交叉核对（同哈希但 wd_timeout_ms 不同 = schema_conflict）。"""
         self._info = info
+        self.apply_handshake(info)          # 先认板（换板会清缓存并重新绑定），再拿绑定好的 schema 交叉核对
         sch = self.schema
         if sch is not None and sch.hash == info["schema_hash"] and info["wd_timeout_ms"] \
                 and sch.wd_timeout_ms is not None and sch.wd_timeout_ms != info["wd_timeout_ms"]:
@@ -1288,7 +1289,6 @@ class Session:
                                           f"{info['wd_timeout_ms']} ms 不一致：这份格式文件不是这块板子的。已停止显示遥测和写参数。")
             self.schema, self.schema_conflict = None, e
             self.emit(e.as_dict())
-        self.apply_handshake(info)
 
     def clear_schema_cache(self, h: int) -> dict:
         """op clear_schema_cache {hash}：删掉本机缓存里这个哈希的格式文件（只这个哈希），然后重新握手 / 重新识别。
