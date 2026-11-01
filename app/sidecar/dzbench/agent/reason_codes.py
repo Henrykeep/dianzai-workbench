@@ -18,6 +18,13 @@ CAUSES_ZH["kept_initial"] = ["调后参数在某个终验窗口实测代价高�
 TUNE_ZH = {"improvement_unconfirmed": "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测",
            "kept_initial": "调参未能改善，已保留初值",
            "noise_amplified_saturation": "初值微分过大，噪声被放大，执行器长时间饱和；已减小微分"}
+# #164 整定器（autotune）能发出的其余码：停止原因 stop_reason、未达标类别 category，全部进表、都带 message_zh
+from ..tuning import autotune as _AT  # noqa: E402
+
+for _k, _zh in {**_AT.STOP_ZH, **_AT.CAUSE_ZH, "unconfirmed": "原因待确认：特征不足以归类",
+                "max_rounds": "轮数上限用完",
+                "step_too_large": "设定值一次跳得超过工程声明的单次最大阶跃 max_step，已拒绝"}.items():
+    TUNE_ZH.setdefault(_k, _zh)
 CAUSES_ZH["noise_amplified_saturation"] = ["微分增益过大", "传感器噪声大", "缺少微分滤波"]
 DIVERGE = {"unstable"}
 # 连接阻塞（不是迭代原因码，但界面 / Agent 用同一张表取中文）：kind = blocker
