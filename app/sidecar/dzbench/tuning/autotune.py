@@ -267,6 +267,8 @@ NOISE_BAND_K = 2.0
 POLISH_SWEEPS = 6            # 达标后继续按代价打磨的圈数（达标不等于接近最优）
 GAIN_REL_MIN = 0.02          # 每个终验窗口都要比初值好至少 2%，否则算「无法分辨」
 SS_NOISE_K = 2.0
+PREFIX_PTS = 60
+PREFIX_K = 2.0
 SS_REPEATS = 3               # 前 2 次照旧做达标复现；3 次加初测一起估稳态误差的散布
 FINAL_WIN_K = (1, 1.125, 1.25, 1.375, 1.5, 1.75, 2, 2.5, 3, 4)
 FLOOR_FRAC = 0.02                                               # 增益下限 = 候选里最大值的 2%、初值的 2% 取大（且不低于声明 min）
@@ -330,6 +332,18 @@ def spec_cost(m: dict, sp: dict) -> float:
         else:
             v += max(0.0, x - lim) / (abs(lim) if lim else 1.0)
     return 10.0 * v + base
+
+
+def prefix_worse(rb, r0, r0b, amp: float, pts: int = PREFIX_PTS):
+    """任意观察长度都不许比初值差：在最长终验窗口的前缀上（同一次实验截短，不多跑）逐个算代价。
+    容差 = PREFIX_K × 初值两次独立实验在该前缀上的代价差（无噪声对象容差为 0，差一点也算差）。返回第一个变差的前缀拍数或 None。"""
+    n = len(rb[0])
+    for k in sorted({max(int(n * (i + 1) / pts), 20) for i in range(pts)}):
+        c = lambda x: cost(metrics(x[0][:k], x[1][:k], x[2][:k], amp))   # noqa: E731
+        cb, c0, c0b = c(rb), c(r0), c(r0b)
+        if cb > c0 + PREFIX_K * abs(c0 - c0b) + 1e-12 * max(1.0, abs(c0)):
+            return k
+    return None
 
 
 def ss_noise_floor(reps: list[dict], sp: dict) -> list[str]:
@@ -599,14 +613,23 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     kept_initial = False
     f0 = None
     if bp is not p0:
+        long_b = long_0 = None
         for w in wins:
-            cb_w = cost((fb if w == n_fin else run(bp, amp, w))[4])
+            rb = fb if w == n_fin else run(bp, amp, w)
+            cb_w = cost(rb[4])
             r0 = run(p0, amp, w)
+            if w == wins[-1]:
+                long_b, long_0 = rb, r0
             if w == n_fin:
                 f0 = r0
             c0_w = cost(r0[4])
             final_check["windows"].append({"n": w, "best_cost": cb_w, "initial_cost": c0_w})
             if cb_w > c0_w:
+                kept_initial = True
+        if not kept_initial and long_b is not None:
+            k = prefix_worse(long_b, long_0, run(p0, amp, wins[-1]), amp)
+            if k is not None:
+                final_check["prefix_worse_n"] = k
                 kept_initial = True
         if kept_initial:                                        # 绝不交付比初值差的参数：退回初值并写明
             bp, fb = p0, f0
@@ -619,7 +642,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         gain = min(c0a, c0b) - max(cba, cbb)
         final_check["noise_band"], final_check["gain"] = band, gain
         improvement_confirmed = bool(gain > NOISE_BAND_K * band and gain > GAIN_REL_MIN * min(c0a, c0b)
-                                     and all(x["best_cost"] < (1 - GAIN_REL_MIN) * x["initial_cost"] for x in final_check["windows"]))
+                                     and all(x["best_cost"] < (1 - GAIN_REL_MIN) * x["initial_cost"] for x in final_check["windows"] if x["n"] >= n))
     tcause = None
     if bp is not p0 and f0 is not None:
         lim0 = min(u_max, p0.get("ulim", math.inf))
