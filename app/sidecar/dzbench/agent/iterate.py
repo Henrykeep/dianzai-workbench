@@ -143,6 +143,7 @@ class Iterator:
         self.good = plan.get("good")
         cap = plan.get("max_step_dur_ms")
         self.dur_cap_ms = int(min(MAX_DUR_MS, float(cap) if cap else NO_RESPONSE_DUR_CAP_MS))
+        self.dur_cap_default = not cap           # 没声明 → 结果卡片提示“使用默认 12 s”并给 edit_declaration
         self.stop_ev = threading.Event()
         self.rounds: list[dict] = []
         self.best: dict | None = None
@@ -227,6 +228,10 @@ class Iterator:
                                               "metrics": {k: best.get(k) for k in ("overshoot_pct", "ss_err_pct", "settle_ms", "rise_ms", "metric_mode")},
                                               "pass": best["pass"], "gaps": gaps(best, self.abs_tol, self.good)},
                "next_zh": self._next_hint(reason)}
+        if reason == "plant_unresponsive" and self.dur_cap_default:     # 没声明上限：卡上明说用了默认值，并指到要改的声明字段
+            out["dur_cap_notice_zh"] = f"未声明阶跃时长上限，使用默认 {NO_RESPONSE_DUR_CAP_MS // 1000} s"
+            out["fix_action"] = "edit_declaration"
+            out["fix_field"] = "link.step.max_step_dur_ms"
         if reason == "invalid":                                       # 卡上写清楚哪一种无效，不只说“没有可用的一轮”
             whys = [r.get("why_invalid") for r in self.rounds if not r["valid"]][-CONSEC_INVALID:]
             out["why_invalid"] = whys[-1] if whys else None

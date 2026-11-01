@@ -115,6 +115,11 @@ def test_unresponsive_plant_hits_hard_cap(cap, expect):
     out = I.Iterator(io, dict(PLAN, dur_ms=2000, max_step_dur_ms=cap), True, emit=ev.append).run()
     assert out["reason"] == "plant_unresponsive" and out["best"] is None and "round0" not in out, out
     assert io.calls == expect and getattr(io, "output_stopped", False)
+    if cap is None:                                  # 没声明：卡上明说用默认 12 s，并指到声明字段
+        assert out["dur_cap_notice_zh"] == "未声明阶跃时长上限，使用默认 12 s"
+        assert out["fix_action"] == "edit_declaration" and out["fix_field"] == "link.step.max_step_dur_ms"
+    else:
+        assert "dur_cap_notice_zh" not in out and "fix_action" not in out
     assert S.AgentService._verdict({"inside": True}, out, None)[0] == "unknown"
     from dzbench.agent.reason_codes import table
     t = table()["plant_unresponsive"]

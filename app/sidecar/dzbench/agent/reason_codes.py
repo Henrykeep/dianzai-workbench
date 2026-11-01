@@ -15,7 +15,9 @@ CAUSES_ZH = {"plant_unresponsive": ["没上电", "接线", "方向（执行器 /
 DIVERGE = {"unstable"}
 # 连接阻塞（不是迭代原因码，但界面 / Agent 用同一张表取中文）：kind = blocker
 BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
-              "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录"}
+              "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录",
+              "estop_latched_ident_deferred": "急停中，暂不识别板子",
+              "resuming": "正在恢复连接"}
 
 
 def table() -> dict:
