@@ -249,3 +249,67 @@ def test_resume_no_response_latched_stall(board, home):
         except OSError:
             pass
         p.kill()
+
+
+@pytest.mark.parametrize("strip", [False, True])
+def test_r155_latch_without_cause_still_reconnects(board, home, strip):
+    """#155 确定性复现（嵌入式开发-2）：锁存记录里没有 cause（急停后原因心跳入库前侧车被杀）→ 以前 es["board_t_ms"] KeyError
+    从读线程冒出去 → 当传输错误每 0.5 s 重连、schema 永不绑定。现在：连回、急停仍锁存、执行器被 tx_locked 拒绝。"""
+    from wsui import UI
+    p, port = _start(home)
+    try:
+        ui = UI(port)
+        ui.ok("connect", port=str(board.path), baud="auto")
+        wd_ms = wd_timeout_ms(ui.wait(lambda e: e["type"] == "schema"))
+        time.sleep(0.6)
+        ui.ok("estop")
+        time.sleep(1.0)
+        ui.close()
+        p.send_signal(signal.SIGKILL)
+        p.wait()
+        time.sleep(wd_ms / 1000 + 0.5)
+        fs = list(home.rglob("estop_latch.json"))
+        assert fs
+        for f in fs:
+            d = json.loads(f.read_text(encoding="utf-8"))
+            assert all("cause" in v for v in d.values()), "急停时原因要和锁存记录一起落盘"
+            if strip:
+                for v in d.values():
+                    v.pop("cause", None)
+            f.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
+        p, port = _start(home)
+        ui = UI(port)
+        _connected(ui, p, home, 6.0)
+        r = ui.call("send_data", id=1, hex=GO)
+        assert r["ok"] is False and (r.get("error") or r).get("code") == "tx_locked", r
+        st = ui.ok("hello")["status"]
+        assert st["tx_locked"] is True and st["reconnects"] == 0, st
+        assert sp(board)["sp_a"] == 0.0
+        ui.close()
+    finally:
+        p.kill()
+
+
+def test_frame_exception_never_clears_latch(monkeypatch):
+    """#155：单帧处理抛异常 → 记日志 + 计数、丢这一帧；不当传输错误、不重连，急停锁存不清、执行器操作仍被拒。"""
+    from dzbench.session import LinkError, Session
+    s = Session()
+    sent, errs = [], []
+
+    class Tr:
+        name = "fake"
+        def write(self, b):
+            sent.append(b)
+        def close(self):
+            pass
+    s.tr, s.port, s.tx_locked, s.estop_source = Tr(), "/dev/fake", True, "ui"
+    monkeypatch.setattr(s, "_on_transport_error", lambda *a, **k: errs.append(a))
+    def boom(_payload):
+        raise KeyError("board_t_ms")
+    monkeypatch.setattr(s, "_on_heartbeat", boom)
+    s._on_bytes(encode(HEARTBEAT, 0, 1, bytes(40)) * 3)
+    assert s.frame_errors == 3 and errs == [] and s.tx_locked is True
+    with pytest.raises(LinkError) as e:
+        s.send_data(1, bytes.fromhex(GO))
+    assert e.value.code in ("tx_locked", "estop_clear", "resuming"), e.value.code
+    assert not any(b[3:4] == bytes([1]) for b in sent), "不许发出运动帧"

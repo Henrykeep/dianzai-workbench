@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import datetime as _dt
 import time
@@ -34,8 +35,19 @@ def _save(d: dict) -> None:
         p = _path()
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
-        tmp.replace(p)
+        with open(tmp, "w", encoding="utf-8") as f:     # #155：锁存记录（含原因）原子落盘：写临时文件 + fsync + os.replace + fsync 目录
+            f.write(json.dumps(d, ensure_ascii=False))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, p)
+        try:
+            fd = os.open(p.parent, os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        except OSError:
+            pass
     except OSError:
         pass
 
@@ -84,8 +96,9 @@ def restored_view(rec: dict) -> dict:
     c.pop("gap_ms", None), c.pop("value", None)
     reason = c.get("reason") or c.get("cause") or rec.get("reason") or "latched"
     c.update({"cause": c.get("cause") or reason, "reason": reason, "reason_zh": c.get("reason_zh") or rec.get("reason_zh") or why,
-              "restored": True, "fix_action": "estop_clear", "latched_at": rec.get("latched_at"),
-              "message_zh": f"{hm} {why}，已锁存".strip()})
+              "restored": True, "fix_action": "estop_clear", "message_zh": f"{hm} {why}，已锁存".strip()})
+    if rec.get("latched_at") is not None:                 # 记录里没有的字段就不出现（不补 None，也不编 board_t_ms / cause_id）
+        c["latched_at"] = rec["latched_at"]
     for k in ("measured_ms", "threshold_ms"):
         if k in rec:
             c[k] = rec[k]

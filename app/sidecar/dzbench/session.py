@@ -10,6 +10,7 @@ import pathlib
 import re
 import datetime
 import struct
+import sys
 import threading
 import time
 from typing import Callable
@@ -621,32 +622,49 @@ class Session:
         if frames:
             self.last_frame = now
         for kind, id_, seq, payload in frames:
-            self.health.on_frame(seq)
-            if kind == HEARTBEAT:
-                self.last_hb = now
-                with self.hblock:
-                    self._on_heartbeat(payload)
-            elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("M"):
-                self.mode_ack = payload[1]
-            elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
-                self.save_ack = payload[1]
-            elif kind == DATA and id_ == ID_CMD and len(payload) >= board_ident.INFO_LEN and payload[0] == ord("I"):
-                info = board_ident.decode_info(payload)
-                if info is not None:
-                    self._locked(lambda i=info: self._on_info(i))
-            elif kind == DATA and id_ == ID_CMD and len(payload) == 5 and payload[0] == ord("H"):
-                self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
-            elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
-                self.relay_ack = payload[0]
-            elif kind == DATA and id_ == ID_STEP and len(payload) in (4, 56):
-                self._on_step(payload)
-            elif kind == DATA and id_ == ID_REJECT and len(payload) >= 10:
-                r = dzstep.decode_param_reject(payload)
-                with self.step_cv:
-                    self.last_reject = r
-                self.emit({"type": "param_reject", **r, "ok": False, "id": r.get("index"), "reason_zh": REJECT_ZH.get(str(r.get("reason")), "板子拒绝了这次写入")})
-            else:
-                self._locked(lambda k=kind, i=id_, pl=payload, n=now: self._on_frame_locked(k, i, pl, n))
+            try:
+                self._on_frame(kind, id_, seq, payload, now)
+            except Exception:  # noqa: BLE001
+                self._frame_error(kind, id_)
+
+    def _on_frame(self, kind: int, id_: int, seq: int, payload: bytes, now: float) -> None:
+        self.health.on_frame(seq)
+        if kind == HEARTBEAT:
+            self.last_hb = now
+            with self.hblock:
+                self._on_heartbeat(payload)
+        elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("M"):
+            self.mode_ack = payload[1]
+        elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
+            self.save_ack = payload[1]
+        elif kind == DATA and id_ == ID_CMD and len(payload) >= board_ident.INFO_LEN and payload[0] == ord("I"):
+            info = board_ident.decode_info(payload)
+            if info is not None:
+                self._locked(lambda i=info: self._on_info(i))
+        elif kind == DATA and id_ == ID_CMD and len(payload) == 5 and payload[0] == ord("H"):
+            self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
+        elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
+            self.relay_ack = payload[0]
+        elif kind == DATA and id_ == ID_STEP and len(payload) in (4, 56):
+            self._on_step(payload)
+        elif kind == DATA and id_ == ID_REJECT and len(payload) >= 10:
+            r = dzstep.decode_param_reject(payload)
+            with self.step_cv:
+                self.last_reject = r
+            self.emit({"type": "param_reject", **r, "ok": False, "id": r.get("index"), "reason_zh": REJECT_ZH.get(str(r.get("reason")), "板子拒绝了这次写入")})
+        else:
+            self._locked(lambda k=kind, i=id_, pl=payload, n=now: self._on_frame_locked(k, i, pl, n))
+
+    def _frame_error(self, kind: int, id_: int) -> None:
+        """#155：单帧处理出错 = 侧车自己的 bug，不是链路坏了。记日志（带 traceback）+ 计数，丢掉这一帧继续收；
+        绝不往上抛给读线程（那会被当成传输错误 → 重连风暴，schema 永远绑不上）。"""
+        import traceback
+        self.frame_errors = getattr(self, "frame_errors", 0) + 1
+        tb = traceback.format_exc()
+        print(f"dzbench: 处理帧出错（kind={kind} id={id_}，第 {self.frame_errors} 次），已丢弃该帧：\n{tb}", file=sys.stderr, flush=True)
+        if self.frame_errors <= 3 or self.frame_errors % 100 == 0:
+            self.emit({"type": "frame_error", "kind": kind, "id": id_, "count": self.frame_errors,
+                       "message_zh": "本地服务处理一帧数据时出错，已跳过（连接不受影响）", "detail": tb.strip().splitlines()[-1]})
 
     def _on_heartbeat(self, payload: bytes) -> None:
         """心跳：板子身份、状态字、急停位、estop_cause。只在 hblock 下（不碰 session.lock），急停锁存不受长持锁影响。"""
@@ -708,7 +726,10 @@ class Session:
                         if es:
                             es["run_mode"] = (run_mode_dict(self.hb_status) or {}).get("mode")
                         if es and self.estop_cause and self.estop_cause.get("restored") and es["cause"] == self.estop_cause.get("cause"):
-                            es = self.estop_cause                # 恢复的锁存：保留「HH:MM 原因，已锁存」
+                            # 恢复的锁存：保留「HH:MM 原因，已锁存」等恢复字段，但实时心跳里才有的字段（board_t_ms / cause_id）不能丢。
+                            # #155 根因：以前整个换成恢复视图，锁存记录里没有 cause 时（急停后原因心跳入库前侧车被杀）下面取
+                            # es["board_t_ms"] KeyError → 从读线程冒出去被当成传输错误 → 每 0.5 s 重连、schema 永远绑不上。
+                            es = {**es, **self.estop_cause}
                         if es and self.tx_locked and not self._cause_announced and es == _sans_latched_at(self.estop_cause):
                             self.estop_cause = None          # 锁存恢复带回了同一个原因：也走下面的分支，把 cause 推给界面
                         if es is None and self.tx_locked and self.estop_cause is not None:
@@ -1020,7 +1041,8 @@ class Session:
         if not ok:
             self.estop_requested_at = None
         if not isinstance(self.tr, ReplayTransport):
-            latch.set(self.port, self.board_uid, self.estop_source, src)
+            # #155：原因和锁存记录一起写（人/Agent 按的 = manual），不等下一帧原因心跳；侧车在那之前被杀也能完整恢复
+            latch.set(self.port, self.board_uid, self.estop_source, src, cause={"cause": "manual", "reason": "manual", "cause_id": 1})
         self.emit({"type": "tx_locked", "on": True, "source": self.estop_source})
         if isinstance(self.tr, ReplayTransport):
             return {"type": "estop", "ok": False, "reason": "replay", "message_zh": "回放中：急停没有送达任何板子"}
