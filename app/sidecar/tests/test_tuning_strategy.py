@@ -87,8 +87,8 @@ def test_never_deliver_worse_than_initial():
             if res["verdict"] != "pass":
                 assert res["causes"], res                      # 退回初值也要给原因
         else:
-            fc = res["final_check"]                              # 交付的参数在终验里不比初值差
-            assert fc["best_cost"] <= fc["initial_cost"], fc
+            fc = res["final_check"]                              # 交付的参数在 n / 2n / 4n 每个终验窗口都不比初值差
+            assert len(fc["windows"]) >= 2 and all(w["best_cost"] <= w["initial_cost"] for w in fc["windows"]), fc
         for it in res["items"]:
             assert "margin" in it
 

@@ -527,12 +527,28 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
     bc, bp, bm, (bt, br, by, bu) = min(hist, key=lambda h: h[0])
     # 终验：窗口加倍复测最好参数与初值（搜索窗口按探测估的调节时间取，可能偏短：慢收敛 / 晚到的振荡在短窗里看不见），
     # 判定与“是否比初值好”都按终验结果（本机实测，不读真值）
-    n_fin = int(min(2 * n, 40000))
-    fb, f0 = run(bp, amp, n_fin), (run(p0, amp, n_fin) if bp is not p0 else None)
+    # 多窗口：n / 2n / 4n 每个窗口下都不能比初值差（均值型代价随窗口变：短窗看不见持续稳态误差，长窗冲淡瞬态）
+    wins = sorted({int(min(k * n, 40000)) for k in (1, 2, 4)})
+    n_fin = wins[1] if len(wins) > 1 else wins[0]
+    fb = run(bp, amp, n_fin)
+    final_check = {"n": n_fin, "windows": []}
     kept_initial = False
-    final_check = {"n": n_fin, "best_cost": cost(fb[4]), "initial_cost": cost((f0 or fb)[4])}
-    if f0 is not None and cost(fb[4]) > cost(f0[4]):            # 绝不交付比初值差的参数：退回初值并写明
-        bp, fb, kept_initial = p0, f0, True
+    if bp is not p0:
+        f0 = None
+        for w in wins:
+            cb_w = cost((fb if w == n_fin else run(bp, amp, w))[4])
+            r0 = run(p0, amp, w)
+            if w == n_fin:
+                f0 = r0
+            c0_w = cost(r0[4])
+            final_check["windows"].append({"n": w, "best_cost": cb_w, "initial_cost": c0_w})
+            if cb_w > c0_w:
+                kept_initial = True
+        if kept_initial:                                        # 绝不交付比初值差的参数：退回初值并写明
+            bp, fb = p0, f0
+    fw = [x for x in final_check["windows"] if x["n"] == n_fin]
+    final_check["best_cost"] = fw[0]["best_cost"] if fw else cost(fb[4])
+    final_check["initial_cost"] = fw[0]["initial_cost"] if fw else cost(fb[4])
     bc, bm, (bt, br, by, bu) = J(fb[4]), fb[4], fb[:4]
     n = n_fin
     bad = meets(bm, sp)
