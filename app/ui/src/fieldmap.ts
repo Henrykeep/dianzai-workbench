@@ -328,16 +328,20 @@ export function wsUrlFor(loc: { protocol: string; hostname: string; port: string
   const host = loc.hostname.includes(":") ? `[${loc.hostname}]` : loc.hostname;
   return `${loc.protocol === "https:" ? "wss" : "ws"}://${host}:${p - WS_F.uiPortOffset}`;
 }
-// #158 结果不确定（不能说已改善）：后端字段未定，这张表就是映射；改字段名只改这里
-// 任一规则命中 → 不确定；文案取 msg 字段（没有就取 reasonField），再没有用 fallbackZh
-export const INCONCL_F = {
-  rules: [{ field: "improvement", is: "inconclusive" }, { field: "kept_initial", is: true }, { field: "verdict.improvement", is: "inconclusive" }] as { field: string; is: unknown }[],
-  msg: ["message_zh", "verdict.message_zh", "kept_initial_reason_zh", "kept_initial_reason"],
-  fallbackZh: "无法确认比初值好", headZh: "未确认改善", keepZh: "保留初值", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用",
+// #158 结果是否比初值好：后端 improvement = confirmed | inconclusive | worse（字段名、取值、动作都只在这里）
+// inconclusive（reason improvement_unconfirmed）：采用是次要按钮且要二次确认；worse（reason kept_initial）：没有采用按钮（后端会拒）
+// 主按钮由 default_action 决定（ACTIONS 表），不写死
+export const IMPROVE_F = {
+  field: "improvement", msg: "message_zh", reason: "reason", causes: "causes", defaultAction: "default_action",
+  kinds: { inconclusive: { adopt: "confirm", headZh: "未确认改善" }, worse: { adopt: "none", headZh: "比初值差，已保留初值" } } as Record<string, { adopt: "confirm" | "none"; headZh: string }>,
+  actions: { keep_initial: { zh: "保留初值", decline: true } } as Record<string, { zh: string; decline: boolean }>,
+  fallbackZh: "无法确认比初值好", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用",
 } as const;
-const pick = (o: any, path: string) => path.split(".").reduce((a, k) => a == null ? undefined : a[k], o);
-export function inconclusiveOf(r: any): { msg: string } | null {
-  if (!r || typeof r !== "object" || !INCONCL_F.rules.some(x => pick(r, x.field) === x.is)) return null;
-  for (const k of INCONCL_F.msg) { const v = pick(r, k); if (typeof v === "string" && v) return { msg: v }; }
-  return { msg: INCONCL_F.fallbackZh };
+export type Improve = { kind: string; msg: string; reason: string | null; causes: string[]; def: string | null; adopt: "confirm" | "none"; head: string };
+export function improvementOf(r: any): Improve | null {
+  const k = r?.[IMPROVE_F.field]; const spec = typeof k === "string" ? IMPROVE_F.kinds[k] : undefined;
+  if (!spec) return null;   // confirmed / 没给 → 照常
+  const str = (v: unknown) => typeof v === "string" && v ? v : null;
+  return { kind: k, msg: str(r[IMPROVE_F.msg]) ?? IMPROVE_F.fallbackZh, reason: str(r[IMPROVE_F.reason]), causes: Array.isArray(r[IMPROVE_F.causes]) ? r[IMPROVE_F.causes].filter((x: unknown) => typeof x === "string") : [],
+    def: str(r[IMPROVE_F.defaultAction]), adopt: spec.adopt, head: spec.headZh };
 }

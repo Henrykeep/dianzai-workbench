@@ -2,7 +2,7 @@ import { coarseTagHtml } from "./plant";
 import { reasonZh, reasonKind, stopCauses } from "./reasoncodes";
 import { CAUSES_ZH, OUTPUT_STOPPED_ZH } from "./fieldmap";
 import { durCapNoteHtml } from "./actgate";
-import { inconclusiveOf, INCONCL_F as IC } from "./fieldmap";
+import { improvementOf, IMPROVE_F as IC } from "./fieldmap";
 import { isUnchanged } from "./metriccard";
 import { REASON_KIND_F } from "./fieldmap";
 import { LEDGER, bestValid, fromRoundEvent, inRun, type LedgerRound } from "./ledgerbus";
@@ -220,8 +220,8 @@ export function adoptToastZh(rep: any, part: boolean): { text: string; kind: "ok
 }
 export const CARD_KEYS = /超调|调节|稳态/;
 export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canApply: boolean; applyReady: boolean; schema?: any }): string {
-  const inc = inconclusiveOf(r);   // #158 后端说不确定：不报改善，保留初值为主按钮
-  const v = cardView(r), head = inc ? IC.headZh : r.verdict?.warn ? r.verdict.warn : verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");   // 降幅警告原文照抄
+  const inc = improvementOf(r);   // #158 后端说不确定：不报改善，保留初值为主按钮
+  const v = cardView(r), head = inc ? inc.head : r.verdict?.warn ? r.verdict.warn : verdictLine(r.verdict, r.ss_err ?? null, "").text.replace(/（.*$/, "");   // 降幅警告原文照抄
   const key = v.compare.filter(x => CARD_KEYS.test(x[0])), cells = key.length ? key : v.compare.slice(0, 4);   // r9p6 别的题没有超调/调节/稳态时，照样列出它自己的指标
   const cmp = inc && cells.length ? `<div class="rc-cmp">${cells.map(x => `<div class="rc-m"><span class="rc-k">${esc(x[0])}</span><span class="rc-v num">${esc(x[1])} → ${esc(x[2])}</span></div>`).join("")}</div>`   // 不确定：只列数，不标好坏
     : cells.length
@@ -232,7 +232,9 @@ export function resultCardHtml(r: Stopped, esc: (s: string) => string, o: { canA
   // #141 降幅测试：主按钮是「按题面幅度复测」，采用退成次要按钮且要先确认
   const part = isAmpReduced(r), dis = o.applyReady ? "" : ' disabled title="等本地服务出确认卡…"';
   const blk = part ? retestBlock(r, o.schema) : null;
-  const btn = inc ? `<wa-button variant="brand" size="small" id="it-keep">${esc(IC.keepZh)}</wa-button>` + (o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-confirm2="1" data-confirm-zh="${esc(IC.adoptConfirmZh)}"${dis}>${esc(IC.adoptZh)}</wa-button>` : "")
+  const da = inc?.def ? IC.actions[inc.def] : undefined;   // 主按钮 = default_action
+  const btn = inc ? (da ? `<wa-button variant="brand" size="small" id="it-default" data-action="${esc(inc.def!)}"${da.decline ? ' data-decline="1"' : ""}>${esc(da.zh)}</wa-button>` : "")
+      + (inc.adopt === "confirm" && o.canApply && v.canWrite ? `<wa-button ${da ? 'appearance="outlined"' : 'variant="brand"'} size="small" id="it-write" data-confirm2="1" data-confirm-zh="${esc(IC.adoptConfirmZh)}"${dis}>${esc(IC.adoptZh)}</wa-button>` : "")
     : part ? `<wa-button variant="brand" size="small" id="it-rerun"${blk ? " disabled" : ""}>按题面幅度复测</wa-button>` + (o.canApply && v.canWrite ? `<wa-button appearance="outlined" size="small" id="it-write" data-partial="1"${dis}>仍采用这组参数</wa-button>` : "")
     : isUnchanged(r) ? ""   // 初值已满足题面、没改参：不给「采用」
     : o.canApply && v.canWrite ? `<wa-button variant="brand" size="small" id="it-write"${dis}>采用这组参数</wa-button>` : "";

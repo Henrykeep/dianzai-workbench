@@ -876,7 +876,7 @@ function renderIter() {
   c.hidden = false;
   c.innerHTML = resultCardHtml(IT.s.result, esc, { canApply: true, applyReady: id != null, schema: S.schema }) + metricCardHtml(IT.s.result);   // r9p6 有 metrics_card 就追加通用指标卡
   const done = () => { if (id != null) localStorage.setItem("dz.iter.done", String(id)); };
-  { const k = c.querySelector<HTMLElement>("#it-keep"); if (k) k.onclick = () => c.querySelector<HTMLElement>("#it-x")!.click(); }   // #158 保留初值 = 不采用（参数不动）
+  { const k = c.querySelector<HTMLElement>("#it-default"); if (k && k.dataset.decline === "1") k.onclick = () => c.querySelector<HTMLElement>("#it-x")!.click(); }   // #158 default_action（如 keep_initial）= 不采用，参数不动
   c.querySelector<HTMLElement>("#it-x")!.onclick = () => { done(); if (id != null) void call("agent_action_decide", { id, accept: false }).catch(() => {}); IT.reset(); renderIter(); };
   const w = c.querySelector<HTMLElement & { disabled: boolean }>("#it-write");
   const rr = c.querySelector<HTMLElement & { disabled: boolean }>("#it-rerun");
