@@ -87,15 +87,18 @@ jobs:
         run: |
           bash tools/fetch_third_party.sh m0pack   # MSPM0 器件包随侧车分发（BSD-3），pyOCD 烧 MSPM0 不用再联网装包
           python -m PyInstaller --onefile --log-level WARN -n dzbench \
+            --python-option "X utf8" \
             --add-data "third_party/packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack;packs" \
             --add-data "docs/dev/roles.json;docs/dev" \
+            --add-data "docs/dev/reason_codes.json;docs/dev" \
             --paths app/sidecar --paths host/python --paths third_party/vendored/stm32_mcp_discovery \
             --paths tools --hidden-import dzstep \
             --hidden-import serial.tools.list_ports --collect-submodules pypdf \
             app/sidecar/dzbench_entry.py
           mkdir -p app/src-tauri/binaries
           cp dist/dzbench.exe app/src-tauri/binaries/dzbench-x86_64-pc-windows-msvc.exe
-          (cd dist && DZBENCH_REPO= ./dzbench.exe selfcheck-data)   # 随包数据文件（roles.json）在包里，缺就红
+          # 冻结后的 exe 不读 PYTHONUTF8/PYTHONIOENCODING（41261322550 cp1252 红）：用 --python-option "X utf8" 把 UTF-8 模式编进包；这里故意不设环境变量，模拟双击/Tauri 调用
+          (cd dist && DZBENCH_REPO= ./dzbench.exe selfcheck-data)   # 随包数据文件（roles.json、reason_codes.json）在包里，缺就红
       - name: 冒烟：打包后的侧车能在本进程里跑 tools/*.py
         shell: bash
         working-directory: app/dz-repo
@@ -105,11 +108,28 @@ jobs:
           mods="dzbench.session, dzstep"; [ -f ../sidecar/dzbench/stepproto.py ] && mods="$mods, dzbench.stepproto"
           printf 'import %s\nprint("ok frozen imports: %s")\n' "$mods" "$mods" > "$RUNNER_TEMP/smoke_imports.py"
           ../../dist/dzbench.exe "$RUNNER_TEMP/smoke_imports.py"
+      - name: 自带嵌入版 Python 3.12.10 + 预装依赖 + wheelhouse/manifest.json（tools/stage_pyembed.sh，与 package_windows.sh 同一份逻辑）
+        shell: bash
+        env: { PY: python }
+        run: bash tools/stage_pyembed.sh app/dz-pyembed
+      - name: 冒烟：断网（PIP_NO_INDEX）下自带 python 跑 doctor 必须 ok:true，五个包都能导入
+        shell: bash
+        env: { PIP_NO_INDEX: "1", PIP_INDEX_URL: "http://0.0.0.0/disabled", PYTHONUTF8: "1", PYTHONPATH: "", PYTHONHOME: "" }
+        run: |
+          inst="$RUNNER_TEMP/inst"; rm -rf "$inst"; mkdir -p "$inst"
+          cp -r app/dz-pyembed/python app/dz-pyembed/wheelhouse "$inst/"; cp -r app/dz-repo "$inst/repo"
+          py="$inst/python/python.exe"
+          "$py" -c "import sys; print(sys.version); assert sys.version_info[:2] == (3, 12)"
+          "$py" -c "import control, scipy, numpy, sysidentpy, uncertainties; print('ok imports', numpy.__version__, scipy.__version__)"
+          out=$("$py" "$inst/repo/tools/plantmodel.py" doctor) || { echo "::error::doctor 退出码非 0：$out"; exit 1; }
+          echo "$out"
+          echo "$out" | "$py" -c "import json,sys; d=json.load(sys.stdin); assert d['ok'] is True and d['reason'] is None, d; assert d['install_cmd'] and 'python.exe' in d['install_cmd'], d"
+          "$py" "$inst/repo/tools/pydeps.py" repair   # 补救路径：离线重装也得能过
       - name: 安装包（resources 带上 repo\）
         shell: bash
         working-directory: app/src-tauri
         run: |
-          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
+          echo '{"bundle":{"resources":{"../dz-repo/":"repo/","../dz-pyembed/python/":"python/","../dz-pyembed/wheelhouse/":"wheelhouse/","../dz-pyembed/安装离线依赖.bat":"install-offline-deps.bat","../dz-pyembed/xintai-selfcheck.bat":"xintai-selfcheck.bat","../packaging/使用说明.txt":"README-zh.txt"}}}' > ci-resources.json
           npx --yes @tauri-apps/cli@2 build --config ci-resources.json
           ls -la target/release/bundle/nsis/
       - name: 安装冒烟：旧版电赛工作台 → 新版 /S 静默安装（只一个芯台快捷方式、旧目录已删、工程保留）
@@ -130,7 +150,7 @@ jobs:
           $p = Start-Process $setup.FullName -ArgumentList "/S" -Wait -PassThru
           if ($p.ExitCode) { throw "新版安装退出码 $($p.ExitCode)" }
           $sm = @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")
-          $lnk = Get-ChildItem $sm -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -match "芯台|XinTai|电赛工作台" }
+          $lnk = Get-ChildItem $sm -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | Where-Object { $_.BaseName -match "芯台|XinTai|电赛工作台" -and $_.BaseName -ne "芯台 自检" }
           $lnk | ForEach-Object { Write-Host "快捷方式: $($_.FullName)" }
           $fail = @()
           if (@($lnk).Count -ne 1 -or $lnk[0].BaseName -ne "芯台") { $fail += "(a) 开始菜单应只有一个 芯台.lnk，实际 $(@($lnk).Count) 个" }
@@ -138,6 +158,73 @@ jobs:
           if (-not (Test-Path "$proj\marker.txt")) { $fail += "(c) 测试工程丢了：$proj" }
           if ($fail) { $fail | ForEach-Object { Write-Host "::error::$_" }; exit 1 }
           Write-Host "安装冒烟通过：一个芯台快捷方式、旧目录已删、工程保留"
+      - name: 安装后检查：安装目录里 roles.json / reason_codes.json 齐全，自带 python 在仓库外读到 6 个角色
+        shell: bash
+        env: { PIP_NO_INDEX: "1", PYTHONUTF8: "1", PYTHONPATH: "" }
+        run: |
+          base=$(cygpath -u "$LOCALAPPDATA")
+          rj=$(find "$base" -path '*/repo/docs/dev/roles.json' 2>/dev/null | head -1)
+          [ -n "$rj" ] || { echo "::error::安装目录里找不到 repo/docs/dev/roles.json（安装包没带上角色表）"; exit 1; }
+          inst=$(dirname "$(dirname "$(dirname "$(dirname "$rj")")")")
+          echo "安装目录：$inst"
+          py="$inst/python/python.exe"
+          [ -f "$py" ] || { echo "::error::安装目录里没有自带 python：$py"; exit 1; }
+          fail=0
+          [ -f "$inst/repo/docs/dev/reason_codes.json" ] || { echo "::error::安装目录缺 repo/docs/dev/reason_codes.json（原因码表；后端 #123 合入后才有，缺了就是红）"; fail=1; }
+          cd "$RUNNER_TEMP"   # 仓库外跑：只能读到安装目录里的文件
+          "$py" - "$(cygpath -w "$inst")" <<'PY' || fail=1
+          import json, pathlib, sys
+          inst = pathlib.Path(sys.argv[1]).resolve()
+          f = inst / "repo" / "docs" / "dev" / "roles.json"
+          try:
+              d = json.loads(f.read_text(encoding="utf-8"))
+          except Exception as e:
+              sys.exit(f"角色表 {f} 读不出来：{e}")
+          if d.get("schema_version") != 1:
+              sys.exit(f"角色表 schema_version 应为 1，实际 {d.get('schema_version')!r}")
+          roles = d.get("roles") or []
+          codes = [r.get("code") for r in roles]
+          if codes != ["P", "I", "D", "FF", "LIM", "other"] or not all(r.get("zh") for r in roles):
+              sys.exit(f"角色表应是 6 个带中文名的角色 P/I/D/FF/LIM/other，实际 {roles}")
+          if "tools" in f.parts[len(inst.parts):-1] or not str(f).startswith(str(inst)):
+              sys.exit(f"读到的不是安装目录里的角色表：{f}")
+          rc = inst / "repo" / "docs" / "dev" / "reason_codes.json"
+          if rc.is_file():
+              try:
+                  json.loads(rc.read_text(encoding="utf-8"))
+              except Exception as e:
+                  sys.exit(f"原因码表 {rc} 读不出来：{e}")
+          print("✓ 安装目录角色表：", "、".join(f"{r['code']}={r['zh']}" for r in roles), "（", f, "）")
+          PY
+          # 不设任何环境变量、在安装目录外：python\python.exe -m dzbench 必须直接能导入（侧车路径写在 ._pth 里）
+          (cd "$RUNNER_TEMP" && env -u PYTHONPATH -u PYTHONHOME "$py" -m dzbench --help >/dev/null) \
+            || { echo "::error::自带 python 直接跑 -m dzbench 失败（._pth 里的侧车路径或侧车依赖不对）"; fail=1; }
+          exit $fail
+      - name: 安装后自检：去掉系统 Python 的 PATH 下跑 xintai-selfcheck.bat，必须退出码 0；开始菜单有「芯台 自检」
+        shell: pwsh
+        run: |
+          $rj = Get-ChildItem $env:LOCALAPPDATA -Recurse -Filter roles.json -ErrorAction SilentlyContinue | Where-Object { $_.FullName -like "*\repo\docs\dev\roles.json" } | Select-Object -First 1
+          if (-not $rj) { Write-Host "::error::找不到安装目录"; exit 1 }
+          $inst = $rj.Directory.Parent.Parent.Parent.FullName
+          $bat = Join-Path $inst "xintai-selfcheck.bat"
+          if (-not (Test-Path $bat)) { Write-Host "::error::安装目录缺 xintai-selfcheck.bat"; exit 1 }
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          Remove-Item Env:PYTHONPATH, Env:PYTHONHOME, Env:pythonLocation, Env:Python_ROOT_DIR, Env:Python3_ROOT_DIR -ErrorAction SilentlyContinue
+          $env:DZ_NOPAUSE = "1"; $env:PIP_NO_INDEX = "1"
+          if (Get-Command python -ErrorAction SilentlyContinue) { Write-Host "::error::PATH 里还有 python，没清干净"; exit 1 }
+          Push-Location $env:RUNNER_TEMP
+          cmd /c "`"$bat`" < NUL"
+          $rc = $LASTEXITCODE
+          Pop-Location
+          # 安装目录里的侧车有 selfcheck-data 时必须 0；没有时只接受 3（未完成：有未检查项）
+          $hasSd = [bool](Get-ChildItem (Join-Path $inst "repo\app\sidecar\dzbench") -Recurse -Filter *.py | Select-String -SimpleMatch "selfcheck-data" -List)
+          $want = if ($hasSd) { 0 } else { 3 }
+          if ($rc -ne $want) { Write-Host "::error::xintai-selfcheck.bat 退出码 $rc，应为 $want（selfcheck-data 存在=$hasSd）"; exit 1 }
+          $j = & (Join-Path $inst "python\python.exe") (Join-Path $inst "repo\tools\selfcheck.py") --json | Out-String | ConvertFrom-Json
+          if ($j.rc -ne $want) { Write-Host "::error::selfcheck.py --json rc=$($j.rc)，应为 $want"; exit 1 }
+          $sm = @("$env:APPDATA\Microsoft\Windows\Start Menu\Programs", "$env:ProgramData\Microsoft\Windows\Start Menu\Programs")
+          if (-not (Get-ChildItem $sm -Recurse -Filter "芯台 自检.lnk" -ErrorAction SilentlyContinue)) { Write-Host "::error::开始菜单没有「芯台 自检」快捷方式"; exit 1 }
+          Write-Host "安装后自检通过：$bat"
       - uses: actions/upload-artifact@v4
         with:
           name: dzbench-windows

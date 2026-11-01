@@ -17,3 +17,4 @@
 | SysIdentPy | BSD-3-Clause | Wilson Rocha Lacerda Junior 等 | https://github.com/wilsonrljr/sysidentpy ；侧车依赖：`autotune.identify()` 用 FROLS 从阶跃录波辨识 ARX 模型 |
 | import-linter | BSD-2-Clause | David Seddon 等 | https://github.com/seddonym/import-linter ；开发依赖：`make check` 按 `.importlinter` 的 forbidden 契约检查诊断代码（dzbench）不 import 判卷 / 出题模块 |
 | Tesseract OCR（命令行，含 chi_sim 语言包） | Apache-2.0 | Google / tesseract-ocr 社区；`tools/req.py ocr_image()` 只调外部命令把题目截图转文字（#86），不打包、不链接；没装时提示改粘贴文字 | https://github.com/tesseract-ocr/tesseract |
+| pytest-timeout（≥ 2.3） | MIT | Floris Bruynooghe 等 | https://github.com/pytest-dev/pytest-timeout ；仅测试：每个测试 120 s 上限，超时打印线程栈 |

@@ -55,23 +55,23 @@ assert.equal(a.disabled, false); assert.equal(a.title, "下发"); assert.equal(b
 assert.ok(!("sconf" in a.dataset));
 // 接线：main.ts 三个来源 + index.html 有横幅和设备信息位
 const m = readFileSync("src/main.ts", "utf8"), ix = readFileSync("index.html", "utf8");
-assert.match(m, /boardId = boardIdOf\(h\)/); assert.match(m, /case SCHEMA_CONFLICT_F.key:/); assert.match(m, /fromBlockers\(\(m as any\)\.blockers\)/); assert.match(m, /fromBlockers\(p\.blockers\)/);
+assert.match(m, /setBoardId\(idSrc\(h\)\)/); assert.match(m, /case SCHEMA_CONFLICT_F.key:/); assert.match(m, /fromBlockers\(\(m as any\)\.blockers\)/); assert.match(m, /fromBlockers\(p\.blockers\)/);
 assert.match(m, /resultSameBoard\(res,/);
 assert.match(ix, /id="sconf-banner"/); assert.match(ix, /id="ro-uid"/);
 // 字段名只在 fieldmap
 for (const f of ["src/boardid.ts", "src/main.ts"]) assert.doesNotMatch(readFileSync(f, "utf8"), /"(board_uid|uid_supported|schema_conflict|message_zh)"/);
 // 冲突的两个文件 + 清缓存重新握手（确认卡）
 const cf = conflictOf({ [K.msg]: "两份结构不一致", [K.fix]: SCHEMA_CLEAR_F.action, [K.files]: ["C:\\a\\cache\\schema.json", "boards/x/params.yaml", "多余"] })!;
-assert.deepEqual(cf.files, ["C:\\a\\cache\\schema.json", "boards/x/params.yaml"]); assert.ok(isClearFix(cf));
+assert.deepEqual(cf.files.map(f => f.path), ["C:\\a\\cache\\schema.json", "boards/x/params.yaml", "多余"]); assert.ok(isClearFix(cf));   // r10w：全部列出
 h = conflictBannerHtml(cf, null, esc);
-assert.match(h, /冲突的两个文件：<code title="C:\\a\\cache\\schema.json">schema.json<\/code> ↔ <code title="boards\/x\/params.yaml">params.yaml<\/code>/);
+assert.match(h, /冲突的文件：<code title="C:\\a\\cache\\schema.json">schema.json<\/code> ↔ <code title="boards\/x\/params.yaml">params.yaml<\/code>/);
 assert.match(h, /btn sm pri" type="button" data-sconf-clear>清除旧缓存并重新握手/); assert.doesNotMatch(h, /data-sconf-ok/);
 h = conflictBannerHtml(cf, null, esc, "confirm"); assert.match(h, /data-sconf-confirm/); assert.match(h, /工程文件和板上参数不受影响/); assert.match(h, /data-sconf-ok>确认清除/); assert.match(h, /data-sconf-cancel>取消/); assert.doesNotMatch(h, /data-sconf-clear/);
 assert.match(conflictBannerHtml(cf, null, esc, "busy"), /正在清除/); assert.match(conflictBannerHtml(cf, null, esc, "fail"), /data-sconf-clear.*清除失败/);
 assert.deepEqual(conflictOf({ [K.files]: "x" })!.files, []);
 assert.match(m, /data-sconf-ok\]"\)\?\.addEventListener\("click", \(\) => \{ sconfSt = "busy"; renderConflict\(\); void clearAndRehandshake/);
 // 板子身份只来自握手：boardIdOf 只在 applyHelloIdentity 里，applyHelloIdentity 只喂 hello 的回复
-assert.equal((m.match(/boardIdOf\(/g) ?? []).length, 1); assert.match(m, /function applyHelloIdentity\(h: any\) \{ boardId = boardIdOf\(h\)/);
+assert.equal((m.match(/boardIdOf\(/g) ?? []).length, 1); assert.match(m, /function applyHelloIdentity\(h: any\) \{ setBoardId\(idSrc\(h\)\)/); assert.match(m, /function setBoardId\(src: any\) \{ (if \(!identTrusted\(src\)\) return; )?const nb = boardIdOf\(src\)/);
 for (const call of m.match(/applyHelloIdentity\(\w+\);/g) ?? []) assert.equal(call, "applyHelloIdentity(h);");
 assert.equal((m.match(/boardId = /g) ?? []).length, 1);
 // 自检：skipped / unchecked → 琥珀「未检查」，单独计数，绝不显示全部正常

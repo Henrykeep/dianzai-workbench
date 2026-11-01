@@ -3,7 +3,7 @@ import { ROLES_FILE_F, DATA_TABLES_F, DATA_FIX_ZH, DATA_FIX_DEV } from "./fieldm
 // 打开这个开关：reason_codes.json 缺失也让构建失败（后端把文件提交进仓库后改成 true，只改这一处）
 export const REQUIRE_REASON_CODES = true;   // 5ce00ab 起 reason_codes.json 已进仓库
 export type RoleList = [string, string][];
-export type ReasonMap = Record<string, { zh: string; kind?: string }>;
+export type ReasonMap = Record<string, { zh: string; kind?: string; causes?: string[]; stop?: boolean }>;
 const parse = (c: unknown) => { if (typeof c !== "string") return c; try { return JSON.parse(c); } catch { return undefined; } };
 export function validRoles(c: unknown): RoleList | null {
   const f: any = parse(c);
@@ -16,7 +16,7 @@ export function validReasons(c: unknown): ReasonMap | null {
   if (!o || typeof o !== "object" || Array.isArray(o)) return null;
   const es = Object.entries(o);
   if (!es.length || !es.every(([, v]: any) => v && typeof v.zh === "string" && v.zh)) return null;   // 有一条不合格就整表不用
-  const m: ReasonMap = {}; for (const [k, v] of es as any) m[k] = { zh: v.zh, kind: v.kind }; return m;
+  const m: ReasonMap = {}; for (const [k, v] of es as any) { m[k] = { zh: v.zh, kind: v.kind }; const cs = Array.isArray(v.causes) ? v.causes.filter((x: unknown) => typeof x === "string" && x) : []; if (cs.length) m[k].causes = cs; if (v.stop === true) m[k].stop = true; } return m;
 }
 // 构建闸门：返回错误列表（空 = 通过）。roles.json 必须在且合法；reason_codes.json 在就必须合法，缺失只在 REQUIRE_REASON_CODES 时算错
 export function buildCheck(rolesRaw: string | null, reasonRaw: string | null, requireReason = REQUIRE_REASON_CODES): string[] {
@@ -53,4 +53,10 @@ export class DataTable<T> {
       default: return this.devMissingNotice && dev && !this.bundled ? `界面打包里没有${this.what}（仅开发模式提示）` : "";
     }
   }
+}
+
+// #143 data_tables 在 hello 回包顶层（与 schema 平级）。schema 自己带了就用它（兼容），否则用最近一次 hello 顶层的
+export function tablesSrc(schema: any, hello: any): any {
+  if (schema && typeof schema === "object" && DATA_TABLES_F.obj in schema) return schema;
+  return hello && typeof hello === "object" && DATA_TABLES_F.obj in hello ? { [DATA_TABLES_F.obj]: hello[DATA_TABLES_F.obj] } : null;
 }

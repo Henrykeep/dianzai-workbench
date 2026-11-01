@@ -3,6 +3,13 @@ import os
 import pathlib
 import sys
 
+for _s in (sys.stdout, sys.stderr):      # #146：打包后的 exe 不管控制台代码页都写 UTF-8（datafiles.main 打中文）
+    if _s is not None and hasattr(_s, "reconfigure"):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
 # 安装包 / 便携包：exe 旁边的 repo/ 是随包带的工程仓库子集（仿真板、工具脚本、文档），没指定 DZBENCH_REPO 就用它
 if getattr(sys, "frozen", False):
     os.environ.setdefault("PYTHONUTF8", "1")   # 子进程跑 tools/*.py 打中文；中文 Windows 控制台是 cp936，不设会 UnicodeEncodeError

@@ -1,0 +1,42 @@
+name: selfcheck (Linux / macOS)
+on:
+  push:
+    branches: [main, integration, fw-pyembed]
+  workflow_dispatch:
+jobs:
+  selfcheck:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: venv + wheelhouse 依赖；另建一个没装依赖的 venv 做反例
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install -q -r tools/wheelhouse.txt -r tools/wheelhouse-sidecar.txt
+          python -m venv --without-pip "$RUNNER_TEMP/nodeps"
+      - name: 去掉其它 Python 的 PATH 下跑 ./xintai-selfcheck.sh（正例必须 0，反例必须非 0 且中文说明、无 Traceback）
+        run: |
+          clean="$RUNNER_TEMP/cleanbin"; mkdir -p "$clean"
+          for d in /usr/bin /bin; do for f in "$d"/*; do
+            b=$(basename "$f"); case "$b" in python*|pip*|idle*|pydoc*) continue;; esac
+            [ -e "$clean/$b" ] || [ -L "$clean/$b" ] || ln -s "$f" "$clean/$b"; done; done
+          export DZ_NOPAUSE=1; unset PYTHONPATH PYTHONHOME
+          if env PATH="$clean" sh -c 'command -v python3 || command -v python'; then echo "::error::PATH 没清干净"; exit 1; fi
+          # 树里有 `-m dzbench selfcheck-data` 时必须 0；没有时只接受 3（未完成），不接受 1
+          if grep -rqs "selfcheck-data" app/sidecar/dzbench --include='*.py'; then want=0; else want=3; fi
+          set +e; env PATH="$PWD/.venv/bin:$clean" ./xintai-selfcheck.sh; rc=$?; set -e
+          [ "$rc" -eq "$want" ] || { echo "::error::正例自检退出码 $rc，应为 $want（3 = 有未检查项，仅在没有 selfcheck-data 时允许）"; exit 1; }
+          env PATH="$PWD/.venv/bin:$clean" .venv/bin/python tools/selfcheck.py --json > sc.json || true
+          .venv/bin/python -c "import json,sys;d=json.load(open('sc.json'));assert d['rc']==int(sys.argv[1]),d;assert all(i['status'] in ('ok','missing','invalid','unchecked') for i in d['items'])" "$want"
+          set +e
+          env PATH="$clean" PYTHON="$RUNNER_TEMP/nodeps/bin/python" ./xintai-selfcheck.sh > neg.log 2>&1; rc=$?
+          set -e; cat neg.log
+          [ "$rc" -ne 0 ] || { echo "::error::缺依赖时自检竟然退出 0"; exit 1; }
+          grep -q "缺少" neg.log || { echo "::error::缺依赖时没有中文说明"; exit 1; }
+          if grep -q Traceback neg.log; then echo "::error::缺依赖时打出了 Traceback"; exit 1; fi

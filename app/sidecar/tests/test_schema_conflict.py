@@ -37,7 +37,8 @@ def test_two_boards_same_hash_different_content_is_blocked(home, tmp_path, monke
     # 板 B：同一应用编给另一块板，哈希相同、wd_timeout_ms 不同（另一块板的格式文件也在本机）
     d = json.loads(open(a.path, encoding="utf-8").read())
     d["wd_timeout_ms"] = int(a.wd_timeout_ms or 1000) + 700
-    b = extra / "other-board" / "car_2wd" / "linkgen" / "link_schema.json"
+    from dzbench import schema as SC
+    b = SC.cache_dir() / "other-board" / "car_2wd" / "link_schema.json"   # 另一块板的格式缓存拷贝（kind=cache）
     b.parent.mkdir(parents=True)
     b.write_text(json.dumps(d, ensure_ascii=False), "utf-8")
     ev.clear()
@@ -50,7 +51,9 @@ def test_two_boards_same_hash_different_content_is_blocked(home, tmp_path, monke
         assert s2.schema is None and not s2.samples
         err = next(e for e in ev if e.get("code") == "schema_conflict")
         assert err["fix_action"] == "clear_schema_cache" and err["message_zh"] and err["reason"] == "schema_conflict"
-        assert sorted(err["files"]) == sorted(str(pathlib.Path(x).resolve()) for x in (a.path, b))
+        assert sorted(f["path"] for f in err["files"]) == sorted(str(pathlib.Path(x).resolve()) for x in (a.path, b))
+        kinds = {f["path"]: f["kind"] for f in err["files"]}
+        assert kinds[str(b.resolve())] == "cache" and kinds[str(pathlib.Path(a.path).resolve())] == "build"
         assert err["hash"] == f"{a.hash:08X}" and "board_uid" in err
         assert not any(e.get("type") == "schema" for e in ev)
         st = s2.status()
@@ -78,10 +81,11 @@ def test_two_boards_same_hash_different_content_is_blocked(home, tmp_path, monke
 
 def test_clear_schema_cache_removes_only_that_hash_and_rehandshakes(home, tmp_path, monkeypatch):
     """op clear_schema_cache {hash}：只删这个哈希的缓存格式文件（别的哈希不碰），返回 {ok, removed}，然后重新识别。
-    搜索目录限定在临时目录（不动仓库 build/）。"""
+    搜索目录限定在临时目录（不动仓库 build/）；同哈希的编译产物不删，清完立即能用。"""
     from dzbench import schema as SC
-    cache = tmp_path / "cache"
-    monkeypatch.setattr(SC, "search_dirs", lambda: [cache])
+    cache = SC.cache_dir()
+    build = tmp_path / "proj" / "build"                       # 编译产物：同哈希，clear_schema_cache 绝不能删
+    monkeypatch.setattr(SC, "search_dirs", lambda: [build, cache])
     real = None
     for d in SC.__dict__["ROOT"].joinpath("build").rglob("link_schema.json"):
         if "host-sim/car_2wd" in d.as_posix():
@@ -90,7 +94,8 @@ def test_clear_schema_cache_removes_only_that_hash_and_rehandshakes(home, tmp_pa
     fa = cache / "board-a" / "link_schema.json"
     fb = cache / "board-b" / "link_schema.json"
     fo = cache / "other" / "link_schema.json"
-    for f, d in ((fa, real), (fb, dict(real, wd_timeout_ms=int(real.get("wd_timeout_ms") or 1000) + 700)),
+    fbuild = build / "host-sim" / "car_2wd" / "link_schema.json"
+    for f, d in ((fbuild, real), (fa, real), (fb, dict(real, wd_timeout_ms=int(real.get("wd_timeout_ms") or 1000) + 700)),
                  (fo, dict(real, hash=(int(real["hash"]) ^ 0x1) & 0xFFFFFFFF))):
         f.parent.mkdir(parents=True)
         f.write_text(json.dumps(d, ensure_ascii=False), "utf-8")
@@ -104,14 +109,21 @@ def test_clear_schema_cache_removes_only_that_hash_and_rehandshakes(home, tmp_pa
         r = s.clear_schema_cache(int(real["hash"]))
         assert r["ok"] and sorted(r["removed"]) == sorted(str(f.resolve()) for f in (fa, fb))
         assert fo.exists() and not fa.exists() and not fb.exists()               # 别的哈希不碰
+        assert fbuild.exists()                                                   # 编译产物留着（前端报的 4057a9b 回归）
         assert any(e.get("type") == "rehandshake" for e in ev)
         assert s.schema_conflict is None
-        # 重新识别：这时本机没有这个哈希 → schema_missing；放回正确的一份 → 正常
-        assert _wait(lambda: any(e.get("code") == "schema_missing" for e in ev))
-        fa.parent.mkdir(parents=True, exist_ok=True)
-        fa.write_text(json.dumps(real, ensure_ascii=False), "utf-8")
+        # 重新识别：编译产物还在 → 直接恢复，不用重新编译
         s.disconnect()
         s.connect("sim:car_2wd")
         assert _wait(lambda: s.schema is not None) and s.schema_conflict is None
     finally:
         s.disconnect()
+
+
+def test_conflict_only_build_outputs_fix_is_rebuild(home, tmp_path):
+    """冲突两份都是编译产物（或编译产物对板子 'I' 回包）：fix_action = build（重编重烧），不是 clear_schema_cache；files 带 kind。"""
+    from dzbench import schema as SC
+    e = SC.SchemaConflict(0x1234, [str(tmp_path / "a" / "link_schema.json"), str(SC.cache_dir() / "x" / "link_schema.json")])
+    assert e.fix_action == "clear_schema_cache" and [f["kind"] for f in e.as_dict()["files"]] == ["build", "cache"]
+    e = SC.SchemaConflict(0x1234, [str(tmp_path / "build" / "link_schema.json")], message_zh="I 回包不一致")
+    assert e.fix_action == "build" and e.as_dict()["files"][0]["kind"] == "build" and e.as_dict()["fix_action"] == "build"

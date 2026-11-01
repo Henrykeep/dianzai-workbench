@@ -154,7 +154,7 @@ TOOLS = [
     {"name": "autotune", "description": "通用自动整定（仿真；与 tunegate 同一份算法）：小幅探测→辨识→模型上设计→上板坐标搜索，按题面逐条判。"
      "参数角色没声明时返回 needs_human（roles_unconfirmed + suggested），先让用户确认角色（confirm_roles），不要自己猜着跑",
      "input_schema": {"type": "object", "properties": {"spec_text": {"type": "string", "description": "题面指标原文"}, "ch": {"type": "integer"}}}},
-    {"name": "confirm_roles", "description": "把用户确认的参数角色写回 app.yaml link.params.<名>.role（P/I/D/FF/LIM/other）",
+    {"name": "confirm_roles", "description": "生成参数角色改动（P/I/D/FF/LIM/other）的 diff 给用户确认；不直接写文件，用户在确认卡上点了才写进工程目录 app.yaml；保护参数（protect）不能给 P/I/D/FF",
      "input_schema": {"type": "object", "properties": {"roles": {"type": "object", "description": "{参数名: 角色}"}}, "required": ["roles"]}},
     {"name": "iterate_cancel", "description": "立即停止自动迭代（板上本轮中止，参数停在当前值）", "input_schema": {"type": "object", "properties": {}}},
     {"name": "tune_autopilot", "description": "仅仿真：自动 提议→阶跃→护栏判 连跑到通过或 N 轮，报告最好一轮。实机不可用",

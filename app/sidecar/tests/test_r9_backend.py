@@ -346,7 +346,10 @@ def test_autotune_run_uses_same_code_as_tunegate(monkeypatch):
 
 
 # ---------------------------------------------------------------- 角色没声明：不按名字猜着跑，回 needs_human；确认写回 app.yaml 后才跑
-def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
+def test_autotune_roles_unconfirmed_then_confirmed(tmp_path, monkeypatch):
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "home"))
+    tmp_path = tmp_path / "home" / "projects" / "rp3008"          # #145：角色只写工程目录
+    tmp_path.mkdir(parents=True)
     import sys as _sys
     import yaml
     root = pathlib.Path(__file__).resolve().parents[3]
@@ -372,7 +375,10 @@ def test_autotune_roles_unconfirmed_then_confirmed(tmp_path):
         o.confirm_roles({next(iter(r["missing"])): "kp"}, str(tmp_path))      # 只收 P/I/D/FF/LIM/other
     truth = {nm: role for role, nm in p["roles"].items()}
     out = o.confirm_roles(truth, str(tmp_path))
-    assert out["ok"]
+    assert out["ok"] and out["needs_confirm"] and "role:" in out["diff"]       # #145 第一步只给 diff，不写
+    assert ", role:" not in (tmp_path / "app.yaml").read_text("utf-8")
+    out = o.confirm_roles({}, None, confirmed=True, change_id=out["change_id"])
+    assert out["ok"] and out["written"]
     y = yaml.safe_load((tmp_path / "app.yaml").read_text("utf-8"))
     assert {q["name"]: q.get("role") for q in y["link"]["params"]} == truth
     assert not gen_link.check(*gen_link.load(tmp_path / "app.yaml")[:2])
@@ -416,12 +422,14 @@ def test_amp_reduced_is_partial_never_pass(tmp_path):
     spec = _re.sub(r"(阶跃(?:幅度|幅值|大小)?[为是]?\s*)[\d.]+", lambda m: m.group(1) + str(big), (tmp_path / "spec.txt").read_text("utf-8"), count=1)
     if str(big) not in spec:
         spec = f"阶跃幅度 {big}，" + spec
+    link["unit_decl"] = "link.telemetry.fields[name=y].unit"           # #140：服务层按阶跃信号的声明填
     res = AT.autotune(G.board(str(tmp_path), app, 3001, "randplant"), app, link, spec, 3001)
     assert res["amp_reduced"] is True and res["amp_spec"] == big and abs(res["amp_tested"]) <= float(link["max_step"]) + 1e-9
     assert res["verdict"] in ("partial", "fail") and res["verdict"] != "pass"
     rb = res["retest_blocked_by"]                                   # 题面 3×max_step：按题面重测会被 #109 拒
     assert rb["reason"] == "step_too_large" and rb["limit"] == float(link["max_step"]) and rb["limit_name"].endswith(".max_step")
     assert res["amp_unit"] == (link.get("unit") or None) and all(it["amp_unit"] == res["amp_unit"] for it in res["items"])   # #140
+    assert res["amp_unit_decl"] == "link.telemetry.fields[name=y].unit" and all(it["amp_unit_decl"] == res["amp_unit_decl"] for it in res["items"])
     assert res["items"] and all(it["amp_reduced"] and it["warning_zh"] == "按降幅测试，未验题面幅度" for it in res["items"])
     for it in res["items"]:
         assert it["verdict"] in ("partial", "fail") and (it["verdict"] != "partial" or it["verdict_zh"] == "未验题面幅度")
@@ -431,7 +439,10 @@ def test_amp_reduced_is_partial_never_pass(tmp_path):
     assert g["false_pass"] and g["bucket"] == "false_pass"
 
 
-def test_confirm_roles_idempotent(tmp_path):
+def test_confirm_roles_idempotent(tmp_path, monkeypatch):
+    monkeypatch.setenv("DZBENCH_HOME", str(tmp_path / "home"))
+    tmp_path = tmp_path / "home" / "projects" / "a"
+    tmp_path.mkdir(parents=True)
     (tmp_path / "app.yaml").write_text("link:\n  params:\n    - { name: a, type: float, min: 0, max: 1, role: P }\n", "utf-8")
     before = (tmp_path / "app.yaml").stat().st_mtime_ns
     o = S.AgentService.__new__(S.AgentService)

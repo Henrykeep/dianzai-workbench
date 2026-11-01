@@ -576,7 +576,7 @@ def autotune(board, app: dict, link: dict, spec_text: str, seed: int, rounds: in
         why = KEPT_INITIAL_ZH + "（调后实测代价高于初值）；" + why
     extra = {}
     if amp_reduced:                                             # #129：降幅测的 pass 不是题面的 pass
-        extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None,
+        extra = {"amp_reduced": True, "amp_spec": amp_spec, "amp_tested": amp, "amp_unit": link.get("unit") or None, "amp_unit_decl": link.get("unit_decl") or None,
                  "retest_blocked_by": step_block(amp_spec, max_step, int(link.get("ch") or 0), link.get("unit") or None),
                  "warning_zh": AMP_WARN_ZH}
         if verdict == "pass":

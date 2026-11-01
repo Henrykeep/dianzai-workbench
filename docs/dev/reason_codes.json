@@ -31,6 +31,10 @@
   "zh": "板子急停中",
   "kind": "abort"
  },
+ "fw_estop_unsafe": {
+  "zh": "此固件存在急停可被误清除的问题，请重新烧录",
+  "kind": "blocker"
+ },
  "hash_mismatch": {
   "zh": "参数哈希对不上",
   "kind": "round"

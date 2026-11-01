@@ -20,7 +20,7 @@ function paintPlant(v: PlantView) {
 }
 import { boardName, SIDECAR_DOWN } from "./batch1";
 import { connButton, declaredBoard, boardLabel, portOption, chUnit, shortHint, paramDesc, lifeSummary } from "./r9p6c";
-import { SCHEMA_CONFLICT_F, SCHEMA_CLEAR_F } from "./fieldmap";
+import { SCHEMA_CONFLICT_F, SCHEMA_CLEAR_F, BOARD_UID_F, FW_ESTOP_F, identTrusted } from "./fieldmap";
 import { clearArgs, clearResult, removedZh, isClearFix, resultSameBoard, conflictOf, boardIdOf, uidChipHtml, fromHello, fromBlockers, conflictBannerHtml, lockSchemaIn, type Conflict, type BoardId } from "./boardid";
 import { paramRejected, enumZh, simStartText, lockWritesIn, WRITE_IDS, ESTOP_WHY } from "./batch1";
 import { linkTag, dataTag, iterLocked, ITER_LOCK_ZH, rejectHint, guide } from "./batch1";
@@ -105,6 +105,14 @@ function lockWrites(on: boolean) {
 setInterval(() => { if (writesLocked) lockWritesIn(document, true); }, 300);   // 参数行会重建：锁存期间持续补禁用
 void WRITE_IDS;
 // 板子身份 + 结构冲突（握手 / 事件 / blockers 三个来源，任一未解决就挡写入）
+import { fwUnsafeOf, fromBlockersFw, lockActuateIn, fwBannerHtml, type FwUnsafe } from "./fwsafe";
+const fws: Record<string, FwUnsafe | null> = { event: null, blockers: null };
+function renderFwSafe() {
+  const u = fws.event ?? fws.blockers, el = document.getElementById("fws-banner"); lockActuateIn(document, false); if (u) lockActuateIn(document, true);
+  if (!el) return; el.hidden = !u; el.innerHTML = u ? fwBannerHtml(u, esc) : "";
+  el.querySelector<HTMLElement>("[data-fwsafe-fix]")?.addEventListener("click", ev => runAction((ev.currentTarget as HTMLElement).dataset.fwsafeFix!, s => goStepRef(s)));
+}
+setInterval(() => { if (fws.event ?? fws.blockers) lockActuateIn(document, true); }, 300);   // 参数行等会重建：持续补禁用
 let boardId: BoardId | null = null; const sconf: Record<string, Conflict | null> = { hello: null, event: null, blockers: null };
 const curConflict = () => sconf.hello ?? sconf.event ?? sconf.blockers;
 function renderBoardId() { const el = document.getElementById("ro-uid"); if (el) { el.innerHTML = uidChipHtml(boardId, esc); el.hidden = !boardId; } }
@@ -124,7 +132,9 @@ async function clearAndRehandshake() {
   renderConflict();
 }
 // 板子身份只认握手（hello），心跳 / status 不改它
-function applyHelloIdentity(h: any) { boardId = boardIdOf(h); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
+const idSrc = (h: any) => h && (BOARD_UID_F.uid in h || BOARD_UID_F.supported in h) ? h : h?.status;   // 板子身份：握手顶层优先，后端实际放在 status 里
+function setBoardId(src: any) { if (!identTrusted(src)) return; const nb = boardIdOf(src); if (JSON.stringify(nb) !== JSON.stringify(boardId)) { boardId = nb; renderBoardId(); } }   // 唯一算板子身份的地方：hello 和 status 都走这里
+function applyHelloIdentity(h: any) { setBoardId(idSrc(h)); renderBoardId(); const f = fromHello(h); sconf.hello = f.c; if (f.has) sconf.event = null; renderConflict(); }
 setInterval(() => { if (curConflict()) lockSchemaIn(document, true); }, 300);   // 参数行 / 提交卡会重建：持续补禁用
 const curPage = () => document.querySelector<HTMLElement>(".page:not([hidden])")?.dataset.page ?? "";
 function renderAlerts() {
@@ -336,10 +346,12 @@ $("ln-dlg").addEventListener("click", e => {
 $("ln-stall").onchange = e => link.rpc("serial_stall", { s: +(e.target as HTMLInputElement).value || 0 }).then(r => { $("ln-st").textContent = r.stall_s ? `卡死检测：${r.stall_s} s` : "卡死检测已关"; }, lnErr);
 
 // ---------------------------------------------------------------- 通道
+let helloHs: any = null;   // 最近一次 hello 回包（只取 data_tables 用）
 function applySchema(s: Schema | null) {
   S.schema = s;
   queueMicrotask(() => score.refresh());
-  if (s) { ROLES_T.onHandshake(s); REASONS_T.onHandshake(s); } else { ROLES_T.reset(); REASONS_T.reset(); }   // 握手到了才判断数据表来源；到之前不提示
+  const hsSrc = tablesSrc(s, helloHs);   // #143 data_tables 在 hello 顶层
+  if (s) { ROLES_T.onHandshake(hsSrc); REASONS_T.onHandshake(hsSrc); } else { ROLES_T.reset(); REASONS_T.reset(); }   // 握手到了才判断数据表来源；到之前不提示
   queueMicrotask(() => { renderDataNotice(); renderRoleCard(); });
   if (!s) return;
   S.plotted = s.fields.filter(f => f.name !== "t_ms" && !f.enum);
@@ -455,6 +467,9 @@ function renderRoleCard() {
     const u = await ROLE_TX.send(roles, x => call(ROLE_CONFIRM_OP, { roles: x }));
     if (u) roleUi = u; renderRoleCard();
   };
+  const cm = document.getElementById("role-commit"), cc = document.getElementById("role-cancel");
+  if (cm) cm.onclick = async () => { const pv = roleUi.preview; if (!pv || roleUi.phase !== "preview") return; roleUi = { ...roleUi, phase: "committing" }; renderRoleCard(); const u = await ROLE_TX.commit(pv, a => call(ROLE_CONFIRM_OP, a)); if (u) roleUi = u; renderRoleCard(); };
+  if (cc) cc.onclick = () => { ROLE_TX.reset(); roleUi = { phase: "idle", left: 0 }; renderRoleCard(); };
   if (rt) rt.onclick = () => { ROLE_REQ = null; ROLE_PICKS = {}; ROLE_TX.reset(); roleUi = { phase: "idle", left: 0 }; renderParams(); $("it-go").click(); };
 }
 function renderParams() {
@@ -800,6 +815,7 @@ function renderStatus(st: Msg) {
   if (was && !st.connected) { applyNone(); loadLogs(); hb.clear(); $("ro-lq").textContent = "链路 —"; $("ro-lq").className = "lq mono lq-off"; tl.clear(); AL.reset(); renderAlerts(); }
 }
 function applyNone() {
+  fws.event = null; queueMicrotask(renderFwSafe);   // 断开：重连后侧车会重新判固件
   S.schema = null; ROLES_T.reset(); REASONS_T.reset(); queueMicrotask(() => renderDataNotice()); UNDO.clear(); S.applied = {}; S.edit = {}; S.plotted = []; S.enums = []; S.enumVal = {};
   plot.setChannels([], [], []); $("chans").innerHTML = emptyState("activity", "连上后列出通道"); $("chan-n").textContent = ""; $("plot-sub").textContent = "";
   $("snaps").innerHTML = ""; renderParams();
@@ -863,6 +879,7 @@ function renderIter() {
     if (r) { IT.onStartReply(r, performance.now()); } else rr.disabled = false;
     renderIter();
   };
+  c.querySelectorAll<HTMLElement>("[data-decl-unit]").forEach(a => a.addEventListener("click", e => { e.preventDefault(); openDeclField(a.dataset.declUnit!); }));   // #148
   c.querySelector<HTMLElement>("#it-decl")?.addEventListener("click", e => { e.preventDefault(); openDeclField((e.target as HTMLElement).dataset.field!); });
   if (w && id != null) w.onclick = async () => {   // 人点了才写：确认本地服务那张“采用最好参数”卡（逐个写回 + 回读核对）
     const part = w.dataset.partial === "1";   // #141 降幅：先确认；采用后不记为已验证档（前端不登记任何验证状态）
@@ -900,14 +917,15 @@ link.on(m => {
       if (!S.latched) for (const f of S.plotted) if (f.ref_for) { const a = m.y[f.name]; if (a?.length) { spLast = { name: f.name, v: a[a.length - 1] }; RESTORE.noteSent(spLast.v); break; } }   // 兜底：锁存前最后一次的设定值
       break;
     }
-    case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); break;
+    case "status": runState.fromBoard(m as any); renderStatus(m); hb.add(m.hb); if (BOARD_UID_F.supported in m || BOARD_UID_F.uid in m) setBoardId(m); break;
     case "event": tl.add(m as any); if (AL.offer(m as any)) renderAlerts(); break;
     case "alert_ack": AL.ack(m.upto); renderAlerts(); break;   // 另一个窗口点了“知道了”
     case "schema": applySchema(m.schema); break;
     case "param": S.applied[m.name] = m.value; syncParams(); break;
     case "proposal": renderProposal(m); break;
-    case "error": toast(m as unknown as Err); break;
-    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); sconf.blockers = fromBlockers((m as any).blockers); renderConflict(); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
+    case "error": { const fu = fwUnsafeOf(m), sc = (m as any)[SCHEMA_CONFLICT_F.codeAlt] === SCHEMA_CONFLICT_F.key; if (fu) { fws.event = fu; renderFwSafe(); } if (sc) { sconf.event = conflictOf(m); renderConflict(); } if (!fu && !sc) toast(m as unknown as Err); break; }   // r10w：这两类走横幅，不弹 toast
+    case FW_ESTOP_F.key: fws.event = fwUnsafeOf(m); renderFwSafe(); break;
+    case "progress.changed": renderProgress(m as any, goStepRef); agent.onBlockers((m as any).blockers); sconf.blockers = fromBlockers((m as any).blockers); renderConflict(); fws.blockers = fromBlockersFw((m as any).blockers); renderFwSafe(); if ("project" in m) { hasProject = !!m.project; curProject = m.project ?? null; } if ("project" in m) void proj.show(m.project ?? null); break;   // 侧车推送：状态变化即刷新（轮询仍兜底）
     case SCHEMA_CONFLICT_F.key: sconf.event = conflictOf(m); renderConflict(); break;
     case "agent_notice": if ((m as any).blocker_code === CLEARED_NOTICE) showCleared(); break;   // 与 cleared 事件合并成一张卡
     case "link.state": onLinkState(m as any); showLink(m as any); break;
@@ -955,6 +973,7 @@ link.onState = async open => {
     toast({ code: "recovered", message: h.recovered.message, fix: "" }, "warn", 30000);
     if (S.ports.some(p => p.port === h.recovered.port)) $<HTMLSelectElement>("port").value = h.recovered.port;
   }
+  helloHs = h;
   if (h.schema) { applySchema(h.schema); S.applied = h.params; syncParams(); }
   renderStatus(h.status); loadLogs();
 };
@@ -1109,7 +1128,7 @@ const refreshProgress = async () => { const p: any = await fetchProgress(op => l
   paramsDirty: pending().length > 0,
   selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
+}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); fws.blockers = fromBlockersFw(p.blockers); renderFwSafe(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
 refreshProgressRef = refreshProgress;
 // 切页时先用上一份进度同步重画页头（不等接口往返），避免新页短暂显示上一页的页头
 window.addEventListener("dz-step", () => { if (lastProgress) renderProgress(lastProgress, goStep); void refreshProgress(); });
@@ -1158,10 +1177,11 @@ document.addEventListener("click", e => { const a = (e.target as HTMLElement).cl
 // #141 fix_action edit_declaration：到项目页，能找到这一行（data-decl-key 或文本含字段名）就滚过去高亮；找不到就明说去声明文件改
 function openDeclField(key: string) {
   goStepRef?.("项目" as any);
+  if (!key) return;   // #153 后端没给声明键：只打开项目页，不猜位置
   setTimeout(() => {
     const pg = document.querySelector<HTMLElement>('.page[data-page="项目"]');
     const leaf = key.split(".").pop() || key;   // limit_name 是声明路径（如 link.params.<名>.max_step）：先按 data-decl-key 精确找，再按末段字段名搜
-    const el = [...document.querySelectorAll<HTMLElement>("[data-decl-key]")].find(x => x.dataset.declKey === key) ?? [...(pg?.querySelectorAll<HTMLElement>("input,textarea,code,pre,li,td") ?? [])].find(x => (x.textContent || (x as HTMLInputElement).value || "").includes(leaf));
+    const el = [...document.querySelectorAll<HTMLElement>("[data-decl-key]")].find(x => x.dataset.declKey === key) ?? (key.includes("[") ? undefined : [...(pg?.querySelectorAll<HTMLElement>("input,textarea,code,pre,li,td") ?? [])].find(x => (x.textContent || (x as HTMLInputElement).value || "").includes(leaf)));   // 带 [name=…] 的键（#153 遥测单位）只认 data-decl-key 精确匹配，末段 unit 太泛不按文本搜
     if (el) { el.scrollIntoView({ block: "center" }); el.classList.add("hl"); (el as HTMLInputElement).focus?.(); setTimeout(() => el.classList.remove("hl"), 2400); }
     else toast({ code: "", message: `界面里还没有 ${key} 这一行的编辑框`, fix: `在工程声明文件里找到 ${key} 修改后重新连接` });
   }, 50);
@@ -1171,6 +1191,7 @@ function openDeclField(key: string) {
 import { reasonCodesNotice, REASONS_T } from "./reasoncodes";
 import { ROLES_T } from "./rolecodes";
 import { reasonStatusText } from "./fieldmap";
+import { tablesSrc } from "./datatables";
 import { runSelfcheck, selfcheckHtml, fixGuideZh, SELFCHECK_BTN_HTML } from "./selfcheck";
 function renderDataNotice() { const el = document.getElementById("ro-data"), t = reasonCodesNotice(); if (el) { el.hidden = !t; el.innerHTML = t ? `${esc(reasonStatusText(t))} ${SELFCHECK_BTN_HTML}` : ""; el.title = t; } }
 // 「运行自检」：任何提示里的按钮都走这里（事件委托）
@@ -1182,7 +1203,7 @@ document.addEventListener("click", async ev => {
   if (!b) return;
   let host = document.getElementById("sc-host"); if (!host) { host = document.createElement("div"); host.id = "sc-host"; host.className = "sc-host"; document.body.appendChild(host); }
   host.innerHTML = selfcheckHtml(null);
-  const r = await runSelfcheck({ connected: !!S.status?.connected, call: op => call(op), invoke: tauriInvoke() });
+  const r = await runSelfcheck({ connected: link.open, call: op => call(op), invoke: tauriInvoke() });
   host.innerHTML = selfcheckHtml(r);
 });
 renderDataNotice();

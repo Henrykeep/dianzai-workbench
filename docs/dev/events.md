@@ -235,7 +235,7 @@ Windows 依次试 `JLink.exe`、`JLinkExe`（JDK 的 `jlink.exe` 大小写不敏
 - #123：角色只从握手 `params[i].role` 来（P/I/D/FF/LIM/other 或 null），侧车不按参数名猜（`guess_gain` 已删）；LIM / other 不参与整定。`tools/tunegate.py` 也从握手表（randplant 写的 app.yaml 经 gen_link）取角色，不读 plant.json。
 - `autotune` 角色没声明时返回 `{"verdict":"needs_human","reason":"roles_unconfirmed","missing":[名],"suggested":{名:角色},"message_zh","fix","fix_action":"confirm_roles"}`，不跑。
 - `suggested` 只按结构给：`link.step.u_max` 指向的参数 = `"LIM"`，其余 `null`（要人选），不按名字猜。
-- `{"op":"confirm_roles","roles":{<参数名>: "P"|"I"|"D"|"FF"|"LIM"|"other"},"app_dir"?}`：校验参数名都在握手 params 里、角色在枚举里；写进工程 app.yaml `link.params.<名>.role`（只写工程目录，只改对应行）。成功 `{ok:true, app_yaml, roles, message_zh, fix_action:"rebuild"}`；失败 error `bad_role` / `bad_param`，带 `message_zh` 和 `fix_action:"confirm_roles"`。之后 autotune / iterate 可重试。角色与当前握手一致时直接 `{ok:true, roles, unchanged:true}`、不改文件（幂等，重复点击无害）；错误的 `message_zh` 自带「确认参数角色失败：…；没有写 app.yaml」，不依赖上下文。Agent 工具同名（human 级，卡片标题“确认参数角色”）。
+- `{"op":"confirm_roles","roles":{<参数名>: "P"|"I"|"D"|"FF"|"LIM"|"other"},"app_dir"?,"confirmed"?,"change_id"?}`（#145 两步）：不带 `confirmed` 只预览、**不写任何文件**，返回 `{ok:true, needs_confirm:true, change_id, target, diff, copy_from, message_zh}`；再发 `{"op":"confirm_roles","confirmed":true,"change_id":…}` 才写（change_id 一次性，复用报 `no_change`；预览后文件被改过要重新预览）。只写 `$DZBENCH_HOME/projects/<名>/app.yaml`：app_dir 是仓库 apps/ 或 examples/ 时先把整个应用目录复制到工程目录再写；app_dir 在工程目录之外报 `not_project_dir`。带 `protect` 的参数（schema 或 app.yaml `protect:`）不许给 P/I/D/FF，报 `protect_param_role`（带 `params`、`reason`、`message_zh`、`fix_action:"confirm_roles"`）。其它失败 `bad_role` / `bad_param`。角色与握手一致时 `{ok:true, roles, unchanged:true}`。Agent 工具同名但只能预览，确认必须由人点卡片。
 - `iterate_plan` 没给 dur_ms（或用默认目标）时先实测阶跃时序；测不出来（会话不支持 / 失败）就退默认，结果带 `fallback: ["dur_default"|"span_quarter"|"max_step"]`、`message_zh`（说明退了什么、为什么）和 `fix_action: "measure_step_timing"`。
 
 ## 上位机心跳 / 心跳超时急停
@@ -284,7 +284,7 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 ## 随包数据表 `hello.data_tables`（#136）
 `hello` 返回里多一项 `data_tables: {roles, reason_codes}`，每项为 `{sha256, content}` 或 `null`：
 - `sha256`：对文件原始字节（docs/dev/<名>.json）算的十六进制 SHA-256；`content`：原样解析的 JSON（不改字段）。
-- 文件缺失、不是合法 JSON 或 `schema_version` 不认识 → 该项为 `null`，同时 `progress` 出阻塞项 `{code/reason: "data_file_missing", file, message_zh, fix_action: "reinstall"}`。`reason_codes.json` 尚未生成时为 `null`，不算缺（可选表）。
+- 文件缺失、不是合法 JSON 或 `schema_version` 不认识 → 该项为 `null`，同时 `progress` 出阻塞项 `{code/reason: "data_file_missing", file, message_zh, fix_action: "reinstall"}`。两份都必需（#144）：`reason_codes.json` 缺失 / 损坏同样为 `null` + `data_file_missing`，自检 `ok:false`、CLI 退出 1。结构校验：roles.json 要有非空 `roles`；reason_codes.json 每项要有 `zh`。
 - 查找顺序：安装包解包目录 → `DZBENCH_REPO` → 本仓库根。命令行自检：`python -m dzbench selfcheck-data`（必需表缺失退出 1）。
 - `roles.content`：`{schema_version: 1, roles: [{code, zh}]}`；侧车的 `no_roles` 提示也只读这份。
 
@@ -293,7 +293,7 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 与 `python -m dzbench selfcheck-data`、独立脚本 `python <安装目录>/app/sidecar/selfcheck_data.py`（自己把所在目录放进 sys.path，适配忽略 PYTHONPATH 的嵌入式 Python）是**同一个函数** `datafiles.report()`，脚本打印同一份 JSON，缺必需文件退出 1。面向用户的 `message_zh` 不出现命令行，只说“重新安装工作台”“点『运行自检』”。
 ## #129 降幅测试（题面幅度超过 max_step / 量程）
 - `autotune` 结果和 metrics_card `items[]` 每项加 `amp_reduced: true`、`amp_spec`（题面阶跃幅度）、`amp_tested`（实际测的幅度）、`warning_zh: "按降幅测试，未验题面幅度"`；没降幅时这些字段都不出现。
-- 同时带 `amp_unit`：被阶跃信号（link.step 的 y）在握手里声明的单位；没声明 = `null`（不写死）。
+- 同时带 `amp_unit`：被阶跃信号（link.step 的 y）在握手里声明的单位；没声明 = `null`（不写死）。`amp_unit_decl`：这个单位在 app.yaml 里的声明键路径 `link.telemetry.fields[name=<y>].unit`（没声明单位 = `null`），界面“改单位”直接指过去。
 - 同时带 `retest_blocked_by`：按题面幅度 `amp_spec` 重测会不会被 iterate_start 拒（#109，同一个函数 `dzbench.tuning.steplimit.step_block`）。会被拒 → `{reason:"step_too_large", limit:<声明的 max_step>, limit_unit:<单位或 null>, limit_name:"link.step[<ch>].max_step", message_zh:"题面幅度 X 超过声明的单步上限 M，需先在声明里放宽 max_step 或确认执行器能承受", fix_action:"edit_declaration"}`；能重测 → `null`。
 - 降幅时本来达标的项 `verdict: "partial"`、`verdict_zh: "未验题面幅度"`，整卡 verdict 也是 `partial`，永不给 `pass`。未达标项仍是 `fail`。
 - `tools/tunegate.py`：降幅却给了 pass 算假达标（硬红）。
@@ -315,8 +315,8 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 
 ## schema 冲突 `schema_conflict`（r10 阻塞项）
 板子心跳报的 schema 哈希在本机匹配到**多份内容不同**的 `link_schema.json`（例如两块板来回插，两次编译出同哈希、`wd_timeout_ms` 等不同的格式文件）时，侧车**一份都不用**（不取第一份，也不取最新的一份）：
-- 推事件 `{type:"error", code:"schema_conflict", reason:"schema_conflict", message_zh, fix, fix_action:"clear_schema_cache", hash:"XXXXXXXX", board_uid:"16位小写hex"|null, files:[绝对路径A, 绝对路径B]}`；`status.schema_conflict` 为同一对象（无冲突为 `null`），`status.schema_ok` 为 `false`，不推 `schema` 事件，遥测不解码。
-- `progress` 出阻塞项 `{code/reason:"schema_conflict", hash, board_uid, files:[绝对路径…], message_zh, fix_action:"clear_schema_cache", blocks:[sim, bringup, tune, score, seal]}`（`detail` 里同样有 hash/board_uid/files）。
+- 推事件 `{type:"error", code:"schema_conflict", reason:"schema_conflict", message_zh, fix, fix_action:"clear_schema_cache"|"build", hash:"XXXXXXXX", board_uid:"16位小写hex"|null, files:[{path:绝对路径, kind:"cache"|"build"}…]}`（kind=cache 是侧车缓存 `$DZBENCH_HOME/schemas` 里的拷贝；build = 编译产物 / 工程 / 仓库里的文件。有 cache 份 → fix_action `clear_schema_cache`；只有 build 份，或编译产物与板子 'I' 回包的 wd_timeout_ms 不一致 → `build`（重编重烧））。`clear_schema_cache` 只删 kind=cache 的文件，编译产物、工程和仓库里的文件一律不删；`status.schema_conflict` 为同一对象（无冲突为 `null`），`status.schema_ok` 为 `false`，不推 `schema` 事件，遥测不解码。
+- `progress` 出阻塞项 `{code/reason:"schema_conflict", hash, board_uid, files:[{path, kind}…], message_zh, fix_action:"clear_schema_cache"|"build", blocks:[sim, bringup, tune, score, seal]}`（`detail` 里同样有 hash/board_uid/files）。
 - 修复 op `clear_schema_cache {hash}`（hash 为十六进制串或整数）：界面先出确认卡，确认后再调。只删本机缓存里这个哈希的格式文件（别的哈希不碰），返回 `{ok:true, removed:[绝对路径…]}`；随后推 `{type:"rehandshake", reason:"clear_schema_cache", hash}` 并清掉该哈希的绑定，下一帧心跳重新绑定（本机已无该哈希 → `schema_missing`，需重新编译/放回正确的那份）。动作 id `clear_schema_cache` 见 entrypoints.yaml。
 - 依赖 schema 的写入一律拒绝，错误码 `schema_conflict`（同上 message_zh / fix_action）：写参数、读参数、阶跃、继电器、存 Flash、应用 DATA 帧。急停、停止阶跃、解除急停不受影响。
 - 修法（`fix` 原文）：按当前这块板重新编译烧录固件后重新连接，或删掉不属于这块板的那份格式文件后重新连接。重新连接时侧车重新查找。
@@ -328,6 +328,8 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 - 连上后，收到第一帧**有效的 40 B 心跳**（确认对端是工作台固件）时，侧车发一次 `DATA id=0x7E {'I'}`。心跳急停位 bit10 置位（锁存或 'R' 后输出保持）或侧车 tx_locked 时先不发，等清零后再发：dzctl < 0.17.0 的 link_app 会把未知单字节命令当新指令、清掉 'R' 后的输出保持。2 s 超时从发出时算。
 - 回包 `DATA id=0x7E len=23`（小端）：`'I'`, u8 `info_ver`, u32 `schema_hash`, u32 `wd_timeout_ms`, u8 `uid_supported`, u32 `board_uid_lo`, u32 `board_uid_hi`, u32 `fw_rev`（`board_ident.decode_info`）。
 - **2 s 内没回包**（固件 < dzctl 0.17.0）→ `board_uid:null, uid_supported:false`，推 `{type:"board_id", reason:"fw_too_old", message_zh:"固件版本过旧，不支持板子识别"}`。
+- **板子身份来源（契约）**：`status` 里的 `board_uid` / `uid_supported` / `proto_ver` 只来自侧车解码后的 'I' 握手回包，原样转发，并带 `board_ident_source:"handshake"`；status 里没有任何字段由心跳推算（心跳 offset 4 的芯片 ID 只供内部换口识别 / 急停锁存，不对外）。没回包时三者为 null / false。
+- **fw_estop_unsafe（急停安全最低固件）**：规格 fw-unknown-cmd 854b6a1 `docs/dev/fw-handshake.md`。dzctl 0.18.0 起 'I' 回包 `info_ver=2`、27 B，偏移 23 加 `u32 proto_ver`（major<<16|minor<<8|patch，0.18.0 = `0x00001200`）；`decode_info` 两种布局都收，报 `proto_ver`（info_ver 1 为 null）。fw_rev 仍是 git 短哈希，不用来判版本。最低版本只在 `dzbench/board_ident.py` 的 `MIN_ESTOP_SAFE_PROTO = 0x00001200` 定义。`info_ver < 2`、proto_ver 低于最低、或 2 s 内没回包 → 推 `{type:"fw_estop_unsafe", safe:false, reason:"fw_estop_unsafe", message_zh:"此固件存在急停可被误清除的问题，请重新烧录", fix_action:"reflash", min_version:"0.18.0", version}`，并拒绝一切驱动执行器的操作（set_param / setpoint_set / step_start（含迭代、autotune、tune_autopilot）/ relay / set_run_mode / run_selftest / send_data / send_raw），error `code:"fw_estop_unsafe"`、`fix_action:"reflash"`。读参数、存 flash（W）、烧录、解除急停不拦。`sim:` / `replay:` 端口和没有心跳的非工作台设备不受此限（现有 host-sim 是 0.17）。**拦截开关 `board_ident.ENFORCE_FW_ESTOP` 现为 False**：integration 的 host-sim / e2e 伪串口板仍是 0.17，打开会拦掉 make test 的真仿真 e2e；integration 合入 fw-unknown-cmd 854b6a1 后改 True。检测、事件、status 现在就生效；拦截逻辑在 tests/test_fw_estop_unsafe.py 里打开开关照测。'I' 只在心跳 bit10 清零且未 tx_locked 时发——这条永久保留（旧固件板子会一直存在）。
 - 回包 `uid_supported=0` → `board_uid:null`，`reason:"uid_unsupported"`，文案「此芯片暂不支持板子识别，换板检测不可用」。
 - **交叉核对**：回包的 `schema_hash` 与已绑定的格式文件相同、但 `wd_timeout_ms` 不同（双方都非 0）→ 这份缓存不是这块板的，按 `schema_conflict` 处理（`files` 为那一份缓存文件的绝对路径，`fix_action:"clear_schema_cache"`）。
 - `status.board_uid`：16 位小写十六进制字符串，或 `null`。`status.uid_supported`：bool。`status.board_id_known`：bool。`status.board_id_message_zh`：身份未知时为上面两句之一（过旧固件 / 芯片不支持），否则 `null`。

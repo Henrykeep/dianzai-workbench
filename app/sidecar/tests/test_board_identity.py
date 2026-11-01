@@ -156,7 +156,7 @@ def test_decode_info_layout():
     p = bytes([ord("I"), 1]) + _st.pack("<IIBIII", 0xA1B2C3D4, 1500, 1, 0x89ABCDEF, 0x01234567, 7)
     d = B.decode_info(p)
     assert d == {"info_ver": 1, "schema_hash": 0xA1B2C3D4, "wd_timeout_ms": 1500, "uid_supported": True,
-                 "board_uid": 0x0123456789ABCDEF, "fw_rev": 7}
+                 "board_uid": 0x0123456789ABCDEF, "fw_rev": 7, "proto_ver": None}
     assert B.parse_handshake(d)["board_uid"] == "0123456789abcdef"
     assert B.decode_info(p[:22]) is None and B.decode_info(b"H" + p[1:]) is None
 
@@ -176,7 +176,8 @@ def test_info_reply_wd_mismatch_same_hash_is_schema_conflict(home):
         while s.schema_conflict is None and time.monotonic() - t0 < 3:
             time.sleep(0.02)
         c = s.status()["schema_conflict"]
-        assert c and c["reason"] == "schema_conflict" and c["fix_action"] == "clear_schema_cache"
+        assert c and c["reason"] == "schema_conflict" and c["fix_action"] == "build"   # 编译产物对 'I' 回包：重编重烧，不是清缓存
+        assert c["files"][0]["kind"] == "build"
         assert c["hash"] == f"{sch.hash:08X}" and c["board_uid"] == "0123456789abcdef" and len(c["files"]) == 1
         assert s.schema is None
         with pytest.raises(Exception) as ei:

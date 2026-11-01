@@ -110,6 +110,7 @@ class Session:
         self._was_alive = False
         self._info_asked = False             # 本次连接是否已发过 'I'（只发一次）
         self._info = None                    # 'I' 回包解码结果
+        self.fw_estop: dict | None = None    # board_ident.estop_safety 结果；None = 还没定（'I' 未回也未超时）
         self._info_timer = None
         self._pending_marks: list[tuple[str, str]] = []
         self.bb_recs: list[dict] = []             # 最近一次黑匣子导出（DATA 0x7D）
@@ -637,6 +638,7 @@ class Session:
                             # 有效的 40 B 心跳 = 对端是我们的固件：发一次 'I'。只在心跳急停位(bit10)清零时发：
                             # dzctl < 0.17.0 的 link_app 把未知单字节命令当「新指令」，会清掉 'R' 解除后的输出保持（L->estop）；
                             # bit10 置位（锁存或解除后保持）期间不发，等它清零（输出本已放开）再问，旧固件上发 'I' 才无副作用。
+                            # 永久保留（即使 0.18.0 修好后）：现场还有旧固件板子，问 'I' 之前我们还不知道它是不是旧固件。不许删。
                             if not self._info_asked and not ((self.hb_status or 0) & (1 << 10)) and not self.tx_locked:
                                 self._info_asked = True
                                 threading.Thread(target=self._ask_info, daemon=True).start()
@@ -968,6 +970,7 @@ class Session:
 
     def send_data(self, id_: int, payload: bytes) -> bool:
         """发任意 DATA 帧（应用自定义命令，如 car_2wd 的 id=1 轮速设定）。0x7E/0x7F 走专用接口。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         self._check_tx()
         if id_ in (ID_CMD, ID_ESTOP) or not 0 <= id_ <= 0xFF or len(payload) > 64:
             raise LinkError("bad_frame", f"DATA id={id_} 长度={len(payload)} 不允许", "急停/命令请用专用按钮；payload ≤ 64 字节")
@@ -1008,6 +1011,7 @@ class Session:
     def set_run_mode(self, mode: str, confirmed: bool = False, wait_s: float = 1.5) -> dict:
         """dzctl 0.10.0：切联机/脱机。只能由人发起——界面先弹确认卡，用户点确认后才带 confirmed=True 调用；
         没确认就不发（板子那边也要确认字节，缺了拒切）。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         if mode not in ("tethered", "standalone"):
             raise ValueError(f"mode 只能是 tethered / standalone，收到 {mode!r}")
         from .human_only import require_confirmed
@@ -1030,6 +1034,7 @@ class Session:
 
     def run_selftest(self, wait_s: float = 1.5) -> dict:
         """dzctl 0.12.0：让板子重跑全部自检（'H'），等回执 {'H', u32 fail_mask}。旧固件不回执 → ok=None。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         self._check_tx()
         self.selftest_ack = None
         if not self._send(DATA, ID_CMD, b"H", check=True):
@@ -1053,6 +1058,7 @@ class Session:
 
     def relay(self, loop: int, amp: float, hyst: float, timeout_s: float, wait_s: float = 0.5) -> dict:
         """让板上第 loop 个 PID 的输出换成继电器 ±amp（滞环 hyst，timeout_s 后板子自己恢复），等板子回执。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         self._check_tx()
         self.relay_ack = None
         if not self._send(DATA, ID_RELAY, struct.pack("<Bfff", loop, amp, hyst, timeout_s), check=True):
@@ -1111,6 +1117,7 @@ class Session:
 
     def step_start(self, ch: int, it: int, target: float, dur_ms: int, wait_s: float = 0.5) -> dict:
         """开始一轮板上阶跃（12 B：ch, 0, iter, target, dur_ms）。急停中 / 板子不支持等直接报错。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         import math
         if not 200 <= int(dur_ms) <= 30000 or not math.isfinite(float(target)):
             raise LinkError("bad_step", f"阶跃参数不对：dur_ms={dur_ms} target={target}", "dur_ms 200–30000，target 是有限数")
@@ -1205,6 +1212,7 @@ class Session:
     def setpoint_set(self, name: str, raw) -> dict:
         """只下发设定值（DATA id=1），不跑阶跃实验。急停中拒绝；按 link_schema 校验，不合法 invalid_param，从不钳位。
         其他槽位保持遥测里的当前值。成功后清 sp_before_latch。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         from .schema import _invalid, check_value
         if self.tx_locked:
             raise LinkError("estop_locked", "急停中不下发目标", "确认安全后在界面点“解除急停”，再下发目标", "estop_clear", {"reason": "state"})
@@ -1285,10 +1293,37 @@ class Session:
             time.sleep(0.02)
         if self._info is None and self.tr is gen_tr and gen_tr is not None:
             self._locked(lambda: self.apply_handshake({"fw_too_old": True}))
+            self._set_estop_safety(None)
+
+    def _set_estop_safety(self, info: dict | None) -> None:
+        self.fw_estop = board_ident.estop_safety(info)
+        if not self.fw_estop["safe"] and not self.port.startswith((SIM_PREFIX, "replay:")):
+            self.emit({"type": "fw_estop_unsafe", **self.fw_estop})
+
+    def _check_actuate(self) -> None:
+        """fw_estop_unsafe：驱动执行器的操作（写参数、设定值、阶跃、继电、运行模式、自检、原始/数据发送）前查。
+        读参数、存 flash、烧录不经过这里。host-sim / 回放不受限（仿真里没有真急停电路）。"""
+        if not board_ident.ENFORCE_FW_ESTOP:
+            return
+        if self.port.startswith((SIM_PREFIX, "replay:")) or (self.hb_status is None and self.fw_estop is None):
+            return                               # 仿真、回放、还没认出是工作台固件（没心跳）：不在此列
+        if self.tx_locked or self.iter_busy():
+            return                               # 急停 / 迭代中：让原来更具体的拒绝（estop_clear / iter_busy）先报
+        if self.fw_estop is None and self._info is None:
+            # 'I' 已发（或解除急停后下一帧心跳就发）但回包还没到：最多等一个 'I' 超时，别把身份未定当成旧固件
+            t0 = time.monotonic()
+            while self.fw_estop is None and self._info is None and time.monotonic() - t0 < board_ident.INFO_TIMEOUT_S + 1.0:
+                time.sleep(0.02)
+        st = self.fw_estop or board_ident.estop_safety(self._info)
+        if not st["safe"]:
+            raise LinkError("fw_estop_unsafe", board_ident.ESTOP_UNSAFE_ZH, "到“烧录”步重新烧录 dzctl ≥ " + st["min_version"] + " 的固件",
+                            "reflash", {"reason": "fw_estop_unsafe", "message_zh": board_ident.ESTOP_UNSAFE_ZH, "min_version": st["min_version"],
+                                        "version": st["version"]})
 
     def _on_info(self, info: dict) -> None:
         """'I' 回包：板子身份 + 与缓存 schema 交叉核对（同哈希但 wd_timeout_ms 不同 = schema_conflict）。"""
         self._info = info
+        self._set_estop_safety(info)
         self.apply_handshake(info)          # 先认板（换板会清缓存并重新绑定），再拿绑定好的 schema 交叉核对
         sch = self.schema
         if sch is not None and sch.hash == info["schema_hash"] and info["wd_timeout_ms"] \
@@ -1321,6 +1356,7 @@ class Session:
 
     def send_raw(self, data: bytes) -> bool:
         """原样发字节（给非工作台固件的设备，如 AT 指令）。急停后拒绝。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         self._check_tx()
         if len(data) > 1024:
             raise LinkError("bad_frame", "一次最多发 1024 字节")
@@ -1363,6 +1399,7 @@ class Session:
     def set_param(self, name: str, value: float, verify: bool = False) -> dict:
         """verify=True：写完再单独读一次，和 ACK 报的生效值比对（llm-pid-tuner 的“回读比对”，MIT）。
         Agent 落地参数、恢复快照时用；拖滑条不用（多一次往返）。"""
+        self._check_actuate()                    # fw_estop_unsafe（急停可被误清除的固件）不许驱动执行器
         sch = self.schema
         # #40/#38：按 link_schema.json 校验（范围、类型、单步 max_delta），不合法直接 invalid_param，从不钳位
         v = sch.check(name, value, self.params.get(name)) if sch else check_value(name, value)
@@ -1544,7 +1581,9 @@ class Session:
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
                   "schema_ok": self.schema is not None,
                   "schema_conflict": self.schema_conflict.as_dict() if self.schema_conflict is not None else None,
+                  # 板子身份只来自解码后的 'I' 握手回包（board_ident），原样转发；心跳里的芯片 ID（self.board_uid）只给内部换口/锁存用，不进 status
                   "board_uid": self.board_id.get("board_uid"), "uid_supported": self.board_id.get("uid_supported"),
+                  "proto_ver": (self._info or {}).get("proto_ver"), "board_ident_source": "handshake",
                   "board_id_known": self.board_id.get("board_id_known"), "board_id_message_zh": self.board_id.get("message_zh"), "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "reconnect_attempt": self.reconnect_attempt, "stall_s": self.stall_s, "raw_dropped": self.raw_dropped,
