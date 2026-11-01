@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """#78 随机对象门禁：没见过的被控对象上，后端通用整定（dzbench.tuning.autotune）必须
-  - feasible 对象：比初值好，并接近 plant.json reference（同幅度、同时长、无噪声的真值上比代价）；给了 pass 但真值不达标 = 假达标 → 红；
+  - feasible 对象：比初值好，并接近 reference（同幅度、同时长，按 randplant noise_std 带噪闭环、K=8 个判卷专用噪声种子、取加噪前真输出代价的均值比较；无噪代价只作诊断）；给了 pass 但无噪或带噪真值不达标 = 假达标 → 红；
   - feasible:false 对象：verdict 必须是 fail/unknown，原因类别对得上（saturation / delay / nonminimum_phase）；给 pass = 红。
 失败一律打印 seed，`tunegate.py --seed N` 单独复现。
 
@@ -98,10 +98,11 @@ def main(argv=None) -> int:
     print(f"tunegate：用时 {time.monotonic() - t_start:.1f} s")
     if S["bad"]:
         print(f"::warning::tunegate 通过率 {S['good']}/{S['den']}；未通过 seed {','.join(map(str, S['bad']))}")
-    fake, early = S["false_pass"], S["early_stop_not_pass"]
+    fake, early, worse = S["false_pass"], S["early_stop_not_pass"], S["worse_not_reverted"]
     print(f"tunegate：假达标 {len(fake)} 个、可行对象提前停未达标 {len(early)} 个（硬门禁，都必须 0）"
           + (f"：seed {','.join(map(str, fake + early))}" if fake or early else "") + f"；通过率 {S['good']}/{S['den']}（软指标，未通过只警告）")
-    return 1 if fake or early else 0
+    print(f"tunegate：比初值差且没退回 {len(worse)} 个（带噪真值，硬门禁，必须 0）" + (f"：seed {','.join(map(str, worse))}" if worse else ""))
+    return 1 if fake or early or worse else 0
 
 
 if __name__ == "__main__":

@@ -113,6 +113,28 @@ def simulate(plant, model, p, amp, n, rng=None):
     return np.arange(n) * dt, r, y, u
 
 
+def simulate_noisy(plant, model, p, amp, n, rng):
+    """判卷用带噪仿真：传感器噪声按 randplant 的 noise_std（零均值高斯，加在测量上，控制器看到的是带噪 y），
+    同时记下加噪前的真输出。返回 (t, r, y_true, y_meas, u)。与 SimBoard / simulate 用同一对象、死区和噪声模型。"""
+    f = model.stepper()
+    dz, sd = plant["deadzone"], plant["noise_std"]
+    yt: list[float] = []
+
+    def g(u):
+        ue = 0.0 if abs(u) < dz else u - math.copysign(dz, u)
+        y = f(ue)
+        yt.append(y)
+        return y + (float(rng.normal(0, sd)) if sd else 0.0)
+    dt = plant["sample_s"]
+    r = np.full(n, float(amp))
+    y, u = AT.pid_loop(g, p, r, dt, plant["u_max"])
+    ytrue = np.full(n, math.nan)
+    ytrue[:len(yt)] = yt[:n]
+    if not np.all(np.isfinite(y)):                 # pid_loop 发散时截断：真输出同样记为 NaN
+        ytrue[~np.isfinite(y)] = math.nan
+    return np.arange(n) * dt, r, ytrue, y, u
+
+
 def reference(plant, app, amp, tries=260):
     import control
     m = AT.LinModel(control.c2d(control.tf(plant["num"], plant["den"]), plant["sample_s"]), round(plant["delay_s"] / plant["sample_s"]))
