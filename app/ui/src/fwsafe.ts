@@ -14,8 +14,8 @@ export const fromBlockersFw = (bs: any[] | null | undefined) => { for (const b o
 // 驱动执行器的控件 = 写入控件减去：烧录（fw-flash）、存 flash（tb-save）、读黑匣子（pre-bbtn）
 export const KEEP_IDS = ["fw-flash", "tb-save", "pre-bbtn", "fw-build"];
 export const ACTUATE_SEL = WRITE_SEL.split(",").filter(s => !KEEP_IDS.some(k => s.trim() === "#" + k)).join(",") + ",#seal-selftest,#sp-restore";
-export function lockActuateIn(root: ParentNode, on: boolean) {
-  if (on) root.querySelectorAll<any>(ACTUATE_SEL).forEach(e => { if (!e.dataset.fwsafe) { e.dataset.fwsafeTitle = e.title || ""; e.dataset.fwsafe = e.disabled ? "was" : "1"; } e.disabled = true; e.title = Z.why; });
+export function lockActuateIn(root: ParentNode, on: boolean, why: string = Z.why) {
+  if (on) root.querySelectorAll<any>(ACTUATE_SEL).forEach(e => { if (!e.dataset.fwsafe) { e.dataset.fwsafeTitle = e.title || ""; e.dataset.fwsafe = e.disabled ? "was" : "1"; } e.disabled = true; e.title = why; });
   else root.querySelectorAll<any>("[data-fwsafe]").forEach(e => { e.disabled = e.dataset.fwsafe === "was" || !!e.dataset.estop || !!e.dataset.sconf; e.title = e.dataset.fwsafeTitle ?? ""; delete e.dataset.fwsafe; delete e.dataset.fwsafeTitle; });
 }
 export function fwBannerHtml(u: FwUnsafe, esc: (s: string) => string): string {

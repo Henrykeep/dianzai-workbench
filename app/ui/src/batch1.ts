@@ -1,10 +1,12 @@
 import { simBoardZh } from "./examples";
+import { reasonText } from "./actgate";
 // r9 batch-1 纯逻辑（无 DOM）：连接标签、仿真/实机标签、迭代锁、param_reject 文案、首页三步引导
 export type LinkTag = { text: string; tone: "ok" | "off" | "busy" };
 // 连接状态只看 link.state：已连接 / 断开+原因 / 重连中（已等 X s，Y s 后再试）
 export function linkTag(m: { board?: string; reason?: string; cause_zh?: string; message_zh?: string } | null, since: number | null, now: number, nextS?: number | null, sidecarUp = true): LinkTag {
   if (!sidecarUp) return { text: "本地服务未连接", tone: "off" };   // #73 侧车不在时板子状态无从得知，绝不显示「已连接」
   const b = m?.board;
+  if (m?.reason === "resuming") return { text: reasonText("resuming", m, "正在恢复连接"), tone: "busy" };   // r10x 恢复中即使 board=connected 也绝不显示「已连接」
   if (b === "connected") return { text: "已连接", tone: "ok" };
   if (b === "lost" || m?.reason === "resuming") {
     const el = since != null ? Math.max(0, Math.round((now - since) / 1000)) : 0;

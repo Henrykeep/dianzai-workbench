@@ -243,7 +243,7 @@ selftest:
 # 测试前后给仓库拍快照：测试在仓库树里留下文件（boards/zz-test-*、build/zz-test-*、未跟踪文件）就失败
 test check: TREE_SNAP := $(shell mktemp 2>/dev/null || echo /tmp/dz-tree-$$$$)
 test:
-	@tools/require_fetch.sh   # 缺 third_party/CMSIS_6 → 「缺少 third_party/CMSIS_6，请先运行 make fetch」并退出非零
+	@tools/require_fetch.sh   # 缺 third_party/CMSIS_6 → 「缺少第三方依赖 CMSIS_6，请先运行 make fetch」并退出非零
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(MAKE) -C tests/host
 	tools/test_fetch_retry.sh   # 第三方下载重试 + sha256（CI 41199129663 curl exit 56）

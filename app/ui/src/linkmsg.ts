@@ -1,9 +1,10 @@
+import { reasonText } from "./actgate";
 // link.state 的 reason → 横幅文案；以及“重连后板子保持待机”的前端状态模型。
 // 硬规矩：重连后界面不自动重发任何运动指令/目标值/参数；运行态只认板子上报，断线即视为未知，重连后默认待机。
-export type LinkMsg = { board?: string; reason?: string; stale_after_ms?: number; mode?: string };
+export type LinkMsg = { board?: string; reason?: string; message_zh?: string; stale_after_ms?: number; mode?: string };
 export type LinkView = { text: string; tone: "neutral" | "warn" | ""; portAttn: boolean };
 export function linkView(m: LinkMsg): LinkView {
-  if (m.board === "lost" && m.reason === "resuming") return { text: "连接中断，正在重连…", tone: "neutral", portAttn: false };
+  if (m.reason === "resuming") return { text: reasonText("resuming", m, "正在恢复连接"), tone: "neutral", portAttn: false };   // r10x 文案取原因表 / message_zh
   if (m.board === "disconnected" && m.reason === "port_not_found") return { text: "未找到上次使用的板子。请检查 USB 连接后点「连接」。", tone: "warn", portAttn: false };
   if (m.board === "disconnected" && m.reason === "port_ambiguous") return { text: "检测到多块同型号的板子，请选择要连接的端口。", tone: "warn", portAttn: true };
   return { text: "", tone: "", portAttn: false };
