@@ -17,7 +17,7 @@ export const lastResortZh = (ua = typeof navigator !== "undefined" ? navigator.u
   /Windows/i.test(ua) ? "请运行开始菜单里的『芯台 自检』" : "请运行应用菜单里的『芯台 自检』，或按使用说明里的「自检」一节操作";
 export async function runSelfcheck(o: { connected: boolean; call: (op: string) => Promise<any>; invoke?: ((cmd: string) => Promise<any>) | null }): Promise<SelfResult> {
   let svcErr = "";
-  if (o.connected) {
+  if (o.connected) {   // connected = 本地服务（WebSocket）连着；不要求板子在线，selfcheck_data 只查数据文件
     try { const p = parseSelf(await o.call(SELFCHECK_F.op)); if (p) return { src: "service", ...p }; svcErr = "本地服务的自检回复看不懂"; }
     catch (e: any) { svcErr = (typeof e?.message_zh === "string" && e.message_zh) || "本地服务不支持自检（可能是旧版本或模拟器）"; }
   }
