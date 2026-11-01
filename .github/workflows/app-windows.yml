@@ -90,6 +90,7 @@ jobs:
             --python-option "X utf8" \
             --add-data "third_party/packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack;packs" \
             --add-data "docs/dev/roles.json;docs/dev" \
+            --add-data "docs/dev/reason_codes.json;docs/dev" \
             --paths app/sidecar --paths host/python --paths third_party/vendored/stm32_mcp_discovery \
             --paths tools --hidden-import dzstep \
             --hidden-import serial.tools.list_ports --collect-submodules pypdf \
@@ -97,7 +98,7 @@ jobs:
           mkdir -p app/src-tauri/binaries
           cp dist/dzbench.exe app/src-tauri/binaries/dzbench-x86_64-pc-windows-msvc.exe
           # 冻结后的 exe 不读 PYTHONUTF8/PYTHONIOENCODING（41261322550 cp1252 红）：用 --python-option "X utf8" 把 UTF-8 模式编进包；这里故意不设环境变量，模拟双击/Tauri 调用
-          (cd dist && DZBENCH_REPO= ./dzbench.exe selfcheck-data)   # 随包数据文件（roles.json）在包里，缺就红
+          (cd dist && DZBENCH_REPO= ./dzbench.exe selfcheck-data)   # 随包数据文件（roles.json、reason_codes.json）在包里，缺就红
       - name: 冒烟：打包后的侧车能在本进程里跑 tools/*.py
         shell: bash
         working-directory: app/dz-repo

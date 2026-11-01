@@ -101,13 +101,14 @@ void dzctl_info(const dzctl_table_t *t, uint32_t wd_timeout_ms, uint8_t seq, dzf
     memset(out, 0, sizeof *out);
     out->kind = DZF_DATA; out->id = DZCTL_ID_CMD; out->seq = seq;
     (void)dzframe_put_u8(out, (uint8_t)DZCTL_CMD_INFO);
-    (void)dzframe_put_u8(out, DZCTL_INFO_VER);
+    (void)dzframe_put_u8(out, DZCTL_INFO2_VER);
     (void)dzframe_put_u32(out, t ? t->schema_hash : 0u);
     (void)dzframe_put_u32(out, wd_timeout_ms);
     (void)dzframe_put_u8(out, u != 0u ? 1u : 0u);              /* uid_supported */
     (void)dzframe_put_u32(out, (uint32_t)u);
     (void)dzframe_put_u32(out, (uint32_t)(u >> 32));
     (void)dzframe_put_u32(out, dzctl_fw_rev());
+    (void)dzframe_put_u32(out, DZCTL_PROTO_VER);                /* 0.18.0 info_ver 2 */
 }
 
 void dzctl_selftest_report(uint32_t fail_mask, uint32_t t_ms) { s_st_mask = fail_mask; s_st_t = t_ms ? t_ms : 1u; }

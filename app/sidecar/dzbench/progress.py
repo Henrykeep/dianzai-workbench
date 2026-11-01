@@ -45,15 +45,17 @@ ACTIONS = {
     "score": "评分项逐项验收",
     "precontest": "赛前全绿检查与封箱清单",
     "reinstall": "重新安装工作台",
+    "clear_schema_cache": "清除本机格式缓存并重新识别",
 }
 
-BLOCKER_CODES = ("data_file_missing", "no_board", "missing_deps", "gains_zero", "estop", "selftest_fail", "params_not_saved")
-FIX = {"data_file_missing": "reinstall", "no_board": "connect", "missing_deps": "fetch_deps", "gains_zero": "tune_relay",
+BLOCKER_CODES = ("data_file_missing", "schema_conflict", "no_board", "missing_deps", "gains_zero", "estop", "selftest_fail", "params_not_saved")
+FIX = {"data_file_missing": "reinstall", "schema_conflict": "clear_schema_cache", "no_board": "connect", "missing_deps": "fetch_deps", "gains_zero": "tune_relay",
        "estop": "estop_clear", "selftest_fail": "run_selftest", "params_not_saved": "params_flash"}
 STEP_ACTION = {"req": "project_flow", "project": "project_flow", "sim": "build", "bringup": "cal_polarity",
                "tune": "tune_relay", "score": "score", "seal": "precontest"}
 # 每类阻塞挡住哪些步骤（"mode:standalone" = 切换到脱机模式）
 BLOCKS = {"data_file_missing": ["tune"],
+          "schema_conflict": ["sim", "bringup", "tune", "score", "seal"],   # 显示和写入都依赖 schema
           "no_board": ["sim", "bringup", "tune", "score", "seal"],
           "missing_deps": ["project", "sim"],
           "gains_zero": ["tune"],
@@ -91,6 +93,12 @@ def blockers(f: dict) -> list[dict]:
         why = LINK_REASON.get((f.get("link") or {}).get("reason") or "", "")
         out.append(_blocker("no_board", "未连接板子" + (f"：{why}。" if why else "。")))
         return out                       # 板子不在线时，板上状态（急停、自检、参数）均不可信，不再判
+    sc = f.get("schema_conflict")
+    if sc:                                               # 同哈希多份不同内容的 link_schema.json：一份都不用（schema.find_by_hash）
+        b = _blocker("schema_conflict", sc["message_zh"], {"hash": sc.get("hash"), "board_uid": sc.get("board_uid"), "files": sc.get("files")})
+        b.update({"reason": "schema_conflict", "message_zh": sc["message_zh"], "hash": sc.get("hash"),
+                  "board_uid": sc.get("board_uid"), "files": sc.get("files")})
+        out.append(b)
     if f.get("estop"):
         b = _blocker("estop", "急停已锁存" + (f"：{f['estop_reason']}" if f.get("estop_reason") else "。"),
                      f.get("estop_cause"))
@@ -163,7 +171,7 @@ def derive(f: dict) -> dict:
     else:
         nxt = {"title": "全部完成", "action": "", "hint": "各步骤均已完成，可导出封箱清单存档。"}
     return {"steps": steps, "current": current, "next": nxt,
-            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks", "source", "detail", "reason", "file", "message_zh") if k in b} for b in bl],
+            "blockers": [{k: b[k] for k in ("code", "message", "fix_action", "blocks", "source", "detail", "reason", "file", "message_zh", "hash", "board_uid", "files") if k in b} for b in bl],
             "mode": f.get("mode"), "project": f.get("project"),
             **{k: (f.get("fw") or {}).get(k) for k in FW_FIELDS}}
 
@@ -236,6 +244,7 @@ def collect(s, svc=None, deps: list[dict] | None = None) -> dict:
         "link": {"board": link.get("board"), "reason": link.get("reason")},
         "mode": link.get("mode") or (fw.get("run_mode") or {}).get("mode"),
         "schema_ok": bool(st.get("schema_ok")),
+        "schema_conflict": st.get("schema_conflict"),
         "fw_rev": st.get("fw_rev"),
         "project": proj,
         "req_items": _project.req_items(proj),

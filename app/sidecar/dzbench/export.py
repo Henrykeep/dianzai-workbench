@@ -12,7 +12,14 @@ import struct
 
 from ._dzlink import DATA, HEARTBEAT, Parser
 from .logfile import RX, read_log
-from .schema import Schema, find_by_hash
+from .schema import Schema, SchemaConflict, find_by_hash as _find
+
+
+def find_by_hash(h: int):
+    try:
+        return _find(h)
+    except SchemaConflict as e:          # 同哈希多份不同内容：不挑一份去解码
+        raise ExportError(e.message_zh, e.fix_zh) from e
 from .textparse import KvParser
 
 

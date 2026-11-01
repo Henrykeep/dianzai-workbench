@@ -61,3 +61,17 @@ def test_project_switch_example(tmp_path, monkeypatch):
     for bad in ("../x", "nope"):
         with pytest.raises(GatewayError):
             svc.project_switch_example(bad)
+
+
+def test_card_round_id_same_round(tmp_path):
+    """#147：卡片带 round_id，且 params / metrics 与 best 同一轮。"""
+    seen = {}
+    svc = _card_svc(tmp_path, True)
+    svc.gate = lambda op, args, fn: seen.update(args) or {"action_id": 7, "args": args}
+    res = {**RES, "best": {**RES["best"], "metrics": {"sse": 3.0}}}
+    svc._best_card(res)
+    c = res["card"]
+    assert c["round_id"] == c["iter"] == res["best"]["iter"] == seen["round_id"]
+    assert c["params"] == res["best"]["params"] == seen["params"]
+    assert c["metrics"] == res["best"]["metrics"] == seen["metrics"]
+    assert c["params_hash"] == res["best"]["params_hash"]

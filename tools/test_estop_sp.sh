@@ -26,10 +26,12 @@ PY
   cc "$d/estop_sp.o" $objs -fsanitize=address,undefined -lm -o "$d/estop_sp"
   bad=0; lw=0; lsum=0
   for k in $(seq 0 $((N-1))); do
-    read -r _ lb cb ub pb nt lz < <("$d/estop_sp" $k "$types" "$flags" $V)
+    read -r _ lb cb ub pb nt lz pre < <("$d/estop_sp" $k "$types" "$flags" $V)
     if [ "$lz" -lt 0 ]; then echo "✗ [estop/sp] $a 相位 $k: 锁存后 sp 一直没归零"; fail=1; bad=$((bad+1)); continue; fi
     [ "$lz" -gt "$lw" ] && lw=$lz; lsum=$((lsum+lz))
     if [ "$nt" -lt 50 ]; then echo "✗ [estop/sp] $a 相位 $k: 遥测太少（$nt 帧）"; fail=1; bad=$((bad+1)); continue; fi
+    read -r _ _ _ _ _ _ _ pre0 < <(ESTOP_NOFUZZ=1 "$d/estop_sp" $k "$types" "$flags" $V)
+    if [ "$pre" != "$pre0" ]; then echo "✗ [estop/sp] $a 相位 $k: 急停前乱流改了设定值（与无乱流对拍不一致）"; fail=1; bad=$((bad+1)); continue; fi
     if [ "$lb" != 0 ] || [ "$cb" != 0 ] || [ "$ub" != 0 ] || [ "$pb" != 0 ]; then
       echo "✗ [estop/sp] $a 相位 $k 场景 $((k%4)): 锁存中 sp≠0 ${lb} 帧，'R' 后 sp≠0 ${cb} 帧，u≠0 ${ub} 帧，PWM 变 ${pb} 次"; fail=1; bad=$((bad+1)); fi
   done
