@@ -216,7 +216,7 @@ export const COMMIT_SENT_ZH = "已发出，等后端结果";
 // #116 最好一轮在台账里是无效 / 发散：不显示、不给「采用」
 export const NO_STABLE_ZH = "发散，未找到稳定参数";
 // 参数角色确认：自动整定回 needs-manual + fix_action confirm_roles，带 missing[参数名] / suggested{名: 角色}；握手参数表可带 role（只读显示）
-export const ROLE_F = { fix: "fix_action", confirm: "confirm_roles", missing: "missing", suggested: "suggested", reason: "reason_zh", paramRole: "role" } as const;
+export const ROLE_F = { fix: "fix_action", confirm: "confirm_roles", missing: "missing", suggested: "suggested", reason: "reason_zh", msg: "message_zh", code: "reason", unconfirmed: "roles_unconfirmed", paramRole: "role" } as const;   // events.md：autotune 回 {verdict:needs_human, reason:roles_unconfirmed, missing, suggested, message_zh, fix, fix_action:confirm_roles}
 export const ROLE_CONFIRM_OP = "confirm_roles";   // 定稿：confirm_roles {roles:{name: code}} → {ok, roles} 或 {message_zh, fix_action}
 export const ROLE_REPLY_F = { ok: "ok", roles: "roles", msg: "message_zh", fix: "fix_action" } as const;
 export const ROLE_SENDING_ZH = "已发出，等后端结果";
@@ -226,14 +226,29 @@ export const ROLE_NO_FLASH_ZH = "改角色不用重新烧录", ROLE_LIM_ZH = "�
 export const ROLE_SUGGEST_ZH = "建议，待确认", ROLE_BTN_ZH = "确认角色", ROLE_RETRY_ZH = "重试整定";
 
 // #141 复测被挡：partial 卡 retest_blocked_by = null（可复测）| {reason: step_too_large, limit, limit_unit, message_zh, fix_action: edit_declaration}
-export const RETEST_F = { name: "limit_name", obj: "retest_blocked_by", reason: "reason", limit: "limit", unit: "limit_unit", msg: "message_zh", fix: "fix_action", editDecl: "edit_declaration" } as const;
+export const RETEST_F = { name: "limit_name" /* 如 link.step[<ch>].max_step */, obj: "retest_blocked_by", reason: "reason", limit: "limit", unit: "limit_unit", msg: "message_zh", fix: "fix_action", editDecl: "edit_declaration" } as const;
 // 兜底：握手 schema.step[] 的 max_step（工程声明的单次最大阶跃）
 export const DECL_STEP_F = { list: "step", max: "max_step" } as const;
 // 采用回执：verified:false + unverified_reason（amp_reduced）→ 提示未记为已验证档；前端不发任何「未验证」标志
 export const ADOPT_F = { verified: "verified", why: "unverified_reason", ampReduced: "amp_reduced" } as const;
 
 // 数据文件兜底不静默：缺失 / 格式错 分开说
-export const DATA_FIX_ZH = "修复：运行 python -m dzbench selfcheck-data";
+export const DATA_FIX_ZH = "点『运行自检』查看原因";
+export const DATA_FIX_DEV = "（开发：python -m dzbench selfcheck-data）";   // 命令只在开发模式显示
+// 自检：op selfcheck_data → {ok, items:[{file, status: ok|missing|invalid, message_zh, fix_action}]}；本地服务连不上时 Tauri 命令 run_selfcheck（只跑安装目录里固定的脚本，见 src-tauri/src/main.rs SELFCHECK_*）
+export const SELFCHECK_F = { op: "selfcheck_data", tauriCmd: "run_selfcheck", ok: "ok", items: "items", file: "file", status: "status", msg: "message_zh", fix: "fix_action", scriptWin: "app/sidecar/selfcheck_data.py", pyWin: "python/python.exe", sh: "xintai-selfcheck.sh" } as const;
+export const SELFCHECK_ST_ZH: Record<string, string> = { ok: "正常", missing: "缺失", invalid: "格式错误" };
+export const SELFCHECK_FILE_ZH: Record<string, string> = { "roles.json": "角色表", "reason_codes.json": "原因表" };
+export const SELFCHECK_FIX_ZH: Record<string, [string, string]> = { reinstall: ["重新安装", "用最新的芯台安装包重新安装一次（会保留工程和设置），装完重开芯台再点『运行自检』。"], update: ["更新", "更新到最新版芯台后重开，再点『运行自检』。"] };
 export const dataNoticeZh = (what: string, st: "ok" | "missing" | "bad") => st === "ok" ? "" : `${what}${st === "missing" ? "缺失" : "格式错误"}，已使用内置列表。${DATA_FIX_ZH}`;
 // 状态栏短句：「原因表缺失，已用内置列表 · 修复：python -m dzbench selfcheck-data」
-export const reasonStatusText = (t: string) => t ? `${t.split("，")[0]}，已用内置列表 · 修复：${DATA_FIX_ZH.replace(/^修复：运行 /, "")}` : "";
+export const reasonStatusText = (t: string) => t;   // 状态栏原样显示提示，旁边放「运行自检」按钮
+// 握手里的数据表（暂定名）：data_tables {roles:{sha256, content}, reason_codes:{sha256, content}}
+export const DATA_TABLES_F = { obj: "data_tables", sha: "sha256", content: "content", roles: "roles", reasons: "reason_codes" } as const;
+// reason_codes.json kind ∈ round | abort | stop | diverge（events.md #139）
+export const REASON_KIND_F = { kind: "kind", diverge: "diverge", abort: "abort" } as const;
+// 指标卡补充（暂定名）：causes[{code, evidence: strong|medium|weak, basis_zh}] + 卡级 verdict_zh；unchanged:true + 每项 margin；stop_reason converged|budget_exhausted|at_limit（+ stop_reason_zh）
+export const MC_X_F = { causes: "causes", code: "code", ev: "evidence", basis: "basis_zh", verdictZh: "verdict_zh", unchanged: "unchanged", margin: "margin", marginZh: "margin_zh", stop: "stop_reason", stopZh: "stop_reason_zh", name: "name", unit: "unit", value: "value" } as const;
+export const EVIDENCE_ZH: Record<string, string> = { strong: "证据强", medium: "证据中等", weak: "证据弱" };
+export const MC_STOP_ZH: Record<string, string> = { converged: "已收敛：再调也没有明显改进", budget_exhausted: "预算用完：轮数或时间到了，结果不一定是最好", at_limit: "参数到了声明的上下限，再往外调被挡住" };
+export const UNCHANGED_ZH = "初值已满足题面，本次没有改动参数";
