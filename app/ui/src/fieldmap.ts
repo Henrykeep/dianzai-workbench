@@ -259,7 +259,7 @@ export const UNCHANGED_ZH = "初值已满足题面，本次没有改动参数";
 // 握手里的板子身份（暂定名）：board_uid 16 位十六进制或 null；uid_supported 布尔
 export const BOARD_UID_F = { uid: "board_uid", supported: "uid_supported", source: "board_ident_source", handshake: "handshake" } as const;
 // r10w：带 board_ident_source 且不是 handshake → 这份身份不可信，忽略；没这个键 → 照旧
-export const identTrusted = (src: any) => !src || !(BOARD_UID_F.source in src) || src[BOARD_UID_F.source] === BOARD_UID_F.handshake;
+export const identTrusted = (src: any) => !src || !(BOARD_UID_F.source in src) || src[BOARD_UID_F.source] === BOARD_UID_F.handshake || src[BOARD_UID_F.source] === "pending";   // pending → boardIdOf 显示「正在识别」
 export const BOARD_UID_ZH = { unsupported: "此芯片暂不支持板子识别，换板检测不可用", unread: "未读到板子身份" } as const;
 // 工程/板子结构冲突（暂定名）：握手或事件 schema_conflict {message_zh, fix_action}，或 blockers 里 code=schema_conflict；为 null / 缺省 = 已解决
 export const SCHEMA_CONFLICT_F = { key: "schema_conflict", code: "reason", codeAlt: "code", codeAlt2: "blocker_code", hash: "hash", uid: "board_uid", msg: "message_zh", fix: "fix_action", resolved: "resolved", files: "files" } as const;
@@ -269,14 +269,13 @@ export const SCHEMA_CONFLICT_ZH = { title: "结构冲突，已暂停写参数", 
 
 // #148 amp_unit = null：数值照显示，后面挂「（单位未声明）」链接到项目页对应声明（复用 data-decl-key 高亮）
 export const UNIT_UNDECL_ZH = "（单位未声明）";
-// r10w：声明位置在 link.telemetry.fields[name=<阶跃 y>].unit；后端 unit 为 null 时 amp_unit_decl 也是 null，前端按阶跃信号 y 自己拼
-export const AMP_UNIT_DECL_KEY = "link.telemetry.fields[].unit";
-export const ampUnitDeclKey = (y?: string | null) => y ? `link.telemetry.fields[name=${y}].unit` : AMP_UNIT_DECL_KEY;
+// #153：声明键只用后端给的 amp_unit_decl（形如 link.telemetry.fields[name=<y>].unit），前端不自己拼；没给 → 链接只打开项目页
+export const AMP_UNIT_DECL_RE = /^link\.telemetry\.fields\[name=[^\]]+\]\.unit$/;
 export function ampLineHtml(x: any, esc: (s: string) => string): string {
   const t = ampLine(x); if (!t) return "";
   const own = (a: any) => a && typeof a === "object" && str(a[MC_F.unit]);
   if (str(x?.[MC_F.ampUnit]) || own(x?.[MC_F.ampSpec]) || own(x?.[MC_F.ampTested])) return esc(t);
-  const key = str(x?.[MC_F.ampUnitDecl]) || ampUnitDeclKey(str(x?.y) || str(x?.signal) || str(x?.step?.y));
+  const key = str(x?.[MC_F.ampUnitDecl]) || "";
   return `${esc(t)}<a href="#" class="unit-undecl" data-decl-unit="${esc(key)}" title="到项目页声明单位">${esc(UNIT_UNDECL_ZH)}</a>`;
 }
 
@@ -306,3 +305,11 @@ export function hashTagHtml(x: any, esc: (s: string) => string): string {
 export const REASON_F = { zh: "zh", kind: "kind", causes: "causes", stop: "stop" } as const;
 export const STOP_CAUSE_F = { causes: "causes", stopFlags: ["output_stopped", "stop_output", "stopped", "stop"], zh: "zh", msgZh: "message_zh", code: "code" } as const;
 export const CAUSES_ZH = "可能原因：", OUTPUT_STOPPED_ZH = "已停止输出";
+
+// #150 后端文案里漏出的 Python 空值（「版本 None」）→ 可读中文；只换独立的 None/null/undefined 词
+export const VER_MISSING_ZH = "缺少版本号（文件可能已损坏，请重新安装）";
+export const readableZh = (t: string) => t.replace(/版本\s*(None|null|undefined)(?![A-Za-z])/g, VER_MISSING_ZH).replace(/(?<![A-Za-z_])(None|null|undefined)(?![A-Za-z_])/g, "（空）");
+// #151 握手完成前：board_ident_source=pending 且 uid_supported=null → 「正在识别板子…」，不能说「不支持」
+export const BOARD_PENDING = "pending", BOARD_PENDING_ZH = "正在识别板子…";
+// #154 对轮：run_id（UUID）+ 轮号，两者都有就都要对上
+export const ROUND_BIND_F = { run: "run_id", iter: "iter" } as const;

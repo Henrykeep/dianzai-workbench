@@ -1,12 +1,13 @@
 // 板子身份（握手 board_uid / uid_supported）+ 结构冲突（schema_conflict）阻塞写入。纯逻辑 + 传 root 的 DOM 操作，便于测试
-import { BOARD_UID_F, BOARD_UID_ZH, SCHEMA_CONFLICT_F as SC, SCHEMA_CONFLICT_ZH as Z, SCHEMA_CLEAR_F, SCHEMA_FILE_F as SF, SCHEMA_KIND_ZH, SCHEMA_FIX_ZH } from "./fieldmap";
+import { BOARD_UID_F, BOARD_UID_ZH, SCHEMA_CONFLICT_F as SC, SCHEMA_CONFLICT_ZH as Z, SCHEMA_CLEAR_F, SCHEMA_FILE_F as SF, SCHEMA_KIND_ZH, SCHEMA_FIX_ZH, BOARD_PENDING, BOARD_PENDING_ZH } from "./fieldmap";
 const SCHEMA_CONFLICT_ZH = Z;
 import { WRITE_SEL } from "./batch1";
-export type BoardId = { uid: string | null; supported: boolean; notice: string; short: string };
+export type BoardId = { uid: string | null; supported: boolean; notice: string; short: string; pending?: boolean };
 const HEX16 = /^[0-9a-f]{16}$/i;
 // 握手没带这两个字段 → null（旧本地服务，不提示）
 export function boardIdOf(hs: any): BoardId | null {
   if (!hs || typeof hs !== "object" || !(BOARD_UID_F.supported in hs || BOARD_UID_F.uid in hs)) return null;
+  if (hs[BOARD_UID_F.source] === BOARD_PENDING || hs[BOARD_UID_F.supported] === null) return { uid: null, supported: false, notice: BOARD_PENDING_ZH, short: "", pending: true };   // #151 握手没完：不判「不支持」
   const raw = hs[BOARD_UID_F.uid], uid = typeof raw === "string" && HEX16.test(raw) ? raw.toLowerCase() : null;
   const supported = hs[BOARD_UID_F.supported] === true;
   if (!supported) return { uid: null, supported: false, notice: BOARD_UID_ZH.unsupported, short: "" };
@@ -19,7 +20,7 @@ export function sameBoard(a: BoardId | null, b: BoardId | null): boolean | null 
   return a.uid === b.uid;
 }
 export const uidChipHtml = (b: BoardId | null, esc: (s: string) => string) =>
-  !b ? "" : b.uid ? `<span class="uid-chip mono" title="板子身份 ${esc(b.uid)}">板 ${esc(b.short)}</span>` : `<span class="uid-chip warn-t" data-uid-notice>${esc(b.notice)}</span>`;
+  !b ? "" : b.uid ? `<span class="uid-chip mono" title="板子身份 ${esc(b.uid)}">板 ${esc(b.short)}</span>` : b.pending ? `<span class="uid-chip hint" data-uid-pending>${esc(b.notice)}</span>` : `<span class="uid-chip warn-t" data-uid-notice>${esc(b.notice)}</span>`;
 // 结构冲突：返回 {msg, fix} 或 null（已解决）
 export type ConflictFile = { path: string; kind: string | null };
 export type Conflict = { msg: string; fix: string | null; files: ConflictFile[]; hash: string | null; uid: string | null };

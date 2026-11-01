@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { roleReply, roleCardHtml, RoleSender, diffHtml } from "../src/roles";
-import { conflictOf, conflictBannerHtml } from "../src/boardid";
+import { conflictOf, conflictBannerHtml, boardIdOf, uidChipHtml } from "../src/boardid";
 import { ACTIONS, resolveFix } from "../src/progress";
 import { fwUnsafeOf, fromBlockersFw, ACTUATE_SEL, fwBannerHtml } from "../src/fwsafe";
 import { WRITE_SEL } from "../src/batch1";
-import { ampLineHtml, ampUnitDeclKey, hashTagHtml, shortHash, identTrusted } from "../src/fieldmap";
+import { readableZh, BOARD_PENDING_ZH, AMP_UNIT_DECL_RE, ampLineHtml, hashTagHtml, shortHash, identTrusted } from "../src/fieldmap";
 import { ledgerPick, resultCardHtml, type Stopped } from "../src/iterui";
 import type { LedgerRound } from "../src/ledgerbus";
 import { setReasonCodes, stopCauses } from "../src/reasoncodes";
@@ -65,8 +65,11 @@ const main = readFileSync("src/main.ts", "utf8");
 }
 // 4) amp_unit_decl → link.telemetry.fields[].unit
 {
-  assert.equal(ampUnitDeclKey("y_rps"), "link.telemetry.fields[name=y_rps].unit");
-  assert.match(ampLineHtml({ amp_reduced: true, amp_spec: 2, amp_tested: 1, amp_unit: null, amp_unit_decl: null, y: "speed" }, esc), /data-decl-unit="link\.telemetry\.fields\[name=speed\]\.unit"/);
+  // #153 只用后端的键；没给 → data-decl-unit 空（只打开项目页），不拼、不用 link.step.unit
+  assert.match(ampLineHtml({ amp_reduced: true, amp_spec: 2, amp_tested: 1, amp_unit: null, amp_unit_decl: null, y: "speed" }, esc), /data-decl-unit=""/);
+  assert.ok(AMP_UNIT_DECL_RE.test("link.telemetry.fields[name=spd_a].unit"));
+  for (const f of ["src/fieldmap.ts", "src/main.ts"]) assert.doesNotMatch(readFileSync(f, "utf8"), /link\.step\.unit/);
+  assert.match(main, /if \(!key\) return;/); assert.match(main, /key\.includes\("\["\) \? undefined/);
   assert.match(ampLineHtml({ amp_reduced: true, amp_spec: 2, amp_tested: 1, amp_unit: null, amp_unit_decl: "link.telemetry.fields[name=y].unit" }, esc), /fields\[name=y\]/);
 }
 // 5) #147 round_id / params_hash 对轮 + 短 hash
@@ -98,6 +101,28 @@ const main = readFileSync("src/main.ts", "utf8");
   const r2: any = { reason: "brand_new_code", causes: ["输出饱和", { zh: "负载卡死" }, "no_improve"], output_stopped: true };
   assert.deepEqual(stopCauses(r2), { causes: ["输出饱和", "负载卡死", "连续 3 轮没有改进"], stopped: true });
   assert.equal(stopCauses({ reason: "no_improve" }).stopped, false);
+}
+// #151 pending
+{
+  const b = boardIdOf({ board_uid: null, uid_supported: null, board_ident_source: "pending" })!;
+  assert.ok(b.pending); assert.equal(b.notice, BOARD_PENDING_ZH);
+  const h = uidChipHtml(b, esc); assert.match(h, /正在识别板子…/); assert.doesNotMatch(h, /不支持/);
+  assert.ok(identTrusted({ board_ident_source: "pending" }));
+  assert.match(uidChipHtml(boardIdOf({ uid_supported: false, board_ident_source: "handshake" }), esc), /不支持/);
+}
+// #150 版本 None
+{
+  assert.equal(readableZh("版本 None 本地服务不认识"), "缺少版本号（文件可能已损坏，请重新安装） 本地服务不认识");
+  assert.doesNotMatch(readableZh("x None y"), /None/); assert.equal(readableZh("Nonexistent"), "Nonexistent");
+}
+// #154 run_id + 轮号同时对上
+{
+  const rs: LedgerRound[] = [
+    { n: 1, params: { kp: 1 }, metrics: { overshoot_pct: 50 }, valid: true, runId: "uuid-A", roundId: "1" },
+    { n: 1, params: { kp: 2 }, metrics: { overshoot_pct: 4 }, valid: true, runId: "uuid-B", roundId: "1" },
+  ];
+  const p = ledgerPick({ run_id: "uuid-B", best: { iter: 1, params: { kp: 2 }, round_id: "1" } } as any as Stopped, rs);
+  assert.equal(p.best!.metrics!.overshoot_pct, 4, "同轮号不同 run 不串");
 }
 console.log("r10w ok");
 })().catch(e => { console.error(e); process.exit(1); });

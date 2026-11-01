@@ -87,7 +87,9 @@ export function ledgerPick(r: Stopped, rs: readonly LedgerRound[] = LEDGER.all()
   if (r.best) {
     const rid = (r.best as any)[LEDGER_ROUND_F.roundId] != null ? String((r.best as any)[LEDGER_ROUND_F.roundId]) : null;   // #147 有 round_id 就按它对轮，不按轮号
     const ph = (r.best as any)[LEDGER_ROUND_F.paramsHash] ?? (r as any)[LEDGER_ROUND_F.paramsHash];
-    const hit = rid ? rs.find(x => x.roundId === rid) : typeof ph === "string" && rs.some(x => x.paramsHash === ph) ? [...rs].reverse().find(x => x.paramsHash === ph) : run ? inRun(rs, run).find(x => x.n === r.best!.iter) : undefined;   // 只认同一 run_id 的台账轮，别拿别次迭代的同号轮否决
+    const it = r.best.iter, byRun = run && it != null ? inRun(rs, run).find(x => x.n === it) : undefined;   // #154 run_id + 轮号都有 → 两个都对上才算
+    const byRid = rid ? rs.find(x => x.roundId === rid && (!run || !x.runId || x.runId === run)) : undefined;
+    const hit = byRid ?? (rid ? undefined : byRun ?? (typeof ph === "string" && rs.some(x => x.paramsHash === ph) ? [...rs].reverse().find(x => x.paramsHash === ph)   : undefined));   // 只认同一 run_id 的台账轮，别拿别次迭代的同号轮否决
     if (hit && !hit.valid) return { best: null, unstable: hit.state === "diverged" || saysDiverged(r) };   // #131 只有真发散才说发散
     return { best: !r.best.metrics && hit?.metrics && Object.keys(hit.metrics).length ? { ...r.best, metrics: hit.metrics } : r.best, unstable: false };   // #147 best 没带指标 → 用同 run 同号那一轮的，别拿第 0 轮凑
   }

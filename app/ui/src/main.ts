@@ -1177,10 +1177,11 @@ document.addEventListener("click", e => { const a = (e.target as HTMLElement).cl
 // #141 fix_action edit_declaration：到项目页，能找到这一行（data-decl-key 或文本含字段名）就滚过去高亮；找不到就明说去声明文件改
 function openDeclField(key: string) {
   goStepRef?.("项目" as any);
+  if (!key) return;   // #153 后端没给声明键：只打开项目页，不猜位置
   setTimeout(() => {
     const pg = document.querySelector<HTMLElement>('.page[data-page="项目"]');
     const leaf = key.split(".").pop() || key;   // limit_name 是声明路径（如 link.params.<名>.max_step）：先按 data-decl-key 精确找，再按末段字段名搜
-    const el = [...document.querySelectorAll<HTMLElement>("[data-decl-key]")].find(x => x.dataset.declKey === key) ?? [...(pg?.querySelectorAll<HTMLElement>("input,textarea,code,pre,li,td") ?? [])].find(x => (x.textContent || (x as HTMLInputElement).value || "").includes(leaf));
+    const el = [...document.querySelectorAll<HTMLElement>("[data-decl-key]")].find(x => x.dataset.declKey === key) ?? (key.includes("[") ? undefined : [...(pg?.querySelectorAll<HTMLElement>("input,textarea,code,pre,li,td") ?? [])].find(x => (x.textContent || (x as HTMLInputElement).value || "").includes(leaf)));   // 带 [name=…] 的键（#153 遥测单位）只认 data-decl-key 精确匹配，末段 unit 太泛不按文本搜
     if (el) { el.scrollIntoView({ block: "center" }); el.classList.add("hl"); (el as HTMLInputElement).focus?.(); setTimeout(() => el.classList.remove("hl"), 2400); }
     else toast({ code: "", message: `界面里还没有 ${key} 这一行的编辑框`, fix: `在工程声明文件里找到 ${key} 修改后重新连接` });
   }, 50);
