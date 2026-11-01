@@ -1,5 +1,6 @@
 """硬规则：侧车重启后的自动重连只恢复通信和遥测，绝不重发运行/运动命令或目标值。
 在板子入口（pty → 固件 stdin）记下侧车发出的每一帧来断言，不信侧车自己的说法。"""
+import json
 import os
 import signal
 import struct
@@ -56,14 +57,43 @@ def board(home, tmp_path):
     b.close()
 
 
-def _start(home):
+BOOT = ("import faulthandler,signal,sys,runpy;faulthandler.register(signal.SIGUSR1,file=sys.stderr,all_threads=True);"
+        "sys.argv=['dzbench']+sys.argv[1:];runpy.run_module('dzbench',run_name='__main__')")
+
+
+def _start(home, **env_extra):
+    """侧车 stderr 落到 home/sidecar.err，并注册 SIGUSR1 → faulthandler（#155：卡住时 _stall_dump 取全部线程栈，CI 日志里留证据）。"""
     from wsui import free_port, wait_port
     port = free_port()
-    env = dict(os.environ, PYTHONPATH=SIDECAR, DZBENCH_HOME=str(home))
-    p = subprocess.Popen([sys.executable, "-m", "dzbench", "--port", str(port)], env=env, cwd=SIDECAR,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    env = dict(os.environ, PYTHONPATH=SIDECAR, DZBENCH_HOME=str(home), **env_extra)
+    err = open(home / "sidecar.err", "ab")
+    p = subprocess.Popen([sys.executable, "-c", BOOT, "--port", str(port)], env=env, cwd=SIDECAR,
+                         stdout=subprocess.DEVNULL, stderr=err)
+    err.close()
     wait_port(port)
     return p, port
+
+
+def _stall_dump(p, home) -> str:
+    """超时路径：打印测试进程全部线程栈（faulthandler.dump_traceback）+ 让侧车把全部线程栈写进 sidecar.err，返回给断言消息。"""
+    import faulthandler
+    print("=== test process stacks ===", file=sys.stderr)
+    faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+    try:
+        p.send_signal(signal.SIGUSR1)
+        time.sleep(0.5)
+    except OSError:
+        pass
+    try:
+        return "\n=== sidecar stacks ===\n" + (home / "sidecar.err").read_text(errors="replace")[-12000:]
+    except OSError:
+        return ""
+
+
+def _connected(ui, p, home, t):
+    if until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", t):
+        return True
+    raise AssertionError(f"{t} s 内没自动连回：{ui.ok('hello')['link']}" + _stall_dump(p, home))
 
 
 def sp(board):
@@ -99,7 +129,7 @@ def _run_kill_restart(board, home, estop: bool):
         safe = sp(board)
         p, port = _start(home)
         ui = UI(port)
-        assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 3.5), "3 s 内自动连回"
+        _connected(ui, p, home, 3.5)                            # 3 s 内自动连回（超时留双方线程栈）
         # #155：“已连接”只在上位机心跳真的发出后才报；这里再等心跳帧真的到板子（有上限，不固定睡）
         assert until(lambda: any(f[1] == HEARTBEAT for f in board.rx if f[0] > t_kill), 3.0), "连回后 3 s 内板子没收到上位机心跳"
         time.sleep(0.5)                                         # 再看一小段，确认没有运动/目标/命令帧
@@ -158,7 +188,7 @@ def test_sidecar_only_restart_board_latched_e2e(board, home):
         time.sleep(wd_ms / 1000 + 0.5)
         p, port = _start(home)
         ui = UI(port)
-        assert until(lambda: (ui.ok("hello")["link"] or {}).get("board") == "connected", 6.0), "自动连回"
+        _connected(ui, p, home, 6.0)                            # 自动连回（超时留双方线程栈）
         assert until(lambda: any(f[1] == HEARTBEAT for f in board.rx if f[0] > t_kill), 3.0)
         t0 = time.monotonic()
         r = ui.call("send_data", id=1, hex=GO)
@@ -170,4 +200,52 @@ def test_sidecar_only_restart_board_latched_e2e(board, home):
         assert sp(board)["sp_a"] == 0.0
         ui.close()
     finally:
+        p.kill()
+
+
+def test_resume_no_response_latched_stall(board, home):
+    """#160：急停锁存下只重启侧车，板子不回应（SIGSTOP host-sim）→ 超过 link.resume_bind_timeout_s（这里用声明式设置的
+    环境变量覆盖成 1 s）没绑上 schema：link.state reason=resume_no_response + 中文、推 error 带 fix_action=reconnect，
+    自动重握手一次；全程执行器被拒、不发 'I'/运动帧；板子恢复后连上，急停仍锁存（tx_locked）。"""
+    from wsui import UI
+    p, port = _start(home)
+    try:
+        ui = UI(port)
+        ui.ok("connect", port=str(board.path), baud="auto")
+        wd_ms = wd_timeout_ms(ui.wait(lambda e: e["type"] == "schema"))
+        time.sleep(0.6)
+        ui.ok("estop")
+        ui.close()
+        p.send_signal(signal.SIGKILL)
+        p.wait()
+        time.sleep(wd_ms / 1000 + 0.5)
+        board.proc.send_signal(signal.SIGSTOP)               # 板子“没回应”
+        t_kill = time.monotonic()
+        p, port = _start(home, DZBENCH_RESUME_BIND_TIMEOUT_S="1.0")
+        ui = UI(port)
+        link = until(lambda: (lambda l: l if l.get("reason") == "resume_no_response" else None)(ui.ok("hello")["link"] or {}), 4.0)
+        assert link, json.dumps(ui.ok("hello")["link"], ensure_ascii=False) + (home / "sidecar.err").read_text()[-3000:]
+        assert link["board"] != "connected" and link.get("message_zh") == "重连后板子没有回应，请按『重新连接』", link
+        ev = ui.wait(lambda e: e.get("code") == "resume_no_response", 4.0)
+        assert ev["fix_action"] == "reconnect" and ev["message_zh"] == "重连后板子没有回应，请按『重新连接』"
+        # 自动重握手一次：第二次超时 retrying=False（之后不再自动重来）
+        ev2 = ui.wait(lambda e: e.get("code") == "resume_no_response" and e.get("retrying") is False, 6.0)
+        assert ev2
+        r = ui.call("send_data", id=1, hex=GO)
+        assert r["ok"] is False or r.get("data") is False, json.dumps(r, ensure_ascii=False)   # 执行器全程被拒（或口已关、什么都没发）
+        assert not any(k == DATA and i == 1 for _t, k, i, _pl in board.rx if _t > t_kill), "停滞期间不许有运动帧到板子"
+        board.proc.send_signal(signal.SIGCONT)
+        ui.ok("connect", port=str(board.path), baud="auto")   # 人点“重新连接”
+        _connected(ui, p, home, 6.0)
+        r = ui.call("send_data", id=1, hex=GO)
+        assert r["ok"] is False and (r.get("error") or r).get("code") == "tx_locked", r   # 急停仍锁存
+        assert _forbidden([f for f in board.rx if f[0] > t_kill]) == []
+        time.sleep(0.3)
+        assert sp(board)["sp_a"] == 0.0
+        ui.close()
+    finally:
+        try:
+            board.proc.send_signal(signal.SIGCONT)
+        except OSError:
+            pass
         p.kill()

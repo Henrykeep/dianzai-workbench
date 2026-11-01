@@ -79,6 +79,12 @@
   ],
   "stops_output": true
  },
+ "resume_no_response": {
+  "zh": "重连后板子没有回应，请按『重新连接』",
+  "kind": "blocker",
+  "message_zh": "重连后板子没有回应，请按『重新连接』",
+  "fix_action": "reconnect"
+ },
  "resuming": {
   "zh": "正在恢复连接",
   "kind": "blocker"

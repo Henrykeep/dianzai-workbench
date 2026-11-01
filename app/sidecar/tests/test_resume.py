@@ -141,3 +141,17 @@ def test_rescan_follows_board_to_new_port(home, monkeypatch):
     assert r["resumed"] and r["port"] == "/dev/ttyNEW"
     assert got["a"] == ("/dev/ttyOLD", ("1a86", "7523", "S1"), 0x1234, 0xABCD)
     s.disconnect()
+
+
+def test_resume_bind_timeout_is_declared_setting(monkeypatch):
+    """#160：5 s 是声明式设置 link.resume_bind_timeout_s，环境变量可覆盖；原因码在总表里带 message_zh + fix_action。"""
+    from dzbench import config
+    from dzbench.agent import reason_codes
+    from dzbench.session import Session
+    assert config.DEFAULTS["link"]["resume_bind_timeout_s"] == 5.0
+    monkeypatch.delenv("DZBENCH_RESUME_BIND_TIMEOUT_S", raising=False)
+    assert Session.resume_bind_timeout_s() == 5.0
+    monkeypatch.setenv("DZBENCH_RESUME_BIND_TIMEOUT_S", "1.5")
+    assert Session.resume_bind_timeout_s() == 1.5
+    row = reason_codes.table()["resume_no_response"]
+    assert row["message_zh"] == "重连后板子没有回应，请按『重新连接』" and row["fix_action"] == "reconnect" and row["kind"] == "blocker"

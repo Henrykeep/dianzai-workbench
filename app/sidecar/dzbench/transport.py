@@ -57,6 +57,11 @@ class SerialTransport(Transport):
 
     def close(self) -> None:
         super().close()
+        # #160：先等收线程退出（read 超时 0.02 s）再关口。以前直接关：收线程还卡在 select() 里时内核仍持有这个文件，
+        # 独占锁（flock）要等它返回才放 → 紧接着重开同一个口（重新握手 / 用户点“重新连接”）偶发“被别的程序占着”。
+        th = getattr(self, "_th", None)
+        if th is not None and th is not threading.current_thread():
+            th.join(0.5)
         self.ser.close()
 
 

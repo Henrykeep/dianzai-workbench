@@ -25,9 +25,11 @@ DEFAULTS: dict = {
                             # {"kind":"data","id":1,"fmt":"<ff","low":[0,0],"high":[0.4,0],"y":"spd_a","sp":"sp_a"}
     "step_tests": {},       # 多个对象：{工程名: step_test}；和 step_test（可为列表）一起按“遥测里有 y/sp”自动选
     "serial": {"dtr": None, "rts": None},   # None = 驱动默认；false = 打开串口时不拉 DTR/RTS（ESP32/自动下载电路防复位）
+    "link": {"resume_bind_timeout_s": 5.0},   # #160：侧车重启自动连回后多久还没绑上 schema 就报 resume_no_response 并自动重握手一次
     "core": None,           # "cm0plus" / "cm3" / "cm4" / "cm7"；不填按 flash.target 猜
 }
-ENV = {"DZBENCH_PYOCD_TARGET": ("flash", "target"), "DZBENCH_PROBE": ("flash", "probe"), "DZBENCH_FLASH_TOOL": ("flash", "tool"), "DZBENCH_PROBE_KIND": ("flash", "probe_kind"), "DZBENCH_UV4": ("build", "keil_uv4")}
+ENV = {"DZBENCH_PYOCD_TARGET": ("flash", "target"), "DZBENCH_PROBE": ("flash", "probe"), "DZBENCH_FLASH_TOOL": ("flash", "tool"), "DZBENCH_PROBE_KIND": ("flash", "probe_kind"), "DZBENCH_UV4": ("build", "keil_uv4"),
+       "DZBENCH_RESUME_BIND_TIMEOUT_S": ("link", "resume_bind_timeout_s")}
 SECRET_KEYS = ("api_key", "password", "token", "secret")
 
 

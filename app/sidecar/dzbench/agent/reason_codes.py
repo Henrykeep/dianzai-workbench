@@ -18,7 +18,10 @@ DIVERGE = {"unstable"}
 BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作按种类：clear_schema_cache（有缓存拷贝，确认后只删这个哈希的缓存并重新识别）/ build（编译产物互冲，重新编译）/ reflash（编译产物与板上固件不符，重新烧录）",
               "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录",
               "estop_latched_ident_deferred": "急停中，暂不识别板子",
-              "resuming": "正在恢复连接"}
+              "resuming": "正在恢复连接",
+              "resume_no_response": "重连后板子没有回应，请按『重新连接』"}
+
+BLOCKER_FIX = {"resume_no_response": "reconnect"}   # #160：前端按 fix_action 显示按钮
 
 
 def table() -> dict:
@@ -35,4 +38,6 @@ def table() -> dict:
             out[k]["stops_output"] = True
     for k, zh in BLOCKER_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "blocker"})
+        if k in BLOCKER_FIX:
+            out[k].update(message_zh=zh, fix_action=BLOCKER_FIX[k])
     return dict(sorted(out.items()))

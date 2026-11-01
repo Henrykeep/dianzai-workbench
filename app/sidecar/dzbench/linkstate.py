@@ -23,7 +23,7 @@ import time
 LOST_AFTER_S = 2.0        # 4 个板子心跳周期
 PUSH_EVERY_S = 1.0        # 状态不变时的保活推送间隔
 STALE_AFTER_MS = 3000
-REASON_ZH = {"resuming": "正在恢复连接"}   # 需要界面原样显示的 reason 中文（其余 reason 由前端自己映射）
+REASON_ZH = {"resuming": "正在恢复连接", "resume_no_response": "重连后板子没有回应，请按『重新连接』"}   # 需要界面原样显示的 reason 中文（其余 reason 由前端自己映射）
 FW_FIELDS = ("run_mode", "selftest", "params_saved", "params_hash", "estop_cause")   # 固件上报的状态快照字段
 MODES = ("tethered", "standalone")   # 板子运行模式（联机 / 脱机），固件上报才有；没报 = mode: null     # UI 超过这么久没收到 link.state = 侧车无响应
 

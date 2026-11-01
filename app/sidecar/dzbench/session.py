@@ -84,6 +84,7 @@ class Session:
         self.link = LinkState()              # 跨连接保留：since / seq 连续
         self.down_reason = ""                # board=disconnected 时的原因（如 port_not_found）；connect/disconnect 清掉
         self.resuming = False                # 侧车重启后正在自动连回上次的板子
+        self.resume_stalled = False          # #160：自动连回后超时没绑上 schema（link.state reason=resume_no_response）
         self.resume_hb_wait = False          # #155：自动连回后口已打开、上位机心跳还没真正发出去 → 仍算“正在恢复连接”，执行器操作拦下
         self._uid_marked = False
         self._reset()
@@ -282,7 +283,7 @@ class Session:
                 self.seq = (self.seq + 1) & 0xFF
                 frame = encode(HEARTBEAT, 0, self.seq, b"")
                 tr.write(frame)
-            self.resume_hb_wait = False                       # #155：心跳真的发出去了，恢复完成
+            self.resume_hb_wait = self.resume_stalled = False  # #155/#160：心跳真的发出去了，恢复完成
         except Exception:  # noqa: BLE001  传输层错误交给读线程的重连逻辑
             pass
 
@@ -356,6 +357,7 @@ class Session:
         self.down_reason = ""
         with self.lock:
             self._gen += 1                    # 主动断开：取消自动重连
+            self.resume_hb_wait = self.resume_stalled = False   # #160：人点连接/断开 = 这次自动恢复结束（看门线程按 _gen 让位）
             tr, log = self.tr, self.log
             self.tr = None
         if tr:
@@ -508,6 +510,63 @@ class Session:
                 if self.tr is not None and not getattr(self, "hb_sent_at", None):
                     self.resume_hb_wait = True       # 连上了但心跳线程还没发出第一帧：状态保持 resuming，直到心跳真的在走
                 self.resuming = False
+                arm = self.tr is not None and (self.schema_hash is None or self._resume_pending())
+                port_now, gen_now = self.port, self._gen
+            if arm:                                  # #160：连上了但还没绑上 schema → 看门：超时报 resume_no_response、自动重握手一次
+                threading.Thread(target=self._resume_watch, args=(port_now, baud, gen_now, False, dict(rec)),
+                                 name="dz-resume-watch", daemon=True).start()
+
+    RESUME_NO_RESPONSE = "resume_no_response"
+    RESUME_NO_RESPONSE_ZH = "重连后板子没有回应，请按『重新连接』"
+
+    @staticmethod
+    def resume_bind_timeout_s() -> float:
+        """#160：声明式设置 link.resume_bind_timeout_s（默认 5 s；machine.json / 环境变量 DZBENCH_RESUME_BIND_TIMEOUT_S 可改）。"""
+        from . import config as _config
+        try:
+            return float(_config.load()["link"]["resume_bind_timeout_s"])
+        except Exception:  # noqa: BLE001
+            return float(_config.DEFAULTS["link"]["resume_bind_timeout_s"])
+
+    def _resume_watch(self, port: str, baud: int | None, gen: int, retried: bool, rec: dict | None = None) -> None:
+        """自动连回后 resume_bind_timeout_s 内没绑上 schema（板子没回应）：推明确的原因码 resume_no_response
+        （link.state 也带上），自动重新握手（重开口）一次；全程不碰急停锁存，执行器操作仍被 resuming 拦着。"""
+        end = time.monotonic() + self.resume_bind_timeout_s()
+        while time.monotonic() < end:
+            if self._gen != gen or self.tr is None or (self.schema_hash is not None and not self._resume_pending()):
+                return                               # 用户自己连 / 断了，或已绑上 schema 且上位机心跳真的发出去了：不管
+            # 注：#155 抓到的栈里 schema 已绑上、但上位机心跳写不出去（写超时被吞）、状态一直 resuming —— 这种也算“没回应”
+            time.sleep(0.05)
+        self.resume_stalled = True
+        self.emit(LinkError(self.RESUME_NO_RESPONSE, self.RESUME_NO_RESPONSE_ZH, "点『重新连接』；仍不行检查 USB 线和板子供电",
+                            "reconnect", {"reason": self.RESUME_NO_RESPONSE, "message_zh": self.RESUME_NO_RESPONSE_ZH,
+                                          "retrying": not retried}).as_dict())
+        if retried:
+            return
+        try:
+            with self.lock:
+                if self._gen != gen:
+                    return                           # 人刚点了连接/断开：让位
+                self.resuming = True                 # 重握手期间（口关着的那一下也算）仍按“正在恢复”拦执行器
+            try:
+                self.connect(port, baud)             # 重开口 = 重新握手；connect 会按锁存文件恢复急停锁存
+            finally:
+                with self.lock:
+                    self.resuming = False
+                    if self.tr is not None and not getattr(self, "hb_sent_at", None):
+                        self.resume_hb_wait = True
+                    g2 = self._gen
+        except LinkError:
+            # 重握手没连上：connect 里的 disconnect 清了记录和原因 → 放回记录（下次重启仍自动连回），原因保持 resume_no_response
+            with self.lock:
+                self.down_reason, self.resume_hb_wait, self.resume_stalled = self.RESUME_NO_RESPONSE, False, False
+            if rec:
+                lastsession.restore(rec)
+            self.emit(LinkError(self.RESUME_NO_RESPONSE, self.RESUME_NO_RESPONSE_ZH, "点『重新连接』；仍不行检查 USB 线和板子供电",
+                                "reconnect", {"reason": self.RESUME_NO_RESPONSE, "message_zh": self.RESUME_NO_RESPONSE_ZH,
+                                              "retrying": False}).as_dict())
+            return
+        self._resume_watch(port, baud, g2, True, rec)
 
     # ------------------------------------------------------------------ 收
     def _locked(self, fn: Callable[[], None]) -> None:
@@ -1557,7 +1616,7 @@ class Session:
             return self.link.update(now, port=self.port, port_open=self.tr is not None,
                                     reconnecting=self.reconnecting or self._resume_pending(), t_connect=self._t_tr,
                                     last_frame=self.last_frame,
-                                    reason="resuming" if self._resume_pending() else self.down_reason,
+                                    reason=(self.RESUME_NO_RESPONSE if self.resume_stalled else "resuming") if self._resume_pending() else self.down_reason,
                                     mode=(run_mode_dict(self.hb_status) or {}).get("mode") or self.run_mode,
                                     fw=fw)
 
