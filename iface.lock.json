@@ -1467,6 +1467,7 @@
  },
  "firmware/proto/dzctl": {
   "decls": [
+   "dzctl.h: #define DZCTL_PROTO_VER 0x00001200u",
    "dzctl.h: #define DZCTL_ID_CMD 0x7Eu",
    "dzctl.h: #define DZCTL_ID_ESTOP 0x7Fu",
    "dzctl.h: #define DZCTL_ID_RELAY 0x7Cu",
@@ -1474,6 +1475,8 @@
    "dzctl.h: #define DZCTL_CMD_INFO 'I'",
    "dzctl.h: #define DZCTL_INFO_VER 1u",
    "dzctl.h: #define DZCTL_INFO_LEN 23u",
+   "dzctl.h: #define DZCTL_INFO2_VER 2u",
+   "dzctl.h: #define DZCTL_INFO2_LEN 27u",
    "dzctl.h: #define DZCTL_HB_SAFE_BOOT (1u << 8)",
    "dzctl.h: #define DZCTL_HB_STALL (1u << 9)",
    "dzctl.h: #define DZCTL_HB_ESTOP (1u << 10)",
@@ -1585,8 +1588,8 @@
    "dzstep.h: void dzstep_finish(dzstep_t *s, bool aborted, uint8_t cause, uint8_t seq, dzframe_t *out);",
    "dzstep.h: int dzstep_selftest(void);"
   ],
-  "hash": "fff221f18df4c0ba",
-  "version": "0.17.0"
+  "hash": "45efbede069f7801",
+  "version": "0.18.0"
  },
  "firmware/proto/dzframe": {
   "decls": [

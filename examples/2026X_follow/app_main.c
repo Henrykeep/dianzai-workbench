@@ -75,11 +75,12 @@ static void follow_cfg_apply(void)
     if (follow_init(&s_fol, &c) == DZ_OK) { s_fol.v = v; s_fol.st = st; }
 }
 
-static void on_cmd(uint8_t c, uint8_t n)
+static bool on_cmd(uint8_t c, uint8_t n)   /* 认识返回 true；不认识的命令 link_app 丢弃、不清急停 */
 {
     (void)n;
-    if (c == 'C') { peer_rx_clear_abort(&s_peer); line_obs_reset(&s_obs); }
-    else if (c == 'Z') { s_self = 0.0f; s_have_lead0 = false; }
+    if (c == 'C') { peer_rx_clear_abort(&s_peer); line_obs_reset(&s_obs); return true; }
+    if (c == 'Z') { s_self = 0.0f; s_have_lead0 = false; return true; }
+    return false;
 }
 
 static void apply_params(void)
