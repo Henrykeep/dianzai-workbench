@@ -75,22 +75,78 @@ def search_dirs() -> list[pathlib.Path]:
     return [pathlib.Path(p) for p in extra.split(os.pathsep) if p] + ([pathlib.Path(os.environ["DZBENCH_REPO"]) / "build"] if os.environ.get("DZBENCH_REPO") else []) + [ROOT / "build", base_dir() / "schemas"]
 
 
+CONFLICT_FIX = "clear_schema_cache"   # 入口规则表 docs/dev/entrypoints.yaml 的动作 id：界面确认卡 → op clear_schema_cache {hash}
+
+
+class SchemaConflict(Exception):
+    """同一个哈希在本机匹配到多份内容不同的 link_schema.json（例如两块板子来回插、哈希没把板子身份 / wd_timeout_ms 算进去）。
+    不挑第一份、也不挑最新的一份：挑错了界面就会按错的通道和参数去显示、去写。"""
+
+    def __init__(self, h: int, paths: list[str], board_uid: str | None = None, message_zh: str | None = None):
+        self.hash, self.paths, self.board_uid = h, paths, board_uid
+        names = "；".join(paths)
+        self.message_zh = message_zh or (f"板子的数据格式（哈希 {h:08X}）在本机对应到 {len(paths)} 份内容不同的格式文件，无法判断是哪一块板子的。"
+                           "为避免按错的通道和参数显示或写入，已停止显示遥测和写参数。")
+        self.fix_zh = "清掉本机缓存的这个哈希的格式文件后重新识别板子；仍不对就按当前这块板子重新编译并烧录固件。"
+        self.fix_action = CONFLICT_FIX
+        super().__init__(f"{self.message_zh}（{names}）")
+
+    def as_dict(self) -> dict:
+        return {"type": "error", "code": "schema_conflict", "reason": "schema_conflict", "message": self.message_zh,
+                "message_zh": self.message_zh, "fix": self.fix_zh, "fix_action": self.fix_action,
+                "hash": f"{self.hash:08X}", "board_uid": self.board_uid,
+                "files": [str(pathlib.Path(p).resolve()) for p in self.paths]}
+
+
+def _canon(d: dict) -> str:
+    return json.dumps(d, sort_keys=True, ensure_ascii=False)
+
+
 def find_by_hash(h: int) -> Schema | None:
-    """同一目录树里可能有多份同哈希的表（role 等不进哈希的字段会变）：取最新生成的那份。"""
+    """在所有搜索目录里找哈希为 h 的 link_schema.json。
+    内容完全相同的多份（比如 build/ 与 ~/.dzbench/schemas 里的拷贝）算同一份，取搜索顺序里的第一份；
+    内容不同的多份 → SchemaConflict（不取第一份、不取最新的一份）。找不到 → None。"""
+    hits: dict[str, Schema] = {}
     for d in search_dirs():
         if not d.is_dir():
             continue
-        hits = []
-        for f in d.rglob("link_schema.json"):
+        for f in sorted(d.rglob("link_schema.json")):
             try:
                 s = Schema.load(f)
             except (ValueError, KeyError, OSError):
                 continue
             if s.hash == h:
-                hits.append((f.stat().st_mtime, s))
-        if hits:
-            return max(hits, key=lambda x: x[0])[1]
-    return None
+                hits.setdefault(_canon(s.d), s)
+    if len(hits) > 1:
+        raise SchemaConflict(h, [s.path for s in hits.values()])
+    return next(iter(hits.values()), None)
+
+
+def schema_files(h: int) -> list[pathlib.Path]:
+    """所有搜索目录里哈希为 h 的 link_schema.json（绝对路径）。"""
+    out = []
+    for d in search_dirs():
+        if not d.is_dir():
+            continue
+        for f in sorted(d.rglob("link_schema.json")):
+            try:
+                if Schema.load(f).hash == h:
+                    out.append(f.resolve())
+            except (ValueError, KeyError, OSError):
+                continue
+    return list(dict.fromkeys(out))
+
+
+def clear_cache(h: int) -> list[str]:
+    """op clear_schema_cache：只删哈希为 h 的格式文件，别的哈希一个不碰。返回删掉的绝对路径。"""
+    removed = []
+    for f in schema_files(h):
+        try:
+            f.unlink()
+            removed.append(str(f))
+        except OSError:
+            continue
+    return removed
 
 
 def max_delta(p: dict) -> float | None:

@@ -312,3 +312,22 @@ def test_iterate_ws_ops_motor_pos(home, tmp_path, monkeypatch):
     finally:
         ui.close()
         st.stop()
+
+
+def test_both_directions_worse_is_not_blocked():
+    """test_car_2wd 偶发 reason=blocked 的根因回归：单参数、两个方向都只是“变差”（没有被拒 / 到边）时，
+    以前选不出下一步就报 blocked（“所有方向都被拒绝或限幅挡住”，与事实不符）。现在先缩步长重试，步长到下限才按 no_improve 收尾。"""
+    io = MockIO(kp=1.0, model=lambda v: (12.0 + 40 * abs(v["kp"] - 1.0), 0.0))   # kp=1.0 处最好，往哪边走都变差；不达标
+    plan = dict(PLAN, params=[p for p in PARAMS if p["name"] == "kp"])
+    ev = []
+    out = I.Iterator(io, plan, True, emit=ev.append, max_rounds=20).run()
+    assert out["reason"] == "no_improve", out
+    assert not any(e["type"] == "iterate.param_reject" for e in ev)
+
+
+def test_really_blocked_still_reports_blocked():
+    """反面：两个方向都被板子拒绝 → 仍报 blocked。"""
+    io = MockIO(kp=1.0, model=lambda v: (12.0, 0.0), reject={"kp": lambda v: True})
+    plan = dict(PLAN, params=[p for p in PARAMS if p["name"] == "kp"])
+    out = I.Iterator(io, plan, True, max_rounds=20).run()
+    assert out["reason"] == "blocked", out

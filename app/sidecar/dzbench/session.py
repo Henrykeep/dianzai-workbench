@@ -27,7 +27,8 @@ from .ports import PortOpenError, explain_open_error, identity, probe_baud
 from .schema import check_value
 from .stepproto import dzstep, STEP_ID as ID_STEP, REJECT_ID as ID_REJECT, HB_ITER_BUSY
 from .replay import ReplayTransport
-from .schema import Schema, find_by_hash
+from .schema import Schema, SchemaConflict, find_by_hash
+from . import board_ident
 from .transport import SIM_PREFIX, Transport, open_transport
 
 ID_CMD, ID_ESTOP = 0x7E, 0x7F
@@ -94,6 +95,10 @@ class Session:
         self.resuming = False                # 侧车重启后正在自动连回上次的板子
         self._uid_marked = False
         self._reset()
+        # 跨连接保留（_reset 不清）——板子身份（握手里报一次：board_uid 64 位指纹 + uid_supported；见 board_ident）。未知 = 不复用任何按板缓存
+        self.board_id: dict = board_ident.parse_handshake(None)
+        self._schema_cache: dict[tuple[int, str], Schema] = {}   # (schema 哈希, board_uid) → 已核对过的 schema
+        self._handshake_seen = False
 
     def _reset(self) -> None:
         self.tr: Transport | None = None
@@ -103,10 +108,14 @@ class Session:
         self.health = LinkHealth()
         self.timeline = Timeline()
         self._was_alive = False
+        self._info_asked = False             # 本次连接是否已发过 'I'（只发一次）
+        self._info = None                    # 'I' 回包解码结果
+        self._info_timer = None
         self._pending_marks: list[tuple[str, str]] = []
         self.bb_recs: list[dict] = []             # 最近一次黑匣子导出（DATA 0x7D）
         self.schema: Schema | None = None
         self.schema_hash: int | None = None
+        self.schema_conflict: SchemaConflict | None = None   # 同哈希多份不同内容的 link_schema.json（见 schema.find_by_hash）
         self.board_uid: int | None = None        # 心跳里的芯片 ID（dzctl 0.3.0+；0/没有 = 未知）
         self.selftest: dict | None = None        # dzctl 0.10.0 心跳尾部自检结果（selftest_dict），旧固件 / 应用没报 = None
         self.params_hash: int | None = None
@@ -209,6 +218,8 @@ class Session:
             self._t_tr = self.t_connect
             self._rx_seen = False
             self.hb_status = None
+            if self.schema_conflict is not None:   # 重新连接 = 重新查 schema（用户可能已重编固件 / 删掉了多余的那份）
+                self.schema_conflict, self.schema_hash = None, None
             self.estop_cause = None
             self._cause_announced = False          # 本次连接是否已推过带 cause 的 latched（连上时板子已急停、没有 bit10 上升沿也要推一次）
             self._hb_clear_t_ms = None
@@ -559,6 +570,10 @@ class Session:
                 self.mode_ack = payload[1]
             elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("W"):
                 self.save_ack = payload[1]
+            elif kind == DATA and id_ == ID_CMD and len(payload) >= board_ident.INFO_LEN and payload[0] == ord("I"):
+                info = board_ident.decode_info(payload)
+                if info is not None:
+                    self._locked(lambda i=info: self._on_info(i))
             elif kind == DATA and id_ == ID_CMD and len(payload) == 5 and payload[0] == ord("H"):
                 self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
             elif kind == DATA and id_ == ID_RELAY and len(payload) == 1:
@@ -619,6 +634,12 @@ class Session:
                         es = estop_cause_dict(*struct.unpack_from("<IIf", payload, 16),
                                               threshold_ms=getattr(self.schema, "wd_timeout_ms", None) if self.schema else None)
                         if len(payload) >= 40:
+                            # 有效的 40 B 心跳 = 对端是我们的固件：发一次 'I'。只在心跳急停位(bit10)清零时发：
+                            # dzctl < 0.17.0 的 link_app 把未知单字节命令当「新指令」，会清掉 'R' 解除后的输出保持（L->estop）；
+                            # bit10 置位（锁存或解除后保持）期间不发，等它清零（输出本已放开）再问，旧固件上发 'I' 才无副作用。
+                            if not self._info_asked and not ((self.hb_status or 0) & (1 << 10)) and not self.tx_locked:
+                                self._info_asked = True
+                                threading.Thread(target=self._ask_info, daemon=True).start()
                             m_, t_, ph = struct.unpack_from("<III", payload, 28)
                             self.selftest, self.params_hash = selftest_dict(m_, t_), ph
                             if self.selftest is not None and (m_, t_) != self._selftest_key:   # 新的一次自检结果：记完成时间 + 当时的参数 hash
@@ -755,10 +776,21 @@ class Session:
 
     def _bind_schema(self, h: int) -> None:
         self.schema_hash = h
-        s = find_by_hash(h)
+        uid = self.board_id.get("board_uid")
+        cached = self._schema_cache.get((h, uid)) if uid else None   # 身份未知的板子从不复用缓存
+        try:
+            s, conflict = (cached, None) if cached is not None else (find_by_hash(h), None)
+        except SchemaConflict as e:          # 同哈希多份不同内容：一份都不用，显示和写入都挡住（_check_schema）
+            s, conflict = None, e
+            e.board_uid = uid
         with self.lock:
             self.schema = s
-        if s:
+            self.schema_conflict = conflict
+        if s is not None and uid:
+            self._schema_cache[(h, uid)] = s
+        if conflict:
+            self.emit(conflict.as_dict())
+        elif s:
             self.emit({"type": "schema", "schema": s.summary()})
             threading.Thread(target=self._read_all_params_bg, daemon=True, name="read_all_params").start()
         else:
@@ -832,6 +864,8 @@ class Session:
             with self.wlock:
                 if check:
                     self._check_tx()
+                    if kind == DATA:
+                        self._check_schema()
                 self.seq = (self.seq + 1) & 0xFF
                 frame = encode(kind, id_, self.seq, payload)
             if self.log:
@@ -1212,6 +1246,79 @@ class Session:
         if self.tx_locked:
             raise LinkError("tx_locked", "急停后本地服务的预设/定时/触发/原始发送已全部停用", "确认安全后点“解除急停”")
 
+    def apply_handshake(self, info: dict | None) -> dict:
+        """固件握手（只报一次）里的板子身份：board_uid / uid_supported → self.board_id。
+        与上一块板身份不同、或任一方身份未知 = 换板：清掉按板缓存的状态（参数读数、schema 绑定），推 board_changed，并重新查 schema。"""
+        new = board_ident.parse_handshake(info)
+        old = self.board_id
+        first = not getattr(self, "_handshake_seen", False)
+        self._handshake_seen = True
+        self.board_id = new
+        swapped = not first and not board_ident.same_board(old.get("board_uid"), new.get("board_uid"))
+        if swapped:
+            with self.lock:
+                self.params = {}
+                self.schema = None
+                self.schema_conflict = None
+            h, self.schema_hash = self.schema_hash, None
+            self.emit({"type": "board_changed", "from": old.get("board_uid"), "to": new.get("board_uid"),
+                       "uid_supported": new["uid_supported"],
+                       "message_zh": "检测到换板：已清掉上一块板的参数读数和数据格式，重新识别" if new["board_id_known"] and old.get("board_uid")
+                       else "板子身份未知，不能确认是不是同一块板：按换板处理，已清掉上一块板的状态" })
+            if h is not None:
+                self._bind_schema(h)
+        if not new["board_id_known"]:
+            self.emit({"type": "board_id", **new})
+        return new
+
+    def _ask_info(self) -> None:
+        """连上且确认是我们的固件后发一次 DATA 0x7E {'I'}；2 s 内没回包 = 固件 < 0.17.0。"""
+        gen_tr = self.tr
+        try:
+            self._send(DATA, ID_CMD, board_ident.INFO_CMD)
+        except Exception:       # noqa: BLE001  急停锁存等：只是没问到，按超时处理
+            pass
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < board_ident.INFO_TIMEOUT_S:
+            if self._info is not None or self.tr is not gen_tr:
+                return
+            time.sleep(0.02)
+        if self._info is None and self.tr is gen_tr and gen_tr is not None:
+            self._locked(lambda: self.apply_handshake({"fw_too_old": True}))
+
+    def _on_info(self, info: dict) -> None:
+        """'I' 回包：板子身份 + 与缓存 schema 交叉核对（同哈希但 wd_timeout_ms 不同 = schema_conflict）。"""
+        self._info = info
+        self.apply_handshake(info)          # 先认板（换板会清缓存并重新绑定），再拿绑定好的 schema 交叉核对
+        sch = self.schema
+        if sch is not None and sch.hash == info["schema_hash"] and info["wd_timeout_ms"] \
+                and sch.wd_timeout_ms is not None and sch.wd_timeout_ms != info["wd_timeout_ms"]:
+            uid = board_ident.parse_handshake(info)["board_uid"]
+            e = SchemaConflict(sch.hash, [sch.path], uid,
+                               message_zh=f"本机格式文件（哈希 {sch.hash:08X}）的看门狗 {sch.wd_timeout_ms} ms 与板子实际烧进去的 "
+                                          f"{info['wd_timeout_ms']} ms 不一致：这份格式文件不是这块板子的。已停止显示遥测和写参数。")
+            self.schema, self.schema_conflict = None, e
+            self.emit(e.as_dict())
+
+    def clear_schema_cache(self, h: int) -> dict:
+        """op clear_schema_cache {hash}：删掉本机缓存里这个哈希的格式文件（只这个哈希），然后重新握手 / 重新识别。
+        界面先出确认卡再调。"""
+        from . import schema as _schema
+        removed = _schema.clear_cache(int(h))
+        with self.lock:
+            for k in [k for k in self._schema_cache if k[0] == int(h)]:
+                del self._schema_cache[k]
+            if self.schema_hash == int(h):
+                self.schema, self.schema_conflict, self.schema_hash = None, None, None   # 下一帧心跳重新绑定
+        self.emit({"type": "rehandshake", "reason": "clear_schema_cache", "hash": f"{int(h):08X}"})
+        return {"ok": True, "removed": removed}
+
+    def _check_schema(self) -> None:
+        """schema_conflict 时挡住依赖 schema 的写入（参数、阶跃、应用 DATA 帧）。急停 / 停止 / 解除急停不走这里。"""
+        c = self.schema_conflict
+        if c is not None:
+            raise LinkError("schema_conflict", c.message_zh, c.fix_zh, c.fix_action, c.as_dict())
+
     def send_raw(self, data: bytes) -> bool:
         """原样发字节（给非工作台固件的设备，如 AT 指令）。急停后拒绝。"""
         self._check_tx()
@@ -1231,6 +1338,7 @@ class Session:
         return True
 
     def _param_rpc(self, name: str, payload: bytes, retries: int = 3, timeout: float = 0.25) -> tuple[float, str]:
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出板子的参数表", "等一两秒收到心跳；仍不行看上面的 schema 提示")
         if name not in self.schema.param_index:
@@ -1311,6 +1419,7 @@ class Session:
 
     def export_readback(self, path: str | pathlib.Path) -> str:
         """参数全量回读（逐个问板子，不是上位机记的值）写成 params.txt，给 tools/params_diff.py 和 docs/verify 用。"""
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表，不能回读")
         vals = self.read_all_params()
@@ -1323,6 +1432,7 @@ class Session:
 
     # ------------------------------------------------------------------ 快照 / 日志
     def snapshot_save(self, name: str, note: str = "", mode: str = "") -> str:
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表，不能存快照")
         if mode not in snapshots.MODES:
@@ -1334,6 +1444,7 @@ class Session:
     def snapshot_restore(self, name: str | None = None, defaults: bool = False, ramp_s: float = 0.0) -> list[dict]:
         """ramp_s > 0：平滑切换（速度环 ↔ 位置环预设），每 RAMP_DT 秒一步线性过渡，最后一步回读校验；
         中途急停 / 断线（set_param 抛错）立刻停在当前步，不再继续写。"""
+        self._check_schema()
         if not self.schema:
             raise LinkError("no_schema", "还没识别出参数表")
         vals = {p["name"]: p["default"] for p in self.schema.params} if defaults else snapshots.load(self.schema.hash, name)
@@ -1431,7 +1542,10 @@ class Session:
             st = {"type": "status", "connected": connected, "port": self.port, "baud": self.baud,
                   "alive": alive, "rx_bytes": self.rx_bytes, "good": self.parser.good, "bad": self.parser.bad,
                   "schema": f"{self.schema_hash:08X}" if self.schema_hash is not None else None,
-                  "schema_ok": self.schema is not None, "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
+                  "schema_ok": self.schema is not None,
+                  "schema_conflict": self.schema_conflict.as_dict() if self.schema_conflict is not None else None,
+                  "board_uid": self.board_id.get("board_uid"), "uid_supported": self.board_id.get("uid_supported"),
+                  "board_id_known": self.board_id.get("board_id_known"), "board_id_message_zh": self.board_id.get("message_zh"), "fw_rev": fw_rev_str(self.fw_rev) if self.fw_rev else None, "log": str(self.log.path) if self.log else None,
                   "replay": isinstance(self.tr, ReplayTransport),
                   "reconnecting": self.reconnecting, "tx_locked": self.tx_locked, "reconnects": self.reconnects, "reconnect_attempt": self.reconnect_attempt, "stall_s": self.stall_s, "raw_dropped": self.raw_dropped,
                   "replay_progress": self.tr.progress() if isinstance(self.tr, ReplayTransport) else None}

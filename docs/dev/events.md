@@ -311,6 +311,31 @@ sim 端口加 `app_name`（app.yaml `name:`，没有则取目录名）和 `app_d
 ## 原因码总表 `docs/dev/reason_codes.json`（#139）
 - `{code: {zh, kind}}`，kind ∈ `round`（单轮无效，`iterate.round.invalid_reason`）/ `abort`（开始被拒）/ `stop`（`iterate.stopped.reason`）/ `diverge`（发散）。
 - 由 `tools/gen_reason_codes.py` 从后端 `dzbench.agent.reason_codes` 生成；`make check` 跑 `--check`（过期即红），`tests/test_reason_codes.py` 校验后端每个原因码都在表里且 zh 非空。前端只读这个文件，不手抄。
+- `kind` 取值：`round` / `abort` / `stop` / `diverge`，以及 `blocker`（连接阻塞，目前只有 `schema_conflict`）。
+
+## schema 冲突 `schema_conflict`（r10 阻塞项）
+板子心跳报的 schema 哈希在本机匹配到**多份内容不同**的 `link_schema.json`（例如两块板来回插，两次编译出同哈希、`wd_timeout_ms` 等不同的格式文件）时，侧车**一份都不用**（不取第一份，也不取最新的一份）：
+- 推事件 `{type:"error", code:"schema_conflict", reason:"schema_conflict", message_zh, fix, fix_action:"clear_schema_cache", hash:"XXXXXXXX", board_uid:"16位小写hex"|null, files:[绝对路径A, 绝对路径B]}`；`status.schema_conflict` 为同一对象（无冲突为 `null`），`status.schema_ok` 为 `false`，不推 `schema` 事件，遥测不解码。
+- `progress` 出阻塞项 `{code/reason:"schema_conflict", hash, board_uid, files:[绝对路径…], message_zh, fix_action:"clear_schema_cache", blocks:[sim, bringup, tune, score, seal]}`（`detail` 里同样有 hash/board_uid/files）。
+- 修复 op `clear_schema_cache {hash}`（hash 为十六进制串或整数）：界面先出确认卡，确认后再调。只删本机缓存里这个哈希的格式文件（别的哈希不碰），返回 `{ok:true, removed:[绝对路径…]}`；随后推 `{type:"rehandshake", reason:"clear_schema_cache", hash}` 并清掉该哈希的绑定，下一帧心跳重新绑定（本机已无该哈希 → `schema_missing`，需重新编译/放回正确的那份）。动作 id `clear_schema_cache` 见 entrypoints.yaml。
+- 依赖 schema 的写入一律拒绝，错误码 `schema_conflict`（同上 message_zh / fix_action）：写参数、读参数、阶跃、继电器、存 Flash、应用 DATA 帧。急停、停止阶跃、解除急停不受影响。
+- 修法（`fix` 原文）：按当前这块板重新编译烧录固件后重新连接，或删掉不属于这块板的那份格式文件后重新连接。重新连接时侧车重新查找。
+- 内容完全相同的多份（如 `build/` 与 `~/.dzbench/schemas/` 里的拷贝）不算冲突。导出记录遇到冲突同样报错，不挑一份。
+- 哈希本身把 `wd_timeout_ms` 与板子身份算进去由固件侧（gen_link）负责，本节只管查找时不挑错。
+
+## 板子身份 `board_uid` / `uid_supported`（换板识别，r10）
+固件规格见 fw-wdhash 592ea43 的 `docs/dev/fw-handshake.md`（dzctl 0.17.0）。**心跳仍为 40 字节，侧车从不在心跳里读 board_uid**（0.16.0 曾追加到 48 B，已撤回；侧车对心跳只读前 40 B）。
+- 连上后，收到第一帧**有效的 40 B 心跳**（确认对端是工作台固件）时，侧车发一次 `DATA id=0x7E {'I'}`。心跳急停位 bit10 置位（锁存或 'R' 后输出保持）或侧车 tx_locked 时先不发，等清零后再发：dzctl < 0.17.0 的 link_app 会把未知单字节命令当新指令、清掉 'R' 后的输出保持。2 s 超时从发出时算。
+- 回包 `DATA id=0x7E len=23`（小端）：`'I'`, u8 `info_ver`, u32 `schema_hash`, u32 `wd_timeout_ms`, u8 `uid_supported`, u32 `board_uid_lo`, u32 `board_uid_hi`, u32 `fw_rev`（`board_ident.decode_info`）。
+- **2 s 内没回包**（固件 < dzctl 0.17.0）→ `board_uid:null, uid_supported:false`，推 `{type:"board_id", reason:"fw_too_old", message_zh:"固件版本过旧，不支持板子识别"}`。
+- 回包 `uid_supported=0` → `board_uid:null`，`reason:"uid_unsupported"`，文案「此芯片暂不支持板子识别，换板检测不可用」。
+- **交叉核对**：回包的 `schema_hash` 与已绑定的格式文件相同、但 `wd_timeout_ms` 不同（双方都非 0）→ 这份缓存不是这块板的，按 `schema_conflict` 处理（`files` 为那一份缓存文件的绝对路径，`fix_action:"clear_schema_cache"`）。
+- `status.board_uid`：16 位小写十六进制字符串，或 `null`。`status.uid_supported`：bool。`status.board_id_known`：bool。`status.board_id_message_zh`：身份未知时为上面两句之一（过旧固件 / 芯片不支持），否则 `null`。
+- `uid_supported:false`、`board_uid` 缺失或为 0 → `board_uid:null`，并推 `{type:"board_id", board_uid:null, uid_supported, board_id_known:false, message_zh}`。这种板子**永远不当作**缓存里的任何一块板（不按身份复用缓存）。
+- 按板缓存：schema 绑定按 `(schema 哈希, board_uid)` 缓存；同哈希同内容的两块板不算冲突，同哈希不同内容仍是 `schema_conflict`（不挑最新）。
+- 换板：与上次握手的 `board_uid` 不同，或任一方为 `null` → 推 `{type:"board_changed", from, to, uid_supported, message_zh}`，清掉上一块板的参数读数与 schema 绑定并重新查找。同一块板重启（同 `board_uid`）不推。
+- 旧的 32 位心跳芯片 ID（latch / lastsession 用）不变。
+- 现状：固件握手帧尚未推送；侧车按本规格实现，测试在真仿真板会话上把握手 dict 交给真解析器。
 
 ## 采纳未验证的参数（#141）
 - `agent_action_decide` 采纳 `iterate_apply_best` / `autotune` 卡时，响应多 `verified: bool`、`unverified_reason`。卡（服务端保存的那份，不认客户端标记）verdict 为 `partial` 或任一 item `amp_reduced` → `verified:false, unverified_reason:"amp_reduced"`，不进已验证档 / 封箱清单；否则 `verified:true, unverified_reason:null`。
