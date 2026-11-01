@@ -122,9 +122,10 @@ def grade(d, seed: int, res: dict, app: dict, spec: str, source: str = "randplan
     te, re_, ye, _ = RP.simulate(plant, m, res["best"]["roles"], ea, en)
     me = AT.metrics(te, re_, ye, ea)
     sp = AT.parse_spec(spec)
-    # 假达标：无噪真值和带噪真值（K 次都要）两边都得满足题面
+    # 假达标：无噪真值和带噪真值两边都得满足题面；带噪真值的指标取 K 次的均值（与代价聚合一致）
     ne = noisy_truth(plant, m, res["best"]["roles"], ea, en)
-    miss = list(dict.fromkeys(AT.meets(me, sp) + [k + "(带噪)" for mm in ne["metrics"] for k in AT.meets(mm, sp)]))
+    mn = {k: float(np.mean([mm[k] for mm in ne["metrics"]])) for k in ("ss_err_pct", "overshoot_pct", "settle_s")}
+    miss = AT.meets(me, sp) + [k + "(带噪)" for k in AT.meets(mn, sp)]
     truth_ok = not miss
     f, v = plant["feasible"], res["verdict"]
     errs, bucket = [], "ok"
