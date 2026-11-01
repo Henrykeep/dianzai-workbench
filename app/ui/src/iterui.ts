@@ -39,6 +39,7 @@ export const REASON_ZH: Record<string, string> = {
   invalid: "连续 3 轮无效", no_improve: "连续 3 轮没有改进", unstable: "出现发散", blocked: "各方向都被挡住", error: "出错",
   // #139 发散 / 中止类代码也要有中文，不许漏英文
   diverged: "出现发散（响应越来越大）", aborted: "已中止", abort: "已中止", invalid_streak: "连续多轮无效",
+  plant_unresponsive: "对象无响应",   // fix-r9c iterate._stopped("plant_unresponsive")；与 reason_codes.py 同文
 };
 const GAP_ZH: Record<string, string> = { overshoot: "超调", ss_err: "稳态误差", settle: "调节时间", rise: "上升时间" };
 const n = (v: number) => v == null || !Number.isFinite(+v) ? "—" : String(+(+v).toPrecision(4));
