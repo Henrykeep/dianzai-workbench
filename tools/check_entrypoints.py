@@ -29,6 +29,8 @@ def regions(html):
         for tag, a in reversed(stack):
             if a.get("data-page"):
                 return "page:" + a["data-page"]
+            if (a.get("data-region") or "").startswith("page:"):
+                return a["data-region"]       # 页内具名区域（旅程 id，如读题页空状态 page:req），比所在 data-page 更具体
             if tag == "aside" and "nav" in (a.get("class") or "").split():
                 return "nav"                  # 左侧导航（流程步骤 #steps、下一步提示）
             if a.get("id") == "toolbox-m":
@@ -70,6 +72,8 @@ def placed(at, region):
         return region == "toolbox"
     if kind == "nav":
         return region == "nav"
+    if kind == "page":
+        return region == "page:" + name   # 只认 data-region 标的具名区域，不放宽到整页
     if kind == "always":
         return region == "trouble" if name == "排障" else region in ("header", "footer")
     if region.startswith("page:"):
@@ -94,7 +98,7 @@ def load_sources():
 
 def check(spec, src):
     err = []
-    places = {f"step:{s}" for s in spec["steps"]} | {f"toolbox:{t}" for t in spec["toolbox"]} | {f"always:{a}" for a in spec["always"]} | {f"nav:{n}" for n in spec.get("nav") or []}
+    places = {f"step:{s}" for s in spec["steps"]} | {f"toolbox:{t}" for t in spec["toolbox"]} | {f"always:{a}" for a in spec["always"]} | {f"nav:{n}" for n in spec.get("nav") or []} | {f"page:{n}" for n in spec.get("page") or []}
     shared, script = spec.get("shared_ops") or {}, spec.get("script_ops") or {}
     seen = {"id": {}, "label": {}, "ui": {}}
     claim = {}
@@ -175,6 +179,13 @@ def selftest():
     reg2 = regions('<aside class="nav" id="nav"><nav class="steps" id="steps"><button id="s1"></button></nav></aside><aside class="dock"><b id="d"></b></aside>')
     assert reg2 == {"nav": "nav", "steps": "nav", "s1": "nav", "d": "dock"}, reg2
     assert placed("nav:进度", "nav") and not placed("nav:进度", "header") and not placed("always:连接", "nav") and not placed("step:调参", "nav")
+    reg3 = regions('<section data-page="项目"><div class="pj-empty" data-region="page:req"><button id="o"></button></div><button id="p"></button></section>')
+    assert reg3 == {"o": "page:req", "p": "page:项目"}, reg3
+    assert placed("page:req", "page:req") and not placed("page:req", "page:项目") and not placed("page:sim", "page:req") and not placed("nav:进度", "page:req")
+    se = copy.deepcopy(base); se["page"] = ["req"]; se["actions"][1].update(at="page:req")
+    assert any("界面上 #y 却在" in x for x in check(se, {**src, "regions": {"x": "page:调参", "y": "page:项目"}})), "page 区位置不符要报"
+    assert not [x for x in check(se, {**src, "regions": {"x": "page:调参", "y": "page:req"}}) if "z" not in x], "page 区位置相符不报"
+    assert check({**se, "page": []}, {**src, "regions": {"x": "page:调参", "y": "page:req"}}), "未声明的 page 区要报"
     sn = copy.deepcopy(base); sn["nav"] = ["进度"]; sn["actions"][1].update(at="nav:进度")
     assert any("界面上 #y 却在" in x for x in check(sn, {**src, "regions": {"x": "page:调参", "y": "header"}})), "nav 位置不符要报"
     assert not [x for x in check(sn, {**src, "regions": {"x": "page:调参", "y": "nav"}}) if "z" not in x], "nav 位置相符不报"
