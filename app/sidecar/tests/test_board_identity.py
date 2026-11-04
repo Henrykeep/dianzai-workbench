@@ -206,3 +206,42 @@ def test_info_not_sent_while_heartbeat_estop_bit_set(home):
     while (_DATA, 0x7E, b"I") not in sent and time.monotonic() - t0 < 2:
         time.sleep(0.02)
     assert s._info_asked and sent.count((_DATA, 0x7E, b"I")) == 1
+
+
+def test_info_ask_interrupted_by_link_change_is_reasked():
+    """'I' 问到一半链路换了（拔插 / 换口）：回到 idle、允许新链路重问；不留下永远未定的身份（高负载下曾被判 fw_estop_unsafe）。"""
+    import threading
+    import time as _t
+    from dzbench.session import Session
+    s = Session()
+    s.tr, s.port = object(), "/dev/ttyFAKE"
+    s._send = lambda *a, **k: None
+    s._info_asked = True
+    th = threading.Thread(target=s._ask_info)
+    th.start()
+    _t.sleep(0.1)
+    assert s.ident_state == "asked"
+    s.tr = object()                       # 新链路
+    th.join(5)
+    assert not th.is_alive()
+    assert s.ident_state == "idle" and s._info_asked is False and s.fw_estop is None
+
+
+def test_info_no_reply_needs_heartbeats_not_just_wall_clock(monkeypatch):
+    """没回 'I' 的判定要求发出后已处理 INFO_NO_REPLY_HB 帧心跳：rx 线程被饿着（没心跳进来）时不靠墙钟误判旧固件。"""
+    import threading
+    import time as _t
+    from dzbench import board_ident
+    from dzbench.session import Session
+    monkeypatch.setattr(board_ident, "INFO_TIMEOUT_S", 0.05)
+    s = Session()
+    s.tr, s.port = object(), "/dev/ttyFAKE"
+    s._send = lambda *a, **k: None
+    th = threading.Thread(target=s._ask_info, daemon=True)
+    th.start()
+    _t.sleep(0.4)
+    assert s.ident_state == "asked" and s.fw_estop is None
+    s._hb_after_ask = board_ident.INFO_NO_REPLY_HB
+    th.join(5)
+    assert s.ident_state == "no_reply" and s.fw_estop is not None and not s.fw_estop["safe"]
+    s.tr = None

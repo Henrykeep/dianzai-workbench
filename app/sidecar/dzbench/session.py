@@ -1389,7 +1389,15 @@ class Session:
             pass
         t0 = time.monotonic()
         while self.ident_state == "asked":
-            if self._info is not None or self.tr is not gen_tr or gen_tr is None:
+            if self._info is not None:
+                return
+            if gen_tr is None:
+                return
+            if self.tr is not gen_tr:
+                # 问到一半链路换了（拔插 / 自动重连 / 换口）：没结论就回到 idle 并允许重问——新链路下一帧 40 B 心跳会再发 'I'。
+                # 根因（two_identical_boards 高负载）：以前 _info_asked 一直是 True、身份永远未定，执行器操作 2 s 后被判 fw_estop_unsafe。
+                if self.ident_state == "asked" and self._info is None:
+                    self.ident_state, self._info_asked = "idle", False
                 return
             if time.monotonic() - t0 >= board_ident.INFO_TIMEOUT_S and self._hb_after_ask >= board_ident.INFO_NO_REPLY_HB:
                 break
