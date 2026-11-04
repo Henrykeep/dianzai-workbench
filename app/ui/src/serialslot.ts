@@ -16,12 +16,13 @@ export function sidecarSerial(rpc: Rpc, subscribe: (f: (m: any) => void) => () =
   };
 }
 // 注入到工具页面里的桥（自写，MIT 同仓库许可）：把 navigator.serial 换成经 postMessage 转给本地服务的同形对象
+// 适配层里 toHost 发给的是外层页面（postMessage 消息 open/close/write/signals），不是侧车 op；外层再转成 connect/send_raw/serial_lines_set
 export const BRIDGE_JS = `(()=>{const P=window.parent;let seq=0;const W={};addEventListener("message",e=>{const m=e.data||{};if(m.dzs==="res"&&W[m.id]){W[m.id](m);delete W[m.id];}if(m.dzs==="data"&&port._c){const b=new Uint8Array(m.hex.match(/../g).map(h=>parseInt(h,16)));try{port._c.enqueue(b)}catch(_){}}});
-const call=(op,a)=>new Promise((ok,no)=>{const id=++seq;W[id]=m=>m.ok?ok(m.r):no(Object.assign(new Error(m.message||op),{code:m.code}));P.postMessage({dzs:"req",id,op,a},"*")});
+const toHost=(op,a)=>new Promise((ok,no)=>{const id=++seq;W[id]=m=>m.ok?ok(m.r):no(Object.assign(new Error(m.message||op),{code:m.code}));P.postMessage({dzs:"req",id,op,a},"*")});
 const port={_c:null,readable:null,writable:null,getInfo(){return{usbVendorId:undefined,usbProductId:undefined}},
-async open(o){await call("open",{baud:(o&&o.baudRate)||115200});this.readable=new ReadableStream({start:c=>{port._c=c}});this.writable=new WritableStream({write:ch=>call("write",{hex:Array.from(ch,b=>b.toString(16).padStart(2,"0")).join("")})});},
-async close(){try{port._c&&port._c.close()}catch(_){}port._c=null;this.readable=null;this.writable=null;await call("close",{})},
-async setSignals(s){await call("signals",{dtr:s.dataTerminalReady,rts:s.requestToSend})},async getSignals(){return{}},addEventListener(){},removeEventListener(){}};
+async open(o){await toHost("open",{baud:(o&&o.baudRate)||115200});this.readable=new ReadableStream({start:c=>{port._c=c}});this.writable=new WritableStream({write:ch=>toHost("write",{hex:Array.from(ch,b=>b.toString(16).padStart(2,"0")).join("")})});},
+async close(){try{port._c&&port._c.close()}catch(_){}port._c=null;this.readable=null;this.writable=null;await toHost("close",{})},
+async setSignals(s){await toHost("signals",{dtr:s.dataTerminalReady,rts:s.requestToSend})},async getSignals(){return{}},addEventListener(){},removeEventListener(){}};
 const serial={async requestPort(){return port},async getPorts(){return[port]},addEventListener(){},removeEventListener(){}};
 try{Object.defineProperty(navigator,"serial",{value:serial,configurable:true})}catch(_){}})();`;
 export function injectBridge(html: string): string {
