@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""check_vendored 许可扫描自测：GPL/AGPL/LGPL、无许可、认不出的许可都必须失败；MIT/BSD/Apache 通过。"""
+"""check_vendored 许可扫描自测：GPL 第 3 版以外的 copyleft、无许可、认不出的许可都必须失败；MIT/BSD/Apache 和 GPL/LGPL/AGPL 第 3 版通过（本仓库 AGPL-3.0-or-later）。"""
 import pathlib
 import subprocess
 import sys
@@ -12,6 +12,8 @@ MIT = "MIT License\n\nPermission is hereby granted, free of charge, to any perso
 GPL3 = "                    GNU GENERAL PUBLIC LICENSE\n                       Version 3, 29 June 2007\n"
 AGPL = "                    GNU AFFERO GENERAL PUBLIC LICENSE\n"
 LGPL = "                   GNU LESSER GENERAL PUBLIC LICENSE\n"
+AGPL3 = "                    GNU AFFERO GENERAL PUBLIC LICENSE\n                       Version 3, 19 November 2007\n"
+GPL2 = "                    GNU GENERAL PUBLIC LICENSE\n                       Version 2, June 1991\n"
 SRC = "Source: github.com/x/y@abcdef1 a.py\n"
 
 
@@ -32,13 +34,15 @@ def main():
         ("MIT 通过", run(MIT), False),
         ("BSD 通过", run("Redistribution and use in source and binary forms, with or without\n"), False),
         ("Apache 通过", run("Apache License\nVersion 2.0, January 2004\n".replace("\n", " ", 1)), False),
-        ("GPL-3.0 失败（pid_helper 同款）", run(GPL3), True),
-        ("AGPL 失败", run(AGPL), True),
-        ("LGPL 失败", run(LGPL), True),
+        ("GPL-3.0 通过（与 AGPL-3.0-or-later 兼容）", run(GPL3), False),
+        ("AGPL-3.0 通过", run(AGPL3), False),
+        ("GPL-2.0 失败（不兼容）", run(GPL2), True),
+        ("不写版本的 AGPL 失败", run(AGPL), True),
+        ("不写版本的 LGPL 失败", run(LGPL), True),
         ("缺 LICENSE 失败", run(None), True),
         ("认不出的许可失败", run("All rights reserved.\n"), True),
-        ("MIT 目录里夹 GPL 文件头失败", run(MIT, code="# Source: github.com/x/y@abcdef1 a.py\n# SPDX-License-Identifier: GPL-3.0-or-later\n"), True),
-        ("SOURCE.md 写 GPL 失败", run(MIT, source=SRC + "许可：GPL-3.0\n"), True),
+        ("文件头带 GPL-3.0-or-later SPDX 通过", run(MIT, code="# Source: github.com/x/y@abcdef1 a.py\n# SPDX-License-Identifier: GPL-3.0-or-later\n"), False),
+        ("SOURCE.md 写 GPL-3.0 通过", run(MIT, source=SRC + "许可：GPL-3.0\n"), False),
     ]
     for name, errs, want in cases:
         ok = bool(errs) == want
@@ -90,7 +94,7 @@ def main():
         r = git_repo(t)
         v = r / "third_party" / "vendored"
         (v / "lib").mkdir(parents=True)
-        (v / "lib" / "LICENSE").write_text(GPL3); (v / "lib" / "SOURCE.md").write_text(SRC)
+        (v / "lib" / "LICENSE").write_text(GPL2); (v / "lib" / "SOURCE.md").write_text(SRC)
         (v / "lib" / "a.py").write_text("# Source: github.com/x/y@abcdef1 a.py\n")
         (v / "junk" / "__pycache__").mkdir(parents=True); (v / "junk" / "__pycache__" / "x.pyc").write_bytes(b"x")
         git_add(r, "third_party/vendored/lib")

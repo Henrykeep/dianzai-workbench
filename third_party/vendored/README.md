@@ -10,4 +10,4 @@
 4. 仓库其它代码通过很薄的适配层调用它（例如 `app/sidecar/dzbench/tuning/`），删掉本目录时只影响那一层。
 5. 在 `docs/参考来源.md` 登记。
 
-许可：只收 MIT / BSD / Apache-2.0 / zlib 等宽松许可；GPL / LGPL / AGPL 或没有许可证的代码一律不进本目录（`tools/check_vendored.py` 强制）。
+许可：收 MIT / BSD / Apache-2.0 / zlib / ISC 等宽松许可，以及第 3 版 GPL / LGPL / AGPL（芯台整体按 AGPL-3.0-or-later 发布，兼容；统筹者 2026-11-04 决定）。GPL 第 2 版（无 or-later）、没有许可证或认不出许可的代码不进本目录（`tools/check_vendored.py` 强制）。

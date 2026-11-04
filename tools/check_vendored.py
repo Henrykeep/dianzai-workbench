@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """检查 third_party/vendored/ 每个来源都有 LICENSE、SOURCE.md，代码文件都有 Source: 头；
-许可扫描：LICENSE 必须是可识别的宽松许可（MIT/BSD/Apache-2.0/zlib/ISC），出现 GPL/LGPL/AGPL（含 SPDX 标识、
-LICENSE/SOURCE.md/代码文件头任何一处）或认不出许可即失败。自测：tools/test_check_vendored.py。"""
+许可扫描：LICENSE 必须是可识别的宽松许可（MIT/BSD/Apache-2.0/zlib/ISC）或第 3 版 GPL/LGPL/AGPL
+（芯台整体按 AGPL-3.0-or-later 发布，兼容；统筹者 2026-11-04 决定）。GPL 第 2 版（无 or-later）或认不出许可即失败。自测：tools/test_check_vendored.py。"""
 import pathlib
 import re
 import subprocess
@@ -20,8 +20,13 @@ PERMISSIVE = {
 }
 
 
+COPYLEFT3 = re.compile(r"GNU\s+(AFFERO\s+|LESSER\s+)?GENERAL\s+PUBLIC\s+LICENSE\s+Version\s+3\b", re.I)
+
+
 def classify(text: str) -> str:
-    """'copyleft' / 许可名 / 'unknown'。copyleft 优先（双许可里带 GPL 也算失败，要人工确认后另行处理）。"""
+    """'GPL-3-family'（与本仓库 AGPL-3.0-or-later 兼容）/ 'copyleft'（其它 GPL 版本，不兼容）/ 许可名 / 'unknown'。"""
+    if COPYLEFT3.search(text):
+        return "GPL-3-family"
     if COPYLEFT.search(text):
         return "copyleft"
     for name, rx in PERMISSIVE.items():
@@ -77,21 +82,17 @@ def check(base: pathlib.Path, root: pathlib.Path | None = None, warns: list[str]
         else:
             kind = classify(lic[0].read_text(encoding="utf-8", errors="replace"))
             if kind == "copyleft":
-                errs.append(f"{rel(d)}: LICENSE 是 GPL/LGPL/AGPL，规则只收宽松许可，删掉或换净室实现")
+                errs.append(f"{rel(d)}: LICENSE 是 GPL 第 3 版以外的 copyleft 许可，与本仓库 AGPL-3.0-or-later 不兼容，删掉或换净室实现")
             elif kind == "unknown":
                 errs.append(f"{rel(d)}: LICENSE 认不出是宽松许可（MIT/BSD/Apache-2.0/zlib/ISC），许可不明不得入库")
         sm = d / "SOURCE.md"
         has_sm = "SOURCE.md" in names and sm.is_file()
-        if has_sm and COPYLEFT.search(sm.read_text(encoding="utf-8")):
-            errs.append(f"{rel(sm)}: 出处写着 GPL/LGPL/AGPL")
         if not has_sm or not SRC.search(sm.read_text(encoding="utf-8")):
             errs.append(f"{rel(d)}: 缺 SOURCE.md 或其中没有 Source: repo@commit path")
         for f in files:
             if f.suffix in CODE and "__pycache__" not in f.parts and f.is_file():
                 text = f.read_text(encoding="utf-8", errors="replace")
                 head = "\n".join(text.splitlines()[:15])
-                if COPYLEFT.search("\n".join(text.splitlines()[:40])):
-                    errs.append(f"{rel(f)}: 文件头带 GPL/LGPL/AGPL 声明")
                 if not SRC.search(head):
                     errs.append(f"{rel(f)}: 前 15 行缺 Source: repo@commit path")
     refp = ROOT / "docs/参考来源.md"
