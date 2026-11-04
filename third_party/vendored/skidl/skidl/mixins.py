@@ -1,3 +1,4 @@
+# Source: https://github.com/devbisme/skidl@881a4d0f97ea0869e03501088245b8e21e4c2526 skidl/mixins.py (MIT, unmodified below this line)
 """
 Mixin classes for SKiDL objects.
 

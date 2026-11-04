@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Source: https://github.com/devbisme/skidl@881a4d0f97ea0869e03501088245b8e21e4c2526 skidl/scripts/part_search_cli.py (MIT, unmodified below this line)
 """
 Command-line interface to search SKiDL part libraries.
 

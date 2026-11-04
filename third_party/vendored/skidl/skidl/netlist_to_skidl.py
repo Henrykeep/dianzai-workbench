@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# Source: https://github.com/devbisme/skidl@881a4d0f97ea0869e03501088245b8e21e4c2526 skidl/netlist_to_skidl.py (MIT, unmodified below this line)
 
 """
 Convert a KiCad netlist into equivalent hierarchical SKiDL programs.

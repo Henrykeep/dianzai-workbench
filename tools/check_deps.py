@@ -102,7 +102,7 @@ class Checker:
     def files(self, sub, exts=(".c", ".h")):
         base = os.path.join(self.root, sub)
         for d, dirs, fs in os.walk(base):
-            dirs[:] = [x for x in dirs if x not in ("build", "third_party", "fixtures", "__pycache__")]
+            dirs[:] = [x for x in dirs if x not in ("build", "third_party", "vendor", "fixtures", "__pycache__")]  # vendor = 原样第三方源码（FlashDB 等），不按本仓库分层查
             for f in sorted(fs):
                 if f.endswith(exts):
                     yield os.path.join(d, f)
@@ -322,7 +322,7 @@ class Checker:
     # ---------------------------------------------------------------- V1
     def check_versions(self):
         for d, dirs, fs in os.walk(self.root):
-            dirs[:] = [x for x in dirs if x not in ("build", "third_party", ".git", "fixtures")]
+            dirs[:] = [x for x in dirs if x not in ("build", "third_party", "vendor", ".git", "fixtures")]
             if "VERSION" not in fs:
                 continue
             vpath = os.path.join(d, "VERSION")
