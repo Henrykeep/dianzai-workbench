@@ -528,9 +528,14 @@ def main() -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     c_src, mk = GENERATORS[fam](board, src, sha)
     c_src += gen_pwm3(board)
-    (a.out / "board_gen.h").write_text(gen_header(board, src, sha), encoding="utf-8")
-    (a.out / "board_gen.c").write_text(c_src, encoding="utf-8")
-    (a.out / "board_gen.mk").write_text("".join(f"{k} := {v}\n" for k, v in mk.items()), encoding="utf-8")
+    # 内容没变就不重写（保留 mtime）：gen/ 按板共享，重写一次 board_gen.h 会让同板所有应用的目标文件全部重编
+    for name, text in (("board_gen.h", gen_header(board, src, sha)), ("board_gen.c", c_src),
+                       ("board_gen.mk", "".join(f"{k} := {v}\n" for k, v in mk.items()))):
+        f = a.out / name
+        if not f.exists() or f.read_text(encoding="utf-8") != text:
+            f.write_text(text, encoding="utf-8")
+        elif name == "board_gen.mk":
+            f.touch()                          # 只碰 .mk（make 规则的目标）免得每次重跑；.h/.c 不动
     for w in rep.warnings:
         print(f"警告  {w}")
     for t in rep.todos:

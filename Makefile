@@ -47,10 +47,13 @@ ifeq ($(wildcard $(BOARD_YML)),)
 $(error 找不到 $(BOARD_YML)。可用板卡：$(notdir $(wildcard $(BOARDS_DIR)/*)))
 endif
 
-# 由 board.yaml 生成 board_gen.{h,c,mk}；board.yaml 或 app.yaml 变了自动重新生成
-$(GEN)/board_gen.mk: $(BOARD_YML) $(wildcard $(APP_DIR)/app.yaml) tools/gen_board.py tools/boardlib.py $(wildcard tools/families/*.py)
-	$(PY) tools/gen_board.py $(BOARD_YML) -o $(GEN) $(if $(VARIANT),--variant $(VARIANT)) $(if $(wildcard $(APP_DIR)/app.yaml),--app $(APP_DIR)/app.yaml)
+# 由 board.yaml 生成 board_gen.{h,c,mk}；board.yaml / 生成器变了自动重新生成。
+# gen/ 按板共享、内容与 APP 无关 → 不依赖 app.yaml、不带 --app（应用 requires 由下面每个 板×应用 的 $(REQ_OK) 查）。
+# 以前依赖 app.yaml：新建 / 改过 app.yaml 的工程一编就重写 board_gen.h，同板上其它所有应用（仿真板）整套重编 20–60 s。
+$(GEN)/board_gen.mk: $(BOARD_YML) tools/gen_board.py tools/boardlib.py $(wildcard tools/families/*.py)
+	$(PY) tools/gen_board.py $(BOARD_YML) -o $(GEN) $(if $(VARIANT),--variant $(VARIANT))
 $(GEN)/board_gen.h $(GEN)/board_gen.c: $(GEN)/board_gen.mk
+	@:   # 有空命令：make 执行后重新看 mtime，gen_board 没改内容（.h/.c 没重写）就不连带重编
 # gen/ 按板共享，换 APP 时 board_gen.mk 不一定重新生成 → requires 检查会被跳过、变成编译期 "RES_xxx undeclared"。
 # 每个 板×应用 单独打一个检查戳，缺资源时给出 [缺资源] 而不是编译错误。
 REQ_OK := $(OUT)/.requires_ok
@@ -250,6 +253,7 @@ test:
 	tools/test_dep_rename.sh   # 头文件改名/删除后不 clean 增量编译（-MMD -MP）
 	tools/test_fetch_ui_deps.sh   # #33：软链接 node_modules 拒绝 npm ci
 	$(PY) tools/test_tree_sha256.py   # CMSIS 内容指纹跨平台（CRLF/顺序/权限位无关）
+	$(PY) tools/test_gen_shared.py   # gen/ 按板共享：换应用不重写 board_gen.h（仿真板整套重编拖垮调参用例）
 	$(PY) tools/test_keil_rel.py   # keil_inject 跨盘符（Windows C:/D:）不崩
 	$(PY) tools/test_win_paths_mk.py   # Windows C:/ 源路径不进 make 目标名（Makefile:173 multiple target patterns）
 	$(PY) tools/test_link_wdhash.py   # link.watchdog_ms 进 schema 哈希（1500≠2300，不改则相同）
