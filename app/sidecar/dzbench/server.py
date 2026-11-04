@@ -383,6 +383,18 @@ class Server:
             if m.get("seek") is not None:
                 await self._broadcast({"type": "seeked", **r})
             return r
+        if op == "tool_list":                          # 工具箱首页：tools.d 声明 + 依赖状态（exe / 网页同一路：都走侧车）
+            from . import toolreg
+            return toolreg.tool_list()
+        if op == "tool_get":
+            from . import toolreg
+            return toolreg.tool_get(str(m.get("id"))) or {"state": "error", "errors": [{"reason_code": "bad_arg", "details": "没有这个工具"}]}
+        if op == "cubemx_generate":                    # vendored mcp-stm32cubeide-server：CubeMX 无头生成
+            from . import cubemx
+            return await run(None, lambda: cubemx.generate(m["ioc"], m.get("toolchain", "keil")))
+        if op == "cubeide_build":                      # vendored mcp-stm32cubeide-server：CubeIDE 无头编译
+            from . import cubemx
+            return await run(None, lambda: cubemx.build(m["project"], m.get("config", "Debug"), bool(m.get("clean"))))
         if op == "fft" or op == "wave_measure":    # 联调页（实现在 pageops，Agent 工具同一函数）
             from . import pageops
             return await run(None, getattr(pageops, op), self.session, m)

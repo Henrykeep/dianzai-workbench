@@ -1,0 +1,13 @@
+# 来源：mcp-stm32cubeide-server（MIT）discovery.py + process.py + tools.py 生成脚本；见 docs/ATTRIBUTION.md
+id: cubemx_generate
+stage: 固件
+icon: microchip
+name_zh: STM32 工程生成
+summary_zh: 按 .ioc 无头调用 STM32CubeMX 生成代码，不用手动点 GENERATE
+source: {repo: github.com/Helistana/mcp-stm32cubeide-server, commit: 860d90b, license: MIT}
+status_from: cubemx
+params:
+  - {name: ioc, type: file, label_zh: .ioc 文件}
+  - {name: toolchain, type: enum, enum: [keil, cubeide, cmake, makefile], default: keil, label_zh: 工具链}
+run: {op: cubemx_generate, writes: true, touches_board: false}
+result_types: [text]

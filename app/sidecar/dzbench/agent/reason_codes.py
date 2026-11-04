@@ -14,6 +14,14 @@ DIVERGE = {"unstable"}
 BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作 clear_schema_cache（确认后只删这个哈希的缓存格式文件并重新识别）",
               "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录"}
 
+# 工具箱工具状态（tools.d/*.yaml 的 reason_code；kind = tool）：zh 是唯一中文来源，fix_action 是界面修复按钮动作
+TOOL_ZH = {
+    "missing_cubemx": ("没找到 STM32CubeMX，装好后或设环境变量 CUBEMX_PATH 再试", "install_dep"),
+    "missing_cubeide": ("没找到 STM32CubeIDE，装好后或设环境变量 CUBEIDE_PATH 再试", "install_dep"),
+    "tool_timeout": ("外部工具超时没结束，已结束它的整个进程树", "retry"),
+    "confirm_required": ("这一步会改动文件或板子，先看预览再确认", "confirm"),
+}
+
 
 def table() -> dict:
     out = {}
@@ -25,4 +33,6 @@ def table() -> dict:
         out.setdefault(k, {"zh": zh, "kind": "diverge" if k in DIVERGE else "stop"})
     for k, zh in BLOCKER_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "blocker"})
+    for k, (zh, fix) in TOOL_ZH.items():
+        out.setdefault(k, {"zh": zh, "kind": "tool", "fix_action": fix})
     return dict(sorted(out.items()))

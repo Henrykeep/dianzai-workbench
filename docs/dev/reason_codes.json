@@ -23,6 +23,11 @@
   "zh": "板上已有阶跃实验在跑",
   "kind": "abort"
  },
+ "confirm_required": {
+  "zh": "这一步会改动文件或板子，先看预览再确认",
+  "kind": "tool",
+  "fix_action": "confirm"
+ },
  "empty_metrics": {
   "zh": "指标为空",
   "kind": "round"
@@ -42,6 +47,16 @@
  "invalid": {
   "zh": "连续 3 轮无效",
   "kind": "stop"
+ },
+ "missing_cubeide": {
+  "zh": "没找到 STM32CubeIDE，装好后或设环境变量 CUBEIDE_PATH 再试",
+  "kind": "tool",
+  "fix_action": "install_dep"
+ },
+ "missing_cubemx": {
+  "zh": "没找到 STM32CubeMX，装好后或设环境变量 CUBEMX_PATH 再试",
+  "kind": "tool",
+  "fix_action": "install_dep"
  },
  "no_improve": {
   "zh": "连续 3 轮没有改进",
@@ -82,6 +97,11 @@
  "too_few_samples": {
   "zh": "样本太少",
   "kind": "round"
+ },
+ "tool_timeout": {
+  "zh": "外部工具超时没结束，已结束它的整个进程树",
+  "kind": "tool",
+  "fix_action": "retry"
  },
  "unstable": {
   "zh": "发散（超调过大）",
