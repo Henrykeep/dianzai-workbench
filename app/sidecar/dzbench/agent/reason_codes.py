@@ -19,13 +19,14 @@ BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据�
               "fw_estop_unsafe": "此固件存在急停可被误清除的问题，请重新烧录",
               "estop_latched_ident_deferred": "急停中，暂不识别板子",
               "resuming": "正在恢复连接",
+              "ident_pending": "正在识别板子…",
               "resume_no_response": "重连后板子没有回应，请按『重新连接』",
               # #164：侧车重启自动连回失败的原因（link.state reason / board=disconnected 的 down_reason）
               "port_not_found": "本地服务重启后没能自动连回上次的板子（口不在了，也没在别的口找到它）",
               "port_ambiguous": "本地服务重启后找到不止一块像原来那块的板子，没有自动连回，请在端口列表里选一下再点“连接”"}
 
 # #164：每个连接 / 恢复原因码都带 message_zh（界面原样显示）；有修复动作的再带 fix_action（前端按它显示按钮）
-BLOCKER_FIX = {"resume_no_response": "reconnect", "estop_latched_ident_deferred": "estop_clear", "fw_estop_unsafe": "reflash",
+BLOCKER_FIX = {"resume_no_response": "reconnect", "ident_pending": "reconnect", "estop_latched_ident_deferred": "estop_clear", "fw_estop_unsafe": "reflash",
                "port_not_found": "connect", "port_ambiguous": "connect"}
 
 # #164：侧车其它回包 / 事件里的原因码（拒绝、急停回包、阻塞、迭代异常等）：kind = other；界面同样只从这张表取中文

@@ -101,6 +101,12 @@
   "message_zh": "这块板子的目标不会保持，重新开始实验即可",
   "fix_action": "restart_experiment"
  },
+ "ident_pending": {
+  "zh": "正在识别板子…",
+  "kind": "blocker",
+  "message_zh": "正在识别板子…",
+  "fix_action": "reconnect"
+ },
  "invalid": {
   "zh": "连续 3 轮无效",
   "kind": "stop",

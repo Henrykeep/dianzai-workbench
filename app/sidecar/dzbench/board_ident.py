@@ -13,6 +13,7 @@ OLD_FW_ZH = "固件版本过旧，不支持板子识别"
 INFO_CMD = b"I"            # DATA id=0x7E {'I'}（dzctl 0.17.0）
 INFO_LEN = 23
 INFO_TIMEOUT_S = 2.0
+INFO_NO_REPLY_HB = 4         # 判“没回 'I'”还要求发出后已处理的心跳帧数（回包按字节序排在它们前面）
 IDENT_WAIT_S = 2.0                 # 执行器操作等 'I' 回包的上限；到点仍未定 → estop_latched_ident_deferred / fw_estop_unsafe
 IDENT_DEFERRED_ZH = "急停中，暂不识别板子"
 PENDING_ZH = "正在识别板子…"            # #151 握手没完：不能说“不支持”

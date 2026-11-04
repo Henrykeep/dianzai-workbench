@@ -104,6 +104,11 @@ class Session:
         self._was_alive = False
         self._info_asked = False             # 本次连接是否已发过 'I'（只发一次）
         self._info = None                    # 'I' 回包解码结果
+        # 'I' 问询的显式状态：idle 没问 / asked 已发等回包 / known 收到回包 / no_reply 判定没回（旧固件）。
+        # no_reply 只在「已过 INFO_TIMEOUT_S 且发出后又处理了 INFO_NO_REPLY_HB 帧心跳」时判：回包和心跳走同一条 rx 线程、
+        # 按字节顺序处理，板子要是回了，回包一定排在这些心跳前面；高负载下 rx 线程慢只会推迟判定，不会误判成旧固件。
+        self.ident_state = "idle"
+        self._hb_after_ask = 0
         self._hs_conn = False                # #151：本次连接是否已拿到握手结论（'I' 回包或超时判旧固件）
         self.fw_estop: dict | None = None    # board_ident.estop_safety 结果；None = 还没定（'I' 未回也未超时）
         self._info_timer = None
@@ -641,6 +646,8 @@ class Session:
         self.health.on_frame(seq)
         if kind == HEARTBEAT:
             self.last_hb = now
+            if self.ident_state == "asked":
+                self._hb_after_ask += 1
             with self.hblock:
                 self._on_heartbeat(payload)
         elif kind == DATA and id_ == ID_CMD and len(payload) == 2 and payload[0] == ord("M"):
@@ -650,6 +657,7 @@ class Session:
         elif kind == DATA and id_ == ID_CMD and len(payload) >= board_ident.INFO_LEN and payload[0] == ord("I"):
             info = board_ident.decode_info(payload)
             if info is not None:
+                self.ident_state = "known"           # rx 线程里先置：后面的心跳不会再算进“没回包”
                 self._locked(lambda i=info: self._on_info(i))
         elif kind == DATA and id_ == ID_CMD and len(payload) == 5 and payload[0] == ord("H"):
             self.selftest_ack = struct.unpack_from("<I", payload, 1)[0]     # 'H' 自检回包：u32 失败掩码（小端）
@@ -1374,16 +1382,20 @@ class Session:
     def _ask_info(self) -> None:
         """连上且确认是我们的固件后发一次 DATA 0x7E {'I'}；2 s 内没回包 = 固件 < 0.17.0。"""
         gen_tr = self.tr
+        self._hb_after_ask, self.ident_state = 0, "asked"
         try:
             self._send(DATA, ID_CMD, board_ident.INFO_CMD)
         except Exception:       # noqa: BLE001  急停锁存等：只是没问到，按超时处理
             pass
         t0 = time.monotonic()
-        while time.monotonic() - t0 < board_ident.INFO_TIMEOUT_S:
-            if self._info is not None or self.tr is not gen_tr:
+        while self.ident_state == "asked":
+            if self._info is not None or self.tr is not gen_tr or gen_tr is None:
                 return
+            if time.monotonic() - t0 >= board_ident.INFO_TIMEOUT_S and self._hb_after_ask >= board_ident.INFO_NO_REPLY_HB:
+                break
             time.sleep(0.02)
-        if self._info is None and self.tr is gen_tr and gen_tr is not None:
+        if self.ident_state == "asked" and self._info is None and self.tr is gen_tr and gen_tr is not None:
+            self.ident_state = "no_reply"
             self._locked(lambda: self.apply_handshake({"fw_too_old": True}))
             self._set_estop_safety(None)
 
@@ -1406,13 +1418,24 @@ class Session:
             return                               # 急停 / 迭代中：让原来更具体的拒绝（estop_clear / iter_busy）先报
         if self.fw_estop is None and self._info is None:
             # 'I' 已发（或解除急停后下一帧心跳就发）但回包还没到：最多等 IDENT_WAIT_S，绝不无限等
+            # 显式状态 asked = 还在等结论：只要心跳还在进来（板子活着、判定会按心跳计数到来）就继续等；
+            # 心跳停了 IDENT_WAIT_S 才放弃（链路问题，不是负载）。不靠墙钟上限判结论。
             t0 = time.monotonic()
-            while self.fw_estop is None and self._info is None and time.monotonic() - t0 < board_ident.IDENT_WAIT_S:
+            while self.fw_estop is None and self._info is None:
+                if self.ident_state == "asked":
+                    if time.monotonic() - max(t0, self.last_hb or 0) >= board_ident.IDENT_WAIT_S:
+                        break
+                elif time.monotonic() - t0 >= board_ident.IDENT_WAIT_S:
+                    break
                 time.sleep(0.02)
             if self.fw_estop is None and self._info is None and (self.hb_status or 0) & (1 << 10):
                 # 板子急停位(bit10)还在：侧车按规矩不发 'I'，身份定不下来 → 明确拒绝，不当成旧固件也不放行
                 raise LinkError("estop_latched_ident_deferred", board_ident.IDENT_DEFERRED_ZH, "等板子急停位清零（解除急停后输出放开）再操作",
                                 "estop_clear", {"reason": "estop_latched_ident_deferred", "message_zh": board_ident.IDENT_DEFERRED_ZH})
+            if self.fw_estop is None and self._info is None and self.ident_state == "asked":
+                # 还在问、心跳却停了：身份没定，明确说“正在识别”，不冒充成旧固件
+                raise LinkError("ident_pending", board_ident.PENDING_ZH, "等板子心跳恢复、识别完成再操作", "reconnect",
+                                {"reason": "ident_pending", "message_zh": board_ident.PENDING_ZH})
         st = self.fw_estop or board_ident.estop_safety(self._info)
         if not st["safe"]:
             raise LinkError("fw_estop_unsafe", board_ident.ESTOP_UNSAFE_ZH, "到“烧录”步重新烧录 dzctl ≥ " + st["min_version"] + " 的固件",
