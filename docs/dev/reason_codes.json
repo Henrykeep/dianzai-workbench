@@ -33,10 +33,35 @@
   "zh": "板上已有阶跃实验在跑",
   "kind": "abort"
  },
+ "clear_schema_cache": {
+  "zh": "已清除这个哈希的缓存数据格式文件，正在重新识别",
+  "kind": "misc",
+  "message_zh": "已清除这个哈希的缓存数据格式文件，正在重新识别"
+ },
+ "commit_declined": {
+  "zh": "提交需要你在确认卡上批准，未执行",
+  "kind": "misc",
+  "message_zh": "提交需要你在确认卡上批准，未执行"
+ },
+ "commit_failed": {
+  "zh": "git 提交失败，详见日志",
+  "kind": "misc",
+  "message_zh": "git 提交失败，详见日志"
+ },
+ "confirm_required": {
+  "zh": "需要在界面上确认后再执行",
+  "kind": "misc",
+  "message_zh": "需要在界面上确认后再执行"
+ },
  "converged": {
   "zh": "已满足题面，停止搜索",
   "kind": "tune",
   "message_zh": "已满足题面，停止搜索"
+ },
+ "data_file_missing": {
+  "zh": "缺少数据文件",
+  "kind": "misc",
+  "message_zh": "缺少数据文件"
  },
  "delay": {
   "zh": "纯滞后过大",
@@ -46,6 +71,11 @@
  "empty_metrics": {
   "zh": "指标为空",
   "kind": "round"
+ },
+ "error": {
+  "zh": "内部错误，迭代已停止",
+  "kind": "misc",
+  "message_zh": "内部错误，迭代已停止"
  },
  "estop": {
   "zh": "板子急停中",
@@ -59,9 +89,19 @@
   "zh": "此固件存在急停可被误清除的问题，请重新烧录",
   "kind": "blocker"
  },
+ "fw_too_old": {
+  "zh": "固件版本太旧，不支持板子唯一标识，请升级固件",
+  "kind": "misc",
+  "message_zh": "固件版本太旧，不支持板子唯一标识，请升级固件"
+ },
  "hash_mismatch": {
   "zh": "参数哈希对不上",
   "kind": "round"
+ },
+ "hold": {
+  "zh": "这块板子的目标不会保持，重新开始实验即可",
+  "kind": "misc",
+  "message_zh": "这块板子的目标不会保持，重新开始实验即可"
  },
  "improvement_unconfirmed": {
   "zh": "数据噪声大，无法确认比初值好，建议保留初值或加长采样后重测",
@@ -89,6 +129,16 @@
   "zh": "轮数上限用完",
   "kind": "tune",
   "message_zh": "轮数上限用完"
+ },
+ "max_step": {
+  "zh": "设定值一次跳得超过单次最大阶跃",
+  "kind": "misc",
+  "message_zh": "设定值一次跳得超过单次最大阶跃"
+ },
+ "no_board": {
+  "zh": "没有连接板子",
+  "kind": "misc",
+  "message_zh": "没有连接板子"
  },
  "no_improve": {
   "zh": "连续 3 轮没有改进",
@@ -125,6 +175,11 @@
   "zh": "连续 2 轮达标",
   "kind": "stop"
  },
+ "plant_invalid": {
+  "zh": "对象声明有误，请修改工程声明",
+  "kind": "misc",
+  "message_zh": "对象声明有误，请修改工程声明"
+ },
  "plant_unresponsive": {
   "zh": "对象无响应",
   "kind": "stop",
@@ -136,9 +191,34 @@
    "执行器饱和"
   ]
  },
+ "protect_param_role": {
+  "zh": "参数角色未确认，不能写这些参数",
+  "kind": "misc",
+  "message_zh": "参数角色未确认，不能写这些参数"
+ },
+ "range": {
+  "zh": "参数超出声明范围，已拒绝",
+  "kind": "misc",
+  "message_zh": "参数超出声明范围，已拒绝"
+ },
+ "replay": {
+  "zh": "回放中：急停没有送达任何板子",
+  "kind": "misc",
+  "message_zh": "回放中：急停没有送达任何板子"
+ },
  "resuming": {
   "zh": "正在恢复连接",
   "kind": "blocker"
+ },
+ "roles_unconfirmed": {
+  "zh": "参数角色还没确认",
+  "kind": "misc",
+  "message_zh": "参数角色还没确认"
+ },
+ "running": {
+  "zh": "迭代还没结束",
+  "kind": "misc",
+  "message_zh": "迭代还没结束"
  },
  "saturation": {
   "zh": "执行器饱和",
@@ -152,6 +232,16 @@
  "settle_zero": {
   "zh": "调节时间为 0（窗口没对上）",
   "kind": "round"
+ },
+ "state": {
+  "zh": "急停中不下发目标",
+  "kind": "misc",
+  "message_zh": "急停中不下发目标"
+ },
+ "step": {
+  "zh": "单次改参步子太大，已拒绝",
+  "kind": "misc",
+  "message_zh": "单次改参步子太大，已拒绝"
  },
  "step_failed": {
   "zh": "阶跃没做成",
@@ -182,6 +272,11 @@
  "unsupported": {
   "zh": "这个应用没配阶跃通道（app.yaml link.step）",
   "kind": "abort"
+ },
+ "user_action": {
+  "zh": "你手动操作过，不自动恢复",
+  "kind": "misc",
+  "message_zh": "你手动操作过，不自动恢复"
  },
  "zero_step": {
   "zh": "阶跃幅度为 0（目标就是当前位置）",

@@ -33,6 +33,29 @@ BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据�
               "estop_latched_ident_deferred": "急停中，暂不识别板子",
               "resuming": "正在恢复连接"}
 
+# #164 其余侧车会发出的码（会话 / 网关 / 数据文件 / 迭代拒绝等）：kind = misc；文案与 fix-r9c 共用（同一份）
+MISC_ZH = {
+    "clear_schema_cache": "已清除这个哈希的缓存数据格式文件，正在重新识别",
+    "commit_declined": "提交需要你在确认卡上批准，未执行",
+    "commit_failed": "git 提交失败，详见日志",
+    "confirm_required": "需要在界面上确认后再执行",
+    "data_file_missing": "缺少数据文件",
+    "error": "内部错误，迭代已停止",
+    "fw_too_old": "固件版本太旧，不支持板子唯一标识，请升级固件",
+    "hold": "这块板子的目标不会保持，重新开始实验即可",
+    "max_step": "设定值一次跳得超过单次最大阶跃",
+    "no_board": "没有连接板子",
+    "plant_invalid": "对象声明有误，请修改工程声明",
+    "protect_param_role": "参数角色未确认，不能写这些参数",
+    "range": "参数超出声明范围，已拒绝",
+    "replay": "回放中：急停没有送达任何板子",
+    "roles_unconfirmed": "参数角色还没确认",
+    "running": "迭代还没结束",
+    "state": "急停中不下发目标",
+    "step": "单次改参步子太大，已拒绝",
+    "user_action": "你手动操作过，不自动恢复",
+}
+
 
 def table() -> dict:
     out = {}
@@ -50,4 +73,6 @@ def table() -> dict:
             out[k]["causes"] = CAUSES_ZH[k]
     for k, zh in BLOCKER_ZH.items():
         out.setdefault(k, {"zh": zh, "kind": "blocker"})
+    for k, zh in MISC_ZH.items():
+        out.setdefault(k, {"zh": zh, "kind": "misc", "message_zh": zh})
     return dict(sorted(out.items()))
