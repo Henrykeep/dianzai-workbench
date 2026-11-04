@@ -1,0 +1,4 @@
+- 固件工具统一 `--json` 与退出码（tools/tooljson.py）：gen_link、pin_check（新 CLI，规则仍是 boardlib.check_board）、selfcheck、tunegate 的 `--json` 只在 stdout 输出一个 `{tool, stage, state, exit_code, blocks, errors, details}` 信封（排序键、纯 ASCII、绝对路径和耗时只在 details）；退出码 0 成功 / 1 不达标 / 2 参数错 / 3 缺依赖 / 4 没连板 / 5 需确认 / ≥10 内部错误，每个非 0 都带原因码，中文只从 reason_codes.json 查。
+- gen_link `--json` 要写文件时先返回 confirm_required（5）和预览，`--yes` 才写；默认（不带 --json）行为不变。
+- 行为变化：selfcheck 缺 Python 依赖退出码 1 → 3；tunegate 替身对象 2 → 1；tunegate `--json` 不带路径 = stdout 信封，带路径仍写文件。
+- 新增 tests/tooljson（同输入字节一致、换 cwd 一致、退出码与原因码一致），接进 make test。

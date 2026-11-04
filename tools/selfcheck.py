@@ -2,8 +2,11 @@
 """芯台自检（安装目录 xintai-selfcheck.bat / 仓库根 xintai-selfcheck.sh 调它）。只用标准库起步：
 先跑依赖自检（tools/pydeps.py doctor），不通过就打印中文原因和办法后退出（退出码 1），不再往下跑、不甩 Traceback；
 通过后检查数据文件（docs/dev/roles.json、docs/dev/reason_codes.json），侧车有 selfcheck-data 命令时再跑 `python -m dzbench selfcheck-data`。
-退出码：0 = 全部检查且通过；1 = 有失败；3 = 未完成（有「未检查」的项、没有失败）。未检查不算通过。
---json：只输出一段 JSON（items[].status = ok|missing|invalid|unchecked），给前端用。
+退出码（统一口径，tools/tooljson.py）：0 = 全部检查且通过；1 = 有数据内容不对（selfcheck_failed）；
+3 = 缺依赖 / 数据文件缺失 / 有「未检查」的项（missing_dep / data_missing / selfcheck_incomplete）。未检查不算通过。
+--json：只输出一段 JSON：统一信封 {tool, stage, state, exit_code, blocks, errors, details}，并保留旧字段
+rc / ok / complete / summary_zh / items（items[].status = ok|missing|invalid|unchecked，另加 reason_code）；
+绝对路径、子进程输出只放 details。
 """
 from __future__ import annotations
 
@@ -68,11 +71,33 @@ def run_checks() -> list[dict]:
     return items
 
 
+def item_code(i):
+    if i["status"] == "ok":
+        return None
+    if i["status"] == "unchecked":
+        return "selfcheck_incomplete"
+    if i.get("id") == "python_deps":
+        return "missing_dep"
+    return "data_missing" if i["status"] == "missing" else "selfcheck_failed"
+
+
+def errors_of(items):
+    """按优先级排：内容不对（1）在前，其次缺依赖/缺文件/未检查（3）；退出码 = 第一条的码。"""
+    import tooljson as T
+    codes = []
+    for c in ("selfcheck_failed", "missing_dep", "data_missing", "selfcheck_incomplete"):
+        ids = [i.get("id") for i in items if item_code(i) == c]
+        if ids:
+            codes.append(T.error(c, items=ids))
+    return codes
+
+
 def summarize(items):
     failed = [i for i in items if i["status"] in ("missing", "invalid")]
     unchecked = [i for i in items if i["status"] == "unchecked"]
     if failed:
-        return 1, f"自检没通过：{len(failed)} 项失败" + (f"，{len(unchecked)} 项未检查" if unchecked else "")
+        rc = 1 if any(i["status"] == "invalid" and i.get("id") != "python_deps" for i in failed) else 3
+        return rc, f"自检没通过：{len(failed)} 项失败" + (f"，{len(unchecked)} 项未检查" if unchecked else "")
     if unchecked:
         return 3, f"自检未完成：{len(unchecked)} 项未检查"
     return 0, "自检全部通过"
@@ -93,8 +118,16 @@ def main(argv=None) -> int:
     items = run_checks()
     rc, summary = summarize(items)
     if "--json" in argv:
-        print(json.dumps({"rc": rc, "ok": rc == 0, "complete": not any(i["status"] == "unchecked" for i in items),
-                          "summary_zh": summary, "python": sys.executable, "items": items}, ensure_ascii=True, indent=1))  # 纯 ASCII：任何控制台编码下都能被 ConvertFrom-Json 正确读
+        import tooljson as T
+        volatile = ("path", "detail", "rc", "install_cmd")   # 绝对路径 / 子进程输出 → details，保证同输入字节一致
+        pub = [{k: v for k, v in i.items() if k not in volatile} | {"reason_code": item_code(i)} for i in items]
+        rows = [[i["id"], i["status"], item_code(i)] for i in items]
+        _, env = T.envelope("selfcheck", "调试", errors_of(items), [T.table(["id", "status", "reason_code"], rows)],
+                            {"python": sys.executable, "items": {i["id"]: {k: i[k] for k in volatile if k in i} for i in items}})
+        assert env["exit_code"] == rc, (env["exit_code"], rc)
+        env |= {"rc": rc, "ok": rc == 0, "complete": not any(i["status"] == "unchecked" for i in items),
+                "summary_zh": summary, "items": pub}
+        T.emit(env)  # 纯 ASCII + 排序键：任何控制台编码下都能被 ConvertFrom-Json 正确读
         return rc
     print(f"芯台自检（Python {sys.version.split()[0]}，{sys.executable}）")
     for i in items:

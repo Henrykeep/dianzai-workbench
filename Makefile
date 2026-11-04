@@ -259,6 +259,7 @@ test:
 	$(PY) tools/test_projgen_build.py   # #52 工程 build/gen 导出物不与 projgen 重复链接
 	tools/test_estop_wd.sh   # 链路看门狗：卡顿 1.2 s 不误触发、2 s 必触发，记录值 = 实测间隔（link.watchdog_ms，默认 1500）
 	$(PY) tests/pydeps/test_pydeps.py   # #112 离线依赖清单 5 包钉版本、doctor JSON、缺包中文提示
+	$(PY) -m pytest -q -p no:cacheprovider tests/tooljson   # 固件工具统一 --json 信封 + 退出码（同输入字节一致）
 	$(PY) -m pytest -q -p no:cacheprovider tests/selfcheck   # xintai-selfcheck.sh：有依赖 0；缺依赖中文、非 0、无 Traceback
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
 	tools/test_ball_param.sh   # 2026H_ball：PARAM_SET 的 pos_k 真进钢珠环（三组阶跃指标不同）

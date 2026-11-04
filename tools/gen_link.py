@@ -18,6 +18,7 @@
 哈希 = FNV-1a 32 位，算在规范化 JSON（不含 desc/default）上：字段或限幅一变，上位机就知道 schema 不匹配。
 
 用法：gen_link.py <yaml> -o <目录>    |    gen_link.py --selftest
+  --json：stdout 只输出一个统一信封（tools/tooljson.py）；会写文件时先返回 confirm_required（退出码 5）+ 预览，加 --yes 才写。
 """
 from __future__ import annotations
 
@@ -27,7 +28,10 @@ import math
 import pathlib
 import sys
 
-import yaml
+try:
+    import yaml
+except ImportError:  # --json reports missing_dep instead of a Traceback
+    yaml = None
 
 C_TYPES = {"float": ("float", "DZCTL_F32", "f32"), "uint32": ("uint32_t", "DZCTL_U32", "u32"),
            "int32": ("int32_t", "DZCTL_I32", "u32"), "uint16": ("uint16_t", "DZCTL_U16", "u16"),
@@ -322,7 +326,77 @@ def selftest() -> int:
     return 0 if ok else 1
 
 
+OUT_FILES = ("link_gen.h", "link_gen.c", "link_schema.json")
+
+
+def build(path: pathlib.Path) -> tuple[list, dict]:
+    spec, params, struct = load(path)
+    errs = check(spec, params)
+    if errs:
+        return errs, {}
+    sch = schema(spec, params)
+    h, c = render(spec, params, struct, sch)
+    return [], {"link_gen.h": h, "link_gen.c": c, "link_schema.json": json.dumps(sch, ensure_ascii=False, indent=1)}
+
+
+def main_json(argv) -> int:
+    import hashlib
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+    import tooljson as T
+    ap = T.Parser(prog="gen_link.py")
+    ap.add_argument("yaml", type=pathlib.Path)
+    ap.add_argument("-o", "--out", type=pathlib.Path, required=True)
+    ap.add_argument("--yes", action="store_true")
+    ap.add_argument("--json", action="store_true")
+    det = {}
+    try:
+        if yaml is None:
+            rc, env = T.envelope("gen_link", "固件", [T.error("missing_dep", module="yaml")])
+            return T.emit(env) or rc
+        a = ap.parse_args(argv)
+        det = {"yaml_abs": str(a.yaml.resolve()), "out_abs": str(a.out.resolve())}
+        if not a.yaml.is_file():
+            raise T.BadArg(f"no such file: {T.rel(a.yaml)}")
+        try:
+            errs, files = build(a.yaml)
+        except (yaml.YAMLError, AttributeError, TypeError, KeyError, ValueError) as e:
+            raise T.BadArg(f"{type(e).__name__}: {e}")
+        if errs:
+            rc, env = T.envelope("gen_link", "固件", [T.error("link_spec_invalid", count=len(errs))],
+                                 [T.table(["#"], [[i + 1] for i in range(len(errs))])], det | {"issues": errs})
+            return T.emit(env) or rc
+        sch = json.loads(files["link_schema.json"])
+        rows, changed = [], False
+        for n in OUT_FILES:
+            f = a.out / n
+            old = f.read_text(encoding="utf-8") if f.is_file() else None
+            st = "new" if old is None else ("same" if old == files[n] else "changed")
+            changed |= st != "same"
+            rows.append([n, st, hashlib.sha256(files[n].encode("utf-8")).hexdigest()[:16]])
+        blocks = [T.kv({"schema_hash": sch.get("hash"), "telemetry_fields": len(sch["telemetry"]["fields"]),
+                        "params": len(sch.get("params") or [])}),
+                  T.table(["file", "status", "sha256_16"], rows)]
+        token = hashlib.sha256("".join(r[2] for r in rows).encode()).hexdigest()[:16]
+        if changed and not a.yes:
+            rc, env = T.envelope("gen_link", "固件", [T.error("confirm_required")], blocks, det,
+                                 preview={"diff": {"type": "diff", "files": [r[:2] for r in rows]}, "token": token})
+            return T.emit(env) or rc
+        if changed:
+            a.out.mkdir(parents=True, exist_ok=True)
+            for n in OUT_FILES:
+                (a.out / n).write_text(files[n], encoding="utf-8")
+        rc, env = T.envelope("gen_link", "固件", [], blocks, det | {"wrote": changed})
+    except T.BadArg as e:
+        rc, env = T.envelope("gen_link", "固件", [T.error("tool_bad_arg", arg=str(e))], details=det)
+    except Exception as e:  # noqa: BLE001
+        rc, env = T.envelope("gen_link", "固件", [T.error("internal_error", exc=f"{type(e).__name__}: {e}")], details=det)
+    T.emit(env)
+    return rc
+
+
 def main() -> int:
+    if "--json" in sys.argv[1:]:
+        return main_json(sys.argv[1:])
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("yaml", nargs="?", type=pathlib.Path)
     ap.add_argument("-o", "--out", type=pathlib.Path)

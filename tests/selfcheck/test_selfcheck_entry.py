@@ -60,7 +60,7 @@ def test_summarize_codes():
     assert selfcheck.summarize([it("ok"), it("ok")])[0] == 0
     rc, msg = selfcheck.summarize([it("ok"), it("unchecked"), it("unchecked")])
     assert rc == 3 and msg == "自检未完成：2 项未检查"
-    assert selfcheck.summarize([it("missing"), it("unchecked")])[0] == 1
+    assert selfcheck.summarize([it("missing"), it("unchecked")])[0] == 3   # 统一退出码：缺文件 = 3
     assert selfcheck.summarize([it("invalid")])[0] == 1
 
 
@@ -69,7 +69,7 @@ def test_json_without_deps(tmp_path):
     r = subprocess.run([str(tmp_path / "v/bin/python"), str(ROOT / "tools/selfcheck.py"), "--json"],
                        capture_output=True, text=True, env=dict(os.environ, PYTHONPATH=""), timeout=300)
     d = json.loads(r.stdout)
-    assert r.returncode == 1 and d["items"][0]["status"] == "missing"
+    assert r.returncode == 3 == d["exit_code"] and d["items"][0]["status"] == "missing" and d["errors"][0]["reason_code"] == "missing_dep"
     assert [i["status"] for i in d["items"][1:]] == ["unchecked"] * 3
 
 
