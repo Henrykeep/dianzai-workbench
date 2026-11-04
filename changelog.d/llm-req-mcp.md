@@ -1,0 +1,3 @@
+- MCP：`tools/mcp/up.sh` 一条命令起全部 MCP 服务器并写 `build/mcp/mcp.json`（任何代理挂这一份配置）：芯台 xintai（req_check / scheme_check / project_check / pin_alloc / tunegate_score / driver_lookup / build / reason_code，stdio + `--http` streamable HTTP）、embedded-debugger、hardware-tools、stm32cubeide、serial、sigrok（后五个原样搬入 third_party/vendored，来源见 ATTRIBUTION）。[仿真] 冒烟：6 个服务器 initialize + list_tools 全过；hardware-tools 无 HWTOOLS_SCOPE_HOST 时为仿真示波器；未接真板/真仪器。
+- build 工具：PlatformIO `pio run` 或读已有日志，GCC/Keil/TI CCS/链接错误统一解析成 file/line/message。[仿真] 解析器单测过；未在真工程上跑 pio 下载工具链。
+- 新门 `tools/check_problem_terms.py`：从题库自动抽题名/题号（tools/problem_terms.txt），读题/生成/接线代码路径出现即失败；进 make check。

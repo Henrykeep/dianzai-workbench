@@ -1,0 +1,4 @@
+interface:
+  display_name: "Embedded Debugger"
+  short_description: "Debug embedded targets with CLI or MCP"
+  default_prompt: "Use $embedded-debugger to inspect my embedded target setup and suggest the next debug command."

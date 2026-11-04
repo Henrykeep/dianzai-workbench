@@ -10,7 +10,7 @@
 
 格式依据：用户两份真实 .ioc（F407 Bldc、F103 USART）和 boards/stm32f407-skystar-cubemx 的合成样例；
 F1 的 RCC / DMA / NVIC 键另外对照了参考仓库 refs/ext/nuedc2026-ball-balance/firmware/stm32_hal/stm32f103c8t6_uart.ioc
-和 refs/ext/ti-contest/2023-E/2023-e-Code/stm32f1hal/stm32f1hal.ioc（逐键一致）；时钟树照抄那两份真实工程（F4 HSE 8 MHz→168 MHz，F1 HSE 8 MHz→72 MHz）。【未验证】CubeMX 实际打开（本机无 CubeMX）。
+和 refs/ext/ti-contest 里一份往届 STM32F1 工程的 stm32f1hal.ioc（逐键一致）；时钟树照抄那两份真实工程（F4 HSE 8 MHz→168 MHz，F1 HSE 8 MHz→72 MHz）。【未验证】CubeMX 实际打开（本机无 CubeMX）。
 自检：生成后用 tools/ioc_import.py 反导，资源（逻辑名 / 引脚 / 定时器通道 / 串口实例）必须和草稿一致。
 """
 import argparse

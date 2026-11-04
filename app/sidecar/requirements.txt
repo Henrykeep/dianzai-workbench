@@ -11,3 +11,4 @@ ruff==0.8.6  # 开发：make check 里的重复定义检查（F811，MIT）
 control>=0.10  # python-control（BSD-3）：#78/#82 模型仿真、PID 初值；tools/randplant.py 随机对象 rss/pade（带 numpy/scipy，BSD）
 sysidentpy>=0.9  # BSD-3：#82 从阶跃录波辨识 ARX 模型
 numpy>=1.26  # BSD-3
+mcp>=1.20,<2  # MIT：dzbench.mcp_server（2.x 改了 API，先锁 1.x）

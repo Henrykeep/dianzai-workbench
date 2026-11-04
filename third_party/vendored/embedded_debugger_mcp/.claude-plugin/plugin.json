@@ -1,0 +1,20 @@
+{
+  "name": "embedded-debugger",
+  "version": "0.2.0",
+  "description": "Embedded debugger workflow for probe-rs targets. Provides a CLI-first skill and optional MCP server for probe discovery, target checks, flashing, memory access, and RTT workflows.",
+  "author": {
+    "name": "adancurusul",
+    "url": "https://github.com/Adancurusul"
+  },
+  "repository": "https://github.com/Adancurusul/embedded-debugger-mcp",
+  "license": "MIT",
+  "keywords": [
+    "embedded",
+    "debugging",
+    "mcp",
+    "probe-rs",
+    "rtt",
+    "flash",
+    "skill"
+  ]
+}

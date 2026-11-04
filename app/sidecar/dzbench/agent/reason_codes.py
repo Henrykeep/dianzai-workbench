@@ -20,6 +20,16 @@ TOOL_ZH = {
     "missing_cubeide": ("没找到 STM32CubeIDE，装好后或设环境变量 CUBEIDE_PATH 再试", "install_dep"),
     "tool_timeout": ("外部工具超时没结束，已结束它的整个进程树", "retry"),
     "confirm_required": ("这一步会改动文件或板子，先看预览再确认", "confirm"),
+    # MCP 工具（dzbench.mcp_server）
+    "tool_bad_arg": ("工具参数不对或文件不存在，看 details 里缺哪一项", "fix_args"),
+    "tool_not_met": ("检查没通过，看 details 里列出的问题逐条改", "fix_args"),
+    "tool_missing_dep": ("缺依赖，按提示安装后再试", "install_dep"),
+    "no_board_tool": ("需要连上板子，或板子没有响应", "connect_board"),
+    "tool_error": ("工具内部出错，详情在 details", "retry"),
+    "build_failed": ("编译没通过，errors 里有文件、行号和报错，改完再编", "fix_code"),
+    "missing_platformio": ("没找到 PlatformIO（pio），先 pip install platformio", "install_dep"),
+    "driver_not_found": ("驱动总表里没有这个器件，换型号/类别查，或按数据手册新写", "goto:drivers"),
+    "driver_catalog_missing": ("找不到器件驱动总表，设环境变量 DZBENCH_DRIVER_CATALOG 指向 catalog.yaml", "install_dep"),
 }
 
 

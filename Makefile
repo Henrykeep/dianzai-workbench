@@ -301,6 +301,8 @@ check:
 	$(PY) tools/check_redef.py --selftest
 	$(PY) tools/check_problem_specific.py --selftest   # #80 核心代码不许为某一道题写专门代码
 	$(PY) tools/check_problem_specific.py
+	$(PY) tools/check_problem_terms.py --selftest   # 题名/题号门（词表自题库抽取）
+	$(PY) tools/check_problem_terms.py
 	$(PY) tools/check_no_truth_leak.py --selftest   # 真值只许判卷模块 tools/tunegate_grade.py 读
 	$(PY) tools/check_no_truth_leak.py
 	$(PY) tools/gen_reason_codes.py --check   # #139 docs/dev/reason_codes.json 与后端原因码同步

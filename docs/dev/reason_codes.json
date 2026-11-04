@@ -19,6 +19,11 @@
   "zh": "时间预算用完",
   "kind": "stop"
  },
+ "build_failed": {
+  "zh": "编译没通过，errors 里有文件、行号和报错，改完再编",
+  "kind": "tool",
+  "fix_action": "fix_code"
+ },
  "busy": {
   "zh": "板上已有阶跃实验在跑",
   "kind": "abort"
@@ -27,6 +32,16 @@
   "zh": "这一步会改动文件或板子，先看预览再确认",
   "kind": "tool",
   "fix_action": "confirm"
+ },
+ "driver_catalog_missing": {
+  "zh": "找不到器件驱动总表，设环境变量 DZBENCH_DRIVER_CATALOG 指向 catalog.yaml",
+  "kind": "tool",
+  "fix_action": "install_dep"
+ },
+ "driver_not_found": {
+  "zh": "驱动总表里没有这个器件，换型号/类别查，或按数据手册新写",
+  "kind": "tool",
+  "fix_action": "goto:drivers"
  },
  "empty_metrics": {
   "zh": "指标为空",
@@ -57,6 +72,16 @@
   "zh": "没找到 STM32CubeMX，装好后或设环境变量 CUBEMX_PATH 再试",
   "kind": "tool",
   "fix_action": "install_dep"
+ },
+ "missing_platformio": {
+  "zh": "没找到 PlatformIO（pio），先 pip install platformio",
+  "kind": "tool",
+  "fix_action": "install_dep"
+ },
+ "no_board_tool": {
+  "zh": "需要连上板子，或板子没有响应",
+  "kind": "tool",
+  "fix_action": "connect_board"
  },
  "no_improve": {
   "zh": "连续 3 轮没有改进",
@@ -97,6 +122,26 @@
  "too_few_samples": {
   "zh": "样本太少",
   "kind": "round"
+ },
+ "tool_bad_arg": {
+  "zh": "工具参数不对或文件不存在，看 details 里缺哪一项",
+  "kind": "tool",
+  "fix_action": "fix_args"
+ },
+ "tool_error": {
+  "zh": "工具内部出错，详情在 details",
+  "kind": "tool",
+  "fix_action": "retry"
+ },
+ "tool_missing_dep": {
+  "zh": "缺依赖，按提示安装后再试",
+  "kind": "tool",
+  "fix_action": "install_dep"
+ },
+ "tool_not_met": {
+  "zh": "检查没通过，看 details 里列出的问题逐条改",
+  "kind": "tool",
+  "fix_action": "fix_args"
  },
  "tool_timeout": {
   "zh": "外部工具超时没结束，已结束它的整个进程树",

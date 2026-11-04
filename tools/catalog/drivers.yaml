@@ -1,0 +1,1301 @@
+# 器件驱动总表（driver_lookup 用）。数据，不是逻辑；compiled=true 只在芯台交叉编译通过后改。
+version: 1
+updated: '2026-11-04'
+entries:
+- part: AD7705
+  category: ADC
+  repo: https://github.com/libdriver/ad7705
+  path: libdriver/ad7705/src
+  commit: 5c567d4
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: AD9833
+  category: DDS
+  repo: https://github.com/libdriver/ad9833
+  path: libdriver/ad9833/src
+  commit: fbe20be
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: ADS1115
+  category: ADC
+  repo: https://github.com/libdriver/ads1115
+  path: libdriver/ads1115/src
+  commit: 8474eeb
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: ADS1118
+  category: ADC
+  repo: https://github.com/libdriver/ads1118
+  path: libdriver/ads1118/src
+  commit: 57dca3c
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: ADXL345
+  category: IMU(加速度)
+  repo: https://github.com/libdriver/adxl345
+  path: libdriver/adxl345/src
+  commit: b15a898
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: AHT20
+  category: 温湿度
+  repo: https://github.com/libdriver/aht20
+  path: libdriver/aht20/src
+  commit: a47c195
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: AS5600
+  category: 编码器(磁角度)
+  repo: https://github.com/libdriver/as5600
+  path: libdriver/as5600/src
+  commit: b8bc11f
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: AT24CXX
+  category: EEPROM
+  repo: https://github.com/libdriver/at24cxx
+  path: libdriver/at24cxx/src
+  commit: aa2a2a3
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: BH1750FVI
+  category: 照度
+  repo: https://github.com/libdriver/bh1750fvi
+  path: libdriver/bh1750fvi/src
+  commit: 51330ab
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: BMM150
+  category: 磁力计
+  repo: https://github.com/libdriver/bmm150
+  path: libdriver/bmm150/src
+  commit: 78b0348
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: BMP280
+  category: 气压
+  repo: https://github.com/libdriver/bmp280
+  path: libdriver/bmp280/src
+  commit: 921097e
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: button
+  category: 按键
+  repo: https://github.com/libdriver/button
+  path: libdriver/button/src
+  commit: '7029325'
+  license: MIT
+  hooks:
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: CS1237
+  category: ADC(称重)
+  repo: https://github.com/libdriver/cs1237
+  path: libdriver/cs1237/src
+  commit: '3652990'
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: DHT11
+  category: 温湿度
+  repo: https://github.com/libdriver/dht11
+  path: libdriver/dht11/src
+  commit: 4e68f7c
+  license: MIT
+  hooks:
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: DS1302
+  category: RTC
+  repo: https://github.com/libdriver/ds1302
+  path: libdriver/ds1302/src
+  commit: dada1d4
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: DS18B20
+  category: 温度
+  repo: https://github.com/libdriver/ds18b20
+  path: libdriver/ds18b20/src
+  commit: dfb5df4
+  license: MIT
+  hooks:
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: DS3231
+  category: RTC
+  repo: https://github.com/libdriver/ds3231
+  path: libdriver/ds3231/src
+  commit: 4ac0236
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: HCSR04
+  category: 超声波
+  repo: https://github.com/libdriver/hcsr04
+  path: libdriver/hcsr04/src
+  commit: 8bfc7c4
+  license: MIT
+  hooks:
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: HLW8032
+  category: 电能计量
+  repo: https://github.com/libdriver/hlw8032
+  path: libdriver/hlw8032/src
+  commit: 6bece68
+  license: MIT
+  hooks:
+  - uart
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: HMC5883L
+  category: 磁力计
+  repo: https://github.com/libdriver/hmc5883l
+  path: libdriver/hmc5883l/src
+  commit: a80bc26
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: HX711
+  category: ADC(称重)
+  repo: https://github.com/libdriver/hx711
+  path: libdriver/hx711/src
+  commit: 2a3cacf
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: INA219
+  category: 电流检测
+  repo: https://github.com/libdriver/ina219
+  path: libdriver/ina219/src
+  commit: 266a1ee
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: INA226
+  category: 电流检测
+  repo: https://github.com/libdriver/ina226
+  path: libdriver/ina226/src
+  commit: 10a86ab
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: ir_remote
+  category: 红外遥控
+  repo: https://github.com/libdriver/ir_remote
+  path: libdriver/ir_remote/src
+  commit: c77813a
+  license: MIT
+  hooks:
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: LD3320
+  category: 语音识别
+  repo: https://github.com/libdriver/ld3320
+  path: libdriver/ld3320/src
+  commit: 647eb0d
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: LLCC68
+  category: 射频(LoRa)
+  repo: https://github.com/libdriver/llcc68
+  path: libdriver/llcc68/src
+  commit: ac0327a
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MAX30102
+  category: 心率血氧
+  repo: https://github.com/libdriver/max30102
+  path: libdriver/max30102/src
+  commit: f46eee1
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MAX31865
+  category: 温度(PT100)
+  repo: https://github.com/libdriver/max31865
+  path: libdriver/max31865/src
+  commit: 85e702a
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MAX6675
+  category: 温度(热电偶)
+  repo: https://github.com/libdriver/max6675
+  path: libdriver/max6675/src
+  commit: '8341742'
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MCP3421
+  category: ADC
+  repo: https://github.com/libdriver/mcp3421
+  path: libdriver/mcp3421/src
+  commit: '9970723'
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MCP4725
+  category: DAC
+  repo: https://github.com/libdriver/mcp4725
+  path: libdriver/mcp4725/src
+  commit: 1fd6eef
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MFRC522
+  category: RFID
+  repo: https://github.com/libdriver/mfrc522
+  path: libdriver/mfrc522/src
+  commit: 7f94a15
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - uart
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MLX90614
+  category: 温度(红外)
+  repo: https://github.com/libdriver/mlx90614
+  path: libdriver/mlx90614/src
+  commit: e84167b
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MPU6050
+  category: IMU
+  repo: https://github.com/libdriver/mpu6050
+  path: libdriver/mpu6050/src
+  commit: 4b46e1e
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MPU6500
+  category: IMU
+  repo: https://github.com/libdriver/mpu6500
+  path: libdriver/mpu6500/src
+  commit: 9d1b7f4
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: MPU9250
+  category: IMU
+  repo: https://github.com/libdriver/mpu9250
+  path: libdriver/mpu9250/src
+  commit: 06cc13e
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: multi_button
+  category: 按键
+  repo: https://github.com/libdriver/multi_button
+  path: libdriver/multi_button/src
+  commit: 62d025a
+  license: MIT
+  hooks:
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: NRF24L01
+  category: 射频
+  repo: https://github.com/libdriver/nrf24l01
+  path: libdriver/nrf24l01/src
+  commit: 7957ac9
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: ntc
+  category: 温度
+  repo: https://github.com/libdriver/ntc
+  path: libdriver/ntc/src
+  commit: b2f3038
+  license: MIT
+  hooks:
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: PCA9685
+  category: 舵机PWM
+  repo: https://github.com/libdriver/pca9685
+  path: libdriver/pca9685/src
+  commit: 592c8ee
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: PCF8563
+  category: RTC
+  repo: https://github.com/libdriver/pcf8563
+  path: libdriver/pcf8563/src
+  commit: ed162be
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: PCF8574
+  category: 显示(LCD1602 I2C 背板)/IO扩展
+  repo: https://github.com/libdriver/pcf8574
+  path: libdriver/pcf8574/src
+  commit: 4554f94
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: PCF8591
+  category: ADC/DAC
+  repo: https://github.com/libdriver/pcf8591
+  path: libdriver/pcf8591/src
+  commit: 004cda1
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: QMC5883L
+  category: 磁力计
+  repo: https://github.com/libdriver/qmc5883l
+  path: libdriver/qmc5883l/src
+  commit: fbf3584
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: SHT30
+  category: 温湿度
+  repo: https://github.com/libdriver/sht30
+  path: libdriver/sht30/src
+  commit: b1d3f51
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: SHT31
+  category: 温湿度
+  repo: https://github.com/libdriver/sht31
+  path: libdriver/sht31/src
+  commit: 8f90834
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: SHT4X
+  category: 温湿度
+  repo: https://github.com/libdriver/sht4x
+  path: libdriver/sht4x/src
+  commit: 63be9ce
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: SSD1306
+  category: 显示
+  repo: https://github.com/libdriver/ssd1306
+  path: libdriver/ssd1306/src
+  commit: 0bcc8ce
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: ST7789
+  category: 显示
+  repo: https://github.com/libdriver/st7789
+  path: libdriver/st7789/src
+  commit: 7bd8bc7
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: ST7920
+  category: 显示
+  repo: https://github.com/libdriver/st7920
+  path: libdriver/st7920/src
+  commit: c642d35
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: SX1262
+  category: 射频(LoRa)
+  repo: https://github.com/libdriver/sx1262
+  path: libdriver/sx1262/src
+  commit: 3afbabc
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: SYN6288
+  category: 语音合成
+  repo: https://github.com/libdriver/syn6288
+  path: libdriver/syn6288/src
+  commit: 4263c98
+  license: MIT
+  hooks:
+  - uart
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: TCS34725
+  category: 颜色
+  repo: https://github.com/libdriver/tcs34725
+  path: libdriver/tcs34725/src
+  commit: 6c7df4d
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: TLC5615
+  category: DAC
+  repo: https://github.com/libdriver/tlc5615
+  path: libdriver/tlc5615/src
+  commit: d883c97
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: TM1638
+  category: 数码管/按键
+  repo: https://github.com/libdriver/tm1638
+  path: libdriver/tm1638/src
+  commit: faa9778
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: TM1640
+  category: 数码管
+  repo: https://github.com/libdriver/tm1640
+  path: libdriver/tm1640/src
+  commit: 90510dd
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: TSL2561
+  category: 照度
+  repo: https://github.com/libdriver/tsl2561
+  path: libdriver/tsl2561/src
+  commit: aaa5025
+  license: MIT
+  hooks:
+  - i2c
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: TTP229
+  category: 按键(触摸键盘)
+  repo: https://github.com/libdriver/ttp229
+  path: libdriver/ttp229/src
+  commit: b2e2874
+  license: MIT
+  hooks:
+  - i2c
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: W25QXX
+  category: Flash
+  repo: https://github.com/libdriver/w25qxx
+  path: libdriver/w25qxx/src
+  commit: 3038ace
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: WS2812B
+  category: 灯带
+  repo: https://github.com/libdriver/ws2812b
+  path: libdriver/ws2812b/src
+  commit: 3f7b539
+  license: MIT
+  hooks:
+  - spi
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: WT588E02B
+  category: 语音播放
+  repo: https://github.com/libdriver/wt588e02b
+  path: libdriver/wt588e02b/src
+  commit: f04aa56
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: X9CXX
+  category: 数字电位器(程控增益)
+  repo: https://github.com/libdriver/x9cxx
+  path: libdriver/x9cxx/src
+  commit: 127d77f
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: libdriver
+  status: 已克隆
+  compiled: false
+- part: AD7606
+  category: ADC
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/adc/ad7606
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 已克隆
+  compiled: false
+- part: AD7124
+  category: ADC
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/adc/ad7124
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: AD717x
+  category: ADC
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/adc/ad717x
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: AD7689
+  category: ADC
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/adc/ad7689
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: AD5689/AD5686 系列
+  category: DAC
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/dac/ad5686
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 已克隆
+  compiled: false
+- part: AD5761R
+  category: DAC
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/dac/ad5761r
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: AD9833
+  category: DDS
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/frequency/ad9833
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 已克隆
+  compiled: false
+- part: ADF4350
+  category: PLL频率合成
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/frequency/adf4350
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: AD5933
+  category: 阻抗测量
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/impedance-analyzer/ad5933
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: ADE7953
+  category: 电能计量
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/meter/ade7953
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: ADE9000
+  category: 电能计量
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/meter/ade9000
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: ADXL345
+  category: IMU(加速度)
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/accel/adxl345
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: SSD1306
+  category: 显示
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/display/ssd_1306
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: 24xx32A
+  category: EEPROM
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/eeprom/24xx32a
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: TMC5240
+  category: 步进驱动
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/motor/tmc5240
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: AD5293/AD5110 等
+  category: 数字电位器
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/potentiometer
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: W5500
+  category: 以太网
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/net/w5500
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: NMEA/UBX GPS
+  category: GNSS
+  repo: https://github.com/analogdevicesinc/no-OS
+  path: drivers/gnss-gps/nmea_ubx
+  license: BSD-3-Clause(ADI)
+  hooks:
+  - no_os_spi/i2c
+  - no_os_gpio
+  - no_os_delay
+  backbone: adi-no-os
+  status: 未克隆(可稀疏检出)
+  compiled: false
+- part: ADS1256
+  category: ADC
+  repo: https://github.com/eta-systems/ADS1255
+  path: ads1256/
+  license: Apache-2.0
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: 其他
+  status: 已克隆，需把 HAL 调用换成钩子
+  compiled: false
+- part: VL53L1X
+  category: ToF
+  repo: ST VL53L1X ULD
+  path: vl53l1x-uld/src/core
+  license: BSD-3-Clause
+  hooks:
+  - i2c
+  - delay
+  backbone: 其他
+  status: 已克隆
+  compiled: false
+- part: VL53L0X
+  category: ToF
+  repo: ST VL53L0X API
+  path: vl53l0x/Drivers/VL53L0X/core
+  license: BSD-3-Clause(ST)
+  hooks:
+  - i2c
+  - delay
+  backbone: 其他
+  status: 已克隆
+  compiled: false
+- part: AD9850
+  category: DDS
+  repo: firework 仓库
+  path: /workspace/refs/LP-MSPM0G3507_freertos_firework/modules/dds/ad9850.c
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: 其他
+  status: 已有，嵌入式开发-2 在 fw-sigmods 移植
+  compiled: false
+- part: DAC8563
+  category: DAC
+  repo: https://github.com/nayim12/DAC8562_STM32_HAL
+  path: dac8563/
+  license: 无许可
+  hooks:
+  - spi
+  - gpio
+  backbone: 其他
+  status: 缺口：只能参考，用 AD5689 替代或按手册自写
+  compiled: false
+- part: BMI088
+  category: IMU
+  repo: https://github.com/boschsensortec/BMI08x_SensorAPI
+  path: 根目录 bmi08*.c
+  license: BSD-3-Clause
+  hooks:
+  - spi
+  - i2c
+  - delay
+  backbone: 其他
+  status: 可用，未克隆
+  compiled: false
+- part: JY901/WIT 系列
+  category: IMU(串口)
+  repo: https://github.com/WITMOTION/WitStandardProtocol_JY901
+  path: STM32/ 下 wit_c_sdk
+  license: 无许可文件(厂商 SDK)
+  hooks:
+  - uart
+  backbone: 其他
+  status: 可用作参考；协议简单，许可需确认
+  compiled: false
+- part: ICM42688
+  category: IMU
+  repo: —
+  path: —
+  license: —
+  hooks:
+  - spi
+  - i2c
+  backbone: 其他
+  status: 缺口：只有 GPL 小仓库(Barsy-Barsevich/ICM42688_Barsotion)，TDK 官方驱动需注册下载
+  compiled: false
+- part: ST7735
+  category: 显示
+  repo: https://github.com/afiskon/stm32-st7735
+  path: st7735/
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: 其他
+  status: 可用，需换 HAL 为钩子
+  compiled: false
+- part: ILI9341
+  category: 显示
+  repo: https://github.com/afiskon/stm32-ili9341
+  path: ili9341/
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: 其他
+  status: 可用
+  compiled: false
+- part: ILI9488 等大屏
+  category: 显示
+  repo: https://github.com/maudeve-it/ILI9XXX-XPT2046-STM32
+  path: —
+  license: MIT
+  hooks:
+  - spi
+  - gpio
+  backbone: 其他
+  status: 可用，STM32 HAL 绑定较深
+  compiled: false
+- part: 多种单色屏(SSD1306/ST7920/SH1106 等)
+  category: 显示
+  repo: https://github.com/olikraus/u8g2
+  path: csrc/
+  license: BSD-2-Clause
+  hooks:
+  - i2c
+  - spi
+  - gpio
+  - delay
+  backbone: 其他
+  status: 可用，覆盖面最广
+  compiled: false
+- part: 图形界面
+  category: 显示(GUI)
+  repo: https://github.com/lvgl/lvgl
+  path: src/
+  license: MIT
+  hooks:
+  - 显示刷新回调
+  backbone: 其他
+  status: 可用
+  compiled: false
+- part: LCD1602(HD44780 并口)
+  category: 显示
+  repo: https://github.com/4ilo/HD44780-Stm32HAL
+  path: —
+  license: MIT
+  hooks:
+  - gpio
+  - delay
+  backbone: 其他
+  status: 可用；I2C 背板版用 libdriver/pcf8574
+  compiled: false
+- part: TMC2209
+  category: 步进驱动
+  repo: https://github.com/janelia-arduino/TMC2209
+  path: src/
+  license: BSD(未标准识别)
+  hooks:
+  - uart
+  backbone: 其他
+  status: 只有 C++/Arduino 版；STEP/DIR 模式用芯台已有 drivers/stepper 即可
+  compiled: false
+- part: TB6612/DRV8833/A4950
+  category: 电机驱动
+  repo: 芯台 firmware/drivers/motor_dc、motor_2pwm
+  path: —
+  license: 芯台自有
+  hooks:
+  - pwm
+  - gpio
+  backbone: 其他
+  status: 已有，纯 PWM+GPIO，无需外部驱动
+  compiled: false
+- part: 舵机
+  category: 舵机PWM
+  repo: 芯台 firmware/drivers/servo；多路用 libdriver/pca9685
+  path: —
+  license: 芯台自有/MIT
+  hooks:
+  - pwm
+  backbone: 其他
+  status: 已有
+  compiled: false
+- part: 增量编码器
+  category: 编码器
+  repo: 芯台 firmware/drivers/encoder
+  path: —
+  license: 芯台自有
+  hooks:
+  - 定时器编码器模式
+  backbone: 其他
+  status: 已有
+  compiled: false
+- part: 蜂鸣器
+  category: 蜂鸣器
+  repo: 芯台 firmware/drivers/buzzer
+  path: —
+  license: 芯台自有
+  hooks:
+  - gpio
+  - pwm
+  backbone: 其他
+  status: 已有
+  compiled: false
+- part: SX1276/SX1278
+  category: 射频(LoRa)
+  repo: https://github.com/Lora-net/LoRaMac-node
+  path: src/radio/sx1276
+  license: Revised BSD
+  hooks:
+  - spi
+  - gpio
+  - delay
+  backbone: 其他
+  status: 可用，只取 radio 目录
+  compiled: false
+- part: ESP8266/ESP32 AT、蓝牙 AT 模块
+  category: WiFi/蓝牙
+  repo: https://github.com/MaJerle/lwesp
+  path: lwesp/src
+  license: MIT
+  hooks:
+  - uart
+  backbone: 其他
+  status: 可用(WiFi)；HC-05/JDY 蓝牙为透传，用芯台 bt_serial
+  compiled: false
+- part: 4G AT 模块(SIM800/EC20 等)
+  category: 手机通信
+  repo: https://github.com/MaJerle/lwcell
+  path: lwcell/src
+  license: MIT
+  hooks:
+  - uart
+  backbone: 其他
+  status: 可用
+  compiled: false
+- part: OpenMV/K230/MaixCam 串口协议
+  category: 视觉模块
+  repo: 芯台 boards/k230-vision 等 + https://github.com/MaJerle/lwrb 环形缓冲
+  path: —
+  license: 芯台自有/MIT
+  hooks:
+  - uart
+  backbone: 其他
+  status: 已有；协议由视觉端脚本自定，无通用开源标准
+  compiled: false
+- part: 矩阵键盘
+  category: 按键
+  repo: libdriver/multi_button + GPIO 扫描
+  path: —
+  license: MIT
+  hooks:
+  - gpio
+  backbone: 其他
+  status: 可用；4x4 扫描几十行
+  compiled: false
+- part: SD/TF 卡
+  category: 存储
+  repo: FatFs(elm-chan)，镜像 https://github.com/abbrev/fatfs
+  path: source/
+  license: BSD-1-Clause 风格
+  hooks:
+  - spi
+  backbone: 其他
+  status: 可用
+  compiled: false
+- part: MAVLink 飞控通信
+  category: 飞控
+  repo: https://github.com/mavlink/c_library_v2
+  path: 根目录头文件
+  license: MIT(生成代码)
+  hooks:
+  - uart
+  backbone: 其他
+  status: 可用，纯头文件
+  compiled: false
+- part: ADS1292
+  category: 生物电前端
+  repo: https://github.com/trebladev/ADS1292
+  path: —
+  license: GPL-3.0
+  hooks:
+  - spi
+  - gpio
+  backbone: 其他
+  status: 可用(GPL，芯台 AGPL 兼容)
+  compiled: false
+- part: FDC2214
+  category: 电容传感
+  repo: https://github.com/zengwangfa/2019-Electronic-Design-Competition
+  path: 含 FDC2214 驱动
+  license: Apache-2.0
+  hooks:
+  - i2c
+  backbone: 其他
+  status: 可用，需从工程里抽出
+  compiled: false
+- part: FPGA 通信
+  category: FPGA
+  repo: —
+  path: —
+  license: —
+  hooks:
+  - spi
+  - uart
+  backbone: 其他
+  status: 缺口：没有通用驱动，需定协议
+  compiled: false
+- part: LMT70
+  category: 温度(模拟)
+  repo: 芯台 pal_adc_read + 查表
+  path: —
+  license: —
+  hooks:
+  - adc
+  backbone: 其他
+  status: 可替代
+  compiled: false
+source:
+  from: 资料/仓库搜索者 整理的器件驱动总表（/workspace/refs/drivers/catalog.yaml，2026-11-04 版）
+  note: path 相对驱动根目录（mcp.driver_root 或 DZBENCH_DRIVER_ROOT）；每条 repo/license 为上游仓库与许可

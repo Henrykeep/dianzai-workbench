@@ -6,7 +6,7 @@
 规则（`tools/check_vendored.py` 在 `make check` 里强制）：
 1. 每个子目录一个来源：必须有 `LICENSE`（原样复制）和 `SOURCE.md`（含 `Source: <repo>@<commit> <path>`、改了什么）。
 2. 每个代码文件头部写 `Source: <repo>@<commit> <path>`。
-3. 只搬"能独立成块"的部分并改造成本仓库分层；不整段粘贴巨石文件。
+3. 只搬"能独立成块"的部分并改造成本仓库分层；不整段粘贴巨石文件。例外：整套 MCP 服务器（embedded_debugger_mcp、mcp_hardware_tools、serial_mcp_server、sigrok_mcp_server、stm32_mcp_discovery 的 server.py 等）原样整仓搬入，作为独立进程由 `tools/mcp/up.sh` 启动，不被侧车 import。
 4. 仓库其它代码通过很薄的适配层调用它（例如 `app/sidecar/dzbench/tuning/`），删掉本目录时只影响那一层。
 5. 在 `docs/参考来源.md` 登记。
 
