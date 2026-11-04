@@ -36,7 +36,7 @@ export const REASON_ZH: Record<string, string> = {
   delay: "系统延迟太大，按现在的采样周期调不稳", delay_too_large: "系统延迟太大，按现在的采样周期调不稳",
   unstable_zero: "对象有不稳定零点（非最小相位），单靠 PID 达不到指标", nonmin_phase: "对象有不稳定零点（非最小相位），单靠 PID 达不到指标",
   infeasible: "按现在的硬件和指标，这组目标达不到", no_signal: "反馈信号没变化，检查传感器或接线",
-  invalid: "连续 3 轮无效", no_improve: "连续 3 轮没有改进", unstable: "出现发散", blocked: "各方向都被挡住", error: "出错",
+  invalid: "连续 3 轮无效", no_improve: "连续 3 轮没有改进", unstable: "出现发散", blocked: "各方向都被挡住", error: "出错", plant_unresponsive: "对象无响应",
   // #139 发散 / 中止类代码也要有中文，不许漏英文
   diverged: "出现发散（响应越来越大）", aborted: "已中止", abort: "已中止", invalid_streak: "连续多轮无效",
 };
