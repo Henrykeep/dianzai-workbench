@@ -328,20 +328,41 @@ export function wsUrlFor(loc: { protocol: string; hostname: string; port: string
   const host = loc.hostname.includes(":") ? `[${loc.hostname}]` : loc.hostname;
   return `${loc.protocol === "https:" ? "wss" : "ws"}://${host}:${p - WS_F.uiPortOffset}`;
 }
-// #158 结果是否比初值好：后端 improvement = confirmed | inconclusive | worse（字段名、取值、动作都只在这里）
-// inconclusive（reason improvement_unconfirmed）：采用是次要按钮且要二次确认；worse（reason kept_initial）：没有采用按钮（后端会拒）
-// 主按钮由 default_action 决定（ACTIONS 表），不写死
+// #158 / #163 整定结果卡契约：字段名、取值、动作只在这里
+// improvement：confirmed → 照常；inconclusive（reason improvement_unconfirmed）→ 采用为次要且二次确认；worse（reason kept_initial）→ 无采用；
+// null（字段在、值为 null）→ 初值已达标未调参，中性显示、无采用。完整信息优先取 improvement_info，再取顶层。
+// improvement_info.causes = 整定原因（单独一块）；顶层 causes 仍是未达标诊断（走原来的「可能原因」）。主按钮由 default_action 决定。
+// 规则：只有 improvement === "confirmed" 时「采用」才可能是主按钮
 export const IMPROVE_F = {
-  field: "improvement", msg: "message_zh", reason: "reason", causes: "causes", defaultAction: "default_action",
-  kinds: { inconclusive: { adopt: "confirm", headZh: "未确认改善" }, worse: { adopt: "none", headZh: "比初值差，已保留初值" } } as Record<string, { adopt: "confirm" | "none"; headZh: string }>,
+  field: "improvement", info: "improvement_info", msg: "message_zh", reason: "reason", causes: "causes", defaultAction: "default_action",
+  untunedKey: "null", confirmed: "confirmed",
+  kinds: {
+    inconclusive: { adopt: "confirm", headZh: "未确认改善", tone: "warn" },
+    worse: { adopt: "none", headZh: "比初值差，已保留初值", tone: "warn" },
+    null: { adopt: "none", headZh: "初值已达标，未调参", tone: "neutral" },
+  } as Record<string, { adopt: "confirm" | "none"; headZh: string; tone: "warn" | "neutral" }>,
   actions: { keep_initial: { zh: "保留初值", decline: true } } as Record<string, { zh: string; decline: boolean }>,
-  fallbackZh: "无法确认比初值好", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用",
+  untunedDefault: "keep_initial",
+  fallbackZh: "无法确认比初值好", adoptZh: "仍采用这组参数", adoptConfirmZh: "再点一次确认采用", causesZh: "为什么这样判断：",
 } as const;
-export type Improve = { kind: string; msg: string; reason: string | null; causes: string[]; def: string | null; adopt: "confirm" | "none"; head: string };
+export type Improve = { kind: string; msg: string; reason: string | null; causes: string[]; def: string | null; adopt: "confirm" | "none"; head: string; tone: "warn" | "neutral" };
+const strOr = (v: unknown) => typeof v === "string" && v ? v : null;
+const improveSrc = (r: any) => {
+  if (!r || typeof r !== "object") return { info: null, src: null };
+  const info = r[IMPROVE_F.info] && typeof r[IMPROVE_F.info] === "object" ? r[IMPROVE_F.info] : null;
+  return { info, src: info && IMPROVE_F.field in info ? info : IMPROVE_F.field in r ? r : null };
+};
+// 后端明确说「比初值好」才算 confirmed（没给字段的老后端不算）
+export const improvementConfirmed = (r: any) => { const { src } = improveSrc(r); return !!src && src[IMPROVE_F.field] === IMPROVE_F.confirmed; };
 export function improvementOf(r: any): Improve | null {
-  const k = r?.[IMPROVE_F.field]; const spec = typeof k === "string" ? IMPROVE_F.kinds[k] : undefined;
-  if (!spec) return null;   // confirmed / 没给 → 照常
-  const str = (v: unknown) => typeof v === "string" && v ? v : null;
-  return { kind: k, msg: str(r[IMPROVE_F.msg]) ?? IMPROVE_F.fallbackZh, reason: str(r[IMPROVE_F.reason]), causes: Array.isArray(r[IMPROVE_F.causes]) ? r[IMPROVE_F.causes].filter((x: unknown) => typeof x === "string") : [],
-    def: str(r[IMPROVE_F.defaultAction]), adopt: spec.adopt, head: spec.headZh };
+  const { info, src } = improveSrc(r);
+  if (!src) return null;
+  const k = src[IMPROVE_F.field] === null ? IMPROVE_F.untunedKey : src[IMPROVE_F.field];
+  const spec = typeof k === "string" ? IMPROVE_F.kinds[k] : undefined;
+  if (!spec) return null;   // confirmed / 不认识 → 照常
+  const get = (f: string) => strOr(info?.[f]) ?? strOr(r[f]);
+  const cs = Array.isArray(info?.[IMPROVE_F.causes]) ? info[IMPROVE_F.causes].filter((x: unknown) => typeof x === "string" && x) : [];
+  const untuned = k === IMPROVE_F.untunedKey;
+  return { kind: k, msg: get(IMPROVE_F.msg) ?? (untuned ? spec.headZh : IMPROVE_F.fallbackZh), reason: get(IMPROVE_F.reason), causes: cs,
+    def: get(IMPROVE_F.defaultAction) ?? (untuned ? IMPROVE_F.untunedDefault : null), adopt: spec.adopt, head: spec.headZh, tone: spec.tone };
 }

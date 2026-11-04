@@ -63,7 +63,7 @@ const rc = resultCardHtml({ type: "iterate.stopped", reason: "pass", message_zh:
   compare: { round0: [{ key: "overshoot_pct", value: 20, unit: "%" }, { key: "settling_s", value: 3, unit: "s" }, { key: "ss_err", value: 2, unit: "deg" }, { key: "rise_s", value: 1, unit: "s" }], best: [{ key: "overshoot_pct", value: 5, unit: "%" }, { key: "settling_s", value: 1, unit: "s" }, { key: "ss_err", value: 1, unit: "deg" }, { key: "rise_s", value: 1, unit: "s" }], unchanged: false } } as any, s => s, { canApply: true, applyReady: true });
 assert.match(rc, /<h4[^>]*>未判定<\/h4>/); assert.equal((rc.match(/class="rc-m"/g) ?? []).length, 3, rc);
 const [top, det] = rc.split('<details class="rc-det">'); assert.ok(!/停止原因|判定依据|按默认/.test(top), top); assert.match(det, /停止原因/);
-assert.equal((rc.match(/variant="brand"/g) ?? []).length, 1); assert.match(rc, /采用这组参数/);
+assert.equal((rc.match(/variant="brand"/g) ?? []).length, 0, "#163 后端没说 improvement=confirmed：采用不当主按钮"); assert.match(rc, /appearance="outlined" size="small" id="it-write"/); assert.match(rc, /采用这组参数/);
 console.log("r9p4 card ok");
 // r9p5 未改参也有指标行：当前值、无箭头、缺值「—」
 import { currentMetrics } from "../src/iterui";

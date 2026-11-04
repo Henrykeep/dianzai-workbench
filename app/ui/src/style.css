@@ -1201,5 +1201,7 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .role-tgt code{word-break:break-all}
 .rc-stopped{color:var(--danger);font-weight:600;margin:var(--sp1) 0}
 .rc-causes{font-size:var(--t-sm);margin:var(--sp1) 0}.rc-causes ul{margin:0;padding-left:1.4em}
+.rc-icauses{font-size:var(--t-sm);margin:var(--sp1) 0}.rc-icauses ul{margin:0;padding-left:1.4em}   /* #163 整定原因（improvement_info.causes），和未达标「可能原因」分开 */
+.it-verdict.neutral{color:var(--ink)} .rc-inconcl.neutral{color:var(--muted)}   /* #163 初值已达标未调参：中性，不当警告 */
 .rc-durcap{margin:var(--sp1) 0;font-size:var(--t-sm)}.rc-durcap a{margin-left:var(--sp2)}
 .rc-inconcl{margin:var(--sp1) 0;font-weight:600}
