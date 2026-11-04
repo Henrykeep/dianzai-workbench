@@ -9,7 +9,7 @@
 # 步骤导航位置：左侧 aside.nav #steps。用户看到 7 步旅程（选题与方案→建工程→仿真→上板联调[含标定]→调参→评分→封箱，id 见 app/ui/src/progress.ts JOURNEY）；下面 steps 是内部页面键。
 steps:     [项目, 烧录, 模块, 联调, 标定, 调参, 评分, 封箱]
 toolbox:   [测量, 串口, 记录, 帧格式, 协处理器, 设置]
-always:    [急停, 连接, 排障, 设置]
+always:    [急停, 连接, 排障]
 regions:   [alerts]   # 独立区域（index.html data-region="alerts"：顶部告警条）
 nav:       [进度]   # 左侧导航 aside.nav：流程步骤 #steps 与下一步提示
 page:      [req, tune, seal]   # 页内具名区域 data-region page:req：读题页没有当前项目（project 为 null）时的空状态「新建项目 / 打开项目」；page:tune = 调参页页头「保存参数」；page:seal = 封箱页运行模式区
@@ -91,7 +91,7 @@ actions:
   - {id: log_import,   label: 导入记录,         at: toolbox:记录, ui: import,    ops: [log_import, replay]}
   - {id: framedef,     label: 非工作台帧格式,   at: toolbox:帧格式, ui: framedef, ops: [framedef_set, framedef_status]}
   - {id: coproc,       label: 协处理器部署,     at: toolbox:协处理器, ui: fw-coproc, ops: [coproc_get, coproc_set, coproc_push, coproc_start, coproc_stop, coproc_status, coproc_log]}
-  - {id: llm_cfg,      label: 大模型设置,       at: always:设置,  ui: ag-cfg,    ops: [agent_config, agent_config_test, agent_models, agent_ollama]}
+  - {id: llm_cfg,      label: 大模型设置,       at: always:排障,  ui: ag-cfg,    ops: [agent_config, agent_config_test, agent_models, agent_ollama]}
 
 # 同一个 op 被多个动作用、且不算重复入口的（每个写清楚为什么）
 shared_ops:
