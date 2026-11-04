@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FreeRTOS Firework · UART3 上位机</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d13;
+      --panel: #111823;
+      --panel-2: #151f2d;
+      --line: #26364a;
+      --text: #e9f0f8;
+      --muted: #91a2b6;
+      --cyan: #38d6c5;
+      --blue: #55a8ff;
+      --orange: #ffb357;
+      --red: #ff6577;
+      --green: #4ee39a;
+      --radius: 16px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 1040px;
+      min-height: 100vh;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 0%, #173044 0, transparent 30%),
+        radial-gradient(circle at 90% 10%, #17283b 0, transparent 34%),
+        var(--bg);
+      font: 14px/1.5 Inter, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    .shell { max-width: 1440px; margin: 0 auto; padding: 28px; }
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px;
+    }
+    h1 { margin: 0; font-size: 27px; letter-spacing: -.02em; }
+    h1 span { color: var(--cyan); }
+    .subtitle { color: var(--muted); margin-top: 3px; }
+    .status {
+      display: flex; align-items: center; gap: 9px; padding: 9px 14px;
+      border: 1px solid var(--line); border-radius: 999px; background: #0d141e;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); }
+    .status.online .dot { background: var(--green); box-shadow: 0 0 15px var(--green); }
+    .toolbar, .card {
+      border: 1px solid var(--line); border-radius: var(--radius);
+      background: linear-gradient(145deg, rgba(20,30,43,.97), rgba(12,18,27,.97));
+      box-shadow: 0 16px 45px rgba(0,0,0,.2);
+    }
+    .toolbar {
+      display: flex; align-items: end; gap: 12px; padding: 16px; margin-bottom: 18px;
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    label { color: var(--muted); font-size: 12px; }
+    input, select {
+      height: 38px; padding: 0 11px; color: var(--text); background: #09111a;
+      border: 1px solid #30435a; border-radius: 9px; outline: none;
+    }
+    input:focus, select:focus { border-color: var(--cyan); }
+    button {
+      height: 38px; padding: 0 15px; border: 1px solid #32465e; border-radius: 9px;
+      color: var(--text); background: #1a2636; cursor: pointer;
+    }
+    button:hover { border-color: var(--blue); background: #213149; }
+    button.primary { border-color: #2ea898; background: #167f76; }
+    button.primary:hover { background: #18958a; }
+    button.danger { color: #ffc5cc; }
+    button:disabled { opacity: .42; cursor: not-allowed; }
+    .grow { flex: 1; }
+    .grid { display: grid; grid-template-columns: 1.08fr .92fr; gap: 18px; }
+    .card { padding: 18px; min-width: 0; }
+    .card h2 { margin: 0; font-size: 17px; }
+    .card-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; }
+    .tag { color: var(--cyan); background: #13332f; border: 1px solid #23534d; padding: 3px 8px; border-radius: 6px; font-size: 12px; }
+    .form-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+    .check-row { display: flex; align-items: center; gap: 8px; color: var(--text); }
+    .check-row input { width: 16px; height: 16px; accent-color: var(--cyan); }
+    canvas {
+      display: block; width: 100%; height: 190px; margin: 15px 0;
+      border: 1px solid #26394d; border-radius: 10px; background: #071019;
+    }
+    .actions { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
+    .hint { margin-left: auto; color: var(--muted); font-size: 12px; }
+    .component-head, .component-row {
+      display: grid; grid-template-columns: 48px 1fr 1fr; gap: 9px; align-items: center;
+    }
+    .component-head { color: var(--muted); font-size: 12px; margin-bottom: 5px; }
+    .component-row { margin-bottom: 8px; }
+    .component-row input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--cyan); }
+    .spectrum-settings { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin: 14px 0; }
+    .dashboard { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin: 18px 0; }
+    .metric { padding: 13px 14px; border: 1px solid var(--line); border-radius: 12px; background: #0d151f; }
+    .metric .name { color: var(--muted); font-size: 12px; }
+    .metric .value { font: 600 24px/1.2 ui-monospace, SFMono-Regular, monospace; margin-top: 4px; }
+    .key-value { color: var(--orange); }
+    .log-card { margin-top: 18px; }
+    .log {
+      height: 250px; overflow: auto; padding: 8px; border: 1px solid #26394d;
+      border-radius: 10px; background: #070c12; font: 13px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+    .log-line { display: grid; grid-template-columns: 72px 52px 1fr; gap: 8px; padding: 3px 6px; border-bottom: 1px solid rgba(38,54,74,.35); }
+    .log-time { color: #687b90; }
+    .log-level { color: var(--blue); text-transform: uppercase; }
+    .log-line[data-level=error] .log-level { color: var(--red); }
+    .log-line[data-level=warn] .log-level { color: var(--orange); }
+    .log-line[data-level=success] .log-level, .log-line[data-level=tx] .log-level { color: var(--green); }
+    .log-line[data-level=key] .log-level { color: var(--orange); }
+    .toast {
+      position: fixed; right: 24px; bottom: 24px; max-width: 420px; padding: 12px 16px;
+      border: 1px solid #39516d; border-radius: 10px; background: #162233;
+      transform: translateY(90px); opacity: 0; transition: .22s; pointer-events: none;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.error { border-color: #8f3e4c; background: #351923; }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header>
+      <div>
+        <h1>UART3 <span>上位机模拟器</span></h1>
+        <div class="subtitle">FreeRTOS Firework · 128 点波形 / FFT 频谱 / 矩阵键盘</div>
+      </div>
+      <div id="connectionStatus" class="status"><span class="dot"></span><span>未连接</span></div>
+    </header>
+
+    <section class="toolbar">
+      <div class="field grow">
+        <label for="port">串口设备</label>
+        <select id="port"></select>
+      </div>
+      <div class="field" style="width:150px">
+        <label>通信参数</label>
+        <input value="115200 · 8N1" disabled>
+      </div>
+      <button id="refreshPorts">刷新设备</button>
+      <button id="connect" class="primary">连接</button>
+      <button id="disconnect" class="danger">断开</button>
+    </section>
+
+    <section class="grid">
+      <article class="card">
+        <div class="card-title">
+          <h2>时域波形响应</h2><span class="tag">wave1\0 → 128 行</span>
+        </div>
+        <div class="form-grid">
+          <div class="field"><label>波形</label><select id="waveType"><option value="sine">正弦波</option><option value="square">方波</option><option value="triangle">三角波</option></select></div>
+          <div class="field"><label>直流偏置 / V</label><input id="waveOffset" type="number" step="0.01"></div>
+          <div class="field"><label>幅值 / V</label><input id="waveAmplitude" type="number" min="0" step="0.01"></div>
+          <div class="field"><label>128 点内周期数</label><input id="waveCycles" type="number" min="0.01" step="0.1"></div>
+        </div>
+        <canvas id="wavePreview" width="720" height="190"></canvas>
+        <div class="actions">
+          <label class="check-row"><input id="autoWave" type="checkbox">收到请求自动发送</label>
+          <button id="sendWave">立即发送波形</button>
+          <span class="hint" id="waveSummary"></span>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-title">
+          <h2>FFT 峰值与频谱响应</h2><span class="tag">components\0 / spectrum\0</span>
+        </div>
+        <div class="component-head"><span>启用</span><span>频率 / Hz</span><span>幅值 / V</span></div>
+        <div id="components"></div>
+        <div class="spectrum-settings">
+          <div class="field"><label>频谱上限 / Hz</label><input id="spectrumMax" type="number" min="1" step="1000"></div>
+          <div class="field"><label>峰宽 / bin</label><input id="spectrumWidth" type="number" min="0.1" step="0.1"></div>
+          <div class="field"><label>底噪 / V</label><input id="spectrumFloor" type="number" min="0" step="0.001"></div>
+        </div>
+        <div class="actions" style="margin-bottom:10px">
+          <label class="check-row"><input id="autoComponents" type="checkbox">自动响应峰值</label>
+          <label class="check-row"><input id="autoSpectrum" type="checkbox">自动响应频谱</label>
+        </div>
+        <div class="actions">
+          <button id="saveConfig" class="primary">保存全部参数</button>
+          <button id="sendComponents">发送峰值</button>
+          <button id="sendSpectrum">发送频谱</button>
+        </div>
+      </article>
+    </section>
+
+    <section class="dashboard">
+      <div class="metric"><div class="name">wave1 请求</div><div id="waveRequests" class="value">0</div></div>
+      <div class="metric"><div class="name">components 请求</div><div id="componentRequests" class="value">0</div></div>
+      <div class="metric"><div class="name">spectrum 请求</div><div id="spectrumRequests" class="value">0</div></div>
+      <div class="metric"><div class="name">已发送数据帧</div><div id="txFrames" class="value">0</div></div>
+      <div class="metric"><div class="name">最近矩阵键值</div><div id="lastKey" class="value key-value">-</div></div>
+    </section>
+
+    <section class="card log-card">
+      <div class="card-title"><h2>通信记录</h2><span class="tag">NUL 请求自动识别</span></div>
+      <div id="log" class="log"></div>
+    </section>
+  </main>
+  <div id="toast" class="toast"></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const componentContainer = $('components');
+    let initialized = false;
+    let lastLogId = 0;
+    let toastTimer;
+
+    function componentRow(index) {
+      const row = document.createElement('div');
+      row.className = 'component-row';
+      row.innerHTML = `<input class="component-enabled" type="checkbox" aria-label="启用分量 ${index + 1}">
+        <input class="component-frequency" type="number" min="1" step="100" aria-label="分量 ${index + 1} 频率">
+        <input class="component-amplitude" type="number" min="0" step="0.01" aria-label="分量 ${index + 1} 幅值">`;
+      componentContainer.appendChild(row);
+      return row;
+    }
+    for (let i = 0; i < 3; i++) componentRow(i);
+
+    async function api(path, options = {}) {
+      const response = await fetch(path, {
+        headers: {'Content-Type': 'application/json'},
+        ...options,
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.ok === false) throw new Error(payload.error || `HTTP ${response.status}`);
+      return payload;
+    }
+
+    function notify(message, error = false) {
+      const toast = $('toast');
+      toast.textContent = message;
+      toast.className = `toast show${error ? ' error' : ''}`;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.className = 'toast', 2600);
+    }
+
+    async function refreshPorts(selected) {
+      const {ports} = await api('/api/ports');
+      const select = $('port');
+      const previous = selected || select.value;
+      select.replaceChildren();
+      if (!ports.length) {
+        select.add(new Option('未发现 ttyACM / ttyUSB', ''));
+      } else {
+        ports.forEach(port => select.add(new Option(port, port)));
+        if (ports.includes(previous)) select.value = previous;
+        else if (ports.includes('/dev/ttyACM0')) select.value = '/dev/ttyACM0';
+      }
+    }
+
+    function loadConfig(config) {
+      $('autoWave').checked = config.auto_wave;
+      $('autoComponents').checked = config.auto_components;
+      $('autoSpectrum').checked = config.auto_spectrum;
+      $('waveType').value = config.wave_type;
+      $('waveOffset').value = config.wave_offset_v;
+      $('waveAmplitude').value = config.wave_amplitude_v;
+      $('waveCycles').value = config.wave_cycles;
+      $('spectrumMax').value = config.spectrum_max_frequency_hz;
+      $('spectrumWidth').value = config.spectrum_width_bins;
+      $('spectrumFloor').value = config.spectrum_floor_v;
+      document.querySelectorAll('.component-row').forEach((row, index) => {
+        const item = config.components[index] || {enabled: false, frequency_hz: 1000, amplitude_v: 0};
+        row.querySelector('.component-enabled').checked = item.enabled;
+        row.querySelector('.component-frequency').value = item.frequency_hz;
+        row.querySelector('.component-amplitude').value = item.amplitude_v;
+      });
+      $('wavePreview').dataset.delay = config.line_delay_ms;
+      drawWavePreview();
+    }
+
+    function collectConfig() {
+      const components = [...document.querySelectorAll('.component-row')].map(row => ({
+        enabled: row.querySelector('.component-enabled').checked,
+        frequency_hz: Number(row.querySelector('.component-frequency').value),
+        amplitude_v: Number(row.querySelector('.component-amplitude').value),
+      }));
+      return {
+        auto_wave: $('autoWave').checked,
+        auto_components: $('autoComponents').checked,
+        auto_spectrum: $('autoSpectrum').checked,
+        wave_type: $('waveType').value,
+        wave_offset_v: Number($('waveOffset').value),
+        wave_amplitude_v: Number($('waveAmplitude').value),
+        wave_cycles: Number($('waveCycles').value),
+        line_delay_ms: Number($('wavePreview').dataset.delay || 2),
+        spectrum_max_frequency_hz: Number($('spectrumMax').value),
+        spectrum_width_bins: Number($('spectrumWidth').value),
+        spectrum_floor_v: Number($('spectrumFloor').value),
+        components,
+      };
+    }
+
+    async function saveConfig(showToast = true) {
+      await api('/api/config', {method: 'POST', body: JSON.stringify(collectConfig())});
+      if (showToast) notify('参数已保存');
+    }
+
+    function waveNormalized(type, phase) {
+      if (type === 'square') return Math.sin(phase) >= 0 ? 1 : -1;
+      if (type === 'triangle') return 2 / Math.PI * Math.asin(Math.sin(phase));
+      return Math.sin(phase);
+    }
+
+    function drawWavePreview() {
+      const canvas = $('wavePreview');
+      const ctx = canvas.getContext('2d');
+      const width = canvas.width, height = canvas.height;
+      const offset = Number($('waveOffset').value || 0);
+      const amplitude = Number($('waveAmplitude').value || 0);
+      const cycles = Number($('waveCycles').value || 1);
+      const type = $('waveType').value;
+      const limit = Math.max(1, Math.abs(offset) + amplitude) * 1.08;
+      ctx.clearRect(0, 0, width, height);
+      ctx.strokeStyle = '#172a3b'; ctx.lineWidth = 1;
+      for (let x = 0; x <= width; x += width / 8) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
+      for (let y = 0; y <= height; y += height / 4) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
+      const mapY = value => height / 2 - value / limit * (height * .43);
+      ctx.strokeStyle = '#49647e'; ctx.beginPath(); ctx.moveTo(0, mapY(0)); ctx.lineTo(width, mapY(0)); ctx.stroke();
+      ctx.strokeStyle = '#38d6c5'; ctx.lineWidth = 2.2; ctx.beginPath();
+      let min = Infinity, max = -Infinity, sum = 0;
+      for (let i = 0; i < 128; i++) {
+        const value = offset + amplitude * waveNormalized(type, 2 * Math.PI * cycles * i / 128);
+        min = Math.min(min, value); max = Math.max(max, value); sum += value;
+        const x = i / 127 * width, y = mapY(value);
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+      $('waveSummary').textContent = `${min.toFixed(3)}～${max.toFixed(3)} V · 均值 ${(sum / 128).toFixed(3)} V`;
+    }
+
+    function renderState(state) {
+      const status = $('connectionStatus');
+      status.classList.toggle('online', state.connected);
+      status.querySelector('span:last-child').textContent = state.connected ? `${state.port} 已连接` : '未连接';
+      $('connect').disabled = state.connected;
+      $('disconnect').disabled = !state.connected;
+      $('waveRequests').textContent = state.stats.wave_requests;
+      $('componentRequests').textContent = state.stats.component_requests;
+      $('spectrumRequests').textContent = state.stats.spectrum_requests;
+      $('txFrames').textContent = state.stats.tx_frames;
+      $('lastKey').textContent = state.last_key;
+      if (!initialized) {
+        loadConfig(state.config);
+        refreshPorts(state.port);
+        initialized = true;
+      }
+      const log = $('log');
+      const wasNearBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 45;
+      state.logs.filter(item => item.id > lastLogId).forEach(item => {
+        const line = document.createElement('div');
+        line.className = 'log-line'; line.dataset.level = item.level;
+        line.innerHTML = `<span class="log-time"></span><span class="log-level"></span><span class="log-message"></span>`;
+        line.children[0].textContent = item.time;
+        line.children[1].textContent = item.level;
+        line.children[2].textContent = item.message;
+        log.appendChild(line);
+        lastLogId = item.id;
+      });
+      while (log.children.length > 240) log.firstChild.remove();
+      if (wasNearBottom) log.scrollTop = log.scrollHeight;
+    }
+
+    async function poll() {
+      try { renderState(await api('/api/state')); }
+      catch (error) { notify(`后台连接失败：${error.message}`, true); }
+    }
+
+    $('refreshPorts').onclick = () => refreshPorts().catch(error => notify(error.message, true));
+    $('connect').onclick = async () => {
+      try {
+        await api('/api/connect', {method: 'POST', body: JSON.stringify({port: $('port').value})});
+        notify('串口连接成功'); await poll();
+      } catch (error) { notify(error.message, true); }
+    };
+    $('disconnect').onclick = async () => {
+      try { await api('/api/disconnect', {method: 'POST', body: '{}'}); await poll(); }
+      catch (error) { notify(error.message, true); }
+    };
+    $('saveConfig').onclick = () => saveConfig().catch(error => notify(error.message, true));
+    $('sendWave').onclick = async () => {
+      try { await saveConfig(false); await api('/api/send/waveform', {method: 'POST', body: '{}'}); notify('已发送 128 点波形'); }
+      catch (error) { notify(error.message, true); }
+    };
+    $('sendComponents').onclick = async () => {
+      try { await saveConfig(false); await api('/api/send/components', {method: 'POST', body: '{}'}); notify('已发送峰值列表'); }
+      catch (error) { notify(error.message, true); }
+    };
+    $('sendSpectrum').onclick = async () => {
+      try { await saveConfig(false); await api('/api/send/spectrum', {method: 'POST', body: '{}'}); notify('已发送 128 点频谱'); }
+      catch (error) { notify(error.message, true); }
+    };
+    ['waveType', 'waveOffset', 'waveAmplitude', 'waveCycles'].forEach(id => $(id).addEventListener('input', drawWavePreview));
+    ['autoWave', 'autoComponents', 'autoSpectrum'].forEach(id => $(id).addEventListener('change', () => saveConfig(false).catch(error => notify(error.message, true))));
+
+    poll();
+    setInterval(poll, 400);
+  </script>
+</body>
+</html>

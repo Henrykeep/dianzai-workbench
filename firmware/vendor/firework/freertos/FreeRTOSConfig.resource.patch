@@ -1,0 +1,8 @@
+--- FreeRTOSConfig.h
++++ FreeRTOSConfig.h
+@@ -261 +261 @@
+-#define configUSE_TIMERS                1
++#define configUSE_TIMERS                0
+@@ -326 +326 @@
+-#define configTOTAL_HEAP_SIZE                        ((size_t)(3 * 1024))
++#define configTOTAL_HEAP_SIZE                        ((size_t)256)

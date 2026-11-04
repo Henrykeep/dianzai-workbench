@@ -1,0 +1,146 @@
+--- a/ads1256/inc/ads1255.h
++++ b/ads1256/inc/ads1255.h
+@@ -44,20 +44,15 @@
+ #define STM32F7
+ 
+ #if defined(STM32F1)
+-#include "stm32f1xx_hal.h"
+-#include "stm32f1xx_hal_spi.h"
++#include "pal_hal_compat.h"
+ #elif defined(STM32F4)
+-#include "stm32f4xx_hal.h"
+-#include "stm32f4xx_hal_spi.h"
++#include "pal_hal_compat.h"
+ #elif defined(STM32L4)
+-#include "stm32l4xx_hal.h"
+-#include "stm32l4xx_hal_spi.h"
++#include "pal_hal_compat.h"
+ #elif defined(STM32F3)
+-#include "stm32f3xx_hal.h"
+-#include "stm32f3xx_hal_spi.h"
++#include "pal_hal_compat.h"
+ #elif defined(STM32F7)
+-#include "stm32f7xx_hal.h"
+-#include "stm32f7xx_hal_spi.h"
++#include "pal_hal_compat.h"
+ #endif
+ 
+ // reference voltage
+@@ -184,20 +179,20 @@
+ 
+ // Struct "Object"
+ typedef struct {
+-    SPI_HandleTypeDef *hspix;
++    pal_id_t hspix;
+     float vref;
+     uint8_t pga;
+     float convFactor;
+     uint32_t oscFreq;
+-    GPIO_TypeDef *csPort;
++    pal_id_t csPort;
+     uint16_t     csPin;
+-    GPIO_TypeDef *drdyPort;
++    pal_id_t drdyPort;
+     uint16_t     drdyPin;
+ } ADS125X_t;
+ 
+ uint8_t  ADS125X_CS              (ADS125X_t *ads, uint8_t on);
+ uint8_t  ADS125X_DRDY_Wait       (ADS125X_t *ads );
+-uint8_t  ADS125X_Init            (ADS125X_t *ads, SPI_HandleTypeDef *hspi, uint8_t drate, uint8_t gain, uint8_t buffer_en);
++uint8_t  ADS125X_Init            (ADS125X_t *ads, pal_id_t hspi, uint8_t drate, uint8_t gain, uint8_t buffer_en);
+ uint8_t  ADS125X_Register_Read   (ADS125X_t *ads, uint8_t reg, uint8_t* pData, uint8_t n);
+ uint8_t  ADS125X_Register_Write  (ADS125X_t *ads, uint8_t reg, uint8_t data);
+ uint8_t  ADS125X_CMD_Send        (ADS125X_t *ads, uint8_t cmd);
+--- a/ads1256/src/ads1255.c
++++ b/ads1256/src/ads1255.c
+@@ -34,6 +34,7 @@
+ */
+ 
+ #include <stdint.h>
++#include "pal_hal_compat.h"
+ #include "ads1255.h"
+ 
+ //#define DEBUG_ADS1255
+@@ -51,14 +52,14 @@
+   * @return 
+   * @see    Datasheet Fig. 33 SDATAC Command Sequence
+   */
+-uint8_t ADS125X_Init(ADS125X_t *ads, SPI_HandleTypeDef *hspi, uint8_t drate, uint8_t gain, uint8_t buffer_en)
++uint8_t ADS125X_Init(ADS125X_t *ads, pal_id_t hspi, uint8_t drate, uint8_t gain, uint8_t buffer_en)
+ {
+   ads->hspix = hspi;
+   ads->pga = 1 << gain;
+ 	
+ 	ADS125X_CS(ads, 1);
+ 	ADS125X_CMD_Send(ads, ADS125X_CMD_RESET);
+-	HAL_Delay(5);
++	pal_delay_ms(5);
+ 	ADS125X_CMD_Send(ads, ADS125X_CMD_SDATAC);
+ 	
+ 	uint8_t tmp[5]; // buffer
+@@ -98,7 +99,7 @@
+   * @param  *ads pointer to ads handle
+   */
+ uint8_t ADS125X_DRDY_Wait(ADS125X_t *ads){
+-  while(HAL_GPIO_ReadPin(ads->drdyPort, ads->drdyPin) == GPIO_PIN_SET);
++  while(pal_gpio_level(ads->drdyPort) == true);
+ 	return 0;
+ }
+ 
+@@ -111,7 +112,7 @@
+ {
+   if(on) on = 0;
+   else on = 1;
+-  HAL_GPIO_WritePin( ads->csPort, ads->csPin, on);
++  pal_gpio_write(ads->csPort, on);
+ 	return 0;
+ }
+ 
+@@ -146,9 +147,9 @@
+ 	spiRx[0] = ADS125X_CMD_RDATA;
+ 	
+ 	ADS125X_CS(ads, 1);
+-	HAL_SPI_Transmit(ads->hspix, spiRx, 1, 10);
+-	HAL_Delay(1);
+-	HAL_SPI_Receive(ads->hspix, spiRx, 3, 10);
++	pal_spi_tx(ads->hspix, spiRx, 1);
++	pal_delay_ms(1);
++	pal_spi_rx(ads->hspix, spiRx, 3);
+ 	ADS125X_CS(ads, 0);
+ 	
+ #ifdef DEBUG_ADS1255
+@@ -179,10 +180,10 @@
+ 	
+   ADS125X_CS(ads, 1);
+   ADS125X_DRDY_Wait(ads);
+-  HAL_SPI_Transmit(ads->hspix, spiTx, 2, 1);
+-  HAL_Delay(1); // t6 delay (50*tCLKIN)
+-  HAL_SPI_Receive(ads->hspix, pData, n, 1);
+-  HAL_Delay(1); // t11 delay
++  pal_spi_tx(ads->hspix, spiTx, 2);
++  pal_delay_ms(1); // t6 delay (50*tCLKIN)
++  pal_spi_rx(ads->hspix, pData, n);
++  pal_delay_ms(1); // t11 delay
+   ADS125X_CS(ads, 0);
+ 	return 0;
+ }
+@@ -204,8 +205,8 @@
+ 	
+   ADS125X_CS(ads, 1);
+ 	ADS125X_DRDY_Wait(ads);
+-	HAL_SPI_Transmit(ads->hspix, spiTx, 3, 10);
+-	HAL_Delay(1);
++	pal_spi_tx(ads->hspix, spiTx, 3);
++	pal_delay_ms(1);
+   ADS125X_CS(ads, 0);
+ 	return 0;
+ }
+@@ -223,7 +224,7 @@
+ 	
+   ADS125X_CS(ads, 1);
+   ADS125X_DRDY_Wait(ads);
+-  HAL_SPI_Transmit(ads->hspix, &spiTx, 1, 1);
++  pal_spi_tx(ads->hspix, &spiTx, 1);
+   ADS125X_CS(ads, 0);
+ 	return 0;
+ }

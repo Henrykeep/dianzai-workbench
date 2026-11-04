@@ -1,0 +1,3189 @@
+{
+ "version": 1,
+ "source": "firmware/drivers/catalog.yaml",
+ "count": 110,
+ "vendored": 84,
+ "entries": [
+  {
+   "part": "AD7705",
+   "category": "ADC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ad7705",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ad7705_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "gpio_reset"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ad7705",
+   "commit": "5c567d4",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AD9833",
+   "category": "DDS",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ad9833",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ad9833_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ad9833",
+   "commit": "fbe20be",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ADS1115",
+   "category": "ADC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ads1115",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ads1115_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ads1115",
+   "commit": "8474eeb",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ADS1118",
+   "category": "ADC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ads1118",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ads1118_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ads1118",
+   "commit": "57dca3c",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ADXL345",
+   "category": "IMU(加速度)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/adxl345",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/adxl345_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/adxl345",
+   "commit": "b15a898",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AHT20",
+   "category": "温湿度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/aht20",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/aht20_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/aht20",
+   "commit": "a47c195",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AS5600",
+   "category": "编码器(磁角度)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/as5600",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/as5600_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/as5600",
+   "commit": "b8bc11f",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AT24CXX",
+   "category": "EEPROM",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/at24cxx",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/at24cxx_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/at24cxx",
+   "commit": "aa2a2a3",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "BH1750FVI",
+   "category": "照度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/bh1750fvi",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/bh1750fvi_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/bh1750fvi",
+   "commit": "51330ab",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "BMM150",
+   "category": "磁力计",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/bmm150",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/bmm150_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/bmm150",
+   "commit": "78b0348",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "BMP280",
+   "category": "气压",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/bmp280",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/bmp280_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/bmp280",
+   "commit": "921097e",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "button",
+   "category": "按键",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/button",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/button_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/button",
+   "commit": "7029325",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "CS1237",
+   "category": "ADC(称重)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/cs1237",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/cs1237_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "sclk",
+     "dout"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/cs1237",
+   "commit": "3652990",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "DHT11",
+   "category": "温湿度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/dht11",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/dht11_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "data"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/dht11",
+   "commit": "4e68f7c",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "DS1302",
+   "category": "RTC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ds1302",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ds1302_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "ce",
+     "sclk",
+     "io"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ds1302",
+   "commit": "dada1d4",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "DS18B20",
+   "category": "温度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ds18b20",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ds18b20_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "data"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ds18b20",
+   "commit": "dfb5df4",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "DS3231",
+   "category": "RTC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ds3231",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ds3231_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ds3231",
+   "commit": "4ac0236",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "HCSR04",
+   "category": "超声波",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/hcsr04",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/hcsr04_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "trig",
+     "echo"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/hcsr04",
+   "commit": "8bfc7c4",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "HLW8032",
+   "category": "电能计量",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/hlw8032",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "uart",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/hlw8032_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/hlw8032",
+   "commit": "6bece68",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "HMC5883L",
+   "category": "磁力计",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/hmc5883l",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/hmc5883l_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/hmc5883l",
+   "commit": "a80bc26",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "HX711",
+   "category": "ADC(称重)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/hx711",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/hx711_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "bus",
+     "clock"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/hx711",
+   "commit": "2a3cacf",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "INA219",
+   "category": "电流检测",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ina219",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ina219_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ina219",
+   "commit": "266a1ee",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "INA226",
+   "category": "电流检测",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ina226",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ina226_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ina226",
+   "commit": "10a86ab",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ir_remote",
+   "category": "红外遥控",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ir_remote",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ir_remote_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ir_remote",
+   "commit": "c77813a",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "LD3320",
+   "category": "语音识别",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ld3320",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ld3320_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "reset"
+    ],
+    "unmapped": [
+     "mp3_read"
+    ]
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ld3320",
+   "commit": "647eb0d",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "LLCC68",
+   "category": "射频(LoRa)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/llcc68",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/llcc68_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "reset",
+     "busy"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/llcc68",
+   "commit": "ac0327a",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MAX30102",
+   "category": "心率血氧",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/max30102",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/max30102_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/max30102",
+   "commit": "f46eee1",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MAX31865",
+   "category": "温度(PT100)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/max31865",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/max31865_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/max31865",
+   "commit": "85e702a",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MAX6675",
+   "category": "温度(热电偶)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/max6675",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/max6675_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/max6675",
+   "commit": "8341742",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MCP3421",
+   "category": "ADC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/mcp3421",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/mcp3421_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/mcp3421",
+   "commit": "9970723",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MCP4725",
+   "category": "DAC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/mcp4725",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/mcp4725_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/mcp4725",
+   "commit": "1fd6eef",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MFRC522",
+   "category": "RFID",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/mfrc522",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "uart",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/mfrc522_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "reset"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/mfrc522",
+   "commit": "7f94a15",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MLX90614",
+   "category": "温度(红外)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/mlx90614",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/mlx90614_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "scl",
+     "sda"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/mlx90614",
+   "commit": "e84167b",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MPU6050",
+   "category": "IMU",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/mpu6050",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/mpu6050_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/mpu6050",
+   "commit": "4b46e1e",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MPU6500",
+   "category": "IMU",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/mpu6500",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/mpu6500_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/mpu6500",
+   "commit": "9d1b7f4",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "MPU9250",
+   "category": "IMU",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/mpu9250",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/mpu9250_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/mpu9250",
+   "commit": "06cc13e",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "multi_button",
+   "category": "按键",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/multi_button",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/multi_button_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": [
+     "matrix_write_row",
+     "matrix_read_row"
+    ]
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/multi_button",
+   "commit": "62d025a",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "NRF24L01",
+   "category": "射频",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/nrf24l01",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/nrf24l01_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "gpio"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/nrf24l01",
+   "commit": "7957ac9",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ntc",
+   "category": "温度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ntc",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ntc_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ntc",
+   "commit": "b2f3038",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "PCA9685",
+   "category": "舵机PWM",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/pca9685",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/pca9685_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "oe"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/pca9685",
+   "commit": "592c8ee",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "PCF8563",
+   "category": "RTC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/pcf8563",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/pcf8563_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/pcf8563",
+   "commit": "ed162be",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "PCF8574",
+   "category": "显示(LCD1602 I2C 背板)/IO扩展",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/pcf8574",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/pcf8574_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/pcf8574",
+   "commit": "4554f94",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "PCF8591",
+   "category": "ADC/DAC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/pcf8591",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/pcf8591_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/pcf8591",
+   "commit": "004cda1",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "QMC5883L",
+   "category": "磁力计",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/qmc5883l",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/qmc5883l_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/qmc5883l",
+   "commit": "fbf3584",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "SHT30",
+   "category": "温湿度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/sht30",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/sht30_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/sht30",
+   "commit": "b1d3f51",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "SHT31",
+   "category": "温湿度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/sht31",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/sht31_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/sht31",
+   "commit": "8f90834",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "SHT4X",
+   "category": "温湿度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/sht4x",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/sht4x_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/sht4x",
+   "commit": "63be9ce",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "SSD1306",
+   "category": "显示",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ssd1306",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ssd1306_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "spi_cmd_data",
+     "reset"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ssd1306",
+   "commit": "0bcc8ce",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ST7789",
+   "category": "显示",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/st7789",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/st7789_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "cmd_data",
+     "reset"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/st7789",
+   "commit": "7bd8bc7",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ST7920",
+   "category": "显示",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/st7920",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/st7920_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "cs",
+     "sclk",
+     "sid"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/st7920",
+   "commit": "c642d35",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "SX1262",
+   "category": "射频(LoRa)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/sx1262",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/sx1262_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "reset",
+     "busy"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/sx1262",
+   "commit": "3afbabc",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "SYN6288",
+   "category": "语音合成",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/syn6288",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "uart",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/syn6288_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/syn6288",
+   "commit": "4263c98",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "TCS34725",
+   "category": "颜色",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/tcs34725",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/tcs34725_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/tcs34725",
+   "commit": "6c7df4d",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "TLC5615",
+   "category": "DAC",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/tlc5615",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/tlc5615_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/tlc5615",
+   "commit": "d883c97",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "TM1638",
+   "category": "数码管/按键",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/tm1638",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/tm1638_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/tm1638",
+   "commit": "faa9778",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "TM1640",
+   "category": "数码管",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/tm1640",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/tm1640_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "sclk",
+     "din"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/tm1640",
+   "commit": "90510dd",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "TSL2561",
+   "category": "照度",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/tsl2561",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/tsl2561_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/tsl2561",
+   "commit": "aaa5025",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "TTP229",
+   "category": "按键(触摸键盘)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ttp229",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ttp229_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ttp229",
+   "commit": "b2e2874",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "W25QXX",
+   "category": "Flash",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/w25qxx",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/w25qxx_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/w25qxx",
+   "commit": "3038ace",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "WS2812B",
+   "category": "灯带",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/ws2812b",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/ws2812b_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/ws2812b",
+   "commit": "3f7b539",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "WT588E02B",
+   "category": "语音播放",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/wt588e02b",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/wt588e02b_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "sclk",
+     "mosi",
+     "miso",
+     "cs"
+    ],
+    "unmapped": [
+     "bin_read"
+    ]
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/wt588e02b",
+   "commit": "f04aa56",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "X9CXX",
+   "category": "数字电位器(程控增益)",
+   "vendor": "libdriver",
+   "path": "firmware/drivers/libdriver/x9cxx",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/libdriver/x9cxx_pal.c",
+     "firmware/drivers/glue/ld_pal.c"
+    ],
+    "gpio_roles": [
+     "cs",
+     "up_down",
+     "inc"
+    ],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/libdriver/x9cxx",
+   "commit": "127d77f",
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AD7606",
+   "category": "ADC",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/adc/ad7606",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AD7124",
+   "category": "ADC",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/adc/ad7124",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "AD717x",
+   "category": "ADC",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/adc/ad717x",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "AD7689",
+   "category": "ADC",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/adc/ad7689",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "AD5689/AD5686 系列",
+   "category": "DAC",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/dac/ad5686",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AD5761R",
+   "category": "DAC",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/dac/ad5761r",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "AD9833",
+   "category": "DDS",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/frequency/ad9833",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "ADF4350",
+   "category": "PLL频率合成",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/frequency/adf4350",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "AD5933",
+   "category": "阻抗测量",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/impedance-analyzer/ad5933",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "ADE7953",
+   "category": "电能计量",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/meter/ade7953",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "ADE9000",
+   "category": "电能计量",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/meter/ade9000",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "ADXL345",
+   "category": "IMU(加速度)",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/accel/adxl345",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "SSD1306",
+   "category": "显示",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/display/ssd_1306",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "24xx32A",
+   "category": "EEPROM",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/eeprom/24xx32a",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "TMC5240",
+   "category": "步进驱动",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/motor/tmc5240",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "fail",
+    "stm32": "fail",
+    "mspm0": "fail"
+   },
+   "compile_errors": [
+    "firmware/drivers/adi-no-os/drivers/motor/tmc5240/tmc5240.c: tmc/ic/TMC5240/TMC5240.h: No such file or directory"
+   ],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "AD5293/AD5110 等",
+   "category": "数字电位器",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/potentiometer",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "W5500",
+   "category": "以太网",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/net/w5500",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "NMEA/UBX GPS",
+   "category": "GNSS",
+   "vendor": "adi-no-os",
+   "path": "firmware/drivers/adi-no-os/drivers/gnss-gps/nmea_ubx",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "no_os_spi/i2c",
+     "no_os_gpio",
+     "no_os_delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/no-os/no_os_pal.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ADI)",
+   "upstream": "https://github.com/analogdevicesinc/no-OS",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "未克隆(可稀疏检出)"
+  },
+  {
+   "part": "ADS1256",
+   "category": "ADC",
+   "vendor": "其他",
+   "path": "firmware/drivers/other/ads1256",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/pal_hal_compat.h"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "Apache-2.0",
+   "upstream": "https://github.com/eta-systems/ADS1255",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已克隆，需把 HAL 调用换成钩子"
+  },
+  {
+   "part": "VL53L1X",
+   "category": "ToF",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause",
+   "upstream": "ST VL53L1X ULD",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "VL53L0X",
+   "category": "ToF",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "delay"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause(ST)",
+   "upstream": "ST VL53L0X API",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "已克隆"
+  },
+  {
+   "part": "AD9850",
+   "category": "DDS",
+   "vendor": "其他",
+   "path": "firmware/drivers/ad983x",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/ad983x/ad983x_port.c"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "firework 仓库",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "已有，嵌入式开发-2 在 fw-sigmods 移植"
+  },
+  {
+   "part": "DAC8563",
+   "category": "DAC",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "无许可",
+   "upstream": "https://github.com/nayim12/DAC8562_STM32_HAL",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "缺口：只能参考，用 AD5689 替代或按手册自写"
+  },
+  {
+   "part": "BMI088",
+   "category": "IMU",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi",
+     "i2c",
+     "delay"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-3-Clause",
+   "upstream": "https://github.com/boschsensortec/BMI08x_SensorAPI",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用，未克隆"
+  },
+  {
+   "part": "JY901/WIT 系列",
+   "category": "IMU(串口)",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "uart"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "无许可文件(厂商 SDK)",
+   "upstream": "https://github.com/WITMOTION/WitStandardProtocol_JY901",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用作参考；协议简单，许可需确认"
+  },
+  {
+   "part": "ICM42688",
+   "category": "IMU",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi",
+     "i2c"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "—",
+   "upstream": "—",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "缺口：只有 GPL 小仓库(Barsy-Barsevich/ICM42688_Barsotion)，TDK 官方驱动需注册下载"
+  },
+  {
+   "part": "ST7735",
+   "category": "显示",
+   "vendor": "其他",
+   "path": "firmware/drivers/other/st7735",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [
+     "firmware/drivers/glue/pal_hal_compat.h"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/afiskon/stm32-st7735",
+   "commit": null,
+   "compile": {
+    "host": "pass",
+    "stm32": "pass",
+    "mspm0": "pass"
+   },
+   "compile_errors": [],
+   "note": "可用，需换 HAL 为钩子"
+  },
+  {
+   "part": "ILI9341",
+   "category": "显示",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/afiskon/stm32-ili9341",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用"
+  },
+  {
+   "part": "ILI9488 等大屏",
+   "category": "显示",
+   "vendor": "其他",
+   "path": "firmware/drivers/other/ili9488",
+   "vendored": true,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio"
+    ],
+    "glue": [
+     "firmware/drivers/glue/pal_hal_compat.h"
+    ],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/maudeve-it/ILI9XXX-XPT2046-STM32",
+   "commit": null,
+   "compile": {
+    "host": "fail",
+    "stm32": "fail",
+    "mspm0": "fail"
+   },
+   "compile_errors": [
+    "firmware/drivers/other/ili9488/1-HOWTO/z_displ_ILI9XXX.c: main.h: No such file or directory"
+   ],
+   "note": "可用，STM32 HAL 绑定较深"
+  },
+  {
+   "part": "多种单色屏(SSD1306/ST7920/SH1106 等)",
+   "category": "显示",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "i2c",
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-2-Clause",
+   "upstream": "https://github.com/olikraus/u8g2",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用，覆盖面最广"
+  },
+  {
+   "part": "图形界面",
+   "category": "显示(GUI)",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "显示刷新回调"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/lvgl/lvgl",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用"
+  },
+  {
+   "part": "LCD1602(HD44780 并口)",
+   "category": "显示",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "delay"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/4ilo/HD44780-Stm32HAL",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用；I2C 背板版用 libdriver/pcf8574"
+  },
+  {
+   "part": "TMC2209",
+   "category": "步进驱动",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "uart"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD(未标准识别)",
+   "upstream": "https://github.com/janelia-arduino/TMC2209",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "只有 C++/Arduino 版；STEP/DIR 模式用芯台已有 drivers/stepper 即可"
+  },
+  {
+   "part": "TB6612/DRV8833/A4950",
+   "category": "电机驱动",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "pwm",
+     "gpio"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "芯台自有",
+   "upstream": "芯台 firmware/drivers/motor_dc、motor_2pwm",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "已有，纯 PWM+GPIO，无需外部驱动"
+  },
+  {
+   "part": "舵机",
+   "category": "舵机PWM",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "pwm"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "芯台自有/MIT",
+   "upstream": "芯台 firmware/drivers/servo；多路用 libdriver/pca9685",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "已有"
+  },
+  {
+   "part": "增量编码器",
+   "category": "编码器",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "定时器编码器模式"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "芯台自有",
+   "upstream": "芯台 firmware/drivers/encoder",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "已有"
+  },
+  {
+   "part": "蜂鸣器",
+   "category": "蜂鸣器",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "gpio",
+     "pwm"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "芯台自有",
+   "upstream": "芯台 firmware/drivers/buzzer",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "已有"
+  },
+  {
+   "part": "SX1276/SX1278",
+   "category": "射频(LoRa)",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio",
+     "delay"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "Revised BSD",
+   "upstream": "https://github.com/Lora-net/LoRaMac-node",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用，只取 radio 目录"
+  },
+  {
+   "part": "ESP8266/ESP32 AT、蓝牙 AT 模块",
+   "category": "WiFi/蓝牙",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "uart"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/MaJerle/lwesp",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用(WiFi)；HC-05/JDY 蓝牙为透传，用芯台 bt_serial"
+  },
+  {
+   "part": "4G AT 模块(SIM800/EC20 等)",
+   "category": "手机通信",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "uart"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "https://github.com/MaJerle/lwcell",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用"
+  },
+  {
+   "part": "OpenMV/K230/MaixCam 串口协议",
+   "category": "视觉模块",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "uart"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "芯台自有/MIT",
+   "upstream": "芯台 boards/k230-vision 等 + https://github.com/MaJerle/lwrb 环形缓冲",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "已有；协议由视觉端脚本自定，无通用开源标准"
+  },
+  {
+   "part": "矩阵键盘",
+   "category": "按键",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "gpio"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT",
+   "upstream": "libdriver/multi_button + GPIO 扫描",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用；4x4 扫描几十行"
+  },
+  {
+   "part": "SD/TF 卡",
+   "category": "存储",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "BSD-1-Clause 风格",
+   "upstream": "FatFs(elm-chan)，镜像 https://github.com/abbrev/fatfs",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用"
+  },
+  {
+   "part": "MAVLink 飞控通信",
+   "category": "飞控",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "uart"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "MIT(生成代码)",
+   "upstream": "https://github.com/mavlink/c_library_v2",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用，纯头文件"
+  },
+  {
+   "part": "ADS1292",
+   "category": "生物电前端",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi",
+     "gpio"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "GPL-3.0",
+   "upstream": "https://github.com/trebladev/ADS1292",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用(GPL，芯台 AGPL 兼容)"
+  },
+  {
+   "part": "FDC2214",
+   "category": "电容传感",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "i2c"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "Apache-2.0",
+   "upstream": "https://github.com/zengwangfa/2019-Electronic-Design-Competition",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可用，需从工程里抽出"
+  },
+  {
+   "part": "FPGA 通信",
+   "category": "FPGA",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "spi",
+     "uart"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "—",
+   "upstream": "—",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "缺口：没有通用驱动，需定协议"
+  },
+  {
+   "part": "LMT70",
+   "category": "温度(模拟)",
+   "vendor": "其他",
+   "path": null,
+   "vendored": false,
+   "interface": {
+    "hooks": [
+     "adc"
+    ],
+    "glue": [],
+    "gpio_roles": [],
+    "unmapped": []
+   },
+   "license": "—",
+   "upstream": "芯台 pal_adc_read + 查表",
+   "commit": null,
+   "compile": {
+    "host": "not_built",
+    "stm32": "not_built",
+    "mspm0": "not_built"
+   },
+   "compile_errors": [],
+   "note": "可替代"
+  }
+ ]
+}

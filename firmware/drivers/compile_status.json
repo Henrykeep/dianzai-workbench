@@ -1,0 +1,592 @@
+{
+ "drivers": {
+  "ad7705": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ad9833": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ad983x(firework)": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "firework"
+  },
+  "ads1115": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ads1118": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ads1256": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "other"
+  },
+  "adxl345": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "aht20": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "as5600": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "at24cxx": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "bh1750fvi": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "bmm150": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "bmp280": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "button": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "cs1237": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "dht11": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ds1302": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ds18b20": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ds3231": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "hcsr04": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "hlw8032": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "hmc5883l": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "hx711": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ili9488": {
+   "host": "fail",
+   "host_error": "firmware/drivers/other/ili9488/1-HOWTO/z_displ_ILI9XXX.c: main.h: No such file or directory",
+   "mspm0": "fail",
+   "mspm0_error": "firmware/drivers/other/ili9488/1-HOWTO/z_displ_ILI9XXX.c: main.h: No such file or directory",
+   "stm32": "fail",
+   "stm32_error": "firmware/drivers/other/ili9488/1-HOWTO/z_displ_ILI9XXX.c: main.h: No such file or directory",
+   "vendor": "other"
+  },
+  "ina219": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ina226": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ir_remote": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ld3320": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "llcc68": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "max30102": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "max31865": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "max6675": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "max7219": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "mcp3421": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "mcp4725": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "mfrc522": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "mlx90614": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "mpu6050": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "mpu6500": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "mpu9250": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "multi_button": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "no-os/accel/adxl345": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/adc/ad7124": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/adc/ad717x": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/adc/ad7606": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/adc/ad7689": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/dac/ad5686": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/dac/ad5761r": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/display/ssd_1306": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/eeprom/24xx32a": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/frequency/ad9833": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/frequency/adf4350": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/gnss-gps/nmea_ubx": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/impedance-analyzer/ad5933": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/meter/ade7953": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/meter/ade9000": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/motor/tmc5240": {
+   "host": "fail",
+   "host_error": "firmware/drivers/adi-no-os/drivers/motor/tmc5240/tmc5240.c: tmc/ic/TMC5240/TMC5240.h: No such file or directory",
+   "mspm0": "fail",
+   "mspm0_error": "firmware/drivers/adi-no-os/drivers/motor/tmc5240/tmc5240.c: tmc/ic/TMC5240/TMC5240.h: No such file or directory",
+   "stm32": "fail",
+   "stm32_error": "firmware/drivers/adi-no-os/drivers/motor/tmc5240/tmc5240.c: tmc/ic/TMC5240/TMC5240.h: No such file or directory",
+   "vendor": "adi-no-os"
+  },
+  "no-os/net/w5500": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5110": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad514x": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5161": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5165": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5171": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5242": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5246": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5259": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad525x": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/ad5293": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "no-os/potentiometer/common": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "adi-no-os"
+  },
+  "nrf24l01": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ntc": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "pca9685": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "pcf8563": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "pcf8574": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "pcf8591": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "qmc5883l": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "sht30": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "sht31": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "sht4x": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ssd1306": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "st7735": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "other"
+  },
+  "st7789": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "st7920": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "sx1262": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "syn6288": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "tcs34725": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "tlc5615": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "tm1637": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "tm1638": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "tm1640": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "tsl2561": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ttp229": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "w25qxx": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "ws2812b": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "wt588e02b": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  },
+  "x9cxx": {
+   "host": "pass",
+   "mspm0": "pass",
+   "stm32": "pass",
+   "vendor": "libdriver"
+  }
+ },
+ "pass": {
+  "host": 94,
+  "mspm0": 94,
+  "stm32": 94
+ },
+ "total": 96
+}

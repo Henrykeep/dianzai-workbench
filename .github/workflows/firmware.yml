@@ -59,3 +59,4 @@ jobs:
           tools/arm_toolchain.sh --check
       - run: tools/fetch_third_party.sh
       - run: make cross
+      - run: make drivers   # 第三方驱动 x host/stm32/mspm0 编译矩阵与 compile_status.json 一致

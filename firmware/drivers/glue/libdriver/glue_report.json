@@ -1,0 +1,454 @@
+[
+ {
+  "part": "ad7705",
+  "gpio_roles": [
+   "gpio_reset"
+  ],
+  "functions": 9,
+  "unmapped": []
+ },
+ {
+  "part": "ad9833",
+  "gpio_roles": [],
+  "functions": 5,
+  "unmapped": []
+ },
+ {
+  "part": "ads1115",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "ads1118",
+  "gpio_roles": [],
+  "functions": 5,
+  "unmapped": []
+ },
+ {
+  "part": "adxl345",
+  "gpio_roles": [],
+  "functions": 11,
+  "unmapped": []
+ },
+ {
+  "part": "aht20",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "as5600",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "at24cxx",
+  "gpio_roles": [],
+  "functions": 8,
+  "unmapped": []
+ },
+ {
+  "part": "bh1750fvi",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "bmm150",
+  "gpio_roles": [],
+  "functions": 11,
+  "unmapped": []
+ },
+ {
+  "part": "bmp280",
+  "gpio_roles": [],
+  "functions": 10,
+  "unmapped": []
+ },
+ {
+  "part": "button",
+  "gpio_roles": [],
+  "functions": 4,
+  "unmapped": []
+ },
+ {
+  "part": "cs1237",
+  "gpio_roles": [
+   "sclk",
+   "dout"
+  ],
+  "functions": 10,
+  "unmapped": []
+ },
+ {
+  "part": "dht11",
+  "gpio_roles": [
+   "data"
+  ],
+  "functions": 9,
+  "unmapped": []
+ },
+ {
+  "part": "ds1302",
+  "gpio_roles": [
+   "ce",
+   "sclk",
+   "io"
+  ],
+  "functions": 13,
+  "unmapped": []
+ },
+ {
+  "part": "ds18b20",
+  "gpio_roles": [
+   "data"
+  ],
+  "functions": 9,
+  "unmapped": []
+ },
+ {
+  "part": "ds3231",
+  "gpio_roles": [],
+  "functions": 7,
+  "unmapped": []
+ },
+ {
+  "part": "hcsr04",
+  "gpio_roles": [
+   "trig",
+   "echo"
+  ],
+  "functions": 10,
+  "unmapped": []
+ },
+ {
+  "part": "hlw8032",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "hmc5883l",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "hx711",
+  "gpio_roles": [
+   "bus",
+   "clock"
+  ],
+  "functions": 10,
+  "unmapped": []
+ },
+ {
+  "part": "ina219",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "ina226",
+  "gpio_roles": [],
+  "functions": 7,
+  "unmapped": []
+ },
+ {
+  "part": "ir_remote",
+  "gpio_roles": [],
+  "functions": 4,
+  "unmapped": []
+ },
+ {
+  "part": "ld3320",
+  "gpio_roles": [
+   "reset"
+  ],
+  "functions": 14,
+  "unmapped": [
+   "mp3_read"
+  ]
+ },
+ {
+  "part": "llcc68",
+  "gpio_roles": [
+   "reset",
+   "busy"
+  ],
+  "functions": 12,
+  "unmapped": []
+ },
+ {
+  "part": "max30102",
+  "gpio_roles": [],
+  "functions": 7,
+  "unmapped": []
+ },
+ {
+  "part": "max31865",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "max6675",
+  "gpio_roles": [],
+  "functions": 5,
+  "unmapped": []
+ },
+ {
+  "part": "max7219",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "mcp3421",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "mcp4725",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "mfrc522",
+  "gpio_roles": [
+   "reset"
+  ],
+  "functions": 19,
+  "unmapped": []
+ },
+ {
+  "part": "mlx90614",
+  "gpio_roles": [
+   "scl",
+   "sda"
+  ],
+  "functions": 8,
+  "unmapped": []
+ },
+ {
+  "part": "mpu6050",
+  "gpio_roles": [],
+  "functions": 9,
+  "unmapped": []
+ },
+ {
+  "part": "mpu6500",
+  "gpio_roles": [],
+  "functions": 13,
+  "unmapped": []
+ },
+ {
+  "part": "mpu9250",
+  "gpio_roles": [],
+  "functions": 13,
+  "unmapped": []
+ },
+ {
+  "part": "multi_button",
+  "gpio_roles": [],
+  "functions": 8,
+  "unmapped": [
+   "matrix_write_row",
+   "matrix_read_row"
+  ]
+ },
+ {
+  "part": "nrf24l01",
+  "gpio_roles": [
+   "gpio"
+  ],
+  "functions": 10,
+  "unmapped": []
+ },
+ {
+  "part": "ntc",
+  "gpio_roles": [],
+  "functions": 5,
+  "unmapped": []
+ },
+ {
+  "part": "pca9685",
+  "gpio_roles": [
+   "oe"
+  ],
+  "functions": 9,
+  "unmapped": []
+ },
+ {
+  "part": "pcf8563",
+  "gpio_roles": [],
+  "functions": 7,
+  "unmapped": []
+ },
+ {
+  "part": "pcf8574",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "pcf8591",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "qmc5883l",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "sht30",
+  "gpio_roles": [],
+  "functions": 8,
+  "unmapped": []
+ },
+ {
+  "part": "sht31",
+  "gpio_roles": [],
+  "functions": 8,
+  "unmapped": []
+ },
+ {
+  "part": "sht4x",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "ssd1306",
+  "gpio_roles": [
+   "spi_cmd_data",
+   "reset"
+  ],
+  "functions": 14,
+  "unmapped": []
+ },
+ {
+  "part": "st7789",
+  "gpio_roles": [
+   "cmd_data",
+   "reset"
+  ],
+  "functions": 11,
+  "unmapped": []
+ },
+ {
+  "part": "st7920",
+  "gpio_roles": [
+   "cs",
+   "sclk",
+   "sid"
+  ],
+  "functions": 12,
+  "unmapped": []
+ },
+ {
+  "part": "sx1262",
+  "gpio_roles": [
+   "reset",
+   "busy"
+  ],
+  "functions": 12,
+  "unmapped": []
+ },
+ {
+  "part": "syn6288",
+  "gpio_roles": [],
+  "functions": 7,
+  "unmapped": []
+ },
+ {
+  "part": "tcs34725",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "tlc5615",
+  "gpio_roles": [],
+  "functions": 5,
+  "unmapped": []
+ },
+ {
+  "part": "tm1637",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": [
+   "iic_write_cmd_custom",
+   "iic_read_cmd_custom"
+  ]
+ },
+ {
+  "part": "tm1638",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "tm1640",
+  "gpio_roles": [
+   "sclk",
+   "din"
+  ],
+  "functions": 9,
+  "unmapped": []
+ },
+ {
+  "part": "tsl2561",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "ttp229",
+  "gpio_roles": [],
+  "functions": 8,
+  "unmapped": []
+ },
+ {
+  "part": "w25qxx",
+  "gpio_roles": [],
+  "functions": 6,
+  "unmapped": []
+ },
+ {
+  "part": "ws2812b",
+  "gpio_roles": [],
+  "functions": 5,
+  "unmapped": []
+ },
+ {
+  "part": "wt588e02b",
+  "gpio_roles": [
+   "sclk",
+   "mosi",
+   "miso",
+   "cs"
+  ],
+  "functions": 18,
+  "unmapped": [
+   "bin_read"
+  ]
+ },
+ {
+  "part": "x9cxx",
+  "gpio_roles": [
+   "cs",
+   "up_down",
+   "inc"
+  ],
+  "functions": 12,
+  "unmapped": []
+ }
+]

@@ -131,7 +131,7 @@ hal_obj_of = $(OUT)/hal/$(subst :,_,$(1)).o
 HAL_OBJS = $(foreach s,$(HAL_SRC) $(STARTUP),$(call hal_obj_of,$(s)))
 HAL_DRV_SRCS = $(foreach s,$(HAL_SRC) $(STARTUP),$(if $(findstring :,$(s)),$(s)))
 
-.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview ui bench preflight
+.PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview ui bench preflight drivers
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
 COMPAT_SRC := $(wildcard firmware/*/*/*.c)
 compat:
@@ -234,6 +234,11 @@ ui-preview:
 bench:
 	$(PY) tools/bench/bench.py $(ARGS)
 
+# 第三方驱动编译矩阵：每个原样收录的驱动 + 芯台胶水，host / stm32(Cortex-M4) / mspm0(Cortex-M0+) 编到 .o，与 firmware/drivers/compile_status.json 比对
+# ARGS=--write 更新记录；约 1 分钟
+drivers:
+	$(PY) tools/build_drivers.py $(ARGS)
+
 agent-eval:
 	cd app/sidecar && $(PY) -m dzbench.agent.evalrun --repeat 3 $(ARGS)
 
@@ -258,6 +263,7 @@ test:
 	$(PY) tools/test_swd_pins.py   # #56 SWD 调试脚占用即报错
 	$(PY) tools/test_projgen_build.py   # #52 工程 build/gen 导出物不与 projgen 重复链接
 	tools/test_estop_wd.sh   # 链路看门狗：卡顿 1.2 s 不误触发、2 s 必触发，记录值 = 实测间隔（link.watchdog_ms，默认 1500）
+	$(PY) tools/test_driver_lookup.py   # 查驱动 --json 与退出码 0/1/2/3
 	$(PY) tests/pydeps/test_pydeps.py   # #112 离线依赖清单 5 包钉版本、doctor JSON、缺包中文提示
 	$(PY) -m pytest -q -p no:cacheprovider tests/selfcheck   # xintai-selfcheck.sh：有依赖 0；缺依赖中文、非 0、无 Traceback
 	tools/test_estop_hb.sh   # 急停 → bit10 心跳 ≤ 5 ms（每个带 LINK 的 host-sim 应用）
@@ -305,6 +311,8 @@ check:
 	$(PY) tools/check_no_truth_leak.py
 	$(PY) tools/gen_reason_codes.py --check   # #139 docs/dev/reason_codes.json 与后端原因码同步
 	$(PY) tools/check_redef.py
+	$(PY) tools/gen_driver_glue.py --check   # 第三方驱动胶水与 interface 头一致
+	$(PY) tools/driver_lookup.py --check   # 查驱动索引与 catalog / 编译状态一致
 	$(PY) tools/tree_guard.py --selftest
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
 	$(PY) tools/validate_board.py boards/*/board.yaml

@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "freertos_firework",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "freertos_firework",
+                "resourceId": "/freertos_firework"
+            }
+        }
+    ]
+}

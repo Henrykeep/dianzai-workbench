@@ -1,0 +1,171 @@
+--- a/ili9488/1-HOWTO/z_displ_ILI9XXX.h
++++ b/ili9488/1-HOWTO/z_displ_ILI9XXX.h
+@@ -213,8 +213,8 @@
+ } Displ_Orientat_e;
+ 
+ 
+-#define SPI_COMMAND 	GPIO_PIN_RESET  	//DISPL_DC_Pin level sending commands
+-#define SPI_DATA 		GPIO_PIN_SET		//DISPL_DC_Pin level sending data
++#define SPI_COMMAND 	false  	//DISPL_DC_Pin level sending commands
++#define SPI_DATA 		true		//DISPL_DC_Pin level sending data
+ 
+ // set the buffers size as per BUFLEVEL and DISPLAY_USING_TOUCHGFX
+ // (if using TouchGFX, don't buffers from this library)
+@@ -317,8 +317,8 @@
+ void Displ_Orientation(Displ_Orientat_e orientation);
+ void Displ_Init(Displ_Orientat_e orientation);
+ 
+-void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi);
+-void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi);
++void HAL_SPI_ErrorCallback(pal_id_t hspi);
++void HAL_SPI_TxCpltCallback(pal_id_t hspi);
+ 
+ uint32_t  Displ_BackLight(uint8_t cmd);
+ 
+--- a/ili9488/1-HOWTO/z_displ_ILI9XXX.c
++++ b/ili9488/1-HOWTO/z_displ_ILI9XXX.c
+@@ -12,9 +12,10 @@
+  */
+ 
+ 
++#include "pal_hal_compat.h"
+ #include "main.h"
+ 
+-extern SPI_HandleTypeDef DISPL_SPI_PORT;
++extern pal_id_t DISPL_SPI_PORT;
+ 
+ #ifdef DISPLAY_DIMMING_MODE
+ extern TIM_HandleTypeDef BKLIT_T;
+@@ -52,10 +53,10 @@
+  ******************************************/
+ void Displ_Select(void) {
+ 	if (TOUCH_SPI==DISPL_SPI){														// if SPI port shared (display <-> touch)
+-		if (HAL_GPIO_ReadPin(DISPL_CS_GPIO_Port, DISPL_CS_Pin)) {					// if display not yet selected
+-			HAL_GPIO_WritePin(TOUCH_CS_GPIO_Port, TOUCH_CS_Pin, GPIO_PIN_SET); 		// unselect touch
++		if (pal_gpio_level(DISPL_CS_GPIO_Port)) {					// if display not yet selected
++			pal_gpio_write(TOUCH_CS_GPIO_Port, true); 		// unselect touch
+ 			SET_DISPL_SPI_BAUDRATE;				   									//change SPI port speed as per display needs
+-			HAL_GPIO_WritePin(DISPL_CS_GPIO_Port, DISPL_CS_Pin, GPIO_PIN_RESET);	// select display
++			pal_gpio_write(DISPL_CS_GPIO_Port, false);	// select display
+ 		}
+ 	}
+ }
+@@ -76,7 +77,7 @@
+ 	while (!Displ_SpiAvailable) {};  // waiting for a free SPI port. Flag is set to 1 by transmission-complete interrupt callback
+ 
+ 	Displ_Select();
+-	HAL_GPIO_WritePin(DISPL_DC_GPIO_Port, DISPL_DC_Pin, DC_Status);
++	pal_gpio_write(DISPL_DC_GPIO_Port, DC_Status);
+ 
+ 	if (isTouchGFXBuffer){
+ #ifdef Z_RGB565
+@@ -107,13 +108,13 @@
+ 
+ #ifdef DISPLAY_SPI_INTERRUPT_MODE
+ 		Displ_SpiAvailable=0;
+-		HAL_SPI_Transmit_IT(&DISPL_SPI_PORT , data, dataSize);
++		pal_spi_tx(DISPL_SPI_PORT , data, dataSize);
+ #else
+ #ifdef DISPLAY_SPI_DMA_MODE
+ 		if (dataSize<DISPL_DMA_CUTOFF) {
+ #endif //DISPLAY_SPI_DMA_MODE
+ 			Displ_SpiAvailable=0;
+-			HAL_SPI_Transmit(&DISPL_SPI_PORT , data, dataSize, HAL_MAX_DELAY);
++			pal_spi_tx(DISPL_SPI_PORT , data, dataSize);
+ 			Displ_SpiAvailable=1;
+ #ifdef DISPLAY_USING_TOUCHGFX
+ 			if (isTouchGFXBuffer){
+@@ -123,7 +124,7 @@
+ #ifdef DISPLAY_SPI_DMA_MODE
+ 		} else {
+ 			Displ_SpiAvailable=0;
+-			HAL_SPI_Transmit_DMA(&DISPL_SPI_PORT , data, dataSize);
++			pal_spi_tx(DISPL_SPI_PORT , data, dataSize);
+ 		}
+ #endif //DISPLAY_SPI_DMA_MODE
+ #endif //DISPLAY_SPI_INTERRUPT_MODE
+@@ -163,10 +164,10 @@
+ void ILI9XXX_Init(){
+ 	Displ_Select();
+ 
+-	HAL_GPIO_WritePin(DISPL_RST_GPIO_Port, DISPL_RST_Pin, GPIO_PIN_RESET);
+-	HAL_Delay(1);
+-	HAL_GPIO_WritePin(DISPL_RST_GPIO_Port, DISPL_RST_Pin, GPIO_PIN_SET);
+-	HAL_Delay(150);
++	pal_gpio_write(DISPL_RST_GPIO_Port, false);
++	pal_delay_ms(1);
++	pal_gpio_write(DISPL_RST_GPIO_Port, true);
++	pal_delay_ms(150);
+ 
+ /******************************************
+  * below lines shlould empower brightness
+@@ -233,10 +234,10 @@
+ 	Displ_WriteData((uint8_t *)"\x80",1,0);        // disable MISO pin
+ 
+ 	Displ_WriteCommand(ILI9XXX_SLEEP_OUT);
+-	HAL_Delay(120);
++	pal_delay_ms(120);
+ 
+ 	Displ_WriteCommand(ILI9XXX_DISPLAY_ON);
+-	HAL_Delay(5);
++	pal_delay_ms(5);
+ 
+ }
+ 
+@@ -273,12 +274,12 @@
+  *****************************************************/
+ void Displ_Init(Displ_Orientat_e orientation){
+ 	if (TOUCH_SPI==DISPL_SPI){													// if touch and display share the same SPI port
+-		HAL_GPIO_WritePin(DISPL_CS_GPIO_Port, DISPL_CS_Pin, GPIO_PIN_SET); 		// unselect display (will be selected at writing time)
+-		HAL_GPIO_WritePin(TOUCH_CS_GPIO_Port, TOUCH_CS_Pin, GPIO_PIN_SET);		// unselect touch (will be selected at writing time)
++		pal_gpio_write(DISPL_CS_GPIO_Port, true); 		// unselect display (will be selected at writing time)
++		pal_gpio_write(TOUCH_CS_GPIO_Port, true);		// unselect touch (will be selected at writing time)
+ 	} else {																	// otherwise leave both port permanently selected
+-		HAL_GPIO_WritePin(DISPL_CS_GPIO_Port, DISPL_CS_Pin, GPIO_PIN_RESET); 	// select display
++		pal_gpio_write(DISPL_CS_GPIO_Port, false); 	// select display
+ 		SET_DISPL_SPI_BAUDRATE;
+-		HAL_GPIO_WritePin(TOUCH_CS_GPIO_Port, TOUCH_CS_Pin, GPIO_PIN_RESET);	// select touch
++		pal_gpio_write(TOUCH_CS_GPIO_Port, false);	// select touch
+ 		SET_TOUCH_SPI_BAUDRATE;
+ 	}
+ 	ILI9XXX_Init();
+@@ -327,7 +328,7 @@
+ 
+ 
+ 
+-void HAL_SPI_ErrorCallback(SPI_HandleTypeDef *hspi){
++void HAL_SPI_ErrorCallback(pal_id_t hspi){
+ 	if (hspi->Instance==DISPL_SPI) {
+ 		Displ_SpiAvailable=1;
+ 	}
+@@ -338,7 +339,7 @@
+ 
+ 
+ 
+-void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi) {
++void HAL_SPI_TxCpltCallback(pal_id_t hspi) {
+ 	if (hspi->Instance==DISPL_SPI) {
+ 		Displ_SpiAvailable=1;
+ 
+@@ -1133,10 +1134,10 @@
+ #ifndef DISPLAY_DIMMING_MODE
+ 	case 'F':
+ 	case '1':
+-		HAL_GPIO_WritePin(DISPL_LED_GPIO_Port, DISPL_LED_Pin, GPIO_PIN_SET);
++		pal_gpio_write(DISPL_LED_GPIO_Port, true);
+ 		break;
+ 	case '0':
+-		HAL_GPIO_WritePin(DISPL_LED_GPIO_Port, DISPL_LED_Pin, GPIO_PIN_RESET);
++		pal_gpio_write(DISPL_LED_GPIO_Port, false);
+ 		break;
+ #else
+ 	case 'F':
+@@ -1175,7 +1176,7 @@
+ 		break;
+ 	}
+ #ifndef DISPLAY_DIMMING_MODE
+-	return HAL_GPIO_ReadPin(DISPL_LED_GPIO_Port, DISPL_LED_Pin);
++	return pal_gpio_level(DISPL_LED_GPIO_Port);
+ #else
+ 	return (BKLIT_TIMER->BKLIT_CCR);
+ #endif

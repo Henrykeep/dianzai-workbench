@@ -1,0 +1,12 @@
+# CCS 生成的 Debug/makefile 会在定义 all 目标后包含本文件。
+PYTHON ?= python3
+FREERTOS_CONFIG ?= ../../freertos_builds_LP_MSPM0G3507_release_ticlang/FreeRTOSConfig.h
+FREERTOS_LIBRARY ?= ../../freertos_builds_LP_MSPM0G3507_release_ticlang/Debug/freertos_builds_LP_MSPM0G3507_release_ticlang.lib
+
+.PHONY: check-freertos-config
+
+check-freertos-config:
+	@$(PYTHON) ../tools/check_freertos_config.py $(FREERTOS_CONFIG) \
+		--library $(FREERTOS_LIBRARY)
+
+freertos_firework.out: | check-freertos-config

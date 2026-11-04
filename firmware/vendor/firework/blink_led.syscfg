@@ -1,0 +1,458 @@
+/**
+ * These arguments were used when this file was generated. They will be automatically applied on subsequent loads
+ * via the GUI or CLI. Run CLI with '--help' for additional information on how to override these arguments.
+ */
+//@cliArgs --device "MSPM0G350X" --package "LQFP-64(PM)" --part "Default"
+//@v2CliArgs --device "MSPM0G3507" --package "LQFP-64(PM)"
+// @cliArgs --board /ti/boards/LP_MSPM0G3507 --rtos freertos
+
+/**
+ * Import the modules used in this configuration.
+ */
+const ProjectConfig = scripting.addModule("/ti/project_config/ProjectConfig");
+const ADC12  = scripting.addModule("/ti/driverlib/ADC12", {}, false);
+const ADC121 = ADC12.addInstance();
+const ADC122 = ADC12.addInstance();
+const Board  = scripting.addModule("/ti/driverlib/Board", {}, false);
+const CAPTURE  = scripting.addModule("/ti/driverlib/CAPTURE", {}, false);
+const CAPTURE1 = CAPTURE.addInstance();
+const CAPTURE2 = CAPTURE.addInstance();
+const COMP    = scripting.addModule("/ti/driverlib/COMP", {}, false);
+const COMP1   = COMP.addInstance();
+const COMP2   = COMP.addInstance();
+const DAC12  = scripting.addModule("/ti/driverlib/DAC12");
+const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
+const GPIO1  = GPIO.addInstance();
+const GPIO2  = GPIO.addInstance();
+const GPIO3  = GPIO.addInstance();
+const GPIO4  = GPIO.addInstance();
+const GPIO5  = GPIO.addInstance();
+const GPIO6  = GPIO.addInstance();
+const I2C    = scripting.addModule("/ti/driverlib/I2C", {}, false);
+const I2C1   = I2C.addInstance();
+const I2C2   = I2C.addInstance();
+const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
+const PWM1   = PWM.addInstance();
+const PWM2   = PWM.addInstance();
+const SPI    = scripting.addModule("/ti/driverlib/SPI", {}, false);
+const SPI1   = SPI.addInstance();
+const SPI2   = SPI.addInstance();
+const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
+const TIMER  = scripting.addModule("/ti/driverlib/TIMER", {}, false);
+const TIMER1 = TIMER.addInstance();
+const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
+const UART1  = UART.addInstance();
+const UART2  = UART.addInstance();
+const UART3  = UART.addInstance();
+const UART4  = UART.addInstance();
+
+/**
+ * Write custom configuration values to the imported modules.
+ */
+ProjectConfig.genDisable = true;
+
+const MFPCLKGate  = system.clockTree["MFPCLKGATE"];
+MFPCLKGate.enable = true;
+const MFCLKGate  = system.clockTree["MFCLKGATE"];
+MFCLKGate.enable = true;
+
+ADC121.$name                      = "ADC_INPUT_0";
+ADC121.sampClkSrc                 = "DL_ADC12_CLOCK_ULPCLK";
+ADC121.sampClkDiv                 = "DL_ADC12_CLOCK_DIVIDE_1";
+ADC121.adcMem0chansel             = "DL_ADC12_INPUT_CHAN_0";
+ADC121.adcMem0trig                = "DL_ADC12_TRIGGER_MODE_TRIGGER_NEXT";
+ADC121.sampleTime0                = "250 ns";
+ADC121.powerDownMode              = "DL_ADC12_POWER_DOWN_MODE_MANUAL";
+ADC121.repeatMode                 = true;
+ADC121.trigSrc                    = "DL_ADC12_TRIG_SRC_EVENT";
+ADC121.subChanID                  = 1;
+ADC121.enableFIFO                 = false;
+ADC121.configureDMA               = true;
+ADC121.sampCnt                    = 1;
+ADC121.enabledDMATriggers         = ["DL_ADC12_DMA_MEM0_RESULT_LOADED"];
+ADC121.peripheral.$assign         = "ADC0";
+ADC121.peripheral.adcPin0.$assignAllowConflicts = "PA27";
+scripting.suppress("Resource conflict,@@@.+?@@@ is also in use by @@@.+?@@@", ADC121.peripheral, "adcPin0");
+ADC121.DMA_CHANNEL.$name                = "DMA_ADC_INPUT_0";
+ADC121.DMA_CHANNEL.peripheral.$assign   = "DMA_CH5";
+ADC121.DMA_CHANNEL.addressMode          = "f2b";
+ADC121.DMA_CHANNEL.dstLength            = "HALF_WORD";
+ADC121.DMA_CHANNEL.srcLength            = "HALF_WORD";
+ADC121.DMA_CHANNEL.enableInterrupt      = true;
+
+ADC122.$name                      = "ADC_INPUT_1";
+ADC122.sampClkSrc                 = "DL_ADC12_CLOCK_ULPCLK";
+ADC122.sampClkDiv                 = "DL_ADC12_CLOCK_DIVIDE_1";
+ADC122.adcMem0chansel             = "DL_ADC12_INPUT_CHAN_6";
+ADC122.adcMem0trig                = "DL_ADC12_TRIGGER_MODE_TRIGGER_NEXT";
+ADC122.sampleTime0                = "250 ns";
+ADC122.powerDownMode              = "DL_ADC12_POWER_DOWN_MODE_MANUAL";
+ADC122.repeatMode                 = true;
+ADC122.trigSrc                    = "DL_ADC12_TRIG_SRC_EVENT";
+ADC122.subChanID                  = 4;
+ADC122.enableFIFO                 = false;
+ADC122.configureDMA               = true;
+ADC122.sampCnt                    = 1;
+ADC122.enabledDMATriggers         = ["DL_ADC12_DMA_MEM0_RESULT_LOADED"];
+ADC122.peripheral.$assign         = "ADC1";
+ADC122.peripheral.adcPin6.$assign = "PB19";
+ADC122.DMA_CHANNEL.$name                = "DMA_ADC_INPUT_1";
+ADC122.DMA_CHANNEL.peripheral.$assign   = "DMA_CH6";
+ADC122.DMA_CHANNEL.addressMode          = "f2b";
+ADC122.DMA_CHANNEL.dstLength            = "HALF_WORD";
+ADC122.DMA_CHANNEL.srcLength            = "HALF_WORD";
+ADC122.DMA_CHANNEL.enableInterrupt      = true;
+
+CAPTURE1.$name             = "ANALOG_CAPTURE_TIMER_0";
+CAPTURE1.timerClkSrc       = "MFCLK";
+CAPTURE1.timerPeriod       = "100 s";
+CAPTURE1.captSelect        = "Trigger";
+CAPTURE1.subscriberPort    = "FSUB0";
+CAPTURE1.subscriberChannel = 2;
+CAPTURE1.interrupts        = ["CC0_DN"];
+CAPTURE1.peripheral.$assign = "TIMG12";
+
+CAPTURE2.$name             = "ANALOG_CAPTURE_TIMER_1";
+CAPTURE2.timerClkSrc       = "MFCLK";
+CAPTURE2.timerClkPrescale  = 64;
+CAPTURE2.timerPeriod       = "1 s";
+CAPTURE2.captSelect        = "Trigger";
+CAPTURE2.subscriberPort    = "FSUB0";
+CAPTURE2.subscriberChannel = 3;
+CAPTURE2.interrupts        = ["CC0_DN"];
+CAPTURE2.peripheral.$assign = "TIMG6";
+
+COMP1.$name                          = "ANALOG_CAPTURE_COMP_0";
+COMP1.compMode                       = "DL_COMP_MODE_FAST";
+COMP1.hysteresis                     = "DL_COMP_HYSTERESIS_30";
+COMP1.vSource                        = "DL_COMP_REF_SOURCE_VDDA_DAC";
+COMP1.controlSelect                  = "DL_COMP_DAC_CONTROL_SW";
+COMP1.outputInterruptEdge            = "DL_COMP_OUTPUT_INT_EDGE_RISING";
+COMP1.enableOutputFilter             = true;
+COMP1.selectOutputFilter             = "DL_COMP_FILTER_DELAY_500";
+COMP1.pubChanID                      = 2;
+COMP1.enabledEvents                  = ["DL_COMP_EVENT_OUTPUT_EDGE"];
+COMP1.channelEnable                  = ["NEG"];
+COMP1.peripheral.$assign             = "COMP0";
+COMP1.peripheral.compPinNeg0.$assignAllowConflicts = "PA27";
+scripting.suppress("Resource conflict,@@@.+?@@@ is also in use by @@@.+?@@@", COMP1.peripheral, "compPinNeg0");
+
+COMP2.$name                          = "ANALOG_CAPTURE_COMP_1";
+COMP2.compMode                       = "DL_COMP_MODE_FAST";
+COMP2.hysteresis                     = "DL_COMP_HYSTERESIS_30";
+COMP2.vSource                        = "DL_COMP_REF_SOURCE_VDDA_DAC";
+COMP2.controlSelect                  = "DL_COMP_DAC_CONTROL_SW";
+COMP2.outputInterruptEdge            = "DL_COMP_OUTPUT_INT_EDGE_RISING";
+COMP2.enableOutputFilter             = true;
+COMP2.selectOutputFilter             = "DL_COMP_FILTER_DELAY_500";
+COMP2.pubChanID                      = 3;
+COMP2.enabledEvents                  = ["DL_COMP_EVENT_OUTPUT_EDGE"];
+COMP2.channelEnable                  = ["NEG"];
+COMP2.negChannel                     = "DL_COMP_IMSEL_CHANNEL_1";
+COMP2.peripheral.$assign             = "COMP2";
+COMP2.peripheral.compPinNeg1.$assignAllowConflicts = "PA21";
+scripting.suppress("Resource conflict,@@@.+?@@@ is also in use by @@@.+?@@@", COMP2.peripheral, "compPinNeg1");
+
+DAC12.dacOutputPinEn           = true;
+DAC12.dacAmplifier             = "ON";
+DAC12.dacPosVREF               = "VDDA";
+DAC12.dacNegVREF               = "VSSA";
+DAC12.dacOutput12              = 0;
+DAC12.dacFIFOEn                = true;
+DAC12.dacFIFOThresh            = "TWO_QTRS_EMPTY";
+DAC12.dacConfigureDMA          = true;
+DAC12.dacDMATrigger            = false;
+DAC12.dacSampleTimerRate       = "1M";
+DAC12.dacEnabledInterrupts     = ["DMA_DONE"];
+DAC12.peripheral.$assign       = "DAC0";
+DAC12.peripheral.OutPin.$assign = "PA15";
+DAC12.DMA_CHANNEL.$name              = "DMA_DAC_OUTPUT";
+DAC12.DMA_CHANNEL.transferMode       = "FULL_CH_REPEAT_SINGLE";
+DAC12.DMA_CHANNEL.addressMode        = "b2f";
+DAC12.DMA_CHANNEL.srcLength          = "HALF_WORD";
+DAC12.DMA_CHANNEL.dstLength          = "HALF_WORD";
+DAC12.DMA_CHANNEL.peripheral.$assign = "DMA_CH0";
+
+GPIO1.$name                         = "GPIO_LEDS";
+GPIO1.associatedPins.create(6);
+GPIO1.associatedPins[0].$name        = "USER_LED_1";
+GPIO1.associatedPins[0].assignedPin  = "0";
+GPIO1.associatedPins[0].initialValue = "SET";
+GPIO1.associatedPins[0].pin.$assign  = "PA0";
+GPIO1.associatedPins[1].$name        = "RGB_LED_BLUE";
+GPIO1.associatedPins[1].initialValue = "CLEARED";
+GPIO1.associatedPins[1].pin.$assign  = "PB22";
+GPIO1.associatedPins[2].$name        = "RGB_LED_RED";
+GPIO1.associatedPins[2].initialValue = "CLEARED";
+GPIO1.associatedPins[2].pin.$assign  = "PB26";
+GPIO1.associatedPins[3].$name        = "RGB_LED_GREEN";
+GPIO1.associatedPins[3].initialValue = "CLEARED";
+GPIO1.associatedPins[3].pin.$assign  = "PB27";
+GPIO1.associatedPins[4].$name            = "USER_BUTTON_NEXT";
+GPIO1.associatedPins[4].direction        = "INPUT";
+GPIO1.associatedPins[4].internalResistor = "PULL_DOWN";
+GPIO1.associatedPins[4].inputFilter      = "8_CYCLES";
+GPIO1.associatedPins[4].pin.$assign      = "PA18";
+GPIO1.associatedPins[5].$name            = "USER_BUTTON_PREVIOUS";
+GPIO1.associatedPins[5].direction        = "INPUT";
+GPIO1.associatedPins[5].internalResistor = "PULL_UP";
+GPIO1.associatedPins[5].inputFilter      = "8_CYCLES";
+GPIO1.associatedPins[5].pin.$assign      = "PB21";
+
+GPIO2.$name                         = "GPIO_DDS";
+GPIO2.associatedPins.create(2);
+GPIO2.associatedPins[0].$name        = "AD9833_FSYNC";
+GPIO2.associatedPins[0].initialValue = "SET";
+GPIO2.associatedPins[0].pin.$assign  = "PB6";
+/* AD9850 与 AD9833 共用 SPI1：PB9=SCLK、PB8=SDATA。 */
+GPIO2.associatedPins[1].$name        = "AD9850_FQ_UD";
+GPIO2.associatedPins[1].initialValue = "CLEARED";
+GPIO2.associatedPins[1].pin.$assign  = "PB5";
+
+/* AD9850 RESET 独立使用 PA1；上电保持高电平，确保模块默认无输出。 */
+GPIO5.$name                         = "GPIO_AD9850";
+GPIO5.associatedPins.create(1);
+GPIO5.associatedPins[0].$name        = "AD9850_RESET";
+GPIO5.associatedPins[0].initialValue = "SET";
+GPIO5.associatedPins[0].pin.$assign  = "PA1";
+
+/* TB6612 双路直流电机方向和待机控制；上电默认全部为低，驱动器保持待机。 */
+GPIO6.$name                         = "GPIO_TB6612";
+GPIO6.associatedPins.create(5);
+GPIO6.associatedPins[0].$name        = "AIN1";
+GPIO6.associatedPins[0].initialValue = "CLEARED";
+GPIO6.associatedPins[0].pin.$assign  = "PB10";
+GPIO6.associatedPins[1].$name        = "AIN2";
+GPIO6.associatedPins[1].initialValue = "CLEARED";
+GPIO6.associatedPins[1].pin.$assign  = "PB11";
+GPIO6.associatedPins[2].$name        = "BIN1";
+GPIO6.associatedPins[2].initialValue = "CLEARED";
+GPIO6.associatedPins[2].pin.$assign  = "PB14";
+GPIO6.associatedPins[3].$name        = "BIN2";
+GPIO6.associatedPins[3].initialValue = "CLEARED";
+GPIO6.associatedPins[3].pin.$assign  = "PB23";
+GPIO6.associatedPins[4].$name        = "STBY";
+GPIO6.associatedPins[4].initialValue = "CLEARED";
+GPIO6.associatedPins[4].pin.$assign  = "PB25";
+
+GPIO3.$name                         = "GPIO_TFT";
+GPIO3.associatedPins.create(3);
+GPIO3.associatedPins[0].$name        = "TFT_CS";
+GPIO3.associatedPins[0].initialValue = "SET";
+GPIO3.associatedPins[0].pin.$assign  = "PB20";
+GPIO3.associatedPins[1].$name        = "TFT_DC";
+GPIO3.associatedPins[1].initialValue = "CLEARED";
+GPIO3.associatedPins[1].pin.$assign  = "PB1";
+GPIO3.associatedPins[2].$name        = "TFT_RESET";
+GPIO3.associatedPins[2].initialValue = "SET";
+GPIO3.associatedPins[2].pin.$assign  = "PB4";
+
+/* 4x4 矩阵键盘：行线空闲时保持高电平，列线使用内部上拉。 */
+GPIO4.$name                         = "GPIO_MATRIX_KEYPAD";
+GPIO4.associatedPins.create(8);
+GPIO4.associatedPins[0].$name        = "ROW_0";
+GPIO4.associatedPins[0].initialValue = "SET";
+GPIO4.associatedPins[0].pin.$assign  = "PB0";
+GPIO4.associatedPins[1].$name        = "ROW_1";
+GPIO4.associatedPins[1].initialValue = "SET";
+GPIO4.associatedPins[1].pin.$assign  = "PB7";
+GPIO4.associatedPins[2].$name        = "ROW_2";
+GPIO4.associatedPins[2].initialValue = "SET";
+GPIO4.associatedPins[2].pin.$assign  = "PB12";
+GPIO4.associatedPins[3].$name        = "ROW_3";
+GPIO4.associatedPins[3].initialValue = "SET";
+GPIO4.associatedPins[3].pin.$assign  = "PB13";
+GPIO4.associatedPins[4].$name            = "COLUMN_0";
+GPIO4.associatedPins[4].direction        = "INPUT";
+GPIO4.associatedPins[4].internalResistor = "PULL_UP";
+GPIO4.associatedPins[4].inputFilter      = "8_CYCLES";
+GPIO4.associatedPins[4].pin.$assign      = "PA13";
+GPIO4.associatedPins[5].$name            = "COLUMN_1";
+GPIO4.associatedPins[5].direction        = "INPUT";
+GPIO4.associatedPins[5].internalResistor = "PULL_UP";
+GPIO4.associatedPins[5].inputFilter      = "8_CYCLES";
+GPIO4.associatedPins[5].pin.$assign      = "PA12";
+GPIO4.associatedPins[6].$name            = "COLUMN_2";
+GPIO4.associatedPins[6].direction        = "INPUT";
+GPIO4.associatedPins[6].internalResistor = "PULL_UP";
+GPIO4.associatedPins[6].inputFilter      = "8_CYCLES";
+GPIO4.associatedPins[6].pin.$assign      = "PA29";
+GPIO4.associatedPins[7].$name            = "COLUMN_3";
+GPIO4.associatedPins[7].direction        = "INPUT";
+GPIO4.associatedPins[7].internalResistor = "PULL_UP";
+GPIO4.associatedPins[7].inputFilter      = "8_CYCLES";
+GPIO4.associatedPins[7].pin.$assign      = "PA30";
+
+/* MPU6050 使用独立的 I2C1（PB2=SCL、PB3=SDA）。 */
+I2C1.$name                     = "I2C_MPU6050";
+I2C1.basicEnableController     = true;
+I2C1.basicControllerBusSpeed   = 400000;
+I2C1.advAnalogGlitchFilter     = "DISABLED";
+I2C1.peripheral.$assign        = "I2C1";
+I2C1.peripheral.sclPin.$assign = "PB2";
+I2C1.peripheral.sdaPin.$assign = "PB3";
+
+/* OLED 使用独立的 I2C0；PA28/PA31 原先的 PWM 已移到 PA23/PA24。 */
+I2C2.$name                     = "I2C_OLED";
+I2C2.basicEnableController     = true;
+I2C2.basicControllerBusSpeed   = 400000;
+I2C2.advAnalogGlitchFilter     = "DISABLED";
+I2C2.peripheral.$assign        = "I2C0";
+I2C2.peripheral.sdaPin.$assign = "PA28";
+I2C2.peripheral.sclPin.$assign = "PA31";
+
+PWM1.$name                          = "PWM_OUTPUT";
+PWM1.ccIndex                        = [0,1];
+PWM1.pwmMode                        = "EDGE_ALIGN";
+PWM1.clockPrescale                  = 32;
+PWM1.timerCount                     = 1000;
+PWM1.enableShadowLoad               = true;
+PWM1.timerStartTimer                = false;
+PWM1.peripheral.$assign             = "TIMG7";
+PWM1.peripheral.ccp0Pin.$assign     = "PA23";
+PWM1.peripheral.ccp1Pin.$assign     = "PA24";
+PWM1.PWM_CHANNEL_0.$name            = "PWM_OUTPUT_CHANNEL_0";
+PWM1.PWM_CHANNEL_0.dutyCycle        = 50;
+PWM1.PWM_CHANNEL_0.ccValue          = 500;
+PWM1.PWM_CHANNEL_0.shadowUpdateMode = "ZERO_EVT";
+PWM1.PWM_CHANNEL_1.$name            = "PWM_OUTPUT_CHANNEL_1";
+PWM1.PWM_CHANNEL_1.dutyCycle        = 50;
+PWM1.PWM_CHANNEL_1.ccValue          = 500;
+PWM1.PWM_CHANNEL_1.shadowUpdateMode = "ZERO_EVT";
+
+/* TB6612 PWMA/PWMB 共用 TIMA1 周期，默认 20 kHz、0% 占空比并保持停止。 */
+PWM2.$name                          = "TB6612_PWM";
+PWM2.ccIndex                        = [0,1];
+PWM2.pwmMode                        = "EDGE_ALIGN";
+PWM2.clockPrescale                  = 1;
+PWM2.timerCount                     = 1600;
+PWM2.enableShadowLoad               = true;
+PWM2.timerStartTimer                = false;
+PWM2.peripheral.$assign             = "TIMA1";
+PWM2.peripheral.ccp0Pin.$assign     = "PA17";
+PWM2.peripheral.ccp1Pin.$assign     = "PA16";
+PWM2.PWM_CHANNEL_0.$name            = "TB6612_PWM_CHANNEL_A";
+PWM2.PWM_CHANNEL_0.dutyCycle        = 0;
+PWM2.PWM_CHANNEL_0.ccValue          = 1600;
+PWM2.PWM_CHANNEL_0.shadowUpdateMode = "ZERO_EVT";
+PWM2.PWM_CHANNEL_1.$name            = "TB6612_PWM_CHANNEL_B";
+PWM2.PWM_CHANNEL_1.dutyCycle        = 0;
+PWM2.PWM_CHANNEL_1.ccValue          = 1600;
+PWM2.PWM_CHANNEL_1.shadowUpdateMode = "ZERO_EVT";
+
+SPI1.$name                     = "SPI_DDS";
+SPI1.targetBitRate             = 1000000;
+SPI1.frameFormat               = "MOTO3";
+SPI1.polarity                  = "1";
+SPI1.phase                     = "0";
+SPI1.dataSize                  = 16;
+SPI1.bitOrder                  = "MSB";
+SPI1.chipSelect                = [];
+SPI1.direction                 = "PICO";
+SPI1.peripheral.$assign        = "SPI1";
+SPI1.peripheral.sclkPin.$assign = "PB9";
+SPI1.peripheral.mosiPin.$assign = "PB8";
+
+SPI2.$name                       = "SPI_TFT";
+SPI2.targetBitRate               = 8000000;
+/* 使用 3-wire 模式并由 GPIO 手动控制 CS，保证命令/数据窗口可控。 */
+SPI2.frameFormat                 = "MOTO3";
+SPI2.polarity                    = "0";
+SPI2.phase                       = "0";
+SPI2.dataSize                    = 8;
+SPI2.bitOrder                    = "MSB";
+SPI2.chipSelect                  = [];
+SPI2.direction                   = "PICO";
+SPI2.peripheral.$assign          = "SPI0";
+SPI2.peripheral.sclkPin.$assign  = "PB18";
+SPI2.peripheral.mosiPin.$assign  = "PB17";
+
+TIMER1.$name                       = "ADC_SAMPLE_TIMER";
+TIMER1.timerClkSrc                 = "MFCLK";
+TIMER1.timerPeriod                 = "1 us";
+TIMER1.timerMode                   = "PERIODIC";
+TIMER1.event1PublisherChannel      = 1;
+TIMER1.event1ControllerInterruptEn = ["ZERO_EVENT"];
+TIMER1.event2PublisherChannel      = 4;
+TIMER1.event2ControllerInterruptEn = ["ZERO_EVENT"];
+TIMER1.peripheral.$assign          = "TIMG0";
+
+UART1.$name                    = "UART_DEBUG";
+UART1.enableFIFO               = true;
+UART1.txFifoThreshold          = "DL_UART_TX_FIFO_LEVEL_ONE_ENTRY";
+UART1.direction                = "TX";
+UART1.targetBaudRate           = 115200;
+UART1.enableDMARX              = false;
+UART1.enableDMATX              = false;
+UART1.interruptPriority        = "1";
+UART1.peripheral.$assign       = "UART0";
+UART1.peripheral.txPin.$assign = "PA10";
+
+UART2.$name                    = "UART_PORT1";
+UART2.enableFIFO               = true;
+UART2.rxFifoThreshold          = "DL_UART_RX_FIFO_LEVEL_ONE_ENTRY";
+UART2.txFifoThreshold          = "DL_UART_TX_FIFO_LEVEL_ONE_ENTRY";
+UART2.targetBaudRate           = 115200;
+UART2.enableDMARX              = false;
+UART2.enableDMATX              = true;
+UART2.enabledDMATXTriggers     = "DL_UART_DMA_INTERRUPT_TX";
+UART2.enabledInterrupts        = ["RX", "DMA_DONE_TX", "EOT_DONE"];
+UART2.interruptPriority        = "1";
+UART2.peripheral.$assign       = "UART1";
+UART2.peripheral.rxPin.$assign = "PA9";
+UART2.peripheral.txPin.$assign = "PA8";
+UART2.DMA_CHANNEL_TX.$name              = "DMA_CH1";
+UART2.DMA_CHANNEL_TX.peripheral.$assign = "DMA_CH1";
+UART2.DMA_CHANNEL_TX.addressMode        = "b2f";
+UART2.DMA_CHANNEL_TX.srcIncDec          = "INCREMENT";
+UART2.DMA_CHANNEL_TX.dstLength          = "BYTE";
+UART2.DMA_CHANNEL_TX.srcLength          = "BYTE";
+
+UART3.$name                    = "UART_PORT2";
+UART3.enableFIFO               = true;
+UART3.rxFifoThreshold          = "DL_UART_RX_FIFO_LEVEL_ONE_ENTRY";
+UART3.txFifoThreshold          = "DL_UART_TX_FIFO_LEVEL_ONE_ENTRY";
+UART3.targetBaudRate           = 115200;
+UART3.enableDMARX              = true;
+UART3.enableDMATX              = true;
+UART3.enabledDMARXTriggers     = "DL_UART_DMA_INTERRUPT_RX";
+UART3.enabledDMATXTriggers     = "DL_UART_DMA_INTERRUPT_TX";
+UART3.enabledInterrupts        = ["DMA_DONE_RX", "DMA_DONE_TX", "EOT_DONE"];
+UART3.interruptPriority        = "1";
+UART3.peripheral.$assign       = "UART2";
+UART3.peripheral.rxPin.$assign = "PB16";
+UART3.peripheral.txPin.$assign = "PB15";
+UART3.DMA_CHANNEL_RX.$name              = "DMA_CH4";
+UART3.DMA_CHANNEL_RX.addressMode        = "f2b";
+UART3.DMA_CHANNEL_RX.dstLength          = "BYTE";
+UART3.DMA_CHANNEL_RX.srcLength          = "BYTE";
+UART3.DMA_CHANNEL_RX.peripheral.$assign = "DMA_CH4";
+UART3.DMA_CHANNEL_TX.$name              = "DMA_CH2";
+UART3.DMA_CHANNEL_TX.peripheral.$assign = "DMA_CH2";
+UART3.DMA_CHANNEL_TX.addressMode        = "b2f";
+UART3.DMA_CHANNEL_TX.srcIncDec          = "INCREMENT";
+UART3.DMA_CHANNEL_TX.dstLength          = "BYTE";
+UART3.DMA_CHANNEL_TX.srcLength          = "BYTE";
+
+UART4.$name                    = "UART_PORT3";
+UART4.enableFIFO               = true;
+UART4.rxFifoThreshold          = "DL_UART_RX_FIFO_LEVEL_ONE_ENTRY";
+UART4.txFifoThreshold          = "DL_UART_TX_FIFO_LEVEL_ONE_ENTRY";
+UART4.targetBaudRate           = 115200;
+UART4.enableDMARX              = false;
+UART4.enableDMATX              = true;
+UART4.enabledDMATXTriggers     = "DL_UART_DMA_INTERRUPT_TX";
+UART4.enabledInterrupts        = ["RX", "DMA_DONE_TX", "EOT_DONE"];
+UART4.interruptPriority        = "1";
+UART4.peripheral.$assign       = "UART3";
+UART4.peripheral.rxPin.$assign = "PA25";
+UART4.peripheral.txPin.$assign = "PA26";
+UART4.DMA_CHANNEL_TX.$name              = "DMA_CH3";
+UART4.DMA_CHANNEL_TX.peripheral.$assign = "DMA_CH3";
+UART4.DMA_CHANNEL_TX.addressMode        = "b2f";
+UART4.DMA_CHANNEL_TX.srcIncDec          = "INCREMENT";
+UART4.DMA_CHANNEL_TX.dstLength          = "BYTE";
+UART4.DMA_CHANNEL_TX.srcLength          = "BYTE";
+
+SYSCTL.clockTreeEn = true;
+SYSCTL.MFPCLKEn    = true;

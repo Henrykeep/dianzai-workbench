@@ -1,0 +1,29 @@
+# CCS managed-build output
+/Debug/
+/Release/
+
+# Compiler and linker artifacts
+*.o
+*.d
+*.d_raw
+*.out
+*.map
+*_linkInfo.xml
+
+# Auto-generated language-server configuration
+/.clangd
+
+# TI example documentation generated from README.md
+/README.html
+
+# Local editor and operating-system files
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Python local cache and virtual environment
+__pycache__/
+*.py[cod]
+.venv/
