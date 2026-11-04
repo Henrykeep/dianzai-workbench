@@ -24,7 +24,7 @@ export function makeDashboard(subscribe: (f: (m: any) => void) => () => void): M
     el.innerHTML = `<div class="dash-wait"><wa-spinner></wa-spinner><span>等待数据…（连着板子时，通道一到就显示）</span></div>`;
     let t0 = performance.now(), dirty = false;
     const draw = () => {
-      if (!dirty) { if (!chs.size && performance.now() - t0 > 5000) api.showError("no_data", "5 秒内没收到任何通道。看一下帧格式是否和板子发的一致，或板子是否在发数据"); return; }
+      if (!dirty) { if (!chs.size && performance.now() - t0 > 5000) api.showError("no_data", "5 秒内没收到任何通道。请检查帧格式是否和板子发的一致，或板子是否在发数据"); return; }
       dirty = false; api.clearError();
       el.innerHTML = `<div class="dash">${[...chs.values()].map(c => `<div class="dash-c"><span class="dash-n">${esc(c.name)}</span><b>${fmt(c.last)}</b>
         <svg viewBox="0 0 160 36" preserveAspectRatio="none"><polyline points="${spark(c.hist)}"/></svg><span class="dash-r">最小 ${fmt(c.min)} · 最大 ${fmt(c.max)}</span></div>`).join("")}</div>`;
