@@ -366,3 +366,43 @@ export function improvementOf(r: any): Improve | null {
   return { kind: k, msg: get(IMPROVE_F.msg) ?? (untuned ? spec.headZh : IMPROVE_F.fallbackZh), reason: get(IMPROVE_F.reason), causes: cs,
     def: get(IMPROVE_F.defaultAction) ?? (untuned ? IMPROVE_F.untunedDefault : null), adopt: spec.adopt, head: spec.headZh, tone: spec.tone };
 }
+
+// ── 工具箱（两层：首页卡片 tool_list → 工具页 tool_get / tool_run / tool_confirm），字段草稿 v0：feedback/backend/tool-api-draft.md ──
+// 后端接口上线前用 tooldecl.ts 的本地声明表；上线后 toToolList 直接吃接口结果，界面代码不用改。字段改名只改这里。
+export const TOOL_OPS = { list: "tool_list", get: "tool_get", run: "tool_run", confirm: "tool_confirm" } as const;
+export const TOOL_F = { list: "tools", stages: "stages", current: "current_stage", id: "id", stage: "stage", icon: "icon", name: "name_zh", summary: "summary_zh",
+  status: "status", reason: "reason_code", fix: "fix_action", advanced: "advanced", lastUsed: "last_used", appliesTo: "applies_to", agent: "agent_callable",
+  source: "source", license: "license" } as const;
+export type ToolStatus = "available" | "missing_dep" | "needs_board" | "no_sidecar" | "not_integrated";
+export type ToolCard = { id: string; stage: string; icon: string; name: string; summary: string; status: ToolStatus; reason?: string; fix?: string;
+  advanced: boolean; lastUsed: string | null; appliesTo: string[]; agent: boolean; source: string; license: string };
+export type ToolList = { stages: { id: string; title: string }[]; current: string; tools: ToolCard[] };
+const STATUSES: ToolStatus[] = ["available", "missing_dep", "needs_board", "no_sidecar", "not_integrated"];
+/** 接口 tool_list（或本地声明）→ 界面形状。stages 由调用方给默认（progress.ts JOURNEY 唯一一张表），接口给了就用接口的 */
+export function toToolList(m: any, defStages: { id: string; title: string }[], defCurrent: string): ToolList {
+  const st = Array.isArray(m?.[TOOL_F.stages]) && m[TOOL_F.stages].length
+    ? m[TOOL_F.stages].map((s: any) => typeof s === "string" ? { id: s, title: defStages.find(d => d.id === s || d.title === s)?.title ?? s } : { id: str(s.id), title: str(s.title_zh ?? s.title) || str(s.id) })
+    : defStages;
+  const tools: ToolCard[] = (Array.isArray(m?.[TOOL_F.list]) ? m[TOOL_F.list] : []).filter((t: any) => t && typeof t[TOOL_F.id] === "string").map((t: any) => ({
+    id: t[TOOL_F.id], stage: str(t[TOOL_F.stage]) || st[0]?.id || "", icon: str(t[TOOL_F.icon]) || "wrench", name: str(t[TOOL_F.name]) || t[TOOL_F.id],
+    summary: str(t[TOOL_F.summary]), status: STATUSES.includes(t[TOOL_F.status]) ? t[TOOL_F.status] : "not_integrated",
+    reason: str(t[TOOL_F.reason]) || undefined, fix: str(t[TOOL_F.fix]) || undefined, advanced: !!t[TOOL_F.advanced],
+    lastUsed: str(t[TOOL_F.lastUsed]) || null, appliesTo: Array.isArray(t[TOOL_F.appliesTo]) ? t[TOOL_F.appliesTo].map(String) : [],
+    agent: !!t[TOOL_F.agent], source: str(t[TOOL_F.source]), license: str(t[TOOL_F.license]) }));
+  const cur = str(m?.[TOOL_F.current]);
+  return { stages: st, current: st.some((s: { id: string; title: string }) => s.id === cur || s.title === cur) ? (st.find((s: any) => s.id === cur || s.title === cur)!.id) : defCurrent, tools };
+}
+
+// 回放列表一行：时间 · 板子 · 大小（log_list 的 header.start / header.port / size），不露原始文件名
+export const LOG_F = { path: "path", size: "size", header: "header", start: "start", port: "port", recording: "recording" } as const;
+export function logLabel(l: any): string {
+  const h = l?.[LOG_F.header] ?? {};
+  const fn = String(l?.[LOG_F.path] ?? "").split(/[\\/]/).pop() ?? "";
+  const m = /run_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})/.exec(fn);
+  const t = str(h[LOG_F.start]).slice(5, 16) || (m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : "时间未知");
+  const p = str(h[LOG_F.port]);
+  const board = p.startsWith("sim:") ? `仿真 · ${p.slice(4)}` : p.startsWith("replay:") ? "回放" : (p.split(/[\\/]/).pop() || "未知板子");
+  const n = Number(l?.[LOG_F.size]) || 0;
+  const sz = n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+  return `${t} · ${board} · ${sz}${l?.[LOG_F.recording] ? " · 记录中" : ""}`;
+}

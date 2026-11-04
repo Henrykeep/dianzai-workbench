@@ -6,6 +6,13 @@ import "@awesome.me/webawesome/dist/components/slider/slider.js";
 import "@awesome.me/webawesome/dist/components/tag/tag.js";
 import "@awesome.me/webawesome/dist/components/card/card.js";
 import "@awesome.me/webawesome/dist/components/skeleton/skeleton.js";
+import "@awesome.me/webawesome/dist/components/details/details.js";
+import "@awesome.me/webawesome/dist/components/badge/badge.js";
+import "@awesome.me/webawesome/dist/components/input/input.js";
+import "@awesome.me/webawesome/dist/components/select/select.js";
+import "@awesome.me/webawesome/dist/components/option/option.js";
+import "@awesome.me/webawesome/dist/components/switch/switch.js";
+import "@awesome.me/webawesome/dist/components/spinner/spinner.js";
 // 离线：默认图标库不走 Font Awesome CDN（我们的图标用本地 lucide；组件内部的 system 图标是内联 SVG）
 import { registerIconLibrary } from "@awesome.me/webawesome/dist/webawesome.js";
 registerIconLibrary("default", { resolver: () => "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" });

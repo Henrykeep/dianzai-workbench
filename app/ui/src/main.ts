@@ -28,6 +28,13 @@ applyBrand();
 import "./entry-data";
 import { createIcons, Activity, Ellipsis, Eraser, Download, Eye, PlugZap, Flag, Ruler, Play, Sparkles, FilePen, Hammer, History, ListChecks, MessageSquarePlus, RotateCcw, Settings, ShieldOff, SlidersHorizontal, Stethoscope, SunMoon, Undo2, Zap, FolderKanban, Cpu, Crosshair, ClipboardCheck, PackageCheck, PanelLeft, X, FileText } from "lucide";
 import { initChrome, emptyState, notifySide } from "./chrome";
+import { initToolbox, type Toolbox } from "./toolbox";
+import { initFramedefForm } from "./fdform";
+import { makeDashboard } from "./dashboard";
+import { makeSerialMount, sidecarSerial } from "./serialslot";
+import { makeSerialTerm } from "./serialterm";
+import { stageOfJourney } from "./stages";
+import { logLabel } from "./fieldmap";
 import { Err, Link, Msg } from "./ws";
 import { LAYOUTS, Layout, Plot, chColor, num } from "./plot";
 import { matchNames } from "./names";
@@ -81,6 +88,11 @@ const fmt = (v: number | undefined, p: Param | Field) => v == null || Number.isN
 
 const q = new URLSearchParams(location.search);
 const link = new Link(wsUrlFor(location, !!(import.meta as any).env?.DEV));   // #156 规则见 fieldmap.wsUrlFor
+// 工具箱（两层：卡片首页 → 统一工具页）；工具清单来自 tooldecl.ts（后端 tool_list 上线后经 fieldmap 适配，界面不改）
+let toolboxRef: Toolbox | null = null;
+let framedefRun: (() => Promise<unknown>) | null = null;
+const tbSubs = new Set<(m: any) => void>();
+const tbSub = (f: (m: any) => void) => { tbSubs.add(f); return () => { tbSubs.delete(f); }; };
 import { wsUrlFor } from "./fieldmap";
 const plot = new Plot($("pb"));
 const UNDO = new UndoLog();   // 参数下发前的板上值（保护阈值表的“撤销”）
@@ -724,8 +736,9 @@ async function loadLogs() {
   const tag = portTag(S.status?.connected ? S.status.port : $<HTMLSelectElement>("port").value || "");
   const mine = logs.filter(l => tag && String(l.path).replace(/\.dzlog$/, "").endsWith("_" + tag));
   const shown = logsAll ? logs : mine, others = logs.length - mine.length;
-  $("logs").innerHTML = (shown.map(l => `<option value="${esc(l.path)}">${esc(l.path.split(/[\\/]/).pop())} · ${(l.size / 1024).toFixed(0)} kB${l.recording ? " · 记录中" : ""}</option>`).join("")
-    || `<option value="">没有记录</option>`) + (!logsAll && others ? `<option value="__all">其他端口的 ${others} 个记录…</option>` : "");
+  $("logs").innerHTML = (shown.map(l => `<wa-option value="${esc(l.path)}">${esc(logLabel(l))}</wa-option>`).join("")
+    || `<wa-option value="" disabled>没有记录</wa-option>`) + (!logsAll && others ? `<wa-option value="__all">其他端口的 ${others} 个记录…</wa-option>` : "");
+  const sel = $<HTMLSelectElement>("logs"); if (!sel.value && shown[0]) sel.value = shown[0].path;
 }
 $("logs").addEventListener("change", () => { if ($<HTMLSelectElement>("logs").value === "__all") { logsAll = true; loadLogs(); } });
 $("port").addEventListener("change", () => { logsAll = false; loadLogs(); });
@@ -846,12 +859,15 @@ $("rp-speed").onchange = () => call("replay_ctl", { speed: +$<HTMLSelectElement>
 $("export").onclick = async (e: MouseEvent) => {
   const p = $<HTMLSelectElement>("logs").value;
   if (!p) return toast("还没有记录可导出：连上板子会自动记录", "info");
+  const fmt = e.shiftKey ? "plotjuggler" : $<HTMLSelectElement>("exp-fmt").value;
+  if (toolboxRef && !(await toolboxRef.confirm([`在记录同一目录写出 1 个新文件（${fmt === "vofa" ? ".vofa.txt" : fmt === "plotjuggler" ? ".pj.csv" : ".csv"}）`, "不改动原记录"]))) return;
   const r = await call("log_export", { path: p, fmt: e.shiftKey ? "plotjuggler" : $<HTMLSelectElement>("exp-fmt").value }).catch(() => null);
+  if (r) toolboxRef?.showResult([{ k: "已导出", v: `${r.rows} 行` }, { k: "文件", v: String(r.path) }]);
   if (r) toast(`已导出 ${r.rows} 行 → ${r.path}${r.channels ? "（列顺序 " + r.channels.join(", ") + "）" : ""}`, "ok", 12000);
 };
 $("import").onclick = async () => {
-  const path = window.prompt("要导入的文件路径（CSV 或 VOFA+ 文本）", localStorage.getItem("dz.import") || "");
-  if (!path) return;
+  const path = String($<HTMLInputElement>("imp-path").value || "").trim();
+  if (!path) { toolboxRef?.showError("bad_arg", "先填要导入的文件路径（CSV 或 VOFA+ 文本）"); return; }
   localStorage.setItem("dz.import", path);
   const r = await call("log_import", { path: path.trim().replace(/^"|"$/g, "") }).catch(() => null);
   if (!r) return;
@@ -916,6 +932,7 @@ let iterPort: string | null | undefined;
 function onBoardForIter(port: string | null | undefined) { if (iterPort !== undefined && port !== iterPort && IT.s.phase !== "running") { IT.reset(); renderIter(); } iterPort = port; }
 setInterval(() => { if (IT.s.phase !== "done") renderIter(); }, 1000);
 link.on(m => {
+  tbSubs.forEach(f => f(m));
   { const pv = toPlant((m as any)?.[PLANT_F.obj]); if (pv) paintPlant(pv); }
   { const rq = toRoleReq(m); if (rq) { ROLE_REQ = rq; ROLE_PICKS = {}; roleUi = { phase: "idle", left: 0 }; renderParams(); } }
   if (IT.onEvent(m, performance.now())) { if (m.type === "iterate.round") FN.onUserChange(); renderIter(); }
@@ -960,25 +977,25 @@ link.onState = async open => {
   if ((h as any)?.link) { onLinkState((h as any).link); showLink((h as any).link); }
   if (h && "project" in (h as any)) { hasProject = !!(h as any).project; curProject = (h as any).project ?? null; void proj.show((h as any).project ?? null); }
   S.ports = h.ports; renderPorts(false);
+  const fdForm = initFramedefForm(localStorage.getItem("dz.framedef"));
   const applyFramedef = () => {
     const kind = $<HTMLSelectElement>("framedef").value;
     const n = Math.max(1, Math.min(32, Number($<HTMLInputElement>("framedef-n").value) || 4));
+    $("fd-custom").hidden = kind !== "custom";
     let def: unknown = null;
     if (kind === "justfloat" || kind === "firewater") def = { preset: kind, n };
     else if (kind === "custom") {
-      const txt = window.prompt('帧结构 JSON，例：{"header":"AA55","checksum":"sum8","check_from":2,"endian":"little","fields":[{"name":"speed","type":"i16","scale":0.01}]}', localStorage.getItem("dz.framedef") || "");
-      if (!txt) return;
-      try { def = JSON.parse(txt); } catch { alert("不是合法 JSON"); return; }
-      localStorage.setItem("dz.framedef", txt);
+      const r = fdForm.read();
+      if (!r.ok) { toolboxRef?.showError("bad_arg", r.error); return Promise.resolve(); }
+      def = r.def; localStorage.setItem("dz.framedef", JSON.stringify(def));
     }
-    call("framedef_set", { def }).then(() => fdStatus()).catch(() => {});   // 出错 call 自己弹提示（中文原因）
+    return call("framedef_set", { def }).then(() => fdStatus());   // 出错 call 自己弹提示（中文原因）；工具页的「出错原因」块也接
   };
   const fdStatus = () => call<{ fields: string[]; bad: number }>("framedef_status").then(st => {
-    $<HTMLSelectElement>("framedef").title = `当前 ${st.fields.length} 个通道；校验错/帧尾不对 ${st.bad} 帧（悬停刷新）`;
+    toolboxRef?.showResult([{ k: "当前通道", v: st.fields.length ? st.fields.join("、") : "无" }, { k: "校验错 / 帧尾不对", v: `${st.bad} 帧` }]);
   }).catch(() => {});
-  $<HTMLSelectElement>("framedef").onmouseenter = fdStatus;
-  $<HTMLSelectElement>("framedef").onchange = applyFramedef;
-  $<HTMLInputElement>("framedef-n").onchange = applyFramedef;
+  $("framedef").addEventListener("change", () => { $("fd-custom").hidden = $<HTMLSelectElement>("framedef").value !== "custom"; });
+  framedefRun = applyFramedef;
   $<HTMLInputElement>("auto-rc").onchange = e => { call("auto_reconnect", { on: (e.target as HTMLInputElement).checked }).catch(() => {}); };
   if (h.recovered && !h.status.connected) {   // 侧车刚崩过：说清楚，预选上次的口，但不自动连（第一个动作交给人）
     toast({ code: "recovered", message: h.recovered.message, fix: "" }, "warn", 30000);
@@ -1129,6 +1146,20 @@ const proj = initProject((op, a) => link.rpc(op, a ?? {}), esc, () => void refre
 let refreshProgressRef: () => Promise<void> | void = () => {};
 window.addEventListener("dz-goto", e => goStepRef((e as CustomEvent).detail));   // 其它模块（Agent 错误卡）请求切页
 const goStep = initSteps(() => !!S.status.connected); goStepRef = goStep;
+toolboxRef = initToolbox({
+  fix(a) {
+    if (a === "connect_board" || a === "reconnect") { toolboxRef?.close(); ($("connect") as HTMLElement).focus(); if (a === "reconnect") $("connect").click(); }
+    else if (a === "install_dep") { toolboxRef?.close(); $("doctor").click(); }
+    else if (a === "edit_params") document.querySelector<HTMLElement>("#tb-params wa-input, #tb-params wa-select")?.focus();
+  },
+});
+toolboxRef.registerHook("framedef", () => framedefRun ? framedefRun() : Promise.reject({ code: "sidecar_down" }));
+toolboxRef.registerMount("dashboard", makeDashboard(tbSub));
+{
+  const be = sidecarSerial((op, a) => link.rpc(op, a ?? {}), tbSub, () => ({ connected: !!S.status.connected, port: $<HTMLSelectElement>("port").value || "" }));
+  toolboxRef.registerMount("serial", makeSerialMount(be, makeSerialTerm(be, { baud: () => Number(($("baud") as HTMLSelectElement | null)?.value) || 115200 })));
+}
+conn.on(c => toolboxRef?.setConn({ sidecar: c.sidecar, board: c.board, sim: String(S.status?.port ?? $<HTMLSelectElement>("port")?.value ?? "").startsWith("sim:") }));
 // 项目进度：接口优先、否则前端推断；每秒或切步时刷新
 let lastProgress: any = null;
 const refreshProgress = async () => { const p: any = await fetchProgress(op => link.rpc(op, {}), {   // 不走 call()：接口未上线时不弹报错
@@ -1139,7 +1170,7 @@ const refreshProgress = async () => { const p: any = await fetchProgress(op => l
   paramsDirty: pending().length > 0,
   selftestFail: (S.status as any)?.selftest?.pass === false,
   visited: new Set(JSON.parse(localStorage.getItem("dz.visited") || "[]")),
-}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); fws.blockers = fromBlockersFw(p.blockers); gate.blk = fromBlockersGate(p.blockers); renderFwSafe(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
+}); lastProgress = p; stripFlash(p); if (p) p.blockers = dropEstopBlockers(p.blockers ?? [], S.latched); renderProgress(p, goStep); if (p) toolboxRef?.setStage(stageOfJourney(p.current)); if (p) { agent.onBlockers(p.blockers); sconf.blockers = fromBlockers(p.blockers); renderConflict(); fws.blockers = fromBlockersFw(p.blockers); gate.blk = fromBlockersGate(p.blockers); renderFwSafe(); } if (p && "project" in p) { curProject = p.project ?? null; void proj.show(p.project ?? null); } };
 refreshProgressRef = refreshProgress;
 // 切页时先用上一份进度同步重画页头（不等接口往返），避免新页短暂显示上一页的页头
 window.addEventListener("dz-step", () => { if (lastProgress) renderProgress(lastProgress, goStep); void refreshProgress(); });

@@ -44,27 +44,10 @@
         <button class="mi" type="button" id="pre-bbtn" title="让板子导出黑匣子（上电复位原因、堵转、解除…；板子有掉电保存区时急停那刻冻进 flash，下次上电还在）"><i data-lucide="history"></i>读黑匣子</button>
         <span class="mh">HardFault：在调参页 Agent 里问“解析这次 HardFault”（decode_hardfault 工具）</span>
       </div></details>
-    <details class="menu right" id="toolbox-m"><summary class="btn" id="toolbox" title="工具箱：不属于时间线某一步的工具"><i data-lucide="sliders-horizontal"></i>工具箱</summary>
-      <div class="pop tb">
-        <span class="mh">测量</span>
-        <button class="mi" id="tb-meas" title="切到联调页的频谱视图：频率 / 幅值 / 占空比 / 相位等波形测量"><i data-lucide="ruler"></i>波形测量</button>
-        <span class="mh">串口</span>
-          <button class="mi" id="lines-btn" title="连着时直接拨 DTR/RTS、一键复位 / 进 BOOT（ESP32 / STM32 一键下载电路）、看 CTS/DSR、串口卡死检测">线控…</button>
-        <span class="mh">帧格式</span>
-          <label class="field" title="不是工作台固件的板子怎么解析：key=value 文本、VOFA+ JustFloat / FireWater，或自定义帧结构（帧头/字段/校验/帧尾，JSON）">非工作台帧<select id="framedef">
-            <option value="kv">key=value 文本</option><option value="justfloat">JustFloat</option><option value="firewater">FireWater</option><option value="custom">自定义…</option></select></label>
-          <label class="field" title="JustFloat / FireWater 的通道数">通道<input id="framedef-n" type="number" min="1" max="32" value="4" style="width:4em"></label>
-        <span class="mh">记录</span><div class="row">
-    <select id="logs" title="回放以前记录的 .dzlog"></select>
-    <button class="ib" id="replay">回放</button>
-    <select id="exp-fmt" title="导出格式"><option value="excel">CSV（Excel）</option><option value="plotjuggler">CSV（PlotJuggler）</option><option value="vofa">VOFA+ 文本</option></select>
-    <button class="ib" id="export" title="把这份记录导出：CSV 带 UTF-8 BOM（Excel 直接打开）/ PlotJuggler（.pj.csv，时间列 time）/ VOFA+ FireWater（.vofa.txt，每行逗号分隔）；Shift+点击 = PlotJuggler">导出</button>
-    <button class="ib" id="import" title="导入别的工具录的曲线：CSV（第一行列名，可带 t_s/time 时间列）或 VOFA+ FireWater 文本；转成 .dzlog 后直接回放">导入…</button></div>
-        <span class="mh">协处理器</span>
-              <button class="mi" id="fw-coproc" title="协处理器（MaixCAM / K230 / Jetson / 树莓派 / RDK）：SSH 推脚本、启动 / 停止、看日志；只走密钥登录"><i data-lucide="play"></i>协处理器部署…</button>
-        <span class="mh">设置</span>
-              <button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置</button>
-        
+    <button class="btn" id="toolbox" type="button" title="工具箱：不属于时间线某一步的工具" aria-haspopup="true" aria-controls="toolbox-m"><i data-lucide="sliders-horizontal"></i>工具箱</button>
+    <details class="menu right" id="settings-m"><summary class="btn ghost" id="settings" title="设置：大模型等"><i data-lucide="settings"></i><span class="sr">设置</span></summary>
+      <div class="pop">
+        <button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置…</button>
       </div></details>
     <label class="theme-sw" title="深色主题开关（默认浅色）" aria-label="深色主题开关"><input type="checkbox" id="theme" role="switch" aria-label="深色主题"><i data-lucide="sun-moon"></i><span class="ts-l">深色</span></label>
     <span class="vsep"></span>
@@ -315,5 +298,31 @@
 <script type="module" src="/src/main.ts"></script>
 <dialog id="mode-dlg" class="dlg"><form method="dialog"><h3>切换到脱机模式</h3><p id="mode-dlg-t"></p>
   <div class="act"><button class="btn" value="no">取消</button><button class="btn pri" value="yes">确认切换</button></div></form></dialog>
+<section id="toolbox-m" class="tbpage" hidden aria-label="工具箱">
+  <div id="tb-home" class="tb-home"></div>
+  <div id="tb-tool" class="tb-tool" hidden></div>
+  <div id="tb-hold" hidden>
+    <button class="mi" id="tb-meas" type="button"><i data-lucide="ruler"></i>打开频谱视图</button>
+    <button class="mi" id="lines-btn" type="button" title="连着时直接拨 DTR/RTS、一键复位 / 进 BOOT、看 CTS/DSR、串口卡死检测">打开线控…</button>
+    <wa-select id="framedef" label="解析方式" size="small" value="kv"><wa-option value="kv">key=value 文本</wa-option><wa-option value="justfloat">VOFA+ JustFloat</wa-option><wa-option value="firewater">VOFA+ FireWater</wa-option><wa-option value="custom">自定义帧结构</wa-option></wa-select>
+    <wa-input id="framedef-n" type="number" label="通道数" size="small" min="1" max="32" value="4" hint="JustFloat / FireWater 用"></wa-input>
+    <div id="fd-custom" class="fd-custom" hidden>
+      <div class="fd-row"><wa-input id="fd-header" label="帧头（HEX）" size="small" placeholder="AA55"></wa-input>
+        <wa-select id="fd-checksum" label="校验" size="small" value="none"><wa-option value="none">无</wa-option><wa-option value="sum8">sum8</wa-option><wa-option value="xor8">xor8</wa-option><wa-option value="crc8">CRC8</wa-option><wa-option value="crc16_modbus">CRC16（Modbus）</wa-option></wa-select>
+        <wa-input id="fd-from" type="number" label="校验起始字节" size="small" min="0" value="0"></wa-input>
+        <wa-select id="fd-endian" label="字节序" size="small" value="little"><wa-option value="little">小端</wa-option><wa-option value="big">大端</wa-option></wa-select>
+        <wa-input id="fd-tail" label="帧尾（HEX，可空）" size="small"></wa-input></div>
+      <div class="fd-fields" id="fd-fields"></div>
+      <wa-button size="small" appearance="outlined" id="fd-add">添加字段</wa-button>
+    </div>
+    <wa-select id="logs" label="记录" size="small" placeholder="没有记录"></wa-select>
+    <button class="ib" id="replay" type="button">回放</button>
+    <wa-select id="exp-fmt" label="导出格式" size="small" value="excel"><wa-option value="excel">CSV（Excel）</wa-option><wa-option value="plotjuggler">CSV（PlotJuggler）</wa-option><wa-option value="vofa">VOFA+ 文本</wa-option></wa-select>
+    <wa-button size="small" appearance="outlined" id="export" title="把这份记录导出：CSV 带 UTF-8 BOM / PlotJuggler / VOFA+ FireWater">导出</wa-button>
+    <wa-input id="imp-path" label="导入文件路径" size="small" placeholder="CSV 或 VOFA+ 文本的完整路径"></wa-input>
+    <wa-button size="small" appearance="outlined" id="import" title="导入别的工具录的曲线：CSV 或 VOFA+ FireWater 文本；转成 .dzlog 后直接回放">导入…</wa-button>
+    <button class="mi" id="fw-coproc" type="button"><i data-lucide="play"></i>打开部署…</button>
+  </div>
+</section>
 </body>
 </html>
