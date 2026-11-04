@@ -19,7 +19,9 @@ export const FIX_DEFAULT: Record<string, string> = { needs_real_serial: "connect
 export const FIX_LABEL: Record<string, string> = { start_sidecar: "启动本地服务", connect_board: "去连接板子", install_dep: "打开自检看缺什么", edit_params: "改参数", reconnect: "重新连接", confirm: "确认" };
 export const STATUS_ZH: Record<ToolStatus, string> = { available: "可用", missing_dep: "缺依赖", needs_board: "需要连板", no_sidecar: "本地服务未运行", not_integrated: "尚未接入" };
 export const STATUS_VARIANT: Record<ToolStatus, string> = { available: "success", missing_dep: "warning", needs_board: "warning", no_sidecar: "danger", not_integrated: "neutral" };
-export const reasonZh = (code: string) => codeZh(code, REASON_FALLBACK_ZH);
+// 工具箱自己的通用码（参数不对等）用本地中文；后端表里 bad_arg 的中文是某个 op 专用的，套到工具页会答非所问
+const TB_OWN = new Set(["bad_arg", "no_data", "not_integrated", "needs_real_serial"]);
+export const reasonZh = (code: string) => TB_OWN.has(code) ? REASON_FALLBACK_ZH[code] : codeZh(code, REASON_FALLBACK_ZH);
 export function fixFor(code: string | undefined): string | undefined {
   if (!code) return undefined;
   const e: any = REASONS_T.value()[code];
