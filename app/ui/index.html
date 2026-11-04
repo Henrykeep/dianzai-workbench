@@ -45,11 +45,11 @@
         <span class="mh">HardFault：在调参页 Agent 里问“解析这次 HardFault”（decode_hardfault 工具）</span>
       </div></details>
     <button class="btn" id="toolbox" type="button" title="工具箱：不属于时间线某一步的工具" aria-haspopup="true" aria-controls="toolbox-m"><i data-lucide="sliders-horizontal"></i>工具箱</button>
-    <details class="menu right" id="settings-m"><summary class="btn ghost" id="settings" title="设置：大模型等"><i data-lucide="settings"></i><span class="sr">设置</span></summary>
+    <details class="menu right" id="settings-m"><summary class="btn ghost" id="settings" title="设置：大模型、深色主题"><i data-lucide="settings"></i><span class="sr">设置</span></summary>
       <div class="pop">
         <button class="mi" id="ag-cfg" title="大模型设置（DeepSeek / 通义千问 / Ollama 本地…）"><i data-lucide="settings"></i>大模型设置…</button>
+        <label class="mi theme-sw" title="深色主题开关（默认浅色）" aria-label="深色主题开关"><input type="checkbox" id="theme" role="switch" aria-label="深色主题"><i data-lucide="sun-moon"></i><span class="ts-l">深色</span></label>
       </div></details>
-    <label class="theme-sw" title="深色主题开关（默认浅色）" aria-label="深色主题开关"><input type="checkbox" id="theme" role="switch" aria-label="深色主题"><i data-lucide="sun-moon"></i><span class="ts-l">深色</span></label>
     <span class="vsep"></span>
     <button id="estop" class="estop" title="随时可按：空格（不在输入框时）或 Esc"><span class="sq"></span><span class="es-lbl">急停</span><kbd>空格</kbd></button>
     <button class="btn sm" id="cmd-r" hidden title="发送 CMD 'R'：解除急停锁存"><i data-lucide="rotate-ccw"></i>解除</button>

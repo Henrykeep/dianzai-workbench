@@ -1290,3 +1290,4 @@ ol.fl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
 .fl-i.todo .fl-t b,.fl-i.done .fl-t b{font-weight:400;color:var(--text-secondary)}
 .fl-s{font-size:var(--fs-12);color:var(--text-muted)} .fl-i.cur .fl-s{color:var(--accent-text)}
 .fl-b p{margin:2px 0 var(--sp-2);font-size:var(--fs-12);color:var(--text-secondary)}
+.pop .theme-sw{width:auto;justify-content:flex-start;gap:var(--sp-2)} .pop .theme-sw .ts-l{display:inline}
