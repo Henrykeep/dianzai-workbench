@@ -34,6 +34,7 @@ import { makeDashboard } from "./dashboard";
 import { makeSerialMount, sidecarSerial } from "./serialslot";
 import { makeSerialTerm } from "./serialterm";
 import { stageOfJourney } from "./stages";
+import { flowModel, renderFlow } from "./flow";
 import { logLabel } from "./fieldmap";
 import { Err, Link, Msg } from "./ws";
 import { LAYOUTS, Layout, Plot, chColor, num } from "./plot";
@@ -587,7 +588,17 @@ const declared = () => declaredBoard(S.schema, curProject);   // #r9p6c-2 板子
 function renderGuide(connected: boolean) {
   const tuned = IT.s.phase !== "idle" || tl.all().some((e: any) => /step|iterate/.test(String(e.kind)));
   const g = guide(hasProject, connected, tuned), el = document.getElementById("gd"); if (!el) return;
-  el.innerHTML = g.map((x, i) => `<li class="${x.s}"><span class="n">${x.s === "done" ? "✓" : i + 1}</span><span>${x.t}</span></li>`).join("");
+  void g;
+  renderFlow(el, flowModel({ hasProject, connected, tuned }), it => {
+    if (it.fix === "connect") { $("connect").click(); return; }
+    const fx: Record<string, () => void> = {
+      req: () => $("pj-ask-in").focus(),
+      plan: () => { goStepRef("项目"); const d = document.querySelector<HTMLDetailsElement>(".pj-adv"); if (d) { d.open = true; d.querySelector('[data-f="scheme"]')?.scrollIntoView({ block: "center" }); } },
+      project: () => { goStepRef("项目"); const d = document.querySelector<HTMLDetailsElement>(".pj-adv"); if (d) { d.open = true; d.querySelector('[data-f="gen"]')?.scrollIntoView({ block: "center" }); } },
+      flash: () => runAction("flash", goStepRef),
+    };
+    (fx[it.id] ?? (() => goStepRef(it.page as any)))();
+  });
 }
 function syncParams() {
   syncRelaySlot();

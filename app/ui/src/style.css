@@ -1277,3 +1277,16 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .st-l{display:flex;gap:var(--sp-3);white-space:pre-wrap;word-break:break-all} .st-l i{font-style:normal;color:var(--text-muted);flex:none} .st-l b{font-weight:600;flex:none;color:var(--text-secondary)} .st-l.tx b,.st-l.tx span{color:var(--accent-text)}
 .st-empty{color:var(--text-muted);font-family:var(--font-sans)}
 .st-send{display:grid;grid-template-columns:1fr 110px 120px auto;gap:var(--sp-2);align-items:center}
+/* 首页流程总览：竖排 8 步，只展开当前步 */
+.fl-h{margin:0 0 var(--sp-3);font-size:var(--fs-14);font-weight:600;color:var(--text-primary)}
+ol.fl{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.fl-i{display:grid;grid-template-columns:24px 1fr;gap:var(--sp-3);padding:6px 0;position:relative}
+.fl-i:not(:last-child)::before{content:"";position:absolute;left:11px;top:30px;bottom:-6px;width:1px;background:var(--border)}
+.fl-n{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:var(--fs-12);border:1px solid var(--border-strong);color:var(--text-secondary);background:var(--surface-1)}
+.fl-i.done .fl-n{border-color:transparent;background:var(--surface-2);color:var(--text-secondary)}
+.fl-i.cur .fl-n{border-color:var(--accent);color:var(--accent-text);font-weight:600}
+.fl-i.blocked .fl-n{border-color:var(--warning);color:var(--text-primary)}
+.fl-t{display:flex;align-items:baseline;gap:var(--sp-2);min-height:24px} .fl-t b{font-size:var(--fs-14);font-weight:500;color:var(--text-primary)}
+.fl-i.todo .fl-t b,.fl-i.done .fl-t b{font-weight:400;color:var(--text-secondary)}
+.fl-s{font-size:var(--fs-12);color:var(--text-muted)} .fl-i.cur .fl-s{color:var(--accent-text)}
+.fl-b p{margin:2px 0 var(--sp-2);font-size:var(--fs-12);color:var(--text-secondary)}

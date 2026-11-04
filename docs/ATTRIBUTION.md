@@ -16,4 +16,4 @@
 | python-control（control ≥ 0.10） | BSD-3-Clause | The Python Control Systems Library developers（Richard M. Murray 等）；`tools/randplant.py` 用 `control.rss` 生成随机稳定系统、`control.pade` 近似纯滞后、`control.c2d` 离散化；侧车 `app/sidecar/dzbench/tuning/autotune.py` 用于模型仿真与 PID 初值；传递依赖 numpy、scipy（BSD-3-Clause） | https://github.com/python-control/python-control |
 | SysIdentPy | BSD-3-Clause | Wilson Rocha Lacerda Junior 等 | https://github.com/wilsonrljr/sysidentpy ；侧车依赖：`autotune.identify()` 用 FROLS 从阶跃录波辨识 ARX 模型 |
 | pytest-timeout（≥ 2.3） | MIT | Floris Bruynooghe 等 | https://github.com/pytest-dev/pytest-timeout ；仅测试：每个测试 120 s 上限，超时打印线程栈 |
-| SerialWeb（串口调试页，原样拷贝） | AGPL-3.0 | Conductance-lab；`app/ui/public/vendor/serialweb/index.html` 逐字节拷贝自 ff84c5d，许可见同目录 `LICENSE`；工具箱「串口调试」以 iframe 加载，注入自写 navigator.serial→sidecar 适配层。注意：随包分发须同时提供其源码（本目录即源码） | https://github.com/Conductance-lab/SerialWeb |
+| SerialWeb（串口调试页，原样拷贝） | AGPL-3.0 | Conductance-lab；原样代码在 `third_party/vendored/serialweb/`（vendor-tools 分支搬入，ff84c5d），构建时拷入 dist/vendor/serialweb；工具箱「串口调试」以 iframe 加载，注入自写 navigator.serial→sidecar 适配层。本仓库整体按 AGPL-3.0-or-later 发布 | https://github.com/Conductance-lab/SerialWeb |

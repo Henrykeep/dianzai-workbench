@@ -49,7 +49,11 @@ export function buildList(api: any | null, c: Conn, current: string, recent: str
 export type Group = { id: string; title: string; open: boolean; tools: ToolCard[] };
 /** 当前阶段一组展开、排最前；其余按旅程顺序折叠；advanced 收进最后的「更多」；空组不出 */
 export function groups(l: ToolList): Group[] {
-  const g: Group[] = l.stages.map(s => ({ id: s.id, title: s.title, open: s.id === l.current, tools: l.tools.filter(t => t.stage === s.id && !t.advanced) }));
+  const all = l.stages.map(s => ({ id: s.id, title: s.title, open: false, tools: l.tools.filter(t => t.stage === s.id && !t.advanced) }));
+  // 当前阶段没有工具（如「读题」）时，展开它之后第一个有工具的阶段
+  const ci = Math.max(0, l.stages.findIndex(s => s.id === l.current));
+  const oi = all.findIndex((x, i) => i >= ci && x.tools.length);
+  const g: Group[] = all.map((x, i) => ({ ...x, open: i === (oi < 0 ? all.findIndex(y => y.tools.length) : oi) }));
   const known = new Set(l.stages.map(s => s.id));
   const more = l.tools.filter(t => t.advanced || !known.has(t.stage));
   const out = [...g.filter(x => x.open), ...g.filter(x => !x.open)].filter(x => x.tools.length);
