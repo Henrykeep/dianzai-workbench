@@ -1,35 +1,76 @@
 {
  "aborted": {
   "zh": "阶跃被打断",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "阶跃被打断"
  },
  "bad_arg": {
   "zh": "开始帧参数不对（通道/时长 200–30000 ms）",
-  "kind": "abort"
+  "kind": "abort",
+  "message_zh": "开始帧参数不对（通道/时长 200–30000 ms）"
  },
  "blocked": {
   "zh": "所有方向都被拒绝或限幅挡住",
-  "kind": "stop"
+  "kind": "stop",
+  "message_zh": "所有方向都被拒绝或限幅挡住"
  },
  "budget_rounds": {
   "zh": "轮数上限用完",
-  "kind": "stop"
+  "kind": "stop",
+  "message_zh": "轮数上限用完"
  },
  "budget_time": {
   "zh": "时间预算用完",
-  "kind": "stop"
+  "kind": "stop",
+  "message_zh": "时间预算用完"
  },
  "busy": {
   "zh": "板上已有阶跃实验在跑",
-  "kind": "abort"
+  "kind": "abort",
+  "message_zh": "板上已有阶跃实验在跑"
+ },
+ "clear_schema_cache": {
+  "zh": "已清除这个哈希的缓存数据格式，正在重新识别板子",
+  "kind": "other",
+  "message_zh": "已清除这个哈希的缓存数据格式，正在重新识别板子"
+ },
+ "commit_declined": {
+  "zh": "提交没有在确认卡上批准，未执行",
+  "kind": "other",
+  "message_zh": "提交没有在确认卡上批准，未执行",
+  "fix_action": "ask_user_commit"
+ },
+ "commit_failed": {
+  "zh": "提交失败，未写入仓库",
+  "kind": "other",
+  "message_zh": "提交失败，未写入仓库",
+  "fix_action": "ask_user_commit"
+ },
+ "confirm_required": {
+  "zh": "这一步需要你在界面上确认后才会执行",
+  "kind": "other",
+  "message_zh": "这一步需要你在界面上确认后才会执行"
+ },
+ "data_file_missing": {
+  "zh": "安装包里的数据文件缺失或损坏，请重新安装",
+  "kind": "other",
+  "message_zh": "安装包里的数据文件缺失或损坏，请重新安装",
+  "fix_action": "reinstall"
  },
  "empty_metrics": {
   "zh": "指标为空",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "指标为空"
+ },
+ "error": {
+  "zh": "后台出错，迭代已停止",
+  "kind": "other",
+  "message_zh": "后台出错，迭代已停止"
  },
  "estop": {
   "zh": "板子急停中",
-  "kind": "abort"
+  "kind": "abort",
+  "message_zh": "板子急停中"
  },
  "estop_latched_ident_deferred": {
   "zh": "急停中，暂不识别板子",
@@ -43,33 +84,68 @@
   "message_zh": "此固件存在急停可被误清除的问题，请重新烧录",
   "fix_action": "reflash"
  },
+ "fw_too_old": {
+  "zh": "固件版本太旧，读不到板子身份号，请升级固件后重新烧录",
+  "kind": "other",
+  "message_zh": "固件版本太旧，读不到板子身份号，请升级固件后重新烧录",
+  "fix_action": "reflash"
+ },
  "hash_mismatch": {
   "zh": "参数哈希对不上",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "参数哈希对不上"
+ },
+ "hold": {
+  "zh": "这块板子的目标不会保持，重新开始实验即可",
+  "kind": "other",
+  "message_zh": "这块板子的目标不会保持，重新开始实验即可",
+  "fix_action": "restart_experiment"
  },
  "invalid": {
   "zh": "连续 3 轮无效",
-  "kind": "stop"
+  "kind": "stop",
+  "message_zh": "连续 3 轮无效"
+ },
+ "manual": {
+  "zh": "人工按下急停",
+  "kind": "other",
+  "message_zh": "人工按下急停"
+ },
+ "max_step": {
+  "zh": "设定值一次跳得超过单次最大阶跃，请分几步改",
+  "kind": "other",
+  "message_zh": "设定值一次跳得超过单次最大阶跃，请分几步改",
+  "fix_action": "lower_step"
+ },
+ "no_board": {
+  "zh": "没连板子：急停没有送达任何板子",
+  "kind": "other",
+  "message_zh": "没连板子：急停没有送达任何板子"
  },
  "no_improve": {
   "zh": "连续 3 轮没有改进",
-  "kind": "stop"
+  "kind": "stop",
+  "message_zh": "连续 3 轮没有改进"
  },
  "no_result": {
   "zh": "板子没回结果",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "板子没回结果"
  },
  "no_rise": {
   "zh": "没测出上升时间",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "没测出上升时间"
  },
  "offline": {
   "zh": "板子在脱机模式",
-  "kind": "abort"
+  "kind": "abort",
+  "message_zh": "板子在脱机模式"
  },
  "pass": {
   "zh": "连续 2 轮达标",
-  "kind": "stop"
+  "kind": "stop",
+  "message_zh": "连续 2 轮达标"
  },
  "plant_unresponsive": {
   "zh": "对象无响应",
@@ -95,6 +171,22 @@
   "message_zh": "本地服务重启后没能自动连回上次的板子（口不在了，也没在别的口找到它）",
   "fix_action": "connect"
  },
+ "protect_param_role": {
+  "zh": "保护参数不能当调参角色",
+  "kind": "other",
+  "message_zh": "保护参数不能当调参角色",
+  "fix_action": "confirm_roles"
+ },
+ "range": {
+  "zh": "参数超出允许范围，被拒绝",
+  "kind": "other",
+  "message_zh": "参数超出允许范围，被拒绝"
+ },
+ "replay": {
+  "zh": "回放中：急停没有送达任何板子",
+  "kind": "other",
+  "message_zh": "回放中：急停没有送达任何板子"
+ },
  "resume_no_response": {
   "zh": "重连后板子没有回应，请按『重新连接』",
   "kind": "blocker",
@@ -106,6 +198,17 @@
   "kind": "blocker",
   "message_zh": "正在恢复连接"
  },
+ "roles_unconfirmed": {
+  "zh": "有参数没声明作用，需要先确认参数角色",
+  "kind": "other",
+  "message_zh": "有参数没声明作用，需要先确认参数角色",
+  "fix_action": "confirm_roles"
+ },
+ "running": {
+  "zh": "迭代还没结束",
+  "kind": "other",
+  "message_zh": "迭代还没结束"
+ },
  "schema_conflict": {
   "zh": "同一哈希对应多份内容不同的数据格式文件，已停止显示和写参数；修复动作按种类：clear_schema_cache（有缓存拷贝，确认后只删这个哈希的缓存并重新识别）/ build（编译产物互冲，重新编译）/ reflash（编译产物与板上固件不符，重新烧录）",
   "kind": "blocker",
@@ -113,30 +216,58 @@
  },
  "settle_zero": {
   "zh": "调节时间为 0（窗口没对上）",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "调节时间为 0（窗口没对上）"
+ },
+ "state": {
+  "zh": "急停中，不下发目标",
+  "kind": "other",
+  "message_zh": "急停中，不下发目标",
+  "fix_action": "estop_clear"
+ },
+ "step": {
+  "zh": "这一步改动太大，被拒绝",
+  "kind": "other",
+  "message_zh": "这一步改动太大，被拒绝"
  },
  "step_failed": {
   "zh": "阶跃没做成",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "阶跃没做成"
+ },
+ "step_too_large": {
+  "zh": "题面幅度超过声明的单步上限",
+  "kind": "other",
+  "message_zh": "题面幅度超过声明的单步上限"
  },
  "stopped": {
   "zh": "人点了停止迭代",
-  "kind": "stop"
+  "kind": "stop",
+  "message_zh": "人点了停止迭代"
  },
  "too_few_samples": {
   "zh": "样本太少",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "样本太少"
  },
  "unstable": {
   "zh": "发散（超调过大）",
-  "kind": "diverge"
+  "kind": "diverge",
+  "message_zh": "发散（超调过大）"
  },
  "unsupported": {
   "zh": "这个应用没配阶跃通道（app.yaml link.step）",
-  "kind": "abort"
+  "kind": "abort",
+  "message_zh": "这个应用没配阶跃通道（app.yaml link.step）"
+ },
+ "user_action": {
+  "zh": "你已手动操作连接，自动连回已取消",
+  "kind": "other",
+  "message_zh": "你已手动操作连接，自动连回已取消"
  },
  "zero_step": {
   "zh": "阶跃幅度为 0（目标就是当前位置）",
-  "kind": "round"
+  "kind": "round",
+  "message_zh": "阶跃幅度为 0（目标就是当前位置）"
  }
 }

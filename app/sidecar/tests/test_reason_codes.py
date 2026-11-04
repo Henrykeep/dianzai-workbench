@@ -17,7 +17,7 @@ def test_every_backend_code_listed():
     codes |= set(re.findall(r'"estop" if e\.code == "estop" else "(\w+)"', src))
     missing = sorted(c for c in codes if c not in j or not j[c]["zh"].strip())
     assert not missing, missing
-    assert all(v["kind"] in ("round", "abort", "stop", "diverge", "blocker") for v in j.values())
+    assert all(v["kind"] in ("round", "abort", "stop", "diverge", "blocker", "other") for v in j.values())
 
 
 def test_every_link_resume_code_has_message_zh():

@@ -28,6 +28,31 @@ BLOCKER_ZH = {"schema_conflict": "同一哈希对应多份内容不同的数据�
 BLOCKER_FIX = {"resume_no_response": "reconnect", "estop_latched_ident_deferred": "estop_clear", "fw_estop_unsafe": "reflash",
                "port_not_found": "connect", "port_ambiguous": "connect"}
 
+# #164：侧车其它回包 / 事件里的原因码（拒绝、急停回包、阻塞、迭代异常等）：kind = other；界面同样只从这张表取中文
+OTHER_ZH = {"clear_schema_cache": "已清除这个哈希的缓存数据格式，正在重新识别板子",
+            "commit_declined": "提交没有在确认卡上批准，未执行",
+            "commit_failed": "提交失败，未写入仓库",
+            "confirm_required": "这一步需要你在界面上确认后才会执行",
+            "data_file_missing": "安装包里的数据文件缺失或损坏，请重新安装",
+            "error": "后台出错，迭代已停止",
+            "fw_too_old": "固件版本太旧，读不到板子身份号，请升级固件后重新烧录",
+            "hold": "这块板子的目标不会保持，重新开始实验即可",
+            "manual": "人工按下急停",
+            "max_step": "设定值一次跳得超过单次最大阶跃，请分几步改",
+            "no_board": "没连板子：急停没有送达任何板子",
+            "protect_param_role": "保护参数不能当调参角色",
+            "range": "参数超出允许范围，被拒绝",
+            "replay": "回放中：急停没有送达任何板子",
+            "roles_unconfirmed": "有参数没声明作用，需要先确认参数角色",
+            "running": "迭代还没结束",
+            "state": "急停中，不下发目标",
+            "step": "这一步改动太大，被拒绝",
+            "step_too_large": "题面幅度超过声明的单步上限",
+            "user_action": "你已手动操作连接，自动连回已取消"}
+OTHER_FIX = {"commit_declined": "ask_user_commit", "commit_failed": "ask_user_commit", "data_file_missing": "reinstall",
+             "fw_too_old": "reflash", "hold": "restart_experiment", "max_step": "lower_step", "protect_param_role": "confirm_roles",
+             "roles_unconfirmed": "confirm_roles", "state": "estop_clear"}
+
 
 def table() -> dict:
     out = {}
@@ -46,4 +71,11 @@ def table() -> dict:
         out[k]["message_zh"] = zh
         if k in BLOCKER_FIX:
             out[k]["fix_action"] = BLOCKER_FIX[k]
+    for k, zh in OTHER_ZH.items():
+        out.setdefault(k, {"zh": zh, "kind": "other"})
+        out[k].setdefault("message_zh", zh)
+        if k in OTHER_FIX:
+            out[k].setdefault("fix_action", OTHER_FIX[k])
+    for v in out.values():          # #164：每条都有 message_zh（界面原样显示；与 zh 同源）
+        v.setdefault("message_zh", v["zh"])
     return dict(sorted(out.items()))
