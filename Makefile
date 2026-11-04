@@ -288,6 +288,7 @@ estop-load:
 licenses:
 	$(PY) tools/check_vendored.py
 	$(PY) tools/test_check_vendored.py
+	$(PY) tools/test_vendored_serialweb.py
 	$(PY) tools/check_py_licenses.py --selftest
 	$(PY) tools/check_py_licenses.py
 	bash tools/check_npm_licenses.sh

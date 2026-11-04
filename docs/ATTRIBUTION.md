@@ -16,3 +16,4 @@
 | python-control（control ≥ 0.10） | BSD-3-Clause | The Python Control Systems Library developers（Richard M. Murray 等）；`tools/randplant.py` 用 `control.rss` 生成随机稳定系统、`control.pade` 近似纯滞后、`control.c2d` 离散化；侧车 `app/sidecar/dzbench/tuning/autotune.py` 用于模型仿真与 PID 初值；传递依赖 numpy、scipy（BSD-3-Clause） | https://github.com/python-control/python-control |
 | SysIdentPy | BSD-3-Clause | Wilson Rocha Lacerda Junior 等 | https://github.com/wilsonrljr/sysidentpy ；侧车依赖：`autotune.identify()` 用 FROLS 从阶跃录波辨识 ARX 模型 |
 | pytest-timeout（≥ 2.3） | MIT | Floris Bruynooghe 等 | https://github.com/pytest-dev/pytest-timeout ；仅测试：每个测试 120 s 上限，超时打印线程栈 |
+| SerialWeb（serialweb） | AGPL-3.0 | Conductance-lab；github.com/Conductance-lab/SerialWeb@ff84c5d43dde6b6c49cddc1b7b01f9c55e3ece1a；原样搬入 `third_party/vendored/serialweb/`（index.html、README.md、AGENTS.md、llms.txt、skills/html-webserial-app/SKILL.md、ai/agent-prompt.md），原 LICENSE 保留 | https://github.com/Conductance-lab/SerialWeb |
