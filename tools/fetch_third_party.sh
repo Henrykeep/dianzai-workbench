@@ -64,7 +64,15 @@ m0pack()   { mkdir -p packs; local f=packs/TexasInstruments.MSPM0G1X0X_G3X0X_DFP
              [ -f "$f" ] && { echo "已存在 $f，跳过"; return; }
              fetch_url "${M0PACK_URL:-https://software-dl.ti.com/msp430/esd/MSPM0-CMSIS/MSPM0G1X0X_G3X0X/latest/exports/TexasInstruments.MSPM0G1X0X_G3X0X_DFP.1.3.1.pack}" "$f" "$M0PACK_SHA"; }
 M0PACK_SHA=071bd317fc0f152ded6b2ae594d79c6fc5eb9952370526b4c14ef5b3b9807860   # 改版本时同步改 workflow 缓存 key
-for g in f4 f1 freertos mspm0 m0pack; do
+# ST 官方全系列 STM32 引脚数据库（BSD-3，CubeMX 同源）：alloc.py 给任意 STM32 自动分配引脚（tools/families/stm32_open.py）
+PINDATA_REV=7d1f1514ed5583ec5007ad91236b4e1d377295b1
+PINDATA_SHA=20d8fda3771a34a0f69b5e9c576960eba45ff460dc1a2daec0683de85962c0cb
+stm32pins() { [ -d STM32_open_pin_data/mcu ] && { echo "已存在 STM32_open_pin_data，跳过"; return; }
+             local t; t=$(mktemp -d)
+             fetch_url "https://codeload.github.com/STMicroelectronics/STM32_open_pin_data/tar.gz/$PINDATA_REV" "$t/p.tgz" "$PINDATA_SHA" || { echo "✗ [fetch/stm32pins] 下载或 sha256 校验失败"; rm -rf "$t"; return 1; }
+             tar xzf "$t/p.tgz" -C "$t" --wildcards "STM32_open_pin_data-$PINDATA_REV/LICENSE" "STM32_open_pin_data-$PINDATA_REV/mcu/STM32*.xml"
+             mv "$t/STM32_open_pin_data-$PINDATA_REV" STM32_open_pin_data; rm -rf "$t"; echo "✓ STM32_open_pin_data $PINDATA_REV"; }
+for g in f4 f1 freertos mspm0 m0pack stm32pins; do
   if [ -z "$ALL" ] || [[ " $ALL " == *" $g "* ]]; then $g; fi
 done
 if [[ " $ALL " == *" cmsis "* ]]; then cmsis; fi

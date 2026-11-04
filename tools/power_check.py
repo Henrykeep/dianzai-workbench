@@ -59,7 +59,21 @@ def rail_rules(m: dict) -> tuple[list[dict], dict]:
 
 
 def skidl_erc(m: dict) -> tuple[list[dict], list[dict]]:
-    sys.path.insert(0, str(SKIDL))
+    """SKiDL 会在当前目录写 *.erc / *.log：放到临时目录里跑，不弄脏工程。"""
+    import os
+    import tempfile
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as td:
+        os.chdir(td)
+        try:
+            return _skidl_erc(m)
+        finally:
+            os.chdir(cwd)
+
+
+def _skidl_erc(m: dict) -> tuple[list[dict], list[dict]]:
+    if str(SKIDL) not in sys.path:
+        sys.path.insert(0, str(SKIDL))
     buf = io.StringIO()
     with contextlib.redirect_stderr(buf), contextlib.redirect_stdout(buf):
         logging.disable(logging.WARNING)

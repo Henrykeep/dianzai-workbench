@@ -63,9 +63,9 @@ FAMILIES = ("stm32f4", "stm32f1")
 
 
 class Stm32Alloc:
-    def __init__(self, fam: str, board: dict):
+    def __init__(self, fam: str, board: dict, fam_mod=None):
         import importlib
-        F = self.F = importlib.import_module(f"families.{fam}")
+        F = self.F = fam_mod if fam_mod is not None else importlib.import_module(f"families.{fam}")
         self.fam, self.pins, self.tims, self.tgroup, self.dma = fam, set(F.RESERVED_PINS), {}, {}, {}
         self.uarts, self.i2c, self.spi, self.used_ch = set(), set(), set(), set()
         self.take(*(board.get("reserved_pins") or {}))
@@ -249,7 +249,13 @@ def allocate(s: dict, parts: dict, fixed: dict | None, name: str, app: dict | No
     res: dict[str, list] = {}
     fixed_res = (fixed or {}).get("resources", {}) or {}
     fixed_names = {(t, r["name"]): r for t in boardlib.RES_TYPES for r in fixed_res.get(t, []) or []}
-    alloc = Stm32Alloc(fam, fixed or {}) if fam in FAMILIES else None
+    open_tab = None
+    if fam not in FAMILIES and str(mcu.get("part", "")).upper().startswith("STM32"):
+        from families import stm32_open   # 其他 STM32：读 ST 官方 STM32_open_pin_data（全系列）
+        open_tab = stm32_open.load(str(mcu["part"]))
+        if open_tab is None:
+            notes.append(f"{mcu['part']}：STM32_open_pin_data 里找不到（make fetch 拉 stm32pins，或型号写错）")
+    alloc = Stm32Alloc(fam, fixed or {}, open_tab) if (fam in FAMILIES or open_tab) else None
     pending = []
     for d in ds:
         hit = fixed_names.get((d["type"], d["name"]))
@@ -393,10 +399,23 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("scheme"); ap.add_argument("-o", required=True); ap.add_argument("--app"); ap.add_argument("--fixed")
     ap.add_argument("--name"); ap.add_argument("--rtos", action="store_true", help="用 FreeRTOS：中断优先级整体 ≥5")
-    ns = ap.parse_args(argv)
+    ap.add_argument("--mcu", help="覆盖主控型号（任意 STM32，如 STM32G431CBT6；读 STM32_open_pin_data）")
+    ap.add_argument("--json", action="store_true", help="机器可读输出（退出码同上：0 成功 / 1 校验不过 / 2 参数错）")
+    try:
+        ns = ap.parse_args(argv)
+    except SystemExit as e:
+        return 2 if e.code else 0
     sp = pathlib.Path(ns.scheme)
     s = yaml.safe_load(sp.read_text(encoding="utf-8")); s["_src"] = sp.as_posix()
     parts = sch.load_catalog()
+    if ns.mcu:
+        if s.get("mcu") not in parts:
+            print(f"✗ scheme.yaml mcu 不在器件库：{s.get('mcu')}"); return 2
+        base = parts[s["mcu"]]
+        fam = re.match(r"^STM32([A-Z]\d)", ns.mcu.upper())
+        parts["_mcu_override"] = {**base, "id": "_mcu_override", "mcu": {**(base.get("mcu") or {}), "part": ns.mcu.upper(),
+                                  "family": ("stm32" + fam.group(1).lower()) if fam else (base.get("mcu") or {}).get("family")}}
+        s["mcu"] = "_mcu_override"
     fixed = boardlib.load_board(pathlib.Path(ns.fixed)) if ns.fixed else None
     rtos = ns.rtos or bool(fixed and (fixed.get("config_source") or {}).get("rtos") == "freertos")
     app = yaml.safe_load(pathlib.Path(ns.app).read_text(encoding="utf-8")) if ns.app else None
@@ -409,11 +428,17 @@ def main(argv=None) -> int:
                                   + yaml.safe_dump(board, allow_unicode=True, sort_keys=False, width=200), encoding="utf-8", newline="\n")
     (o / "cubemx.md").write_text(cubemx_md(board, extra, rtos), encoding="utf-8", newline="\n")
     (o / "alloc.md").write_text(alloc_md(board, extra, rep), encoding="utf-8", newline="\n")
+    ok = sum(1 for d in extra["ds"] if d.get("from") in ("分配", "沿用"))
+    if ns.json:
+        import json
+        print(json.dumps({"ok": not rep.errors, "exit": 1 if rep.errors else 0, "assigned": ok, "total": len(extra["ds"]),
+                          "errors": list(rep.errors), "notes": notes, "resources": board["resources"], "files": {k: str(o / f"{k}.{'yaml' if k == 'board' else 'md'}") for k in ("board", "cubemx", "alloc")}},
+                         ensure_ascii=False, indent=1))
+        return 1 if rep.errors else 0
     for e in rep.errors:
         print("✗", e)
     for n in notes:
         print("!", n)
-    ok = sum(1 for d in extra["ds"] if d.get("from") in ("分配", "沿用"))
     print(f"alloc: {ok}/{len(extra['ds'])} 项已定，校验错误 {len(rep.errors)}；写入 {o}/board.yaml、cubemx.md、alloc.md")
     return 1 if rep.errors else 0
 
