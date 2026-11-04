@@ -345,6 +345,8 @@ check:
 	$(PY) tools/test_params_diff.py
 	$(PY) tools/test_scheme.py
 	$(PY) tools/test_alloc.py
+	$(PY) tools/test_hwstep.py   # 接线图/BOM（WireViz）、电源 ERC（SKiDL）、任意 STM32 分配、CubeMX/SysConfig 无界面生成；随机通用方案
+	$(MAKE) -C tests/store   # FlashDB+EasyLogger 掉电参数/事件日志（pal_nvm 移植）
 	$(PY) tools/bench/test_bench.py
 	$(PY) mechanical/calc/test_mech.py
 	$(PY) mechanical/parts/test_parts.py

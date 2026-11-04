@@ -16,3 +16,8 @@
 | python-control（control ≥ 0.10） | BSD-3-Clause | The Python Control Systems Library developers（Richard M. Murray 等）；`tools/randplant.py` 用 `control.rss` 生成随机稳定系统、`control.pade` 近似纯滞后、`control.c2d` 离散化；侧车 `app/sidecar/dzbench/tuning/autotune.py` 用于模型仿真与 PID 初值；传递依赖 numpy、scipy（BSD-3-Clause） | https://github.com/python-control/python-control |
 | SysIdentPy | BSD-3-Clause | Wilson Rocha Lacerda Junior 等 | https://github.com/wilsonrljr/sysidentpy ；侧车依赖：`autotune.identify()` 用 FROLS 从阶跃录波辨识 ARX 模型 |
 | pytest-timeout（≥ 2.3） | MIT | Floris Bruynooghe 等 | https://github.com/pytest-dev/pytest-timeout ；仅测试：每个测试 120 s 上限，超时打印线程栈 |
+| FlashDB（d186ba9） | Apache-2.0 | armink（Meco Man 等） | https://github.com/armink/FlashDB ；原样放在 `firmware/vendor/flashdb/`（含 FAL），`firmware/vendor/port_pal/dz_store.c` 把 FAL 设备接到 `pal_nvm_*`：KVDB 掉电保存参数、TSDB 板上事件日志 |
+| EasyLogger（806328e） | MIT | armink | https://github.com/armink/EasyLogger ；原样放在 `firmware/vendor/easylogger/`（只把 `inc/elog_cfg.h` 模板挪成 `elog_cfg_template.h`），移植 `firmware/vendor/port_pal/elog_port.c`，WARN 以上写进 FlashDB 事件日志 |
+| SKiDL（881a4d0） | MIT | Dave Vandenbout（devbisme） | https://github.com/devbisme/skidl ；原样放在 `third_party/vendored/skidl/`（省略 KiCad 符号库），`tools/power_check.py` 建网表跑 ERC |
+| WireViz（5f961ac） | GPL-3.0 | WireViz 作者（Daniel Rojas 等） | https://github.com/wireviz/WireViz ；原样放在 `tools/vendor_gpl/wireviz/`，**只作独立进程调用**（`python -m wireviz.wv_cli`），`tools/gen_wiring.py` 写 YAML、读它出的 SVG/PNG/BOM |
+| STM32_open_pin_data（7d1f151） | BSD-3-Clause | STMicroelectronics | https://github.com/STMicroelectronics/STM32_open_pin_data ；不入库，`tools/fetch_third_party.sh stm32pins` 按 sha256 下载；`tools/families/stm32_open.py` 读引脚复用 / Flash / RAM，`tools/alloc.py --mcu` 支持任意 STM32 |

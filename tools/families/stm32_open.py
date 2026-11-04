@@ -38,6 +38,25 @@ def find(part: str) -> pathlib.Path | None:
     return hits[0] if hits else None
 
 
+def memory(part: str) -> tuple[int | None, int | None]:
+    """型号 → (flash_kb, ram_kb)。一份 XML 覆盖多个 Flash 档（RefName 里 "(6-8-B)"）时按型号第 11 位（Flash 代码）取对应档。"""
+    x = find(part)
+    if not x:
+        return None, None
+    root = ET.parse(x).getroot()
+    fl = [int(e.text) for e in root.iter(f"{NS}Flash")]
+    ram = [int(e.text) for e in root.iter(f"{NS}Ram")]
+    i, pos, ref, up = 0, 0, root.get("RefName") or "", part.upper()
+    for g in re.finditer(r"\(([^)]*)\)|.", ref):
+        if g.group(1) is not None:
+            opts = g.group(1).split("-")
+            if pos == 10 and up[10:11] in opts:
+                i = opts.index(up[10])
+        pos += 1
+    pick = lambda xs: xs[min(i, len(xs) - 1)] if xs else None
+    return pick(fl), pick(ram)
+
+
 @functools.lru_cache(maxsize=None)
 def load(part: str) -> types.SimpleNamespace | None:
     x = find(part)

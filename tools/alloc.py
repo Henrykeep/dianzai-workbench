@@ -368,6 +368,8 @@ def cubemx_md(board: dict, extra: dict, rtos: bool) -> str:
         chs = ", ".join(f"CH{r['channel']}" for r in res["pwm"] if r["timer"] == tim)
         L.append(f"| {tim} | PWM Generation {chs} | 时钟 {clk // 1_000_000} MHz → Prescaler={psc}，Counter Period={arr}（{f} Hz，占空分辨率 {arr + 1} 级）；auto-reload preload Enable |")
     for r in res.get("encoder", []):
+        if r["timer"] not in al.F.TIMERS:
+            continue  # 没分到定时器（TODO），错误已在 errors 里
         L.append(f"| {r['timer']} | Combined Channels = Encoder Mode TI1 and TI2 | Counter Period={2 ** al.F.TIMERS[r['timer']][1] - 1}；Input Filter 6–10（抗电机干扰）；{r['name']} |")
     for r in res.get("timer", []):
         if r.get("instance") != TODO:
@@ -413,7 +415,10 @@ def main(argv=None) -> int:
             print(f"✗ scheme.yaml mcu 不在器件库：{s.get('mcu')}"); return 2
         base = parts[s["mcu"]]
         fam = re.match(r"^STM32([A-Z]\d)", ns.mcu.upper())
-        parts["_mcu_override"] = {**base, "id": "_mcu_override", "mcu": {**(base.get("mcu") or {}), "part": ns.mcu.upper(),
+        from families import stm32_open
+        fk, rk = stm32_open.memory(ns.mcu)
+        mem = {k: v for k, v in (("flash_kb", fk), ("ram_kb", rk)) if v}
+        parts["_mcu_override"] = {**base, "id": "_mcu_override", "mcu": {**(base.get("mcu") or {}), **mem, "part": ns.mcu.upper(),
                                   "family": ("stm32" + fam.group(1).lower()) if fam else (base.get("mcu") or {}).get("family")}}
         s["mcu"] = "_mcu_override"
     fixed = boardlib.load_board(pathlib.Path(ns.fixed)) if ns.fixed else None

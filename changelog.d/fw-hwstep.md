@@ -1,0 +1,7 @@
+- [仿真] 硬件步骤工具（清单 3.3 / 4.1–4.4，通用、无题目专用代码；输入 = scheme.yaml + alloc 分配结果或 board.yaml，project.yaml 不含硬件信息）。全部支持 `--json`，退出码 0 成功 / 1 规格不满足 / 2 参数错 / 3 缺依赖 / 10+ 内部错。
+  - `tools/gen_wiring.py`：WireViz（GPL-3.0，独立进程调用）出接线图 wiring.svg/png + wiring.csv + bom.csv。
+  - `tools/power_check.py`：SKiDL（MIT）网表 + ERC，另加 3.3 V/5 V 电平规则（LEVEL_OVERVOLT / LEVEL_LOW_VIH / LEVEL_BIDIR）与供电轨电流预算（RAIL_BUDGET），出 power_bom.csv；电气参数 tools/catalog/elec.yaml，scheme.yaml `elec` / `power.rails` 可覆盖。
+  - `tools/alloc.py --mcu <任意 STM32>`：读 STM32_open_pin_data（`make fetch` 带 stm32pins，sha256 锁定），Flash/RAM 按型号取；MSPM0 原逻辑不变。修：定时器没分到时写 cubemx.md 崩溃（KeyError 'TODO'）。
+  - `tools/gen_config.py cubemx|sysconfig`：无界面调 `STM32CubeMX -q` / `sysconfig_cli`，工具不在退出 3。
+  - 固件：FlashDB（Apache-2.0）+ EasyLogger（MIT）原样放 firmware/vendor/，`port_pal/dz_store.[ch]` 走 pal_nvm_*：掉电保存参数（dz_param_save/load）、板上事件日志（dz_event_log/iter，WARN 以上日志自动记入）。
+  - 测试（make test）：tools/test_hwstep.py 随机方案 × 随机 STM32 型号；tests/store 模拟 flash 位语义 + 掉电重启核对参数和日志。[未测] 真板、CubeMX 真机（本机未装，只验证退出 3）
