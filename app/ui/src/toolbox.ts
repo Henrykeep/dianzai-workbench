@@ -58,18 +58,21 @@ export function initToolbox(deps: ToolboxDeps) {
       <header class="tb-th"><span class="tb-ic lg">${ic(t.icon)}</span><div><h2>${esc(t.name)}</h2><p>${esc(t.summary)}</p>
         <div class="tb-meta">${badge(t)}${t.appliesTo.length ? `<span>适用：${esc(t.appliesTo.join("、"))}</span>` : ""}</div></div></header>
       ${ok ? "" : `<div class="tb-banner ${t.status === "not_integrated" ? "neutral" : ""}"><div><b>${esc(t.reason ? reasonZh(t.reason) : STATUS_ZH[t.status])}</b>${t.status === "not_integrated" ? `<span>负责：${esc(d?.owner ?? "待定")}。出处：${esc(t.source)}。接入前这里不提供假的运行结果。</span>` : ""}</div>${fix ? `<wa-button size="small" appearance="outlined" data-fix="${esc(fix)}">${esc(FIX_LABEL[fix] ?? fix)}</wa-button>` : ""}${fix === "start_sidecar" ? `<a class="tb-link" href="${INSTALLER_URL}" target="_blank" rel="noopener">下载安装包</a>` : ""}</div>`}
+      ${ok && run?.mount ? `<section class="tb-blk tb-work"><div id="tb-result" class="tb-result"></div></section>` : `
       <section class="tb-blk"><h3>参数</h3><div class="tb-params" id="tb-params">${d?.ui?.length ? "" : '<p class="tb-muted">这个工具不需要参数。</p>'}</div></section>
       <section class="tb-blk tb-run"><wa-button variant="brand" id="tb-run" ${ok && run ? "" : "disabled"}>${esc(run?.label ?? "运行")}</wa-button>
         ${run?.writes || run?.touches_board ? `<span class="tb-muted">${run.writes ? "会写文件" : "会动板子"}：运行前先给你看改动并确认</span>` : ""}<div id="tb-confirm"></div></section>
       <section class="tb-blk"><h3>结果</h3><div id="tb-result" class="tb-result"><p class="tb-muted">运行后结果显示在这里。</p></div></section>
+`}
       <section class="tb-blk" id="tb-errblk" hidden><h3>出错原因</h3><div id="tb-err"></div></section>
       <wa-details class="tb-det" summary="详情" appearance="plain"><dl class="tb-dl"><dt>工具 id</dt><dd><code>${esc(t.id)}</code></dd><dt>阶段</dt><dd>${esc(l.stages.find(s => s.id === t.stage)?.title ?? t.stage)}</dd>
         <dt>Agent 可调用</dt><dd>${t.agent ? "是" : "否"}</dd><dt>出处</dt><dd>${esc(t.source || "—")}</dd><dt>许可</dt><dd>${esc(t.license || "—")}</dd>${d?.detail ? `<dt>说明</dt><dd>${esc(d.detail)}</dd>` : ""}${t.reason ? `<dt>原因码</dt><dd><code>${esc(t.reason)}</code></dd>` : ""}</dl></wa-details>`;
-    const params = tool.querySelector<HTMLElement>("#tb-params")!;
-    for (const uid of d?.ui ?? []) { const el = document.getElementById(uid); if (el && el.id !== run?.click) { el.setAttribute("data-parked", ""); params.append(el); } }
+    const params = tool.querySelector<HTMLElement>("#tb-params");
+    for (const uid of d?.ui ?? []) { const el = document.getElementById(uid); if (params && el && el.id !== run?.click) { el.setAttribute("data-parked", ""); params.append(el); } }
     if (run?.click) { const el = document.getElementById(run.click); if (el) { el.setAttribute("data-parked", ""); el.hidden = true; tool.append(el); } }
     tool.querySelector("#tb-back")!.addEventListener("click", () => { openId = null; render(); });
-    tool.querySelector("#tb-run")!.addEventListener("click", () => void doRun(t, d));
+    tool.querySelector("#tb-run")?.addEventListener("click", () => void doRun(t, d));
+    if (ok && run?.mount) void doRun(t, d);   // 面板型工具（串口、看板）打开即挂载，不再多点一次
   }
   async function doRun(t: ToolCard, d: ToolDecl | undefined) {
     const run = d?.run; if (!run) return;
