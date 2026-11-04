@@ -35,6 +35,8 @@
 """
 import argparse, os, re, sys
 
+VENDORED = ("firmware/vendor", "firmware/drivers/libdriver", "firmware/drivers/adi-no-os", "firmware/drivers/other")
+
 try:
     import yaml
 except ImportError:  # pragma: no cover
@@ -103,6 +105,11 @@ class Checker:
         base = os.path.join(self.root, sub)
         for d, dirs, fs in os.walk(base):
             dirs[:] = [x for x in dirs if x not in ("build", "third_party", "fixtures", "__pycache__")]
+            # 原样收录的第三方代码（见 firmware/drivers/ATTRIBUTION.md）不按本仓库规矩改，不扫
+            rel = os.path.relpath(d, self.root).replace(os.sep, "/")
+            if rel.startswith(VENDORED):
+                dirs[:] = []
+                continue
             for f in sorted(fs):
                 if f.endswith(exts):
                     yield os.path.join(d, f)

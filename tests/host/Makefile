@@ -3,7 +3,7 @@ ROOT := ../..
 GEN  := $(ROOT)/build/host-sim/gen
 OUT  := $(ROOT)/build/tests
 INC  := $(addprefix -I,$(ROOT)/firmware/common $(ROOT)/firmware/pal $(wildcard $(ROOT)/firmware/algo/*) \
-        $(wildcard $(ROOT)/firmware/drivers/*) $(ROOT)/ports/host-sim $(GEN) $(ROOT)/apps/include \
+        $(patsubst %/,%,$(wildcard $(ROOT)/firmware/drivers/*/)) $(ROOT)/ports/host-sim $(GEN) $(ROOT)/apps/include \
         $(wildcard $(ROOT)/firmware/framework/*) $(wildcard $(ROOT)/firmware/proto/*))
 SRC  := $(wildcard *.c) $(wildcard $(ROOT)/firmware/algo/*/*.c $(ROOT)/firmware/drivers/*/*.c) \
         $(ROOT)/ports/host-sim/pal_host.c $(GEN)/board_gen.c \

@@ -18,7 +18,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SCOPES = ["app/sidecar/dzbench", "app/ui/src", "firmware", "tools"]
-EXCL = re.compile(r"(^|/)(tests?|fixtures|examples|__pycache__|node_modules|third_party)(/|$)|(^|/)test_[^/]*$|\.test\.ts$|\.spec\.ts$|(^|/)evals[^/]*\.json$")   # evals*.json = 评测题集（数据，不是逻辑）
+EXCL = re.compile(r"(^|/)(tests?|fixtures|examples|__pycache__|node_modules|third_party)(/|$)|^firmware/vendor/|^firmware/drivers/(libdriver|adi-no-os|no-os|other)/|(^|/)test_[^/]*$|\.test\.ts$|\.spec\.ts$|(^|/)evals[^/]*\.json$")   # evals*.json = 评测题集（数据，不是逻辑）
 EXTS = {".py", ".ts", ".tsx", ".js", ".c", ".h", ".json", ".yaml", ".yml", ".tmpl", ".jinja", ".svelte", ".vue", ".css", ".html", ".j2", ".sh"}
 ALLOW = ROOT / "tools" / "problem_specific_allow.txt"
 
