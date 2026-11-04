@@ -92,6 +92,7 @@ export function initToolbox(deps: ToolboxDeps) {
       const f = fix || fixFor(code);
       e.innerHTML = `<div class="tb-banner"><div><b>${esc(reasonZh(code))}</b>${message ? `<span>${esc(message)}</span>` : ""}</div>${f ? `<wa-button size="small" appearance="outlined" data-fix="${esc(f)}">${esc(FIX_LABEL[f] ?? f)}</wa-button>` : ""}</div>`;
       b.hidden = false;
+      b.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
     },
     clearError() { const b = tool.querySelector<HTMLElement>("#tb-errblk"); if (b) b.hidden = true; },
     confirm(changes) {
