@@ -139,8 +139,6 @@ class Server:
             return s.cmd(m["c"], m.get("n"))
         if op == "set_run_mode":                   # 切联机/脱机：界面确认卡确认后才带 confirmed=true（板子还要确认字节）
             return await run(None, s.set_run_mode, str(m.get("mode", "")), bool(m.get("confirmed")))
-        if op == "run_selftest":                   # 重跑板上自检（'H'）→ 回失败项
-            return await run(None, s.run_selftest)
         if op == "save_params":                    # 板子“保存到 flash”按钮：'W' → 等板子回执（停稳才写）
             return await run(None, s.save_params)
         if op == "blackbox":
@@ -197,17 +195,16 @@ class Server:
             r = await run(None, lambda: deps.fetch(self.progress.deps or [], repo))
             await run(None, self.progress.refresh_deps)
             return r
-        if op == "run_selftest":                       # 读取固件心跳上报的板上自检结果（上电自检由板子执行），并刷新进度
-            if not s.status().get("alive"):
-                raise LinkError("not_connected", "未连接板子，无法读取板上自检结果。", "先连接板子（或仿真板），再执行自检")
-            st = s.fw_status().get("selftest")
-            if st is None:
-                raise LinkError("selftest_unreported", "当前固件没有上报自检结果（固件早于 dzctl 0.10.0，或该应用尚未接入自检上报，目前仅 car_2wd 支持）。",
-                                "将固件更新到包含自检上报的版本并重新烧录；在此之前可读取黑匣子查看复位原因与安全态记录")
+        if op == "run_selftest":                       # 界面“重跑自检”：发 0x48 让板子重跑全部自检 → 解码失败项 → 推进度和 link.state
+            r = await run(None, s.run_selftest)
             pc = self.progress.changed()
             if pc:
                 await self._broadcast(pc)
-            return {"selftest": st, "pass": bool(st.get("pass")), "failed_items": st.get("failed_items") or []}
+            ls = s.link_state()
+            if ls:
+                await self._broadcast(ls)
+            st = s.fw_status().get("selftest")
+            return {**r, "selftest": st, "pass": r["ok"]}
         if op == "flow_preview" or op == "flow_accept":     # 项目页引导流程：先暂存区预览，确认才写（dzbench/projflow.py）
             from .projflow import Flow, FlowError
             fl = Flow(self.svc.gw.root)

@@ -42,6 +42,8 @@ class LinkError(Exception):
         d = {"type": "error", "code": self.code, "message": self.message, "fix": self.fix}
         if self.fix_action:
             d["fix_action"] = self.fix_action
+        if getattr(self, "retry", False):
+            d["retryable"] = True
         return d
 
 
@@ -137,7 +139,7 @@ class Session:
             self._t_tr = self.t_connect
             self.hb_status = None
             self.estop_cause = None
-            self.selftest = None; self.params_hash = None
+            self.selftest = None; self.params_hash = None; self.selftest_h_ok = False
             if isinstance(tr, ReplayTransport) and tr.header.get("schema_hash"):
                 self._bind_schema(int(tr.header["schema_hash"], 16))
             if log and not isinstance(tr, ReplayTransport):
@@ -666,22 +668,49 @@ class Session:
         self.mark("param", ("运行模式 → " + ("脱机" if mode == "standalone" else "联机") + "：" if a == 0 else "运行模式没切：") + msg)
         return {"ok": a == 0, "result": a, "message_zh": msg}
 
-    def run_selftest(self, wait_s: float = 1.5) -> dict:
-        """dzctl 0.12.0：让板子重跑全部自检（'H'），等回执 {'H', u32 fail_mask}。旧固件不回执 → ok=None。"""
-        self._check_tx()
-        self.selftest_ack = None
-        if not self._send(DATA, ID_CMD, b"H"):
-            raise LinkError("not_connected", "没连板子", "")
-        t_end = time.monotonic() + wait_s
-        while time.monotonic() < t_end and getattr(self, "selftest_ack", None) is None:
-            time.sleep(0.01)
-        m = getattr(self, "selftest_ack", None)
+    def run_selftest(self, wait_s: float = 1.5, resend: int = 1) -> dict:
+        """dzctl 0.12.0：让板子重跑全部自检（DATA 0x7E 'H'=0x48），等回执 {0x48, u32 fail_mask LE}，按自检项注册表解码。
+        只读、不动电机：急停锁存时也允许（查 SELFTEST 急停原因正需要）。没回执先重发 resend 次；
+        本次连接里板子答过 'H' 仍超时 → selftest_timeout（可重试）；从没答过（固件早于 0.12.0）→ 退回读心跳上报的上电自检结果，
+        心跳也没报 → selftest_unreported。"""
+        if self.tr is None or not self.status().get("alive"):
+            raise LinkError("not_connected", "未连接板子，无法执行板上自检。", "先连接板子（或仿真板），再执行自检")
+        m = None
+        for _ in range(1 + max(0, resend)):
+            self.selftest_ack = None
+            if not self._send(DATA, ID_CMD, bytes([0x48])):
+                raise LinkError("not_connected", "未连接板子，无法执行板上自检。", "先连接板子（或仿真板），再执行自检")
+            t_end = time.monotonic() + wait_s
+            while time.monotonic() < t_end and getattr(self, "selftest_ack", None) is None:
+                time.sleep(0.01)
+            m = getattr(self, "selftest_ack", None)
+            if m is not None:
+                break
         if m is None:
-            return {"ok": None, "mask": None, "failed_items": [], "message_zh": "板子没回执（固件早于 dzctl 0.12.0？）"}
-        d = selftest_dict(m, 1)
+            if getattr(self, "selftest_h_ok", False):
+                e = LinkError("selftest_timeout",
+                              f"板子 {wait_s:g} 秒内没有回复自检结果（已重发 {resend} 次）：串口丢帧，或板子正忙 / 卡住。",
+                              "确认心跳灯还在闪、串口线插牢后再点一次“重跑自检”；仍超时就断开重连或复位板子", "run_selftest")
+                e.retry = True
+                raise e
+            with self.lock:
+                st = self.selftest
+            if st is None:
+                raise LinkError("selftest_unreported", "当前固件不支持重跑自检，也没有上报上电自检结果（固件早于 dzctl 0.11.0，或应用没接通用运行时）。",
+                                "把固件更新到 dzctl 0.12.0 及以上（apps/include/dz_runtime.h）并重新烧录；在此之前可读黑匣子看复位原因与安全态记录")
+            items = list(st.get("failed_items") or [])
+            msg = ("固件不支持重跑自检（早于 dzctl 0.12.0），以下是上电自检结果：" +
+                   ("全部通过" if st.get("pass") else "；".join(i["message_zh"] for i in items)))
+            return {"ok": bool(st.get("pass")), "mask": None, "failed_items": items, "source": "reported", "message_zh": msg}
+        self.selftest_h_ok = True
+        with self.lock:
+            prev = self.selftest
+            t_ms = int(round((prev or {}).get("t", 0) * 1000)) or 1
+            d = selftest_dict(m, t_ms)
+            self.selftest = d                       # 立即刷新快照（心跳随后也会带上同一个 mask）
         msg = "自检全部通过" if d["pass"] else "自检没通过：" + "；".join(i["message_zh"] for i in d["failed_items"])
         self.mark("param", msg)
-        return {"ok": d["pass"], "mask": m, "failed_items": d["failed_items"], "message_zh": msg}
+        return {"ok": d["pass"], "mask": m, "failed_items": d["failed_items"], "source": "trigger", "message_zh": msg}
 
     RELAY_STATUS = {0: "ok", 1: "参数非法或板上没有这个 PID 回路", 2: "板子急停中"}
 

@@ -1,0 +1,18 @@
+# 引脚别名表（tools/import_project.py 按引脚功能自动生成）：引脚 → 工作台逻辑标签。
+# 你的 .ioc 不用改；哪一行猜错了（比如左右电机反了），改这里，然后
+#   python3 tools/ioc_import.py boards/zz-test-3951/cubemx/Bldc.ioc --out boards/zz-test-3951/board.yaml --base boards/zz-test-3951/board.yaml
+pins:
+  PA0: PWM_MOTOR_B            # TIM2_CH1 PWM，原标签 PWMB
+  PA1: PWM_MOTOR_A            # TIM2_CH2 PWM，原标签 PWMA
+  PA6: ENC_MOTOR_A_A          # TIM3 编码器模式 A 相
+  PA7: ENC_MOTOR_A_B          # TIM3 编码器模式 B 相
+  PB6: ENC_MOTOR_B_A          # TIM4 编码器模式 A 相
+  PB7: ENC_MOTOR_B_B          # TIM4 编码器模式 B 相
+  PA2: UART_LINK_TX           # USART2 TX（默认：第一个串口当上位机链路 LINK）
+  PA3: UART_LINK_RX           # USART2 RX
+  PC10: UART_AUX_TX            # UART4 TX（默认：第二个串口当 AUX）
+  PC11: UART_AUX_RX            # UART4 RX
+  PB12: GPIO_MOTOR_A_IN2       # 原标签 AIN2（TB6612 方向脚）
+  PB13: GPIO_MOTOR_A_IN1       # 原标签 AIN1（TB6612 方向脚）
+  PB14: GPIO_MOTOR_B_IN1       # 原标签 BIN1（TB6612 方向脚）
+  PB15: GPIO_MOTOR_B_IN2       # 原标签 BIN2（TB6612 方向脚）

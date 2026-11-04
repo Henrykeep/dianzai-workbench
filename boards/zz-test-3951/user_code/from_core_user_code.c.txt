@@ -1,0 +1,56 @@
+/* 你原工程 Core/ 里 USER CODE 区的代码，由 tools/import_project.py 原样搬来（不参与编译，一行没删）。
+ * 以后把它们拆成子系统：python3 tools/new_subsys.py <题目目录> <名字>，再把逻辑贴进 step()。
+ * 你自己的驱动源码（APP/、HARDWARE/…）备份在 user_code/orig/（0 个文件）。 */
+
+/* ===== main.c · USER CODE 0 ===== */
+
+#include "User.h"
+
+/* ===== main.c · USER CODE 2 ===== */
+
+   System_Init();
+  
+
+/* ===== main.c · USER CODE 3 ===== */
+
+  
+
+/* ===== main.c · USER CODE Callback 1 ===== */
+
+  else if(htim->Instance == TIM5)
+	{
+	   
+	}
+  
+
+/* ===== freertos.c · USER CODE StartDefaultTask ===== */
+
+	taskENTER_CRITICAL();               /* 进入临界区，禁止任务调度，防止创建多任务过程中发生任务切�?*/
+	
+	/* 创建USER_TASK任务 */
+	xTaskCreate ( USER_TASK, "USER_TASK", USER_TASK_STACK_SIZE, NULL, USER_TASK_PRIO, &USER_TASK_handler );
+	configASSERT( USER_TASK_handler );  /* 断言检测任务是否创建成�?*/
+	
+	/* ������ˢ���С��������� */
+	xTaskCreate ( BLDC_TASK, "BLDC_TASK", BLDC_TASK_STACK_SIZE, NULL, BLDC_TASK_PRIO, &BLDC_TASK_handler );
+	configASSERT( BLDC_TASK_handler );	
+	/* 创建KEY_TASK任务 */
+	xTaskCreate ( KEY_TASK, "KEY_TASK", KEY_TASK_STACK_SIZE, NULL, KEY_TASK_PRIO, &KEY_TASK_handler );
+	configASSERT( KEY_TASK_handler );   /* 断言检测任务是否创建成�?*/
+	
+	/* 创建 OLED 显示任务 */
+	xTaskCreate ( OLED_Task, OLED_Task_Name, OLED_Task_STACK_SIZE, NULL, OLED_Task_PRIORITY, &OLED_Task_Handle );
+	configASSERT( OLED_Task_Handle );   /* 断言检测任务是否创建成�?*/
+	
+	/* 删除默认任务，本函数执行完成后不再保留默认任务句�?*/
+	vTaskDelete(defaultTaskHandle);
+	
+	taskEXIT_CRITICAL();                /* 退出临界区，恢复任务调�?*/
+	
+  /* Infinite loop */
+  for(;;)
+  {
+    osDelay(portMAX_DELAY);
+  }
+  
+

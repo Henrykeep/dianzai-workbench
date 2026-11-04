@@ -465,3 +465,16 @@ dz_err_t pal_dac_info(pal_id_t id, pal_dac_info_t *info)
     return DZ_OK;
 }
 uint16_t host_sim_dac_get(pal_id_t id) { return id < BOARD_DAC_COUNT ? s_dac[id] : 0u; }
+
+/* 仿真故障注入（只在 host-sim）：环境变量 DZ_SIM_SELFTEST_FAIL = 失败项 mask（bit = code−1，如 0x18 = 传感器 + 电源）。
+ * 进程启动时为 mask 里每一项注册一个恒失败的自检项 → 上电自检失败（急停原因 SELFTEST）、'H' 回这个 mask。
+ * 弱引用：不链 dzctl 的应用 / 主机单测不受影响。 */
+extern int dzctl_selftest_register(uint8_t code, bool (*fn)(void)) __attribute__((weak));
+static bool sim_st_fail(void) { return false; }
+__attribute__((constructor)) static void sim_selftest_inject(void)
+{
+    const char *e = getenv("DZ_SIM_SELFTEST_FAIL");
+    uint32_t m = e ? (uint32_t)strtoul(e, NULL, 0) : 0u;
+    if (!m || !dzctl_selftest_register) return;
+    for (uint8_t c = 1; c <= 32u; c++) if (m & (1u << (c - 1u))) (void)dzctl_selftest_register(c, sim_st_fail);
+}

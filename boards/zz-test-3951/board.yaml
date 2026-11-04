@@ -1,0 +1,117 @@
+# 由 tools/import_project.py 生成；引脚改 .ioc 或 aliases.yaml 后用 ioc_import --base 重新导入
+schema_version: 1
+name: zz-test-3951
+vendor: TODO
+description: 由 tools/import_project.py 从 Bldc - 副本 (6) 导入（用户原工程，未改 .ioc）
+toolchain:
+  compiler: arm-none-eabi-gcc
+  flasher: openocd
+  openocd_interface: TODO
+  openocd_target: target/stm32f4x.cfg
+port: stm32-cubemx
+config_source:
+  tool: cubemx
+  file: cubemx/Bldc.ioc
+  hal_timebase: TIM1
+  rtos: freertos
+  alias: aliases.yaml
+mcu:
+  part: STM32F407VET6
+  family: stm32f4
+  core: cortex-m4f
+  flash_kb: 512
+clock:
+  hse_hz: 8000000
+  sysclk_hz: 168000000
+resources:
+  gpio:
+  - name: MOTOR_A_IN2
+    pin: PB12
+    dir: out
+  - name: MOTOR_A_IN1
+    pin: PB13
+    dir: out
+  - name: MOTOR_B_IN1
+    pin: PB14
+    dir: out
+  - name: MOTOR_B_IN2
+    pin: PB15
+    dir: out
+  - name: KEY1
+    pin: PD12
+    dir: in
+    pull: up
+  - name: KEY2
+    pin: PD13
+    dir: in
+    pull: up
+  - name: KEY3
+    pin: PD14
+    dir: in
+    pull: up
+  - name: KEY4
+    pin: PD15
+    dir: in
+    pull: up
+  - name: SENSOR1
+    pin: PE8
+    dir: in
+  - name: SENSOR2
+    pin: PE9
+    dir: in
+  - name: SENSOR3
+    pin: PE10
+    dir: in
+  - name: SENSOR4
+    pin: PE11
+    dir: in
+  - name: SENSOR5
+    pin: PE12
+    dir: in
+  - name: SENSOR6
+    pin: PE13
+    dir: in
+  - name: SENSOR7
+    pin: PE14
+    dir: in
+  - name: SENSOR8
+    pin: PE15
+    dir: in
+  pwm:
+  - name: MOTOR_B
+    timer: TIM2
+    channel: 1
+    pin: PA0
+    freq_hz: 500
+  - name: MOTOR_A
+    timer: TIM2
+    channel: 2
+    pin: PA1
+    freq_hz: 500
+  encoder:
+  - name: MOTOR_A
+    timer: TIM3
+    pin_a: PA6
+    pin_b: PA7
+  - name: MOTOR_B
+    timer: TIM4
+    pin_a: PB6
+    pin_b: PB7
+  uart:
+  - name: AUX
+    instance: UART4
+    tx: PC10
+    rx: PC11
+    baud: 921600
+    dma: false
+  - name: LINK
+    instance: USART2
+    tx: PA2
+    rx: PA3
+    baud: 115200
+    dma: false
+  timer:
+  - name: CTRL
+    instance: TIM5
+    irq_priority: 5
+    note: 按 .ioc 计算更新频率 500 Hz
