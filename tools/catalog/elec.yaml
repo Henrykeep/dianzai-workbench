@@ -1,0 +1,13 @@
+# 电气参数（tools/hwmodel.py → power_check.py / gen_wiring.py 读）。典型值，以手册为准。
+# vcc: 供电轨（V）  io_v: 信号电平（V）  ma: 典型工作电流  tol_5v: 输入能否承受 5 V
+# 先按 kind 给默认值，再按器件 id 覆盖；scheme.yaml 里 elec: {<id>: {...}} 可再覆盖（同一件改 5 V 供电等）。
+kinds:
+  mcu:      { vcc: 3.3, io_v: 3.3, ma: 50,  tol_5v: false }
+  sensor:   { vcc: 3.3, io_v: 3.3, ma: 10,  tol_5v: false }
+  actuator: { vcc: 5.0, io_v: 3.3, ma: 300, tol_5v: true }
+  ui:       { vcc: 3.3, io_v: 3.3, ma: 20,  tol_5v: false }
+  link:     { vcc: 3.3, io_v: 3.3, ma: 40,  tol_5v: false }
+  coproc:   { vcc: 5.0, io_v: 3.3, ma: 800, tol_5v: false }
+parts: {}
+# 供电轨能力（mA）；scheme.yaml power: {rails: {3V3: 500}} 可覆盖
+rails: { "3V3": 500, "5V": 2000 }

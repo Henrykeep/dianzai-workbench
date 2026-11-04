@@ -1,0 +1,8 @@
+# 第 3/4 步硬件工具（gen_wiring.py → 内置 WireViz；power_check.py → 内置 SKiDL）的 Python 依赖，版本钉死。另需 Graphviz 的 dot 命令。
+graphviz==0.21  # MIT：WireViz/SKiDL 调 dot
+simp_sexp==0.3.2  # MIT：SKiDL
+rich==15.0.0  # MIT：SKiDL
+ply==3.11  # BSD-3：SKiDL
+deprecation==2.1.0  # Apache-2.0：SKiDL
+click>=8  # BSD-3：WireViz
+pillow>=10  # MIT-CMU：WireViz
