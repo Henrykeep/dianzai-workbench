@@ -1,0 +1,3 @@
+- 侧车 cubemx.py 直接用 mcp-stm32cubeide-server（MIT）的 discovery.py + process.py：找 CubeMX / CubeIDE、超时结束整个进程树、CubeMX 无头生成、CubeIDE 无头编译（新 op `cubemx_generate`、`cubeide_build`）。
+- 工具箱声明：`app/sidecar/dzbench/tools.d/{cubemx_generate,cubeide_build}.yaml` + `toolreg.py`，新 op `tool_list` / `tool_get`；没装 CubeMX / CubeIDE 时状态 missing_dep（missing_cubemx / missing_cubeide → install_dep）。
+- reason_codes.json 新增 kind=tool（带 fix_action）：missing_cubemx、missing_cubeide、tool_timeout、confirm_required。

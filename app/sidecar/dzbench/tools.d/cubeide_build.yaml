@@ -1,0 +1,14 @@
+# 来源：mcp-stm32cubeide-server（MIT）discovery.py + process.py + tools.py build_command；见 docs/ATTRIBUTION.md
+id: cubeide_build
+stage: 固件
+icon: hammer
+name_zh: CubeIDE 无头编译
+summary_zh: 不开界面调用 STM32CubeIDE 编译工程，列出编译错误；超时会结束整个进程树
+source: {repo: github.com/Helistana/mcp-stm32cubeide-server, commit: 860d90b, license: MIT}
+status_from: cubemx
+params:
+  - {name: project, type: file, label_zh: 工程目录}
+  - {name: config, type: enum, enum: [Debug, Release], default: Debug, label_zh: 配置}
+  - {name: clean, type: bool, default: false, label_zh: 先清理}
+run: {op: cubeide_build, writes: true, touches_board: false}
+result_types: [table, text]
