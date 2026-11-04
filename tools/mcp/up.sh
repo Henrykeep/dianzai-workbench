@@ -27,5 +27,5 @@ PY=$VENV/bin/python
 "$PY" "$ROOT/tools/mcp/smoke.py" "$OUT/mcp.json"
 echo "MCP 配置：$OUT/mcp.json"
 if [ "${1:-}" = "--http" ]; then
-  cd "$ROOT/app/sidecar" && exec "$PY" -m dzbench.mcp_server --http "${2:-8765}"
+  cd "$ROOT/app/sidecar" && exec "$PY" -m dzbench.mcp_server --http "${2:-8770}"
 fi
