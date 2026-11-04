@@ -25,8 +25,13 @@ async close(){try{port._c&&port._c.close()}catch(_){}port._c=null;this.readable=
 async setSignals(s){await toHost("signals",{dtr:s.dataTerminalReady,rts:s.requestToSend})},async getSignals(){return{}},addEventListener(){},removeEventListener(){}};
 const serial={async requestPort(){return port},async getPorts(){return[port]},addEventListener(){},removeEventListener(){}};
 try{Object.defineProperty(navigator,"serial",{value:serial,configurable:true})}catch(_){}})();`;
-export function injectBridge(html: string): string {
-  const tag = `<script>${BRIDGE_JS}</script>`;
+// 嵌入时：主题跟芯台（写进它自己的偏好键）、不弹上游的版本说明框；上游文件本身不改
+export function prefsJs(theme: "light" | "dark", ver: string): string {
+  return `try{var k="serialweb:prefs",p=JSON.parse(localStorage.getItem(k)||"{}");p.theme=${JSON.stringify(theme)};localStorage.setItem(k,JSON.stringify(p));localStorage.setItem("serialweb:version-modal-seen",${JSON.stringify(ver)})}catch(e){}`;
+}
+export function injectBridge(html: string, theme?: "light" | "dark"): string {
+  const ver = /const VERSION = '([^']+)'/.exec(html)?.[1] ?? "";
+  const tag = `<script>${theme ? prefsJs(theme, ver) : ""}${BRIDGE_JS}</script>`;
   const i = html.search(/<head[^>]*>/i);
   if (i < 0) return tag + html;
   const j = html.indexOf(">", i) + 1;
@@ -51,7 +56,7 @@ export function makeSerialMount(be: SerialBackend, fallback: Mount, fetchText: (
     void fetchText(SERIAL_VENDOR_PATH).then(html => {
       if (!alive) return;
       if (!html) { inner = fallback(el, api); return; }   // 原版工具还没合入：用自写的串口调试（同一个后端）
-      fr = document.createElement("iframe"); fr.className = "tb-embed"; fr.title = "串口调试"; fr.srcdoc = injectBridge(html); el.innerHTML = ""; el.append(fr);
+      fr = document.createElement("iframe"); fr.className = "tb-embed"; fr.title = "串口调试"; fr.srcdoc = injectBridge(html, document.documentElement.dataset.theme === "dark" ? "dark" : "light"); el.innerHTML = ""; el.append(fr);
     });
     return () => { alive = false; inner?.(); off?.(); removeEventListener("message", onMsg); };
   };
