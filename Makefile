@@ -304,6 +304,8 @@ check:
 	$(PY) tools/check_no_truth_leak.py --selftest   # 真值只许判卷模块 tools/tunegate_grade.py 读
 	$(PY) tools/check_no_truth_leak.py
 	$(PY) tools/gen_reason_codes.py --check   # #139 docs/dev/reason_codes.json 与后端原因码同步
+	$(PY) tools/check_reason_codes.py --selftest
+	$(PY) tools/check_reason_codes.py   # #164 侧车会发出的每个原因码都必须在原因表里有中文
 	$(PY) tools/check_redef.py
 	$(PY) tools/tree_guard.py --selftest
 	$(PY) tools/tree_guard.py snap $(TREE_SNAP)
@@ -342,6 +344,7 @@ check:
 	$(PY) tools/test_subsys_kit.py
 	$(PY) tools/test_report.py
 	$(PY) tools/test_req.py
+	$(PY) tools/test_check_reason_codes.py
 	$(PY) tools/test_params_diff.py
 	$(PY) tools/test_scheme.py
 	$(PY) tools/test_alloc.py
