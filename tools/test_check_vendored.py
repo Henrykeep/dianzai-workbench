@@ -123,3 +123,15 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
+
+def test_header_gate():
+    from check_vendored import header_copyleft_bad as b
+    assert b("// SPDX-License-Identifier: GPL-2.0-only")
+    assert b("// SPDX-License-Identifier: GPL-2.0")
+    assert b("/* licensed under the GNU General Public License version 2 */")
+    assert not b("// SPDX-License-Identifier: AGPL-3.0-or-later")
+    assert not b("// SPDX-License-Identifier: LGPL-3.0-only")
+    assert not b("GNU General Public License version 3 or later")
+    assert not b("// MIT licensed")
+

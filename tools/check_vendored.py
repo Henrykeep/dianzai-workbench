@@ -20,6 +20,17 @@ PERMISSIVE = {
 }
 
 
+V3_HDR = re.compile(r"\b(A|L)?GPL-?v?3(\.0)?(-or-later|\+|-only)?\b|version\s+3\b", re.I)
+V2_ONLY = re.compile(r"GPL-?v?2(\.\d)?(-only)?\b(?!\+|-or-later)|version\s+2(\.\d)?\s+only|GPL-2\.0(?!-or-later|\+)", re.I)
+
+
+def header_copyleft_bad(head: str) -> bool:
+    """文件头有 copyleft 声明，但不是 v3 系列（或明确写了 v2-only）即为不合格。"""
+    if not COPYLEFT.search(head):
+        return False
+    return bool(V2_ONLY.search(head)) or not V3_HDR.search(head)
+
+
 COPYLEFT3 = re.compile(r"GNU\s+(AFFERO\s+|LESSER\s+)?GENERAL\s+PUBLIC\s+LICENSE\s+Version\s+3\b", re.I)
 
 
@@ -87,12 +98,16 @@ def check(base: pathlib.Path, root: pathlib.Path | None = None, warns: list[str]
                 errs.append(f"{rel(d)}: LICENSE 认不出是宽松许可（MIT/BSD/Apache-2.0/zlib/ISC），许可不明不得入库")
         sm = d / "SOURCE.md"
         has_sm = "SOURCE.md" in names and sm.is_file()
+        if has_sm and header_copyleft_bad(sm.read_text(encoding="utf-8")):
+            errs.append(f"{rel(sm)}: 出处写的 copyleft 许可不是第 3 版系列")
         if not has_sm or not SRC.search(sm.read_text(encoding="utf-8")):
             errs.append(f"{rel(d)}: 缺 SOURCE.md 或其中没有 Source: repo@commit path")
         for f in files:
             if f.suffix in CODE and "__pycache__" not in f.parts and f.is_file():
                 text = f.read_text(encoding="utf-8", errors="replace")
                 head = "\n".join(text.splitlines()[:15])
+                if header_copyleft_bad("\n".join(text.splitlines()[:40])):
+                    errs.append(f"{rel(f)}: 文件头的 copyleft 声明不是 GPL/LGPL/AGPL 第 3 版系列（如 GPL-2-only），不得入库")
                 if not SRC.search(head):
                     errs.append(f"{rel(f)}: 前 15 行缺 Source: repo@commit path")
     refp = ROOT / "docs/参考来源.md"
