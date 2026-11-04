@@ -871,7 +871,7 @@ $("export").onclick = async (e: MouseEvent) => {
   const p = $<HTMLSelectElement>("logs").value;
   if (!p) return toast("还没有记录可导出：连上板子会自动记录", "info");
   const fmt = e.shiftKey ? "plotjuggler" : $<HTMLSelectElement>("exp-fmt").value;
-  if (toolboxRef && !(await toolboxRef.confirm([`在记录同一目录写出 1 个新文件（${fmt === "vofa" ? ".vofa.txt" : fmt === "plotjuggler" ? ".pj.csv" : "CSV"} 格式）`, "不改动原记录"]))) return;
+  if (toolboxRef && !(await toolboxRef.confirm([`在记录同一目录写出 1 个新文件（${fmt === "vofa" ? ".vofa.txt" : fmt === "plotjuggler" ? "PlotJuggler CSV" : "CSV"} 格式）`, "不改动原记录"]))) return;
   const r = await call("log_export", { path: p, fmt: e.shiftKey ? "plotjuggler" : $<HTMLSelectElement>("exp-fmt").value }).catch(() => null);
   if (r) toolboxRef?.showResult([{ k: "已导出", v: `${r.rows} 行` }, { k: "文件", v: String(r.path) }]);
   if (r) toast(`已导出 ${r.rows} 行 → ${r.path}${r.channels ? "（列顺序 " + r.channels.join(", ") + "）" : ""}`, "ok", 12000);
