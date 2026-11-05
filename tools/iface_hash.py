@@ -16,7 +16,7 @@
 """
 import argparse, hashlib, json, os, re, shutil, sys, tempfile
 
-SKIP_DIRS = {"build", "third_party", ".git", "fixtures", "tests", "__pycache__"}
+SKIP_DIRS = {"build", "third_party", ".git", "fixtures", "tests", "__pycache__", ".tmp"}
 
 
 def norm_decls(text):
