@@ -133,7 +133,7 @@ HAL_DRV_SRCS = $(foreach s,$(HAL_SRC) $(STARTUP),$(if $(findstring :,$(s)),$(s))
 
 .PHONY: all run test check selftest clean fetch ioc-check compat gen vars compdb cross agent-eval ui-preview ui bench preflight
 # 可移植性：固件模块按严格 C99（无 GNU 扩展）编译，近似 Keil AC5/AC6、tiarmclang 的要求（真实编译器未在本机测试）
-COMPAT_SRC := $(wildcard firmware/*/*/*.c)
+COMPAT_SRC := $(filter-out firmware/vendor/%,$(wildcard firmware/*/*/*.c))   # 第三方（vendor/）原样拷入，不套我们的 C99 门禁
 compat:
 	@for f in $(COMPAT_SRC); do gcc -std=c99 -pedantic-errors -Wall -Wextra -Werror -Wno-unused-parameter \
 	  $(addprefix -I,$(FW_INC)) -fsyntax-only $$f || exit 1; done; echo "✓ compat: $(words $(COMPAT_SRC)) 个模块源文件按 C99 -pedantic-errors 通过"
