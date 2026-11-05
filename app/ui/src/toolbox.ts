@@ -4,7 +4,7 @@
 import { createElement, Terminal, Ruler, Binary, Cable, History, Zap, Cpu, Gauge, Activity, AudioWaveform, ScanLine, Bug, Server, Settings, Wrench, ArrowLeft, Search, LayoutDashboard } from "lucide";
 import type { ToolCard, ToolList } from "./fieldmap";
 import { TOOL_DECLS, type ToolDecl } from "./tooldecl";
-import { buildList, groups, search, loadRecent, pushRecent, recentCards, reasonZh, fixFor, STATUS_ZH, STATUS_VARIANT, FIX_LABEL, SIDECAR_START_URL, INSTALLER_URL, type Conn } from "./toolmodel";
+import { buildList, groups, search, loadRecent, pushRecent, recentCards, reasonZh, errorTitle, fixFor, STATUS_ZH, STATUS_VARIANT, FIX_LABEL, SIDECAR_START_URL, INSTALLER_URL, type Conn } from "./toolmodel";
 
 const ICONS: Record<string, any> = { terminal: Terminal, ruler: Ruler, binary: Binary, cable: Cable, history: History, zap: Zap, cpu: Cpu, gauge: Gauge, activity: Activity,
   "audio-waveform": AudioWaveform, "scan-line": ScanLine, bug: Bug, server: Server, settings: Settings, wrench: Wrench, "layout-dashboard": LayoutDashboard };
@@ -90,7 +90,8 @@ export function initToolbox(deps: ToolboxDeps) {
     showError(code, message, fix) {
       const b = tool.querySelector<HTMLElement>("#tb-errblk"), e = tool.querySelector<HTMLElement>("#tb-err"); if (!b || !e) return;
       const f = fix || fixFor(code);
-      e.innerHTML = `<div class="tb-banner"><div><b>${esc(reasonZh(code))}</b>${message ? `<span>${esc(message)}</span>` : ""}</div>${f ? `<wa-button size="small" appearance="outlined" data-fix="${esc(f)}">${esc(FIX_LABEL[f] ?? f)}</wa-button>` : ""}</div>`;
+      const title = errorTitle(code, message), sub = message && message !== title ? message : "";
+      e.innerHTML = `<div class="tb-banner"><div><b>${esc(title)}</b>${sub ? `<span>${esc(sub)}</span>` : ""}</div>${f ? `<wa-button size="small" appearance="outlined" data-fix="${esc(f)}">${esc(FIX_LABEL[f] ?? f)}</wa-button>` : ""}</div>`;
       b.hidden = false;
       b.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
     },

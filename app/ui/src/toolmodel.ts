@@ -21,11 +21,15 @@ export const STATUS_ZH: Record<ToolStatus, string> = { available: "可用", miss
 export const STATUS_VARIANT: Record<ToolStatus, string> = { available: "success", missing_dep: "warning", needs_board: "warning", no_sidecar: "danger", not_integrated: "neutral" };
 // 工具箱自己的通用码（参数不对等）用本地中文；后端表里 bad_arg 的中文是某个 op 专用的，套到工具页会答非所问
 const TB_OWN = new Set(["bad_arg", "no_data", "not_integrated", "needs_real_serial"]);
+export const knownReason = (code: string) => TB_OWN.has(code) || !!(REASONS_T.value() as any)[code] || code in REASON_FALLBACK_ZH;
 export const reasonZh = (code: string) => TB_OWN.has(code) ? REASON_FALLBACK_ZH[code] : codeZh(code, REASON_FALLBACK_ZH);
+// 出错标题：认得的码给中文；不认得的码绝不把代码当标题——用后端 message，没有就给通用说法（代码只进「详情」）
+export const errorTitle = (code: string, message?: string) => knownReason(code) ? reasonZh(code) : (message || "操作没有成功");
+const FIX_ALIAS: Record<string, string> = { connect: "connect_board" };
 export function fixFor(code: string | undefined): string | undefined {
   if (!code) return undefined;
   const e: any = REASONS_T.value()[code];
-  return (typeof e?.fix_action === "string" && e.fix_action) || FIX_DEFAULT[code];
+  const a = (typeof e?.fix_action === "string" && e.fix_action) || FIX_DEFAULT[code]; return a ? FIX_ALIAS[a] ?? a : undefined;
 }
 export function statusOf(d: Pick<ToolDecl, "built" | "needs"> & { real_port?: boolean }, c: Conn): ToolStatus {
   if (!d.built) return "not_integrated";

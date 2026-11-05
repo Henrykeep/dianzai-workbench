@@ -55,6 +55,11 @@
   "zh": "没测出上升时间",
   "kind": "round"
  },
+ "not_serial": {
+  "zh": "当前连接不是真串口（仿真板 / 回放 / RTT），没有 DTR、RTS 和 BREAK 线",
+  "kind": "blocker",
+  "fix_action": "connect"
+ },
  "offline": {
   "zh": "板子在脱机模式",
   "kind": "abort"
