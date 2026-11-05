@@ -1229,7 +1229,8 @@ html.sidecar-down .status > :not(#ro-lk):not(.sp){display:none}
 .tb-tx{display:flex;flex-direction:column;gap:4px;min-width:0}
 .tb-tx b{font-size:var(--fs-14);line-height:var(--lh-14);font-weight:600;color:var(--text-primary)}
 .tb-tx span{font-size:var(--fs-12);line-height:var(--lh-12);color:var(--text-secondary)}
-.tb-card wa-badge{font-size:11px;white-space:nowrap}
+.tb-card wa-badge{font-size:12px;white-space:nowrap;flex:none}
+.tb-card wa-badge::part(base){padding:4px 8px;line-height:16px;overflow:visible}
 .tb-grp{margin-bottom:var(--sp-2);border-top:1px solid var(--border)}
 .tb-grp::part(header){padding:var(--sp-3) 0}
 .tb-grp::part(content){padding:0 0 var(--sp-4)}
